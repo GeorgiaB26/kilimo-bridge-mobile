@@ -1,0 +1,6 @@
+Key,Name,Gender,ID Number,Membership Group,Aggregation center,Phone,Country,District,Sub-County,Parish,Village,Membership Type,Occupation,Size of land,Project 1,Project 2,Project 3,Picture
+TEST-001,John Doe,M,99999999,Test Coop,Test Center,+254712345678,Kenya,Kiambu,Limuru,Gitinga,Ndumberi,Active,Farmer,2.5,Coffee Training,Soil Health,Baseline Survey,
+TEST-002,Jane Smith,F,88888888,Test Coop,Test Center,+254745678901,Kenya,Kiambu,Thika,Kambui,Banana,Active,Teacher,1.0,Soil Health,,
+TEST-003,Bob Johnson,M,77777777,Test Coop,Test Center,0714567890,Kenya,Nairobi,Kasarani,Embakasi,Njiru,Active,Trader,0.5,Coffee Training,,
+TEST-004,Alice Brown,F,66666666,Test Coop,Test Center,+254723456789,Kenya,Nairobi,Westlands,Parklands,Karura,Inactive,Engineer,3.0,,,
+TEST-005,Charlie Wilson,M,55555555,Test Coop,Test Center,+254788901234,Kenya,Uasin Gishu,Eldoret,Munyaka,Sosiani,Active,Driver,0.75,Baseline Survey,,

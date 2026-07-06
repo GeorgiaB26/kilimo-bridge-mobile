@@ -1,0 +1,12 @@
+{
+  "name": "kilimo-bridge-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "backend": "cd backend && npm run dev",
+    "backend:start": "cd backend && npm start",
+    "mobile": "cd mobile && npm start",
+    "seed": "cd backend && npm run seed",
+    "test:import": "cd backend && npx tsx src/test-import.ts"
+  }
+}

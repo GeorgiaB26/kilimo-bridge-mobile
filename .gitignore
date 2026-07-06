@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+.env
+.DS_Store
+.expo/
+web-build/

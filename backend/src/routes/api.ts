@@ -1,0 +1,203 @@
+import { Router, Request, Response } from 'express';
+import express from 'express';
+import multer from 'multer';
+import { validateFarmerRow } from '../../../shared/src/validation';
+import {
+  createFarmer,
+  generateFarmerKey,
+  getAllFarmers,
+  getFarmerCount,
+  getMembershipGroupNames,
+  getExistingIdentifiers,
+} from '../services/farmerService';
+import {
+  validateCsvImport,
+  executeImport,
+  getImportProgress,
+  getImportComplete,
+} from '../services/importService';
+import { MAX_CSV_SIZE_BYTES } from '../../../shared/src/constants';
+import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../shared/src/constants';
+
+const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_CSV_SIZE_BYTES },
+});
+
+router.get('/reference', (_req: Request, res: Response) => {
+  res.json({
+    districts: DISTRICTS,
+    subCounties: SUB_COUNTIES,
+    membershipGroups: getMembershipGroupNames(),
+    projects: PROJECTS,
+    membershipTypes: MEMBERSHIP_TYPES,
+  });
+});
+
+router.get('/farmers', (req: Request, res: Response) => {
+  const limit = parseInt(req.query.limit as string) || 100;
+  const offset = parseInt(req.query.offset as string) || 0;
+  const farmers = getAllFarmers(limit, offset);
+  res.json({ farmers, total: getFarmerCount() });
+});
+
+router.post('/farmers/register', (req: Request, res: Response) => {
+  const input = req.body;
+  const existing = getExistingIdentifiers();
+  const membershipGroups = getMembershipGroupNames();
+
+  const farmerInput = {
+    key: input.key || generateFarmerKey(),
+    name: input.name,
+    gender: input.gender,
+    idNumber: input.idNumber,
+    membershipGroup: input.membershipGroup,
+    aggregationCenter: input.aggregationCenter,
+    phone: input.phone,
+    country: input.country || 'Kenya',
+    district: input.district,
+    subCounty: input.subCounty,
+    parish: input.parish,
+    village: input.village,
+    membershipType: input.membershipType,
+    occupation: input.occupation,
+    sizeOfLand: input.sizeOfLand,
+    project1: input.project1,
+    project2: input.project2,
+    project3: input.project3,
+    picture: input.pictureUri,
+  };
+
+  const result = validateFarmerRow(farmerInput, {
+    existingPhones: existing.phones,
+    existingIdNumbers: existing.idNumbers,
+    existingKeys: existing.keys,
+    membershipGroups,
+  });
+
+  if (!result.valid) {
+    res.status(400).json({ success: false, errors: result.errors });
+    return;
+  }
+
+  try {
+    const farmerId = createFarmer({
+      ...farmerInput,
+      ...result.normalized,
+      key: result.normalized.key ?? farmerInput.key,
+      phone: result.normalized.phone ?? farmerInput.phone,
+      name: result.normalized.name ?? farmerInput.name,
+      gender: result.normalized.gender ?? farmerInput.gender,
+      idNumber: result.normalized.idNumber ?? farmerInput.idNumber,
+      membershipGroup: result.normalized.membershipGroup ?? farmerInput.membershipGroup,
+      district: result.normalized.district ?? farmerInput.district,
+      subCounty: result.normalized.subCounty ?? farmerInput.subCounty,
+    } as Parameters<typeof createFarmer>[0]);
+
+    res.status(201).json({ success: true, farmerId, key: result.normalized.key ?? farmerInput.key });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Registration failed',
+    });
+  }
+});
+
+router.post('/admin/farmers/import/validate', upload.single('file'), (req: Request, res: Response) => {
+  let content: string | undefined;
+  let columnMapping: Record<string, string> | undefined;
+
+  if (req.file) {
+    content = req.file.buffer.toString('utf-8');
+  } else if (typeof req.body === 'string' && req.body.length > 0) {
+    content = req.body;
+  } else if (req.body?.content) {
+    content = req.body.content;
+  }
+
+  if (!content) {
+    res.status(400).json({ error: 'No CSV content provided' });
+    return;
+  }
+
+  if (req.body?.columnMapping) {
+    try {
+      columnMapping = typeof req.body.columnMapping === 'string'
+        ? JSON.parse(req.body.columnMapping)
+        : req.body.columnMapping;
+    } catch {
+      res.status(400).json({ error: 'Invalid columnMapping JSON' });
+      return;
+    }
+  }
+
+  try {
+    const result = validateCsvImport(content, columnMapping);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Validation failed',
+    });
+  }
+});
+
+router.post('/admin/farmers/import/validate-text', express.text({ type: '*/*', limit: '50mb' }), (req: Request, res: Response) => {
+  const content = req.body as string;
+  if (!content) {
+    res.status(400).json({ error: 'No CSV content provided' });
+    return;
+  }
+  try {
+    const result = validateCsvImport(content);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Validation failed',
+    });
+  }
+});
+
+router.post('/admin/farmers/import/confirm', async (req: Request, res: Response) => {
+  const { sessionId, skipDuplicates = true } = req.body;
+  if (!sessionId) {
+    res.status(400).json({ error: 'sessionId is required' });
+    return;
+  }
+
+  try {
+    const result = await executeImport(sessionId, skipDuplicates);
+    res.json({
+      status: 'import_started',
+      ...result,
+      sessionId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Import failed',
+    });
+  }
+});
+
+router.get('/admin/farmers/import/:sessionId/progress', (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const importId = req.query.importId as string;
+  const progress = getImportProgress(importId, sessionId);
+  if (!progress) {
+    res.status(404).json({ error: 'Import not found' });
+    return;
+  }
+  res.json(progress);
+});
+
+router.get('/admin/farmers/import/:sessionId/complete', (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const result = getImportComplete(sessionId);
+  if (!result) {
+    res.status(404).json({ error: 'Import not complete or not found' });
+    return;
+  }
+  res.json(result);
+});
+
+export default router;
