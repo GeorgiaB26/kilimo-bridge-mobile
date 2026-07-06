@@ -7,11 +7,25 @@ import {
   getFarmerNotifications,
   claimPayment,
 } from '../services/farmerPortalService';
+import { logAudit } from '../services/auditService';
 
 const router = Router();
 
 router.use(authenticate);
 router.use(requireRole('farmer'));
+
+function logFarmerDataAccess(req: Request, resource: string, farmerId: string): void {
+  logAudit({
+    userId: req.user?.userId,
+    userRole: req.user?.role,
+    action: 'data.access',
+    category: 'farmer_data',
+    resourceType: resource,
+    resourceId: farmerId,
+    ipAddress: req.ip,
+    success: true,
+  });
+}
 
 router.get('/dashboard', (req: Request, res: Response) => {
   if (!req.user?.farmerId) {
@@ -23,16 +37,19 @@ router.get('/dashboard', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Farmer profile not found' });
     return;
   }
+  logFarmerDataAccess(req, 'dashboard', req.user.farmerId);
   res.json(data);
 });
 
 router.get('/projects', (req: Request, res: Response) => {
   if (!req.user?.farmerId) { res.status(400).json({ error: 'No farmer profile' }); return; }
+  logFarmerDataAccess(req, 'projects', req.user.farmerId);
   res.json({ projects: getFarmerProjects(req.user.farmerId) });
 });
 
 router.get('/payments', (req: Request, res: Response) => {
   if (!req.user?.farmerId) { res.status(400).json({ error: 'No farmer profile' }); return; }
+  logFarmerDataAccess(req, 'payments', req.user.farmerId);
   res.json({ payments: getFarmerPayments(req.user.farmerId) });
 });
 
@@ -40,9 +57,9 @@ router.get('/notifications', (req: Request, res: Response) => {
   res.json({ notifications: getFarmerNotifications(req.user!.userId) });
 });
 
-router.post('/payments/:paymentId/claim', (req: Request, res: Response) => {
+router.post('/payments/:paymentId/claim', async (req: Request, res: Response) => {
   if (!req.user?.farmerId) { res.status(400).json({ error: 'No farmer profile' }); return; }
-  const result = claimPayment(req.user.farmerId, req.params.paymentId);
+  const result = await claimPayment(req.user.farmerId, req.params.paymentId, req.user.userId);
   if (!result.success) {
     res.status(400).json(result);
     return;

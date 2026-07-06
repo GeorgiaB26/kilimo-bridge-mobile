@@ -5,7 +5,7 @@ import { FormField } from '../../components/FormField';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS } from '../../constants';
-import { requestOtp, verifyOtp, setAuthToken } from '../../api/client';
+import { requestOtp, verifyOtp, setAuthToken, api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { clearAllSessionData } from '../../utils/session';
 import type { AuthStackParamList } from '../../navigation/types';
@@ -14,7 +14,10 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 const DEMO_FARMER = '+254712345678';
 const DEMO_ADMIN = '+254700000002';
+const DEMO_AGENT = '+254700000003';
+const DEMO_BANKING = '+254700000004';
 const DEMO_OTP = '123456';
+const BANKING_PASSWORD = 'Banking@2026';
 
 export function LoginScreen({ navigation }: Props) {
   const [phone, setPhone] = useState('');
@@ -97,6 +100,32 @@ export function LoginScreen({ navigation }: Props) {
         loading={loading}
         style={styles.quickBtn}
       />
+      <Button
+        title="Open Agent Platform"
+        onPress={() => quickLogin(DEMO_AGENT, 'Agent Platform')}
+        variant="outline"
+        loading={loading}
+        style={styles.quickBtn}
+      />
+      <Button
+        title="Open Banking Platform"
+        onPress={async () => {
+          setLoading(true);
+          try {
+            await clearAllSessionData();
+            const { data } = await api.post('/auth/login', { phone: DEMO_BANKING, password: BANKING_PASSWORD });
+            setAuthToken(data.token);
+            await setAuth(data.token, data.user);
+          } catch {
+            Alert.alert('Login failed', 'Banking login failed. Reset DB: npm run reset');
+          } finally {
+            setLoading(false);
+          }
+        }}
+        variant="outline"
+        loading={loading}
+        style={styles.quickBtn}
+      />
 
       <Button
         title="Clear saved login"
@@ -109,6 +138,8 @@ export function LoginScreen({ navigation }: Props) {
         <Text style={styles.demoTitle}>Manual login (OTP: 123456)</Text>
         <Text style={styles.demoItem}>Farmer: {DEMO_FARMER}</Text>
         <Text style={styles.demoItem}>Admin: {DEMO_ADMIN}</Text>
+        <Text style={styles.demoItem}>Agent: {DEMO_AGENT}</Text>
+        <Text style={styles.demoItem}>Banking: {DEMO_BANKING} / {BANKING_PASSWORD}</Text>
         <Text style={styles.demoNote}>
           Refreshing the browser does not sign you out. Use &quot;Switch account&quot; or &quot;Clear saved login&quot;.
         </Text>

@@ -41,10 +41,18 @@ function Row({ label, value }: { label: string; value?: string }) {
 
 function getPermissions(role?: string): string[] {
   switch (role) {
-    case 'super_admin': return ['Full platform access', 'Manage users', 'CSV import', 'View all farmers', 'Reports'];
-    case 'admin': return ['CSV import', 'View all farmers', 'View users', 'Reports'];
-    case 'field_officer': return ['Register farmers', 'View district farmers'];
-    default: return [];
+    case 'super_admin':
+      return ['Full platform access', 'Manage users', 'CSV import', 'View all farmers', 'Banking H2H', 'Audit logs'];
+    case 'admin':
+      return ['CSV import', 'View all farmers', 'View users', 'Reports', 'Audit logs'];
+    case 'agent':
+      return ['Register farmers', 'View regional farmers', 'Payment verification', 'Activity audit log'];
+    case 'banking':
+      return ['View payment transactions', 'Process M-Pesa via Equity H2H', 'Financial audit trail'];
+    case 'farmer':
+      return ['View own profile', 'View own projects', 'View own payments'];
+    default:
+      return [];
   }
 }
 

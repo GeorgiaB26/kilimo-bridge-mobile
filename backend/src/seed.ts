@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db/database';
 import { createUser } from './services/userService';
+import { registerAgent } from './services/agentService';
+import bcrypt from 'bcryptjs';
 
 const MEMBERSHIP_GROUPS = [
   'Gulu Women Economic Dev',
@@ -49,8 +51,52 @@ export function seedDatabase(): void {
   for (const r of rows) projectIds[r.name] = r.id;
 
   seedDemoFarmerRecord();
+  seedStaffUsers();
   seedUsers();
   seedDemoFarmerData(projectIds);
+}
+
+function seedStaffUsers(): void {
+  const bankingPhone = '+254700000004';
+  const existing = db.prepare('SELECT user_id FROM users WHERE phone_number = ?').get(bankingPhone);
+  if (!existing) {
+    const passwordHash = bcrypt.hashSync('Banking@2026', 12);
+    createUser({
+      phoneNumber: bankingPhone,
+      name: 'Equity Banking Officer',
+      role: 'banking',
+      passwordHash,
+    });
+  }
+
+  const agentPhone = '+254700000003';
+  const agentExists = db.prepare('SELECT user_id FROM users WHERE phone_number = ?').get(agentPhone);
+  if (!agentExists) {
+    try {
+      registerAgent({
+        phoneNumber: agentPhone,
+        name: 'Kiambu Agent',
+        governmentId: 'GOV-AGENT-001',
+        aggregationCenter: 'Kiambu Town Hall',
+        region: 'Central',
+        district: 'Kiambu',
+      });
+      // Auto-verify demo agent
+      const agent = db.prepare('SELECT agent_id FROM agents a JOIN users u ON a.user_id = u.user_id WHERE u.phone_number = ?').get(agentPhone) as { agent_id: string } | undefined;
+      if (agent) {
+        db.prepare(`UPDATE agents SET status = 'active', verified_at = datetime('now') WHERE agent_id = ?`).run(agent.agent_id);
+      }
+    } catch {
+      createUser({
+        phoneNumber: agentPhone,
+        name: 'Kiambu Agent',
+        role: 'agent',
+        district: 'Kiambu',
+        region: 'Central',
+        aggregationCenter: 'Kiambu Town Hall',
+      });
+    }
+  }
 }
 
 function seedDemoFarmerRecord(): void {
@@ -76,13 +122,12 @@ function seedUsers(): void {
   const users = [
     { phone: '+254700000001', name: 'Super Admin', role: 'super_admin' as const },
     { phone: '+254700000002', name: 'Platform Admin', role: 'admin' as const },
-    { phone: '+254700000003', name: 'Kiambu Field Officer', role: 'field_officer' as const, district: 'Kiambu' },
   ];
 
   for (const u of users) {
     const existing = db.prepare('SELECT user_id FROM users WHERE phone_number = ?').get(u.phone);
     if (!existing) {
-      createUser({ phoneNumber: u.phone, name: u.name, role: u.role, district: u.district });
+      createUser({ phoneNumber: u.phone, name: u.name, role: u.role });
     }
   }
 

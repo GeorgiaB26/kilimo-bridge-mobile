@@ -94,7 +94,7 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
       membershipGroup: result.normalized.membershipGroup ?? farmerInput.membershipGroup,
       district: result.normalized.district ?? farmerInput.district,
       subCounty: result.normalized.subCounty ?? farmerInput.subCounty,
-    } as Parameters<typeof createFarmer>[0]);
+    } as Parameters<typeof createFarmer>[0], req.user?.userId);
 
     res.status(201).json({ success: true, farmerId, key: result.normalized.key ?? farmerInput.key });
   } catch (err) {

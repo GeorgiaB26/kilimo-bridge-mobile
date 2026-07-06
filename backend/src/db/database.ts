@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const dataDir = path.join(__dirname, '..', 'data');
+const dataDir = path.resolve(process.cwd(), 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -77,7 +77,7 @@ export function initDatabase(): void {
       user_id TEXT PRIMARY KEY,
       phone_number TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('super_admin', 'admin', 'field_officer', 'farmer')),
+      role TEXT NOT NULL,
       farmer_id TEXT,
       district TEXT,
       status TEXT DEFAULT 'active',
@@ -143,7 +143,150 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_farmer_projects_farmer ON farmer_projects(farmer_id);
     CREATE INDEX IF NOT EXISTS idx_payments_farmer ON payments(farmer_id);
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      user_role TEXT,
+      action TEXT NOT NULL,
+      category TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      success INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS agents (
+      agent_id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
+      government_id_encrypted TEXT NOT NULL,
+      aggregation_center TEXT NOT NULL,
+      region TEXT NOT NULL,
+      district TEXT NOT NULL,
+      status TEXT DEFAULT 'pending_verification',
+      verified_by TEXT,
+      verified_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS bank_transactions (
+      id TEXT PRIMARY KEY,
+      payment_id TEXT,
+      farmer_id TEXT,
+      amount INTEGER NOT NULL,
+      currency TEXT DEFAULT 'KES',
+      recipient_phone TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      equity_reference TEXT,
+      equity_response TEXT,
+      error_message TEXT,
+      initiated_by TEXT,
+      webhook_received_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      completed_at TEXT,
+      FOREIGN KEY (payment_id) REFERENCES payments(id),
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS payment_verifications (
+      id TEXT PRIMARY KEY,
+      payment_id TEXT NOT NULL,
+      agent_user_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      notes TEXT,
+      verified_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (payment_id) REFERENCES payments(id),
+      FOREIGN KEY (agent_user_id) REFERENCES users(user_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_category ON audit_logs(category);
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_agents_region ON agents(region);
+    CREATE INDEX IF NOT EXISTS idx_bank_tx_status ON bank_transactions(status);
   `);
+
+  runMigrations();
+}
+
+function runMigrations(): void {
+  const addColumn = (table: string, column: string, definition: string) => {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    } catch {
+      // column exists
+    }
+  };
+
+  addColumn('users', 'password_hash', 'TEXT');
+  addColumn('users', 'region', 'TEXT');
+  addColumn('users', 'aggregation_center', 'TEXT');
+
+  migrateUsersTableIfNeeded();
+
+  addColumn('farmers', 'id_number_encrypted', 'TEXT');
+  addColumn('farmers', 'bank_account_encrypted', 'TEXT');
+  addColumn('farmers', 'registered_by_agent_id', 'TEXT');
+  addColumn('payments', 'processed_by', 'TEXT');
+  addColumn('payments', 'verification_status', "TEXT DEFAULT 'unverified'");
+}
+
+/** Recreate users table when legacy CHECK constraint blocks agent/banking roles */
+function migrateUsersTableIfNeeded(): void {
+  const row = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'`).get() as
+    | { sql: string }
+    | undefined;
+  if (!row?.sql) return;
+
+  const needsMigration =
+    row.sql.includes('CHECK') ||
+    row.sql.includes('field_officer');
+
+  if (!needsMigration) return;
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec(`
+      CREATE TABLE users_new (
+        user_id TEXT PRIMARY KEY,
+        phone_number TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        farmer_id TEXT,
+        district TEXT,
+        status TEXT DEFAULT 'active',
+        password_hash TEXT,
+        region TEXT,
+        aggregation_center TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+      );
+
+      INSERT INTO users_new (
+        user_id, phone_number, name, role, farmer_id, district, status,
+        password_hash, region, aggregation_center, created_at, updated_at
+      )
+      SELECT
+        user_id, phone_number, name,
+        CASE WHEN role = 'field_officer' THEN 'agent' ELSE role END,
+        farmer_id, district, status,
+        password_hash, region, aggregation_center, created_at, updated_at
+      FROM users;
+
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+
+      CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number);
+      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    `);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 export interface FarmerRow {

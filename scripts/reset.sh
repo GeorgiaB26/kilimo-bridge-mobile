@@ -6,6 +6,7 @@ cd "$ROOT"
 
 echo "Removing database..."
 rm -f backend/data/kilimo.db backend/data/kilimo.db-wal backend/data/kilimo.db-shm
+rm -f backend/src/data/kilimo.db backend/src/data/kilimo.db-wal backend/src/data/kilimo.db-shm 2>/dev/null || true
 
 echo ""
 echo "✓ Database deleted. Next steps:"

@@ -1,4 +1,6 @@
 import { db } from '../db/database';
+import { logAudit } from './auditService';
+import { processPaymentViaBanking } from './bankingService';
 
 export function getFarmerDashboard(farmerId: string) {
   const farmer = db.prepare(`
@@ -55,18 +57,48 @@ export function getFarmerNotifications(userId: string) {
   `).all(userId);
 }
 
-export function claimPayment(farmerId: string, paymentId: string) {
+export async function claimPayment(farmerId: string, paymentId: string, initiatedBy?: string) {
   const payment = db.prepare(`
     SELECT * FROM payments WHERE id = ? AND farmer_id = ? AND payment_status = 'Pending'
-  `).get(paymentId, farmerId) as { id: string; amount: number } | undefined;
+  `).get(paymentId, farmerId) as { id: string; amount: number; verification_status: string } | undefined;
 
   if (!payment) return { success: false, error: 'Payment not found or already claimed' };
+
+  // Require agent verification before farmer can claim (if verification workflow enabled)
+  if (payment.verification_status === 'unverified' && process.env.REQUIRE_PAYMENT_VERIFICATION === 'true') {
+    return { success: false, error: 'Payment pending agent verification' };
+  }
+
+  // Route through Equity H2H when banking integration is active
+  if (process.env.USE_EQUITY_H2H === 'true' && initiatedBy) {
+    const result = await processPaymentViaBanking(paymentId, initiatedBy);
+    logAudit({
+      userId: initiatedBy,
+      action: 'payment.claim',
+      category: 'financial',
+      resourceType: 'payment',
+      resourceId: paymentId,
+      details: { amount: payment.amount, via: 'h2h' },
+      success: result.success,
+    });
+    return result;
+  }
 
   const ref = `MPX${Date.now()}`;
   db.prepare(`
     UPDATE payments SET payment_status = 'Transferred', mpesa_reference = ?, paid_at = datetime('now')
     WHERE id = ?
   `).run(ref, paymentId);
+
+  logAudit({
+    userId: farmerId,
+    action: 'payment.claim',
+    category: 'financial',
+    resourceType: 'payment',
+    resourceId: paymentId,
+    details: { amount: payment.amount, reference: ref },
+    success: true,
+  });
 
   return { success: true, reference: ref, amount: payment.amount };
 }

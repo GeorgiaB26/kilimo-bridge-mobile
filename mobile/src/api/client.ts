@@ -45,6 +45,11 @@ export async function verifyOtp(phone: string, code: string) {
   return data;
 }
 
+export async function loginWithPassword(phone: string, password: string) {
+  const { data } = await api.post('/auth/login', { phone, password });
+  return data;
+}
+
 export async function fetchMe() {
   const { data } = await api.get('/auth/me');
   return data;

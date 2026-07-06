@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database';
 import type { FarmerInput } from '../../../shared/src/validation';
+import { encryptField } from './encryptionService';
+import { logAudit } from './auditService';
 
 export function getMembershipGroupNames(): string[] {
   const rows = db.prepare('SELECT name FROM membership_groups ORDER BY name').all() as { name: string }[];
@@ -25,19 +27,25 @@ export function getExistingIdentifiers() {
   return { phones, idNumbers, keys };
 }
 
-export function createFarmer(input: FarmerInput & { key: string; phone: string }): string {
+export function createFarmer(
+  input: FarmerInput & { key: string; phone: string; bankAccount?: string },
+  registeredBy?: string
+): string {
   const farmerId = uuidv4();
   const groupId = getMembershipGroupIdByName(input.membershipGroup);
   if (!groupId) throw new Error(`Membership group not found: ${input.membershipGroup}`);
 
+  const idNumberEncrypted = encryptField(input.idNumber);
+  const bankAccountEncrypted = input.bankAccount ? encryptField(input.bankAccount) : null;
+
   db.prepare(`
     INSERT INTO farmers (
-      farmer_id, key, name, gender, id_number, membership_group_id,
-      aggregation_center, phone_number, country, district, sub_county,
+      farmer_id, key, name, gender, id_number, id_number_encrypted, bank_account_encrypted,
+      membership_group_id, aggregation_center, phone_number, country, district, sub_county,
       parish, village, membership_type, occupation, size_of_land,
-      picture_url, project_1, project_2, project_3, status
+      picture_url, project_1, project_2, project_3, status, registered_by_agent_id
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `).run(
     farmerId,
@@ -45,6 +53,8 @@ export function createFarmer(input: FarmerInput & { key: string; phone: string }
     input.name,
     input.gender,
     input.idNumber,
+    idNumberEncrypted,
+    bankAccountEncrypted,
     groupId,
     input.aggregationCenter ?? null,
     input.phone,
@@ -60,8 +70,19 @@ export function createFarmer(input: FarmerInput & { key: string; phone: string }
     input.project1 ?? null,
     input.project2 ?? null,
     input.project3 ?? null,
-    input.membershipType ?? 'Active'
+    input.membershipType ?? 'Active',
+    registeredBy ?? null
   );
+
+  logAudit({
+    userId: registeredBy,
+    action: 'farmer.create',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: { district: input.district, key: input.key },
+    success: true,
+  });
 
   return farmerId;
 }

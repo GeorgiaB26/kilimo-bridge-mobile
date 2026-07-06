@@ -12,23 +12,38 @@ React Native (Expo) mobile app with Node.js backend for farmer registration and 
 - Payment history and lifetime earnings
 - Profile (own data only — cannot see other farmers)
 
-**Admin platform** (after login as admin/field officer):
+**Admin platform** (after login as admin):
 - Admin dashboard with platform stats
-- Farmer list (field officers see their district only)
+- Farmer list (agents see their region only)
 - CSV bulk import (admin only)
-- Manual farmer registration (admin + field officers)
+- Manual farmer registration (admin + agents)
 - User management with roles (admin/super admin only)
+
+**Agent platform** (aggregation centre agents):
+- Regional farmer list (district-scoped)
+- Farmer registration with audit trail
+- Payment verification workflow
+- Activity log
+
+**Banking platform** (Equity Bank officers):
+- View all payment transactions
+- Process M-Pesa via Equity H2H API
+- Financial audit trail
+- Webhook receiver for bank confirmations
 
 ### Roles & permissions
 
-| Permission | Super Admin | Admin | Field Officer | Farmer |
-|-----------|:-----------:|:-----:|:-------------:|:------:|
-| View all farmers | ✓ | ✓ | District only | Own only |
-| Register farmers | ✓ | ✓ | ✓ | — |
-| CSV import | ✓ | ✓ | — | — |
-| Manage users | ✓ | — | — | — |
-| View payments | ✓ | ✓ | — | Own only |
-| Claim M-Pesa | — | — | — | ✓ |
+| Permission | Super Admin | Admin | Agent | Banking | Farmer |
+|-----------|:-----------:|:-----:|:-----:|:-------:|:------:|
+| View all farmers | ✓ | ✓ | Region only | — | Own only |
+| Register farmers | ✓ | ✓ | ✓ | — | — |
+| CSV import | ✓ | ✓ | — | — | — |
+| Manage users | ✓ | — | — | — | — |
+| View payments | ✓ | ✓ | — | ✓ | Own only |
+| Process M-Pesa (H2H) | ✓ | ✓ | — | ✓ | — |
+| Payment verification | ✓ | ✓ | ✓ | ✓ | — |
+| Audit logs | ✓ | ✓ | Own + region | Financial | — |
+| Claim M-Pesa | — | — | — | — | ✓ |
 
 ### Farmer Registration (7-screen flow)
 1. **Basic Info** — Name, gender, phone, national ID
@@ -71,12 +86,13 @@ npm run start
 
 The app now has **two platforms in one**:
 
-| Role | Phone | OTP | What they see |
-|------|-------|-----|---------------|
-| **Admin** | `+254700000002` | `123456` | Dashboard, all farmers, CSV import, users |
-| **Field Officer** | `+254700000003` | `123456` | Dashboard, district farmers, register farmers |
-| **Farmer** | `+254712345678` | `123456` | Own dashboard, projects, payments, profile only |
-| **Super Admin** | `+254700000001` | `123456` | Full access including user management |
+| Role | Phone | Login | What they see |
+|------|-------|-------|---------------|
+| **Admin** | `+254700000002` | OTP `123456` | Dashboard, all farmers, CSV import, users |
+| **Agent** | `+254700000003` | OTP `123456` | Regional farmers, register, audit log |
+| **Banking** | `+254700000004` | Password `Banking@2026` | Transactions, M-Pesa H2H processing |
+| **Farmer** | `+254712345678` | OTP `123456` | Own dashboard, projects, payments, profile only |
+| **Super Admin** | `+254700000001` | OTP `123456` | Full access including user management |
 
 > **First time after update?** Delete `backend/data/kilimo.db` and restart the backend to create new tables.
 
@@ -137,6 +153,36 @@ Uses `backend/data/test-farmers.csv` (5 test rows from spec).
 | POST | `/api/admin/farmers/import/confirm` | Confirm and start import |
 | GET | `/api/admin/farmers/import/:sessionId/progress` | Import progress |
 | GET | `/api/admin/farmers/import/:sessionId/complete` | Import completion report |
+| POST | `/api/auth/login` | Password login (banking role, bcrypt) |
+| GET | `/api/banking/payments` | List payment transactions |
+| POST | `/api/banking/payments/:id/process` | Process M-Pesa via Equity H2H |
+| GET | `/api/banking/audit` | Financial audit trail |
+| POST | `/api/webhooks/equity` | Equity Bank transaction webhook |
+| POST | `/api/agents/register` | Register agent with government ID |
+| GET | `/api/agents/farmers` | Farmers in agent's region |
+| GET | `/api/agents/audit` | Agent activity log |
+| POST | `/api/agents/payments/:id/verify` | Submit payment verification |
+| GET | `/api/audit` | Query audit logs |
+
+## Security & Banking
+
+### Data protection
+- **Passwords**: bcrypt hashing (12 rounds), never stored in plaintext
+- **Sensitive fields**: AES-256-GCM encryption for ID numbers and bank accounts (`id_number_encrypted`, `bank_account_encrypted`)
+- **Transport**: HTTPS/TLS enforced in production (helmet HSTS, redirect)
+- **Backups**: `scripts/backup-encrypted.sh` creates OpenSSL-encrypted database backups
+
+### Audit trails
+Every financial transaction, agent action, and farmer data access is logged with timestamp and user ID in `audit_logs`.
+
+### Equity Bank H2H
+Configure in `backend/.env` (see `.env.example`):
+- `EQUITY_H2H_URL`, `EQUITY_API_KEY`, `EQUITY_WEBHOOK_SECRET`
+- Rate limiting on banking and webhook endpoints
+- 30s timeout with graceful fallback (dev mode simulates success when no API key)
+
+### Environment variables
+Copy `backend/.env.example` to `backend/.env` and set production values for `JWT_SECRET`, `ENCRYPTION_KEY`, and Equity credentials.
 
 ## Design
 

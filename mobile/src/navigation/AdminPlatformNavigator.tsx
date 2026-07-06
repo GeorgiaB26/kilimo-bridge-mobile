@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore, isAdminRole } from '../store/authStore';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { AdminFarmersScreen } from '../screens/admin/AdminFarmersScreen';
 import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
@@ -15,7 +15,7 @@ const Tab = createBottomTabNavigator<AdminTabParamList>();
 
 export function AdminPlatformNavigator() {
   const role = useAuthStore((s) => s.user?.role);
-  const canImport = role === 'super_admin' || role === 'admin';
+  const canImport = role ? isAdminRole(role) || role === 'super_admin' : false;
   const canManageUsers = role === 'super_admin' || role === 'admin';
 
   return (

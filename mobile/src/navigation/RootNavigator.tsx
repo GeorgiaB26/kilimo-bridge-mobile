@@ -1,23 +1,20 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useAuthStore, isAdminRole } from '../store/authStore';
+import { useAuthStore, isAdminRole, isAgentRole, isBankingRole } from '../store/authStore';
 import { setAuthToken } from '../api/client';
 import { AuthNavigator } from './AuthNavigator';
 import { FarmerNavigator } from './FarmerNavigator';
 import { AdminPlatformNavigator } from './AdminPlatformNavigator';
+import { AgentNavigator } from './AgentNavigator';
+import { BankingNavigator } from './BankingNavigator';
 import { AccountSwitcherBar } from '../components/AccountSwitcherBar';
 import { COLORS } from '../constants';
 
 export function RootNavigator() {
   const { isLoading, isAuthenticated, user, token, loadStoredAuth } = useAuthStore();
 
-  useEffect(() => {
-    loadStoredAuth();
-  }, [loadStoredAuth]);
-
-  useEffect(() => {
-    if (token) setAuthToken(token);
-  }, [token]);
+  useEffect(() => { loadStoredAuth(); }, [loadStoredAuth]);
+  useEffect(() => { if (token) setAuthToken(token); }, [token]);
 
   if (isLoading) {
     return (
@@ -27,20 +24,18 @@ export function RootNavigator() {
     );
   }
 
-  if (!isAuthenticated || !user) {
-    return <AuthNavigator />;
-  }
+  if (!isAuthenticated || !user) return <AuthNavigator />;
+
+  const role = user.role;
 
   return (
     <View style={styles.root}>
       <AccountSwitcherBar />
-      {user.role === 'farmer' ? (
-        <FarmerNavigator />
-      ) : isAdminRole(user.role) ? (
-        <AdminPlatformNavigator />
-      ) : (
-        <AuthNavigator />
-      )}
+      {role === 'farmer' ? <FarmerNavigator />
+        : isBankingRole(role) ? <BankingNavigator />
+        : isAgentRole(role) ? <AgentNavigator />
+        : isAdminRole(role) || role === 'super_admin' ? <AdminPlatformNavigator />
+        : <AuthNavigator />}
     </View>
   );
 }

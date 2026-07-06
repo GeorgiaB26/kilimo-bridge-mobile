@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearAllSessionData } from '../utils/session';
 
-export type UserRole = 'super_admin' | 'admin' | 'field_officer' | 'farmer';
+import type { UserRole } from '../../../shared/src/roles';
+
+export type { UserRole };
 
 export interface AuthUser {
   userId: string;
@@ -11,6 +13,8 @@ export interface AuthUser {
   role: UserRole;
   farmerId?: string;
   district?: string;
+  region?: string;
+  aggregationCenter?: string;
 }
 
 interface AuthState {
@@ -65,5 +69,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 export function isAdminRole(role: UserRole): boolean {
-  return role === 'super_admin' || role === 'admin' || role === 'field_officer';
+  return role === 'super_admin' || role === 'admin';
+}
+
+export function isAgentRole(role: UserRole): boolean {
+  return role === 'agent';
+}
+
+export function isBankingRole(role: UserRole): boolean {
+  return role === 'banking';
 }
