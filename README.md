@@ -28,7 +28,20 @@ Key | Name | Gender | ID Number | Membership Group | Aggregation center | Phone 
 
 ## Quick Start
 
-### Backend API
+**Run everything from the project root** (`kilimo-bridge-mobile/`):
+
+```bash
+# 1. First-time setup (installs dependencies)
+npm run setup
+
+# 2. Check what's working
+npm run verify
+
+# 3. Start backend + see available commands
+npm run start
+```
+
+### Backend API (Terminal 1)
 
 ```bash
 cd backend
@@ -36,17 +49,34 @@ npm install
 npm run dev
 ```
 
-API runs at `http://localhost:3001`
+You should see: `Kilimo Bridge API running on http://localhost:3001`
 
-### Mobile App
+Test it:
+```bash
+curl http://localhost:3001/health
+curl http://localhost:3001/api/farmers
+```
 
+### Mobile App (Terminal 2)
+
+**Option A — Web browser (easiest to view):**
 ```bash
 cd mobile
 npm install
-npm start
+npm run web
+# Opens at http://localhost:8081
 ```
 
-Set `EXPO_PUBLIC_API_URL` to your backend URL for device testing.
+**Option B — Expo dev server (for phone/simulator):**
+```bash
+cd mobile
+npm start
+# Scan QR code with Expo Go app, or press 'w' for web
+```
+
+> **Important:** Run these from inside the `mobile/` or `backend/` folders, or use the root shortcuts (`npm run backend`, `npm run mobile:web`).
+
+Set `EXPO_PUBLIC_API_URL` to your backend URL for device testing (e.g. `http://YOUR_IP:3001/api`).
 
 ### Test CSV Import
 

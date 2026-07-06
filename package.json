@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "setup": "cd backend && npm install && cd ../mobile && npm install",
+    "start": "bash scripts/start.sh",
+    "verify": "bash scripts/verify.sh",
     "backend": "cd backend && npm run dev",
     "backend:start": "cd backend && npm start",
     "mobile": "cd mobile && npm start",
+    "mobile:web": "cd mobile && npx expo start --web",
     "seed": "cd backend && npm run seed",
     "test:import": "cd backend && npx tsx src/test-import.ts"
   }
