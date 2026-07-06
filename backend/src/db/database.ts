@@ -72,6 +72,77 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_farmers_district ON farmers(district);
     CREATE INDEX IF NOT EXISTS idx_farmers_key ON farmers(key);
     CREATE INDEX IF NOT EXISTS idx_farmers_id_number ON farmers(id_number);
+
+    CREATE TABLE IF NOT EXISTS users (
+      user_id TEXT PRIMARY KEY,
+      phone_number TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('super_admin', 'admin', 'field_officer', 'farmer')),
+      farmer_id TEXT,
+      district TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS otp_codes (
+      id TEXT PRIMARY KEY,
+      phone_number TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS farmer_projects (
+      id TEXT PRIMARY KEY,
+      farmer_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      project_name TEXT NOT NULL,
+      payment_amount INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'Assigned',
+      completion_percentage INTEGER DEFAULT 0,
+      earnings_amount INTEGER DEFAULT 0,
+      payment_status TEXT DEFAULT 'Pending',
+      start_date TEXT,
+      due_date TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id),
+      FOREIGN KEY (project_id) REFERENCES projects(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      farmer_id TEXT NOT NULL,
+      farmer_project_id TEXT,
+      project_name TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      currency TEXT DEFAULT 'KES',
+      payment_method TEXT DEFAULT 'M-Pesa',
+      payment_status TEXT DEFAULT 'Pending',
+      mpesa_reference TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      paid_at TEXT,
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT DEFAULT 'info',
+      read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    CREATE INDEX IF NOT EXISTS idx_farmer_projects_farmer ON farmer_projects(farmer_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_farmer ON payments(farmer_id);
   `);
 }
 

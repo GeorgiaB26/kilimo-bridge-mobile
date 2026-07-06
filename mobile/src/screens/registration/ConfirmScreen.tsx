@@ -39,7 +39,7 @@ export function ConfirmScreen({ navigation }: Props) {
       Alert.alert(
         'Registration Successful',
         `Farmer registered with key: ${result.key}`,
-        [{ text: 'OK', onPress: () => { resetForm(); navigation.getParent()?.goBack(); } }]
+        [{ text: 'OK', onPress: () => { resetForm(); } }]
       );
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err

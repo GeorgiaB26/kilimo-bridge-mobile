@@ -18,6 +18,7 @@ import {
 } from '../services/importService';
 import { MAX_CSV_SIZE_BYTES } from '../../../shared/src/constants';
 import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../shared/src/constants';
+import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 
 const router = Router();
 const upload = multer({
@@ -35,14 +36,14 @@ router.get('/reference', (_req: Request, res: Response) => {
   });
 });
 
-router.get('/farmers', (req: Request, res: Response) => {
+router.get('/farmers', authenticate, requirePermission('farmers.read'), (req: Request, res: Response) => {
   const limit = parseInt(req.query.limit as string) || 100;
   const offset = parseInt(req.query.offset as string) || 0;
   const farmers = getAllFarmers(limit, offset);
   res.json({ farmers, total: getFarmerCount() });
 });
 
-router.post('/farmers/register', (req: Request, res: Response) => {
+router.post('/farmers/register', authenticate, requirePermission('farmers.write'), (req: Request, res: Response) => {
   const input = req.body;
   const existing = getExistingIdentifiers();
   const membershipGroups = getMembershipGroupNames();
@@ -104,7 +105,7 @@ router.post('/farmers/register', (req: Request, res: Response) => {
   }
 });
 
-router.post('/admin/farmers/import/validate', upload.single('file'), (req: Request, res: Response) => {
+router.post('/admin/farmers/import/validate', authenticate, requirePermission('farmers.import'), upload.single('file'), (req: Request, res: Response) => {
   let content: string | undefined;
   let columnMapping: Record<string, string> | undefined;
 
@@ -142,7 +143,7 @@ router.post('/admin/farmers/import/validate', upload.single('file'), (req: Reque
   }
 });
 
-router.post('/admin/farmers/import/validate-text', express.text({ type: '*/*', limit: '50mb' }), (req: Request, res: Response) => {
+router.post('/admin/farmers/import/validate-text', authenticate, requirePermission('farmers.import'), express.text({ type: '*/*', limit: '50mb' }), (req: Request, res: Response) => {
   const content = req.body as string;
   if (!content) {
     res.status(400).json({ error: 'No CSV content provided' });
@@ -158,7 +159,7 @@ router.post('/admin/farmers/import/validate-text', express.text({ type: '*/*', l
   }
 });
 
-router.post('/admin/farmers/import/confirm', async (req: Request, res: Response) => {
+router.post('/admin/farmers/import/confirm', authenticate, requirePermission('farmers.import'), async (req: Request, res: Response) => {
   const { sessionId, skipDuplicates = true } = req.body;
   if (!sessionId) {
     res.status(400).json({ error: 'sessionId is required' });
@@ -179,7 +180,7 @@ router.post('/admin/farmers/import/confirm', async (req: Request, res: Response)
   }
 });
 
-router.get('/admin/farmers/import/:sessionId/progress', (req: Request, res: Response) => {
+router.get('/admin/farmers/import/:sessionId/progress', authenticate, requirePermission('farmers.import'), (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const importId = req.query.importId as string;
   const progress = getImportProgress(importId, sessionId);
@@ -190,7 +191,7 @@ router.get('/admin/farmers/import/:sessionId/progress', (req: Request, res: Resp
   res.json(progress);
 });
 
-router.get('/admin/farmers/import/:sessionId/complete', (req: Request, res: Response) => {
+router.get('/admin/farmers/import/:sessionId/complete', authenticate, requirePermission('farmers.import'), (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const result = getImportComplete(sessionId);
   if (!result) {

@@ -2,7 +2,33 @@
 
 React Native (Expo) mobile app with Node.js backend for farmer registration and CSV bulk import.
 
-## Features (Phase 1 — Registration & CSV Import)
+## Features
+
+### Two platforms, one app
+
+**Farmer platform** (after login as farmer):
+- Dashboard with pending payments and "Claim Payment"
+- Projects (active + completed, progress bars)
+- Payment history and lifetime earnings
+- Profile (own data only — cannot see other farmers)
+
+**Admin platform** (after login as admin/field officer):
+- Admin dashboard with platform stats
+- Farmer list (field officers see their district only)
+- CSV bulk import (admin only)
+- Manual farmer registration (admin + field officers)
+- User management with roles (admin/super admin only)
+
+### Roles & permissions
+
+| Permission | Super Admin | Admin | Field Officer | Farmer |
+|-----------|:-----------:|:-----:|:-------------:|:------:|
+| View all farmers | ✓ | ✓ | District only | Own only |
+| Register farmers | ✓ | ✓ | ✓ | — |
+| CSV import | ✓ | ✓ | — | — |
+| Manage users | ✓ | — | — | — |
+| View payments | ✓ | ✓ | — | Own only |
+| Claim M-Pesa | — | — | — | ✓ |
 
 ### Farmer Registration (7-screen flow)
 1. **Basic Info** — Name, gender, phone, national ID
@@ -40,6 +66,19 @@ npm run verify
 # 3. Start backend + see available commands
 npm run start
 ```
+
+### Login (role-based access)
+
+The app now has **two platforms in one**:
+
+| Role | Phone | OTP | What they see |
+|------|-------|-----|---------------|
+| **Admin** | `+254700000002` | `123456` | Dashboard, all farmers, CSV import, users |
+| **Field Officer** | `+254700000003` | `123456` | Dashboard, district farmers, register farmers |
+| **Farmer** | `+254712345678` | `123456` | Own dashboard, projects, payments, profile only |
+| **Super Admin** | `+254700000001` | `123456` | Full access including user management |
+
+> **First time after update?** Delete `backend/data/kilimo.db` and restart the backend to create new tables.
 
 ### Backend API (Terminal 1)
 

@@ -4,11 +4,11 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS } from '../../constants';
-import { validateCsvImport } from '../../api/client';
+import { validateCsvImportText } from '../../api/client';
 import type { ImportValidationResult } from '../../types';
-import type { AdminStackParamList } from '../../navigation/types';
+import type { ImportStackParamList } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<AdminStackParamList, 'CsvValidation'>;
+type Props = NativeStackScreenProps<ImportStackParamList, 'CsvValidation'>;
 
 function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
@@ -41,16 +41,7 @@ export function CsvValidationScreen({ navigation, route }: Props) {
   useEffect(() => {
     const runValidation = async () => {
       try {
-        const response = await fetch(
-          `${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api'}/admin/farmers/import/validate-text`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: fileContent,
-          }
-        );
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Validation failed');
+        const data = await validateCsvImportText(fileContent);
         setResult(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Validation failed');

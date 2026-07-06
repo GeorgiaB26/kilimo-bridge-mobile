@@ -1,11 +1,30 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
 import type { RegistrationFormData } from '../types';
+import type { AuthUser } from '../store/authStore';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
+});
+
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+}
+
+api.interceptors.request.use((config) => {
+  if (authToken) {
+    config.headers.Authorization = `Bearer ${authToken}`;
+  }
+  return config;
 });
 
 export interface ReferenceData {
@@ -14,6 +33,21 @@ export interface ReferenceData {
   membershipGroups: string[];
   projects: string[];
   membershipTypes: string[];
+}
+
+export async function requestOtp(phone: string) {
+  const { data } = await api.post('/auth/request-otp', { phone });
+  return data;
+}
+
+export async function verifyOtp(phone: string, code: string) {
+  const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/verify-otp', { phone, code });
+  return data;
+}
+
+export async function fetchMe() {
+  const { data } = await api.get('/auth/me');
+  return data;
 }
 
 export async function fetchReferenceData(): Promise<ReferenceData> {
@@ -26,9 +60,9 @@ export async function registerFarmer(farmerData: RegistrationFormData) {
   return data;
 }
 
-export async function validateCsvImport(formData: FormData) {
-  const { data } = await api.post('/admin/farmers/import/validate', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+export async function validateCsvImportText(content: string) {
+  const { data } = await api.post('/admin/farmers/import/validate-text', content, {
+    headers: { 'Content-Type': 'text/plain' },
   });
   return data;
 }
@@ -39,9 +73,7 @@ export async function confirmCsvImport(sessionId: string, skipDuplicates = true)
 }
 
 export async function getImportProgress(sessionId: string, importId: string) {
-  const { data } = await api.get(`/admin/farmers/import/${sessionId}/progress`, {
-    params: { importId },
-  });
+  const { data } = await api.get(`/admin/farmers/import/${sessionId}/progress`, { params: { importId } });
   return data;
 }
 
@@ -51,6 +83,41 @@ export async function getImportComplete(sessionId: string) {
 }
 
 export async function getFarmers(limit = 50, offset = 0) {
-  const { data } = await api.get('/farmers', { params: { limit, offset } });
+  const { data } = await api.get('/admin/farmers', { params: { limit, offset } });
+  return data;
+}
+
+export async function getAdminDashboard() {
+  const { data } = await api.get('/admin/dashboard');
+  return data;
+}
+
+export async function getUsers() {
+  const { data } = await api.get('/admin/users');
+  return data;
+}
+
+export async function getFarmerDashboard() {
+  const { data } = await api.get('/farmer/dashboard');
+  return data;
+}
+
+export async function getFarmerProjects() {
+  const { data } = await api.get('/farmer/projects');
+  return data;
+}
+
+export async function getFarmerPayments() {
+  const { data } = await api.get('/farmer/payments');
+  return data;
+}
+
+export async function claimPayment(paymentId: string) {
+  const { data } = await api.post(`/farmer/payments/${paymentId}/claim`);
+  return data;
+}
+
+export async function getFarmerNotifications() {
+  const { data } = await api.get('/farmer/notifications');
   return data;
 }

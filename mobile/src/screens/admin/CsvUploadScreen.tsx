@@ -5,9 +5,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS, CSV_COLUMNS } from '../../constants';
-import type { AdminStackParamList } from '../../navigation/types';
+import type { ImportStackParamList } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<AdminStackParamList, 'CsvUpload'>;
+type Props = NativeStackScreenProps<ImportStackParamList, 'CsvUpload'>;
 
 export function CsvUploadScreen({ navigation }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);

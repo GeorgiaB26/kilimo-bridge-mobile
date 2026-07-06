@@ -5,9 +5,9 @@ import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS } from '../../constants';
 import { confirmCsvImport, getImportProgress, getImportComplete } from '../../api/client';
-import type { AdminStackParamList } from '../../navigation/types';
+import type { ImportStackParamList } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<AdminStackParamList, 'CsvImport'>;
+type Props = NativeStackScreenProps<ImportStackParamList, 'CsvImport'>;
 
 export function CsvImportScreen({ navigation, route }: Props) {
   const { sessionId, willImport } = route.params;
