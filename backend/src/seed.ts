@@ -17,6 +17,18 @@ const PROJECTS = [
   'Pest Management',
 ];
 
+/** Demo farmer always available for quick login */
+const DEMO_FARMER = {
+  key: 'DEMO-001',
+  name: 'John Doe',
+  phone: '+254712345678',
+  gender: 'M',
+  idNumber: '99999999',
+  membershipGroup: 'Test Coop',
+  district: 'Kiambu',
+  subCounty: 'Limuru',
+};
+
 export function seedDatabase(): void {
   const insertGroup = db.prepare(
     'INSERT OR IGNORE INTO membership_groups (id, name) VALUES (?, ?)'
@@ -36,8 +48,28 @@ export function seedDatabase(): void {
   const rows = db.prepare('SELECT id, name FROM projects').all() as { id: string; name: string }[];
   for (const r of rows) projectIds[r.name] = r.id;
 
+  seedDemoFarmerRecord();
   seedUsers();
   seedDemoFarmerData(projectIds);
+}
+
+function seedDemoFarmerRecord(): void {
+  const existing = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get(DEMO_FARMER.phone);
+  if (existing) return;
+
+  const group = db.prepare('SELECT id FROM membership_groups WHERE name = ?').get(DEMO_FARMER.membershipGroup) as { id: string } | undefined;
+  if (!group) return;
+
+  db.prepare(`
+    INSERT INTO farmers (
+      farmer_id, key, name, gender, id_number, membership_group_id,
+      phone_number, country, district, sub_county, membership_type, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Kenya', ?, ?, 'Active', 'Active')
+  `).run(
+    uuidv4(), DEMO_FARMER.key, DEMO_FARMER.name, DEMO_FARMER.gender,
+    DEMO_FARMER.idNumber, group.id, DEMO_FARMER.phone,
+    DEMO_FARMER.district, DEMO_FARMER.subCounty
+  );
 }
 
 function seedUsers(): void {

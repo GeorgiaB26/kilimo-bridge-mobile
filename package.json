@@ -6,6 +6,7 @@
     "setup": "cd backend && npm install && cd ../mobile && npm install",
     "start": "bash scripts/start.sh",
     "verify": "bash scripts/verify.sh",
+    "reset": "bash scripts/reset.sh",
     "backend": "cd backend && npm run dev",
     "backend:start": "cd backend && npm start",
     "mobile": "cd mobile && npm start",

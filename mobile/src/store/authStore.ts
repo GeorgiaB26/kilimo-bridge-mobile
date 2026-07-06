@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearAllSessionData } from '../utils/session';
 
 export type UserRole = 'super_admin' | 'admin' | 'field_officer' | 'farmer';
 
@@ -38,7 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+    await clearAllSessionData();
     const { setAuthToken } = await import('../api/client');
     setAuthToken(null);
     set({ token: null, user: null, isAuthenticated: false, isLoading: false });
