@@ -37,8 +37,14 @@ echo ""
 echo "4. Mobile app"
 if [ -d "mobile/node_modules" ]; then
   echo "   ✓ Dependencies installed"
-  echo "   → Web preview:  cd mobile && npx expo start --web"
-  echo "   → Expo menu:    cd mobile && npm start"
+  if grep -q "RootNavigator" mobile/App.tsx 2>/dev/null; then
+    echo "   ✓ Login screen version (auth enabled)"
+  else
+    echo "   ✗ OLD version detected (Register Farmer home screen)"
+    echo "   → Run:  git pull origin main"
+  fi
+  echo "   → Web preview:  npm run mobile:web"
+  echo "   → Must see 'Sign In' + quick login buttons at http://localhost:8081"
 else
   echo "   ✗ Run: cd mobile && npm install"
 fi
