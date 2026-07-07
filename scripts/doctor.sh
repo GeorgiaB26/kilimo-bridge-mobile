@@ -79,7 +79,9 @@ if curl -sf http://localhost:3001/health >/dev/null 2>&1; then
   echo "   ✓ Backend running on http://localhost:3001"
 else
   echo "   ✗ Backend not running"
-  echo "   → Terminal 1: cd $ROOT/backend && npm run dev"
+  echo "   → Run:  npm run backend"
+  echo "   → Or:   cd backend && npm install && npm run dev"
+  echo "   → If you see MODULE_NOT_FOUND, run npm install in backend/"
 fi
 
 if curl -sf http://localhost:8081 >/dev/null 2>&1; then
