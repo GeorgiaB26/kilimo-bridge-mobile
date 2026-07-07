@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { FormField } from '../../components/FormField';
-import { Button } from '../../components/Button';
-import { ScreenHeader } from '../../components/ScreenHeader';
+import { TextInput, Button, Surface } from 'react-native-paper';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
@@ -42,13 +41,13 @@ export function LoginScreen({ navigation }: Props) {
       const healthy = await checkBackendHealth();
       setBackendOk(healthy);
       if (!healthy) {
-        setError('Backend is not running. Start it: cd ~/kilimo-bridge-mobile/backend && npm run dev');
+        setError('Backend offline — run: npm run backend');
         return;
       }
       const result = await requestOtp(phone);
       navigation.navigate('Otp', { phone, devCode: result.devCode });
     } catch (err: unknown) {
-      const msg = extractApiError(err, 'Failed to send OTP. Is the backend running on port 3001?');
+      const msg = extractApiError(err, 'Failed to send OTP');
       setError(msg);
       showMessage('Could not send OTP', msg);
     } finally {
@@ -56,30 +55,20 @@ export function LoginScreen({ navigation }: Props) {
     }
   };
 
-  const handleClearSession = async () => {
-    await clearAllSessionData();
-    setError(null);
-    showMessage('Session cleared', 'You can now sign in as a different user.');
-  };
-
   const quickLogin = async (demoPhone: string, label: string) => {
     setError(null);
     setLoading(true);
     try {
       await clearAllSessionData();
-      const healthy = await checkBackendHealth();
-      setBackendOk(healthy);
-      if (!healthy) {
-        const msg = 'Backend is not running. Start it: cd ~/kilimo-bridge-mobile/backend && npm run dev';
-        setError(msg);
-        showMessage('Backend offline', msg);
+      if (!(await checkBackendHealth())) {
+        setError('Backend offline — run: npm run backend');
         return;
       }
       const { token, user } = await devQuickLogin(demoPhone);
       setAuthToken(token);
       await setAuth(token, user);
     } catch (err: unknown) {
-      const msg = extractApiError(err, `Could not open ${label}. Try: npm run reset then restart backend.`);
+      const msg = extractApiError(err, `Could not open ${label}`);
       setError(msg);
       showMessage('Login failed', msg);
     } finally {
@@ -89,66 +78,69 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader title="Kilimo Bridge" subtitle={`Sign in · ${APP_BUILD}`} />
+      <View style={styles.logoWrap}>
+        <Surface style={styles.logo} elevation={2}>
+          <Text style={styles.logoText}>KB</Text>
+        </Surface>
+        <Text style={styles.brand}>Kilimo Bridge</Text>
+        <Text style={styles.build}>{APP_BUILD}</Text>
+      </View>
 
       {backendOk === false ? (
-        <View style={styles.warnBanner}>
-          <Text style={styles.warnText}>
-            Backend offline — start it in Terminal: cd ~/kilimo-bridge-mobile/backend && npm run dev
-          </Text>
-        </View>
-      ) : backendOk === true ? (
-        <View style={styles.okBanner}>
-          <Text style={styles.okText}>Backend connected</Text>
-        </View>
+        <Surface style={styles.bannerError} elevation={0}>
+          <Ionicons name="cloud-offline-outline" size={20} color={COLORS.alert} />
+          <Text style={styles.bannerErrorText}>Backend offline — run npm run backend in Terminal</Text>
+        </Surface>
+      ) : backendOk ? (
+        <Surface style={styles.bannerOk} elevation={0}>
+          <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+          <Text style={styles.bannerOkText}>Connected</Text>
+        </Surface>
       ) : null}
 
-      {error ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <View style={styles.card}>
-        <Text style={styles.hint}>
-          Farmers and admins use the same login. Your role determines which platform you see.
-        </Text>
-        <FormField
-          label="Phone Number"
+      <Surface style={styles.card} elevation={1}>
+        <Text style={styles.cardTitle}>Sign in with phone</Text>
+        <TextInput
+          label="Phone number"
           value={phone}
           onChangeText={setPhone}
           placeholder="+254712345678"
           keyboardType="phone-pad"
-          required
+          mode="outlined"
+          style={styles.input}
+          outlineColor={COLORS.border}
+          activeOutlineColor={COLORS.primary}
         />
-        <Button title="Send OTP" onPress={handleSendOtp} loading={loading} />
-      </View>
+        <Button
+          mode="contained"
+          onPress={handleSendOtp}
+          loading={loading}
+          disabled={loading}
+          buttonColor={COLORS.primary}
+          style={styles.primaryBtn}
+          contentStyle={styles.btnContent}
+        >
+          Send OTP
+        </Button>
+      </Surface>
 
-      <Text style={styles.quickTitle}>Quick access (one tap — no OTP needed)</Text>
+      <Text style={styles.quickTitle}>Quick access</Text>
+      <Button mode="contained" onPress={() => quickLogin(DEMO_FARMER, 'Farmer')} loading={loading} buttonColor={COLORS.primary} style={styles.quickBtn}>
+        Open Farmer Platform
+      </Button>
+      <Button mode="contained-tonal" onPress={() => quickLogin(DEMO_ADMIN, 'Admin')} loading={loading} style={styles.quickBtn}>
+        Open Admin Dashboard
+      </Button>
+      <Button mode="outlined" onPress={() => quickLogin(DEMO_AGENT, 'Agent')} loading={loading} style={styles.quickBtn}>
+        Open Agent Platform
+      </Button>
       <Button
-        title="Open Farmer Platform"
-        onPress={() => quickLogin(DEMO_FARMER, 'Farmer Platform')}
+        mode="outlined"
         loading={loading}
         style={styles.quickBtn}
-      />
-      <Button
-        title="Open Admin Dashboard"
-        onPress={() => quickLogin(DEMO_ADMIN, 'Admin Dashboard')}
-        variant="secondary"
-        loading={loading}
-        style={styles.quickBtn}
-      />
-      <Button
-        title="Open Agent Platform"
-        onPress={() => quickLogin(DEMO_AGENT, 'Agent Platform')}
-        variant="outline"
-        loading={loading}
-        style={styles.quickBtn}
-      />
-      <Button
-        title="Open Banking Platform"
         onPress={async () => {
-          setError(null);
           setLoading(true);
           try {
             await clearAllSessionData();
@@ -156,66 +148,65 @@ export function LoginScreen({ navigation }: Props) {
             setAuthToken(data.token);
             await setAuth(data.token, data.user);
           } catch (err: unknown) {
-            const msg = extractApiError(err, 'Banking login failed. Run: npm run reset');
-            setError(msg);
-            showMessage('Login failed', msg);
+            showMessage('Login failed', extractApiError(err, 'Banking login failed'));
           } finally {
             setLoading(false);
           }
         }}
-        variant="outline"
-        loading={loading}
-        style={styles.quickBtn}
-      />
+      >
+        Open Banking Platform
+      </Button>
 
-      <Button
-        title="Clear saved login"
-        onPress={handleClearSession}
-        variant="outline"
-        style={styles.clearBtn}
-      />
-
-      <View style={styles.demoBox}>
-        <Text style={styles.demoTitle}>Manual OTP login (code: 123456)</Text>
-        <Text style={styles.demoItem}>Farmer: {DEMO_FARMER}</Text>
-        <Text style={styles.demoItem}>Admin: {DEMO_ADMIN}</Text>
-        <Text style={styles.demoItem}>Agent: {DEMO_AGENT}</Text>
-        <Text style={styles.demoItem}>Banking: {DEMO_BANKING} / {BANKING_PASSWORD}</Text>
-        <Text style={styles.demoNote}>
-          Tip: Use the quick-access buttons above — they skip OTP entirely.
-        </Text>
-      </View>
+      <Button mode="text" onPress={() => clearAllSessionData().then(() => showMessage('Done', 'Session cleared'))} textColor={COLORS.muted}>
+        Clear saved login
+      </Button>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { paddingBottom: 32 },
-  warnBanner: { backgroundColor: '#FFEBEE', padding: 12, borderRadius: 8, marginBottom: 12 },
-  warnText: { color: '#C62828', fontSize: 13, lineHeight: 18 },
-  okBanner: { backgroundColor: '#E8F5E9', padding: 10, borderRadius: 8, marginBottom: 12 },
-  okText: { color: COLORS.success, fontSize: 13, fontWeight: '600' },
-  errorBanner: { backgroundColor: '#FFEBEE', padding: 12, borderRadius: 8, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: COLORS.alert },
-  errorText: { color: '#C62828', fontSize: 14, lineHeight: 20 },
-  card: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+  container: { flex: 1, backgroundColor: COLORS.surface },
+  content: { padding: 20, paddingBottom: 40 },
+  logoWrap: { alignItems: 'center', marginBottom: 24, marginTop: 16 },
+  logo: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
-  hint: { fontSize: 14, color: COLORS.muted, marginBottom: 16, lineHeight: 20 },
-  quickTitle: { fontSize: 16, fontWeight: '600', color: COLORS.primary, marginBottom: 10 },
-  quickBtn: { marginBottom: 10 },
-  clearBtn: { marginBottom: 20 },
-  demoBox: {
-    backgroundColor: '#E8F5E9',
+  logoText: { fontSize: 28, fontWeight: '800', color: COLORS.accent },
+  brand: { fontSize: 26, fontWeight: '700', color: COLORS.primary },
+  build: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
+  bannerError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
     borderRadius: 8,
-    padding: 14,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
+    backgroundColor: '#FFEBEE',
+    marginBottom: 12,
   },
-  demoTitle: { fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
-  demoItem: { fontSize: 13, color: COLORS.text, marginBottom: 4 },
-  demoNote: { fontSize: 12, color: COLORS.muted, marginTop: 8, fontStyle: 'italic' },
+  bannerErrorText: { flex: 1, color: COLORS.alert, fontSize: 13 },
+  bannerOk: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#E8F5E9',
+    marginBottom: 12,
+    alignSelf: 'center',
+  },
+  bannerOkText: { color: COLORS.success, fontWeight: '600', fontSize: 13 },
+  errorText: { color: COLORS.alert, marginBottom: 12, fontSize: 14 },
+  card: { padding: 20, borderRadius: 16, backgroundColor: COLORS.background, marginBottom: 24 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginBottom: 16 },
+  input: { marginBottom: 16, backgroundColor: COLORS.background },
+  primaryBtn: { borderRadius: 12 },
+  btnContent: { minHeight: 48 },
+  quickTitle: { fontSize: 14, fontWeight: '600', color: COLORS.muted, marginBottom: 12 },
+  quickBtn: { marginBottom: 10, borderRadius: 12 },
 });

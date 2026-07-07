@@ -16,6 +16,14 @@ export function FarmerNavigator() {
       screenOptions={({ route }) => ({
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '600' },
+        tabBarStyle: {
+          backgroundColor: COLORS.background,
+          borderTopColor: COLORS.border,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 4,
+        },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.muted,
         tabBarIcon: ({ color, size }) => {
@@ -29,10 +37,10 @@ export function FarmerNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Dashboard" component={FarmerDashboardScreen} options={{ title: 'Home' }} />
-      <Tab.Screen name="Projects" component={FarmerProjectsScreen} />
-      <Tab.Screen name="Payments" component={FarmerPaymentsScreen} />
-      <Tab.Screen name="Profile" component={FarmerProfileScreen} />
+      <Tab.Screen name="Dashboard" component={FarmerDashboardScreen} options={{ title: 'Home', headerShown: false }} />
+      <Tab.Screen name="Projects" component={FarmerProjectsScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Payments" component={FarmerPaymentsScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Profile" component={FarmerProfileScreen} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }

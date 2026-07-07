@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
+import { Surface } from 'react-native-paper';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { getFarmerPayments } from '../../api/client';
+import { KBCard } from '../../components/ui/KBCard';
+import { KBStatusChip } from '../../components/ui/KBStatusChip';
 
 export function FarmerPaymentsScreen() {
   const [payments, setPayments] = useState<Array<{
@@ -30,46 +34,73 @@ export function FarmerPaymentsScreen() {
       data={payments}
       keyExtractor={(_, i) => String(i)}
       ListHeaderComponent={
-        <View style={styles.header}>
-          <Text style={styles.title}>Payments</Text>
-          <Text style={styles.total}>{total.toLocaleString()} KES</Text>
-          <Text style={styles.subtitle}>Lifetime earnings</Text>
-        </View>
+        <Surface style={styles.summary} elevation={2}>
+          <Text style={styles.summaryLabel}>Total Earned</Text>
+          <Text style={styles.summaryAmount}>{total.toLocaleString()} KES</Text>
+          <Text style={styles.summarySub}>Lifetime earnings via M-Pesa</Text>
+        </Surface>
       }
+      contentContainerStyle={styles.list}
       renderItem={({ item }) => (
-        <View style={styles.card}>
+        <KBCard>
           <View style={styles.row}>
-            <Text style={styles.name}>{item.project_name}</Text>
-            <Text style={styles.amount}>{item.amount?.toLocaleString()} KES</Text>
+            <View style={styles.iconWrap}>
+              <Ionicons
+                name={item.payment_method === 'M-Pesa' ? 'phone-portrait' : 'card'}
+                size={20}
+                color={COLORS.primary}
+              />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.name}>{item.project_name}</Text>
+              <Text style={styles.date}>{item.created_at?.slice(0, 10)}</Text>
+            </View>
+            <Text style={styles.amount}>{item.amount?.toLocaleString()}</Text>
           </View>
-          <View style={styles.row}>
-            <Text style={styles.date}>{item.created_at?.slice(0, 10)}</Text>
-            <Text style={[styles.badge, item.payment_status === 'Transferred' ? styles.transferred : styles.pending]}>
-              {item.payment_status}
-            </Text>
+          <View style={styles.badgeRow}>
+            <KBStatusChip
+              label={item.payment_status}
+              variant={item.payment_status === 'Transferred' ? 'success' : 'pending'}
+            />
+            {item.mpesa_reference ? (
+              <Text style={styles.ref}>Ref: {item.mpesa_reference}</Text>
+            ) : null}
           </View>
-          {item.mpesa_reference ? (
-            <Text style={styles.ref}>Ref: {item.mpesa_reference}</Text>
-          ) : null}
-        </View>
+        </KBCard>
       )}
+      ListEmptyComponent={<Text style={styles.empty}>No payments yet</Text>}
     />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  header: { alignItems: 'center', marginBottom: 24 },
-  title: { fontSize: 18, color: COLORS.muted },
-  total: { fontSize: 36, fontWeight: '700', color: COLORS.accent, marginTop: 4 },
-  subtitle: { fontSize: 14, color: COLORS.muted },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 15, fontWeight: '600', color: COLORS.text },
-  amount: { fontSize: 15, fontWeight: '600', color: COLORS.accent },
-  date: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
-  badge: { fontSize: 11, fontWeight: '600', marginTop: 4 },
-  transferred: { color: COLORS.success },
-  pending: { color: COLORS.accent },
-  ref: { fontSize: 11, color: COLORS.muted, marginTop: 4 },
+  container: { flex: 1, backgroundColor: COLORS.surface },
+  list: { padding: 16, paddingBottom: 32 },
+  summary: {
+    padding: 28,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+    backgroundColor: COLORS.primary,
+  },
+  summaryLabel: { fontSize: 14, color: 'rgba(255,255,255,0.85)' },
+  summaryAmount: { fontSize: 40, fontWeight: '800', color: COLORS.accent, marginVertical: 8 },
+  summarySub: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  flex: { flex: 1 },
+  name: { fontSize: 16, fontWeight: '600', color: COLORS.text },
+  date: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  amount: { fontSize: 18, fontWeight: '700', color: COLORS.accent },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
+  ref: { fontSize: 11, color: COLORS.muted },
+  empty: { textAlign: 'center', color: COLORS.muted, marginTop: 40 },
 });
