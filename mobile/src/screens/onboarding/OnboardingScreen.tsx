@@ -1,10 +1,8 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
-
-const { width } = Dimensions.get('window');
 
 const SLIDES = [
   {
@@ -30,55 +28,66 @@ interface OnboardingScreenProps {
 
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [index, setIndex] = useState(0);
-  const listRef = useRef<FlatList>(null);
-
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const i = Math.round(e.nativeEvent.contentOffset.x / width);
-    setIndex(i);
-  };
+  const slide = SLIDES[index];
+  const isLast = index === SLIDES.length - 1;
 
   const next = () => {
-    if (index < SLIDES.length - 1) {
-      listRef.current?.scrollToIndex({ index: index + 1, animated: true });
+    if (!isLast) {
+      setIndex((i) => i + 1);
     } else {
       onComplete();
     }
   };
 
+  const back = () => {
+    if (index > 0) setIndex((i) => i - 1);
+  };
+
   return (
     <View style={styles.container}>
-      <FlatList
-        ref={listRef}
-        data={SLIDES}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        keyExtractor={(item) => item.title}
-        renderItem={({ item }) => (
-          <View style={[styles.slide, { width }]}>
-            <View style={styles.iconWrap}>
-              <Ionicons name={item.icon} size={64} color={COLORS.primary} />
-            </View>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.subtitle}>{item.subtitle}</Text>
-          </View>
-        )}
-      />
+      <View style={styles.slide}>
+        <View style={styles.iconWrap}>
+          <Ionicons name={slide.icon} size={64} color={COLORS.primary} />
+        </View>
+        <Text style={styles.title}>{slide.title}</Text>
+        <Text style={styles.subtitle}>{slide.subtitle}</Text>
+      </View>
+
       <View style={styles.footer}>
         <View style={styles.dots}>
           {SLIDES.map((_, i) => (
-            <View key={i} style={[styles.dot, i === index && styles.dotActive]} />
+            <Pressable key={i} onPress={() => setIndex(i)}>
+              <View style={[styles.dot, i === index && styles.dotActive]} />
+            </Pressable>
           ))}
         </View>
-        <Button mode="contained" onPress={next} style={styles.btn} buttonColor={COLORS.primary}>
-          {index === SLIDES.length - 1 ? 'Get Started' : 'Next'}
+
+        <Button
+          mode="contained"
+          onPress={next}
+          style={styles.btn}
+          buttonColor={COLORS.primary}
+          contentStyle={styles.btnContent}
+        >
+          {isLast ? 'Get Started' : 'Next'}
         </Button>
-        {index < SLIDES.length - 1 ? (
-          <Button mode="text" onPress={onComplete} textColor={COLORS.muted}>
-            Skip
-          </Button>
-        ) : null}
+
+        <View style={styles.secondaryRow}>
+          {index > 0 ? (
+            <Button mode="text" onPress={back} textColor={COLORS.muted}>
+              Back
+            </Button>
+          ) : (
+            <View />
+          )}
+          {!isLast ? (
+            <Button mode="text" onPress={onComplete} textColor={COLORS.muted}>
+              Skip
+            </Button>
+          ) : (
+            <View />
+          )}
+        </View>
       </View>
     </View>
   );
@@ -103,4 +112,6 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.border },
   dotActive: { backgroundColor: COLORS.primary, width: 24 },
   btn: { borderRadius: 12, marginBottom: 8 },
+  btnContent: { minHeight: 48 },
+  secondaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
 });
