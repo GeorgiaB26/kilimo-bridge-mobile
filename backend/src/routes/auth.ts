@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { requestOtp, verifyOtp, loginWithPassword } from '../services/authService';
+import { requestOtp, verifyOtp, loginWithPassword, devQuickLogin } from '../services/authService';
 import { authenticate } from '../middleware/auth';
 import { authRateLimiter } from '../middleware/security';
 import { logAudit } from '../services/auditService';
@@ -27,6 +27,25 @@ router.post('/verify-otp', authRateLimiter, (req: Request, res: Response) => {
     return;
   }
   const result = verifyOtp(phone, code, req.ip);
+  if (!result.success) {
+    res.status(401).json({ error: result.error });
+    return;
+  }
+  res.json({ token: result.token, user: result.user });
+});
+
+/** Dev only — skip OTP for demo quick-login buttons */
+router.post('/dev-login', authRateLimiter, (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  const { phone } = req.body;
+  if (!phone) {
+    res.status(400).json({ error: 'Phone is required' });
+    return;
+  }
+  const result = devQuickLogin(phone, req.ip);
   if (!result.success) {
     res.status(401).json({ error: result.error });
     return;

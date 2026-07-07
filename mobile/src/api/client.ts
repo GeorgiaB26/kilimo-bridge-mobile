@@ -45,6 +45,21 @@ export async function verifyOtp(phone: string, code: string) {
   return data;
 }
 
+export async function devQuickLogin(phone: string) {
+  const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/dev-login', { phone });
+  return data;
+}
+
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const base = API_BASE_URL.replace(/\/api$/, '');
+    const { data } = await axios.get(`${base}/health`, { timeout: 5000 });
+    return data?.status === 'ok';
+  } catch {
+    return false;
+  }
+}
+
 export async function loginWithPassword(phone: string, password: string) {
   const { data } = await api.post('/auth/login', { phone, password });
   return data;

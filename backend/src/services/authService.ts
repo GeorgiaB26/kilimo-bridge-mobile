@@ -138,3 +138,44 @@ export function verifyToken(token: string): AuthUser | null {
     return null;
   }
 }
+
+/** Dev only — one-step login for demo accounts (no OTP round-trip). */
+export function devQuickLogin(phone: string, ipAddress?: string): {
+  success: boolean; token?: string; user?: AuthUser; error?: string;
+} {
+  if (process.env.NODE_ENV === 'production') {
+    return { success: false, error: 'Not available' };
+  }
+
+  const normalized = normalizePhone(phone);
+  if (!normalized) return { success: false, error: 'Invalid phone number' };
+
+  const row = db.prepare('SELECT * FROM users WHERE phone_number = ? AND status = ?').get(normalized, 'active') as
+    Parameters<typeof rowToUser>[0] | undefined;
+
+  if (!row) {
+    return {
+      success: false,
+      error: 'Phone not registered. In Terminal run: cd ~/kilimo-bridge-mobile && npm run reset — then restart backend.',
+    };
+  }
+
+  const user = rowToUser(row);
+  const token = jwt.sign(
+    { userId: user.userId, role: user.role, farmerId: user.farmerId },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  logAudit({
+    userId: user.userId,
+    userRole: user.role,
+    action: 'auth.login',
+    category: 'auth',
+    details: { method: 'dev_quick' },
+    ipAddress,
+    success: true,
+  });
+
+  return { success: true, token, user };
+}

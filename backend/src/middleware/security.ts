@@ -21,10 +21,10 @@ export const apiRateLimiter = rateLimit({
   },
 });
 
-/** Stricter limit for auth endpoints — 10 per 15 min */
+/** Stricter limit for auth endpoints — relaxed in development */
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: process.env.NODE_ENV === 'production' ? 10 : 200,
   message: { error: 'Too many login attempts. Try again in 15 minutes.' },
 });
 
