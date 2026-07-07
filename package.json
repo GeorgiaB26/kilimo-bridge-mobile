@@ -13,6 +13,7 @@
     "backend:start": "cd backend && npm start",
     "mobile": "cd mobile && npm start",
     "mobile:web": "cd mobile && npx expo start --web --clear",
+    "mobile:fresh": "bash scripts/fresh-mobile.sh",
     "seed": "cd backend && npm run seed",
     "test:import": "cd backend && npx tsx src/test-import.ts"
   }

@@ -5,6 +5,7 @@ import { FormField } from '../../components/FormField';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS } from '../../constants';
+import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { clearAllSessionData } from '../../utils/session';
@@ -88,7 +89,7 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader title="Kilimo Bridge" subtitle="Sign in with your phone number" />
+      <ScreenHeader title="Kilimo Bridge" subtitle={`Sign in · ${APP_BUILD}`} />
 
       {backendOk === false ? (
         <View style={styles.warnBanner}>

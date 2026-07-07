@@ -63,9 +63,10 @@ echo ""
 echo "4. App version"
 if grep -q "RootNavigator" mobile/App.tsx 2>/dev/null; then
   echo "   ✓ New login version (correct)"
+  echo "   → Browser must show: Sign in · v2.0-login"
 else
   echo "   ✗ Old version (Register Farmer home screen)"
-  echo "   → Run: git pull origin main"
+  echo "   → Run: git pull origin main && npm run mobile:fresh"
 fi
 
 echo ""
