@@ -125,12 +125,6 @@ export function FarmerDashboardScreen() {
           </View>
         ) : null}
 
-        <View style={styles.quickGrid}>
-          <QuickAction icon="folder-open" label="Projects" />
-          <QuickAction icon="wallet" label="Payments" />
-          <QuickAction icon="help-circle" label="Support" />
-        </View>
-
         <View style={styles.earningsFooter}>
           <Text style={styles.earningsLabel}>Total earned</Text>
           <Text style={styles.earningsValue}>{(data?.totalEarnings ?? 0).toLocaleString()} KES</Text>
@@ -147,17 +141,6 @@ export function FarmerDashboardScreen() {
           loading={claiming}
         />
       ) : null}
-    </View>
-  );
-}
-
-function QuickAction({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
-  return (
-    <View style={styles.quickItem}>
-      <View style={styles.quickIcon}>
-        <Ionicons name={icon} size={24} color={COLORS.primary} />
-      </View>
-      <Text style={styles.quickLabel}>{label}</Text>
     </View>
   );
 }
@@ -198,10 +181,12 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.primary },
   hScroll: { marginHorizontal: -4 },
   projectCard: {
-    width: 200,
+    width: 220,
+    minHeight: 168,
     backgroundColor: COLORS.background,
     borderRadius: 12,
     padding: 16,
+    paddingBottom: 18,
     marginRight: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -210,22 +195,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   projectName: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginTop: 8 },
-  projectAmount: { fontSize: 18, fontWeight: '700', color: COLORS.accent, marginTop: 4 },
+  projectAmount: { fontSize: 18, fontWeight: '700', color: COLORS.accent, marginTop: 4, marginBottom: 4 },
   empty: { color: COLORS.muted, padding: 16 },
   nextName: { fontSize: 17, fontWeight: '600', color: COLORS.text },
   nextDue: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  quickGrid: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 16, marginBottom: 24 },
-  quickItem: { alignItems: 'center' },
-  quickIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  quickLabel: { fontSize: 12, color: COLORS.muted, fontWeight: '500' },
   earningsFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -63,13 +63,11 @@ export function FarmerProjectsScreen() {
               <Text style={styles.paymentLabel}>Payment amount</Text>
               <Text style={styles.amount}>{item.payment_amount?.toLocaleString()} KES</Text>
               {!isComplete ? (
-                <>
-                  <KBProgressBar
-                    progress={item.completion_percentage}
-                    label={`${item.completion_percentage}% done`}
-                  />
-                  <Text style={styles.due}>Due by {formatDueDate(item.due_date)}</Text>
-                </>
+                <KBProgressBar
+                  progress={item.completion_percentage}
+                  label={`${item.completion_percentage}% done`}
+                  rightLabel={`Due ${formatDueDate(item.due_date)}`}
+                />
               ) : (
                 <Text style={styles.completedNote}>Payment transferred to your M-Pesa</Text>
               )}
@@ -103,7 +101,6 @@ const styles = StyleSheet.create({
   name: { fontSize: 18, fontWeight: '700', color: COLORS.text, flex: 1 },
   paymentLabel: { fontSize: 12, fontWeight: '600', color: COLORS.muted, marginTop: 12, textTransform: 'uppercase', letterSpacing: 0.3 },
   amount: { fontSize: 24, fontWeight: '800', color: COLORS.accent, marginTop: 2 },
-  due: { fontSize: 14, color: COLORS.text, marginTop: 10, fontWeight: '500' },
   completedNote: { fontSize: 14, color: COLORS.success, marginTop: 10, fontWeight: '500' },
   emptyWrap: { padding: 24, alignItems: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginBottom: 8 },
