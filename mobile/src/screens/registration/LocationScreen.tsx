@@ -12,7 +12,7 @@ import {
   getLevel1Options,
   getLevel2Options,
   getLevel3Options,
-} from '../../../../shared/src/regional';
+} from '../../constants/regional';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Location'>;

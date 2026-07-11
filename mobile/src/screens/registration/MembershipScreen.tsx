@@ -8,7 +8,7 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { MEMBERSHIP_TYPES, COLORS } from '../../constants';
 import { fetchReferenceData } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
-import { findAggregationCentre } from '../../../../shared/src/locations/aggregationCentres';
+import { findAggregationCentre } from '../../constants/regional';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Membership'>;

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { COLORS } from '../../constants';
 import { getFarmers } from '../../api/client';
-import { COUNTRY_LIST } from '../../../../shared/src/regional';
+import { COUNTRY_LIST } from '../../constants/regional';
 
 const FILTER_OPTIONS = ['All', ...COUNTRY_LIST.map((c) => c.name)];
 

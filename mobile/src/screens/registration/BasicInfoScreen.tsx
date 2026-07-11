@@ -7,8 +7,7 @@ import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
-import { getCountryConfig } from '../../../../shared/src/regional';
-import { normalizePhoneForCountry } from '../../../../shared/src/farmerId';
+import { getCountryConfig, normalizePhoneForCountry } from '../../constants/regional';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'BasicInfo'>;

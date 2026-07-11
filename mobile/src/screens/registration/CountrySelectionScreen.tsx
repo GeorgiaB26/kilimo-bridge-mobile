@@ -7,7 +7,7 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { KilimoLogo } from '../../components/KilimoLogo';
 import { COLORS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
-import { COUNTRY_LIST } from '../../../../shared/src/regional';
+import { COUNTRY_LIST } from '../../constants/regional';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Country'>;

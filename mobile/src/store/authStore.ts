@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearAllSessionData } from '../utils/session';
 
-import type { UserRole } from '../../../shared/src/roles';
+import type { UserRole } from '../constants/roles';
 
 export type { UserRole };
 
