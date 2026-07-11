@@ -83,6 +83,9 @@ export function ConfirmScreen({ navigation }: Props) {
           <SummaryRow label={labels[3]} value={formData.village} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
         ) : null}
         <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+        {formData.aggregationCenter ? (
+          <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+        ) : null}
         {formData.occupation ? (
           <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
         ) : null}

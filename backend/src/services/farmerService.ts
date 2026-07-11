@@ -5,6 +5,7 @@ import { generateFarmerId } from '../../../shared/src/farmerId';
 import { buildLocationPath, getCountryConfig } from '../../../shared/src/regional';
 import { encryptField } from './encryptionService';
 import { logAudit } from './auditService';
+import { assignAggregationCentre } from './aggregationCentreService';
 
 export function getMembershipGroupNames(): string[] {
   const rows = db.prepare('SELECT name FROM membership_groups ORDER BY name').all() as { name: string }[];
@@ -46,6 +47,8 @@ export function createFarmer(
     input.locationPath ??
     buildLocationPath(country, input.district, input.subCounty, input.parish, input.village);
   const phonePrefix = countryConfig?.phonePrefixes.find((p) => p.startsWith('+')) ?? '+254';
+  const aggregationCenter =
+    assignAggregationCentre(country, input.district, input.subCounty, input.aggregationCenter) ?? null;
 
   const idNumberEncrypted = encryptField(input.idNumber);
   const bankAccountEncrypted = input.bankAccount ? encryptField(input.bankAccount) : null;
@@ -71,7 +74,7 @@ export function createFarmer(
     idNumberEncrypted,
     bankAccountEncrypted,
     groupId,
-    input.aggregationCenter ?? null,
+    aggregationCenter,
     input.phone,
     phonePrefix,
     country,
@@ -102,7 +105,7 @@ export function createFarmer(
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: { district: input.district, key: input.key, kbFarmerId, country },
+    details: { district: input.district, key: input.key, kbFarmerId, country, aggregationCenter },
     success: true,
   });
 
@@ -118,7 +121,17 @@ export function getFarmerByPhone(phone: string) {
   `).get(phone);
 }
 
-export function getAllFarmers(limit = 100, offset = 0) {
+export function getAllFarmers(limit = 100, offset = 0, country?: string) {
+  if (country) {
+    return db.prepare(`
+      SELECT f.*, mg.name as membership_group_name
+      FROM farmers f
+      JOIN membership_groups mg ON f.membership_group_id = mg.id
+      WHERE f.country = ?
+      ORDER BY f.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(country, limit, offset);
+  }
   return db.prepare(`
     SELECT f.*, mg.name as membership_group_name
     FROM farmers f
@@ -128,7 +141,11 @@ export function getAllFarmers(limit = 100, offset = 0) {
   `).all(limit, offset);
 }
 
-export function getFarmerCount(): number {
+export function getFarmerCount(country?: string): number {
+  if (country) {
+    const row = db.prepare('SELECT COUNT(*) as count FROM farmers WHERE country = ?').get(country) as { count: number };
+    return row.count;
+  }
   const row = db.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };
   return row.count;
 }

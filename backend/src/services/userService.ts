@@ -50,6 +50,9 @@ export function getAdminStats() {
     SELECT COUNT(*) as count FROM bank_transactions WHERE status IN ('pending', 'timeout')
   `).get() as { count: number };
 
+  const farmersByCountry = getFarmerCountByCountry();
+  const centresByCountry = getCentreCountByCountry();
+
   return {
     totalFarmers: farmers.count,
     totalUsers: users.count,
@@ -58,6 +61,8 @@ export function getAdminStats() {
     pendingBankTransactions: pendingBankTx.count,
     activeProjects: activeProjects.count,
     recentImports,
+    farmersByCountry,
+    centresByCountry,
   };
 }
 

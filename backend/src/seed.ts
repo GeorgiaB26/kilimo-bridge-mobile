@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from './db/database';
 import { createUser } from './services/userService';
 import { registerAgent } from './services/agentService';
+import { seedAggregationCentres } from './services/aggregationCentreService';
 import bcrypt from 'bcryptjs';
 
 const MEMBERSHIP_GROUPS = [
@@ -32,6 +33,8 @@ const DEMO_FARMER = {
 };
 
 export function seedDatabase(): void {
+  seedAggregationCentres();
+
   const insertGroup = db.prepare(
     'INSERT OR IGNORE INTO membership_groups (id, name) VALUES (?, ?)'
   );

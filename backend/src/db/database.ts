@@ -261,6 +261,18 @@ function runMigrations(): void {
         aggregation_centers_count INTEGER DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_locations_country ON locations(country, level_1, level_2);
+
+      CREATE TABLE IF NOT EXISTS aggregation_centres (
+        centre_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        country TEXT NOT NULL,
+        location_level_1 TEXT NOT NULL,
+        location_level_2 TEXT,
+        region TEXT,
+        status TEXT DEFAULT 'Active',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_agg_centres_country ON aggregation_centres(country, location_level_1);
     `);
   } catch {
     // table exists

@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
-import { getAllFarmers, getFarmerCount } from '../services/farmerService';
+import { getAllFarmers, getFarmerCount, getFarmerCountByCountry } from '../services/farmerService';
+import { getCentreCountByCountry } from '../services/aggregationCentreService';
 import { logAudit } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
 import type { UserRole } from '../../../shared/src/roles';
@@ -46,7 +47,8 @@ router.post('/users', requirePermission('users.write'), (req: Request, res: Resp
 router.get('/farmers', requirePermission('farmers.read'), (req: Request, res: Response) => {
   const limit = parseInt(req.query.limit as string) || 100;
   const offset = parseInt(req.query.offset as string) || 0;
-  let farmers = getAllFarmers(limit, offset);
+  const country = (req.query.country as string) || undefined;
+  let farmers = getAllFarmers(limit, offset, country);
 
   if (isAgentRole(req.user!.role) && req.user!.district) {
     farmers = (farmers as { district: string }[]).filter((f) => f.district === req.user!.district);
@@ -57,12 +59,12 @@ router.get('/farmers', requirePermission('farmers.read'), (req: Request, res: Re
     userRole: req.user?.role,
     action: 'farmer.read',
     category: 'farmer_data',
-    details: { count: (farmers as unknown[]).length },
+    details: { count: (farmers as unknown[]).length, country },
     ipAddress: req.ip,
     success: true,
   });
 
-  res.json({ farmers, total: getFarmerCount() });
+  res.json({ farmers, total: getFarmerCount(country) });
 });
 
 export default router;

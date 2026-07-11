@@ -19,6 +19,7 @@ import {
 import { MAX_CSV_SIZE_BYTES } from '../../../shared/src/constants';
 import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../shared/src/constants';
 import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
+import { AGGREGATION_CENTRES } from '../../../shared/src/locations/aggregationCentres';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 
 const router = Router();
@@ -41,6 +42,12 @@ router.get('/reference', (_req: Request, res: Response) => {
       phoneExample: c.phoneExample,
     })),
     locationData: LOCATION_DATA,
+    aggregationCentres: AGGREGATION_CENTRES.map((c) => ({
+      id: c.id,
+      name: c.name,
+      country: c.country,
+      locationLevel1: c.locationLevel1,
+    })),
   });
 });
 

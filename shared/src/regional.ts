@@ -1,3 +1,6 @@
+import { KENYA_LOCATIONS } from './locations/kenya';
+import { UGANDA_LOCATIONS } from './locations/uganda';
+
 export type CountryCode =
   | 'kenya'
   | 'uganda'
@@ -115,40 +118,8 @@ export const COUNTRY_LIST = Object.values(REGIONAL_CONFIG);
 
 /** Nested location data: level1 -> level2 -> level3 options */
 export const LOCATION_DATA: Record<CountryCode, Record<string, Record<string, string[]>>> = {
-  kenya: {
-    Kiambu: {
-      Limuru: ['Ndeiya', 'Bibirioni', 'Ngecha'],
-      Thika: ['Township', 'Kamenu', 'Hospital'],
-      Ruiru: ['Biashara', 'Gitothua', 'Kahawa Sukari'],
-      Kikuyu: ['Karai', 'Nachu', 'Sigona'],
-    },
-    Nyeri: {
-      'Mathira East': ['Konyu', 'Iria-Ini', 'Gathima'],
-      'Mathira West': ['Ruguru', 'Gikondi', 'Magutu'],
-      Tetu: ['Dedan Kimathi', 'Wamagana', 'Aguthi'],
-    },
-    Nairobi: {
-      Westlands: ['Parklands', 'Kangemi', 'Mountain View'],
-      Kasarani: ['Clay City', 'Mwiki', 'Njiru'],
-      Embakasi: ['Utawala', 'Pipeline', 'Tassia'],
-    },
-  },
-  uganda: {
-    Gulu: {
-      Central: ['Layibi', 'Bardege', 'Laroo'],
-      Pader: ['Pader Town', 'Angagura'],
-      Aswa: ['Atiak', 'Lakwana'],
-    },
-    Kampala: {
-      Makindye: ['Kibuli', 'Nsambya', 'Kansanga'],
-      Kawempe: ['Kawempe', 'Bwaise', 'Makerere'],
-      Nakawa: ['Bugolobi', 'Ntinda', 'Kyambogo'],
-    },
-    Mbarara: {
-      Nyarugusu: ['Kakoba', 'Kamukuzi'],
-      Kabale: ['Northern', 'Southern'],
-    },
-  },
+  kenya: KENYA_LOCATIONS,
+  uganda: UGANDA_LOCATIONS,
   tanzania: {
     'Dar es Salaam': {
       Ilala: ['Kariakoo', 'Buguruni', 'Gerezani'],

@@ -12,6 +12,7 @@ import {
   type CountryCode,
 } from './regional';
 import { normalizePhoneForCountry, generateFarmerId } from './farmerId';
+import { findAggregationCentre } from './locations/aggregationCentres';
 
 export interface FarmerInput {
   key: string;
@@ -264,12 +265,19 @@ export function validateFarmerRow(
       if (phone) {
         normalized.kbFarmerId = generateFarmerId(new Date(), [l1, l2, normalized.parish ?? ''], phone);
       }
+      if (!input.aggregationCenter?.trim()) {
+        const centre = findAggregationCentre(countryConfig.name, l1, l2);
+        if (centre) normalized.aggregationCenter = centre.name;
+      }
     }
+  }
+
+  if (input.aggregationCenter?.trim() && !normalized.aggregationCenter) {
+    normalized.aggregationCenter = input.aggregationCenter.trim();
   }
 
   if (input.parish?.trim() && !normalized.parish) normalized.parish = input.parish.trim();
   if (input.village?.trim()) normalized.village = input.village.trim();
-  if (input.aggregationCenter?.trim()) normalized.aggregationCenter = input.aggregationCenter.trim();
 
   const membershipType = input.membershipType?.trim();
   if (membershipType && !(MEMBERSHIP_TYPES as readonly string[]).includes(membershipType)) {

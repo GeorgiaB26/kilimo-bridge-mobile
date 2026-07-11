@@ -11,6 +11,9 @@ export function AdminDashboardScreen() {
     totalUsers: number;
     pendingPaymentsTotal: number;
     activeProjects: number;
+    activeAgents?: number;
+    farmersByCountry?: Record<string, number>;
+    centresByCountry?: Record<string, number>;
     recentImports: Array<{ status: string; imported_count: number; total_rows: number; created_at: string }>;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,6 +26,8 @@ export function AdminDashboardScreen() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const countryEntries = Object.entries(stats?.farmersByCountry ?? {}).sort((a, b) => b[1] - a[1]);
 
   return (
     <ScrollView
@@ -37,6 +42,26 @@ export function AdminDashboardScreen() {
         <StatCard label="Active Projects" value={stats?.activeProjects ?? 0} />
         <StatCard label="Pending KES" value={stats?.pendingPaymentsTotal ?? 0} accent />
       </View>
+
+      {countryEntries.length > 0 ? (
+        <>
+          <Text style={styles.section}>Farmers by Country</Text>
+          <View style={styles.countryCard}>
+            {countryEntries.map(([country, count]) => (
+              <View key={country} style={styles.countryRow}>
+                <Text style={styles.countryName}>{country}</Text>
+                <Text style={styles.countryCount}>{count.toLocaleString()}</Text>
+                {stats?.centresByCountry?.[country] ? (
+                  <Text style={styles.centreCount}>
+                    {stats.centresByCountry[country]} centres
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
+
       <Text style={styles.section}>Recent Imports</Text>
       {(stats?.recentImports ?? []).map((imp, i) => (
         <View key={i} style={styles.importRow}>
@@ -72,6 +97,17 @@ const styles = StyleSheet.create({
   accent: { color: COLORS.accent },
   statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
   section: { fontSize: 18, fontWeight: '600', color: COLORS.primary, marginBottom: 12 },
+  countryCard: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 12, marginBottom: 24 },
+  countryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  countryName: { flex: 1, fontSize: 15, fontWeight: '500', color: COLORS.text },
+  countryCount: { fontSize: 16, fontWeight: '700', color: COLORS.primary, marginRight: 8 },
+  centreCount: { fontSize: 11, color: COLORS.muted },
   importRow: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 12, marginBottom: 8 },
   importStatus: { fontWeight: '600', color: COLORS.text, textTransform: 'capitalize' },
   importDetail: { fontSize: 13, color: COLORS.muted, marginTop: 2 },

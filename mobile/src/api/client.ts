@@ -102,8 +102,8 @@ export async function getImportComplete(sessionId: string) {
   return data;
 }
 
-export async function getFarmers(limit = 50, offset = 0) {
-  const { data } = await api.get('/admin/farmers', { params: { limit, offset } });
+export async function getFarmers(limit = 50, offset = 0, country?: string) {
+  const { data } = await api.get('/admin/farmers', { params: { limit, offset, country } });
   return data;
 }
 
