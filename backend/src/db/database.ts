@@ -231,8 +231,40 @@ function runMigrations(): void {
   addColumn('farmers', 'id_number_encrypted', 'TEXT');
   addColumn('farmers', 'bank_account_encrypted', 'TEXT');
   addColumn('farmers', 'registered_by_agent_id', 'TEXT');
+  addColumn('farmers', 'kb_farmer_id', 'TEXT');
+  addColumn('farmers', 'location_path', 'TEXT');
+  addColumn('farmers', 'location_level_1', 'TEXT');
+  addColumn('farmers', 'location_level_2', 'TEXT');
+  addColumn('farmers', 'location_level_3', 'TEXT');
+  addColumn('farmers', 'location_level_4', 'TEXT');
+  addColumn('farmers', 'phone_country_prefix', 'TEXT');
   addColumn('payments', 'processed_by', 'TEXT');
   addColumn('payments', 'verification_status', "TEXT DEFAULT 'unverified'");
+
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_farmers_kb_id ON farmers(kb_farmer_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_farmers_country ON farmers(country, location_level_1)');
+  } catch {
+    // index exists
+  }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS locations (
+        location_id TEXT PRIMARY KEY,
+        country TEXT NOT NULL,
+        level_1 TEXT,
+        level_2 TEXT,
+        level_3 TEXT,
+        level_4 TEXT,
+        location_path TEXT,
+        aggregation_centers_count INTEGER DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_locations_country ON locations(country, level_1, level_2);
+    `);
+  } catch {
+    // table exists
+  }
 }
 
 /** Recreate users table when legacy CHECK constraint blocks agent/banking roles */
@@ -313,4 +345,11 @@ export interface FarmerRow {
   status: string;
   created_at: string;
   updated_at: string;
+  kb_farmer_id?: string | null;
+  location_path?: string | null;
+  location_level_1?: string | null;
+  location_level_2?: string | null;
+  location_level_3?: string | null;
+  location_level_4?: string | null;
+  phone_country_prefix?: string | null;
 }

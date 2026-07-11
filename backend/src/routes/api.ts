@@ -18,6 +18,7 @@ import {
 } from '../services/importService';
 import { MAX_CSV_SIZE_BYTES } from '../../../shared/src/constants';
 import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../shared/src/constants';
+import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 
 const router = Router();
@@ -33,6 +34,13 @@ router.get('/reference', (_req: Request, res: Response) => {
     membershipGroups: getMembershipGroupNames(),
     projects: PROJECTS,
     membershipTypes: MEMBERSHIP_TYPES,
+    countries: COUNTRY_LIST.map((c) => ({
+      code: c.code,
+      name: c.name,
+      levelLabels: c.levelLabels,
+      phoneExample: c.phoneExample,
+    })),
+    locationData: LOCATION_DATA,
   });
 });
 
@@ -94,9 +102,16 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
       membershipGroup: result.normalized.membershipGroup ?? farmerInput.membershipGroup,
       district: result.normalized.district ?? farmerInput.district,
       subCounty: result.normalized.subCounty ?? farmerInput.subCounty,
+      kbFarmerId: result.normalized.kbFarmerId,
+      locationPath: result.normalized.locationPath,
     } as Parameters<typeof createFarmer>[0], req.user?.userId);
 
-    res.status(201).json({ success: true, farmerId, key: result.normalized.key ?? farmerInput.key });
+    res.status(201).json({
+      success: true,
+      farmerId,
+      key: result.normalized.key ?? farmerInput.key,
+      kbFarmerId: result.normalized.kbFarmerId,
+    });
   } catch (err) {
     res.status(500).json({
       success: false,

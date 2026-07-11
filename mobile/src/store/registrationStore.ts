@@ -14,7 +14,7 @@ const initialFormData: RegistrationFormData = {
   gender: 'M',
   phone: '',
   idNumber: '',
-  country: 'Kenya',
+  country: '',
   district: '',
   subCounty: '',
   parish: '',

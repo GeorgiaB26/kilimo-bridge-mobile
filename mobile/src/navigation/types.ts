@@ -20,6 +20,7 @@ export type AdminTabParamList = {
 };
 
 export type RegistrationStackParamList = {
+  Country: undefined;
   BasicInfo: undefined;
   Location: undefined;
   Membership: undefined;

@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database';
 import type { FarmerInput } from '../../../shared/src/validation';
+import { generateFarmerId } from '../../../shared/src/farmerId';
+import { buildLocationPath, getCountryConfig } from '../../../shared/src/regional';
 import { encryptField } from './encryptionService';
 import { logAudit } from './auditService';
 
@@ -28,12 +30,22 @@ export function getExistingIdentifiers() {
 }
 
 export function createFarmer(
-  input: FarmerInput & { key: string; phone: string; bankAccount?: string },
+  input: FarmerInput & { key: string; phone: string; bankAccount?: string; kbFarmerId?: string; locationPath?: string },
   registeredBy?: string
 ): string {
   const farmerId = uuidv4();
   const groupId = getMembershipGroupIdByName(input.membershipGroup);
   if (!groupId) throw new Error(`Membership group not found: ${input.membershipGroup}`);
+
+  const country = input.country ?? 'Kenya';
+  const countryConfig = getCountryConfig(country);
+  const kbFarmerId =
+    input.kbFarmerId ??
+    generateFarmerId(new Date(), [input.district, input.subCounty, input.parish ?? ''], input.phone);
+  const locationPath =
+    input.locationPath ??
+    buildLocationPath(country, input.district, input.subCounty, input.parish, input.village);
+  const phonePrefix = countryConfig?.phonePrefixes.find((p) => p.startsWith('+')) ?? '+254';
 
   const idNumberEncrypted = encryptField(input.idNumber);
   const bankAccountEncrypted = input.bankAccount ? encryptField(input.bankAccount) : null;
@@ -41,11 +53,14 @@ export function createFarmer(
   db.prepare(`
     INSERT INTO farmers (
       farmer_id, key, name, gender, id_number, id_number_encrypted, bank_account_encrypted,
-      membership_group_id, aggregation_center, phone_number, country, district, sub_county,
-      parish, village, membership_type, occupation, size_of_land,
+      membership_group_id, aggregation_center, phone_number, phone_country_prefix,
+      country, district, sub_county, parish, village,
+      location_level_1, location_level_2, location_level_3, location_level_4,
+      location_path, kb_farmer_id,
+      membership_type, occupation, size_of_land,
       picture_url, project_1, project_2, project_3, status, registered_by_agent_id
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `).run(
     farmerId,
@@ -58,11 +73,18 @@ export function createFarmer(
     groupId,
     input.aggregationCenter ?? null,
     input.phone,
-    input.country ?? 'Kenya',
+    phonePrefix,
+    country,
     input.district,
     input.subCounty,
     input.parish ?? null,
     input.village ?? null,
+    input.district,
+    input.subCounty,
+    input.parish ?? null,
+    input.village ?? null,
+    locationPath,
+    kbFarmerId,
     input.membershipType ?? 'Active',
     input.occupation ?? null,
     input.sizeOfLand ?? null,
@@ -80,7 +102,7 @@ export function createFarmer(
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: { district: input.district, key: input.key },
+    details: { district: input.district, key: input.key, kbFarmerId, country },
     success: true,
   });
 
@@ -109,6 +131,13 @@ export function getAllFarmers(limit = 100, offset = 0) {
 export function getFarmerCount(): number {
   const row = db.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };
   return row.count;
+}
+
+export function getFarmerCountByCountry(): Record<string, number> {
+  const rows = db
+    .prepare('SELECT country, COUNT(*) as count FROM farmers GROUP BY country ORDER BY count DESC')
+    .all() as { country: string; count: number }[];
+  return Object.fromEntries(rows.map((r) => [r.country, r.count]));
 }
 
 export function generateFarmerKey(): string {

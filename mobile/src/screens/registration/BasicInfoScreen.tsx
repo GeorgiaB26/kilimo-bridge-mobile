@@ -7,29 +7,25 @@ import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
+import { getCountryConfig } from '../../../../shared/src/regional';
+import { normalizePhoneForCountry } from '../../../../shared/src/farmerId';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'BasicInfo'>;
 
-function formatPhone(value: string): string {
-  const digits = value.replace(/\D/g, '');
-  if (digits.startsWith('254')) return `+${digits}`;
-  if (digits.startsWith('0')) return `+254${digits.slice(1)}`;
-  if (digits.length === 9) return `+254${digits}`;
-  return value;
-}
-
 export function BasicInfoScreen({ navigation }: Props) {
   const { formData, updateForm } = useRegistrationStore();
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const countryConfig = getCountryConfig(formData.country);
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!formData.name || formData.name.length < 2) e.name = 'Name must be at least 2 characters';
     if (!formData.gender) e.gender = 'Gender is required';
-    if (!formData.phone) e.phone = 'Phone number is required';
-    else if (!/^(\+254|0)[0-9]{9}$/.test(formData.phone.replace(/\s/g, '')) && !/^\+254[0-9]{9}$/.test(formatPhone(formData.phone))) {
-      e.phone = 'Enter valid Kenya phone (+254... or 07...)';
+    if (!formData.phone) {
+      e.phone = 'Phone number is required';
+    } else if (!normalizePhoneForCountry(formData.phone, formData.country)) {
+      e.phone = countryConfig?.phoneError ?? 'Invalid phone number';
     }
     if (!formData.idNumber || formData.idNumber.length < 5) e.idNumber = 'ID number is required (5+ chars)';
     setErrors(e);
@@ -37,14 +33,14 @@ export function BasicInfoScreen({ navigation }: Props) {
   };
 
   const handleNext = () => {
-    const phone = formatPhone(formData.phone);
+    const phone = normalizePhoneForCountry(formData.phone, formData.country) ?? formData.phone;
     updateForm({ phone });
     if (validate()) navigation.navigate('Location');
   };
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title="Basic Info" subtitle="Tell us about yourself" />
+      <ScreenHeader title="Basic Info" subtitle={`Registering in ${formData.country}`} />
       <FormField
         label="Full Name"
         value={formData.name}
@@ -65,7 +61,7 @@ export function BasicInfoScreen({ navigation }: Props) {
         label="Phone Number"
         value={formData.phone}
         onChangeText={(phone) => updateForm({ phone })}
-        placeholder="+254712345678"
+        placeholder={countryConfig?.phoneExample ?? '+254712345678'}
         keyboardType="phone-pad"
         required
         error={errors.phone}
@@ -78,12 +74,16 @@ export function BasicInfoScreen({ navigation }: Props) {
         required
         error={errors.idNumber}
       />
-      <Button title="Next" onPress={handleNext} style={styles.button} />
+      <View style={styles.row}>
+        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
+        <Button title="Next" onPress={handleNext} style={styles.half} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  button: { marginTop: 8 },
+  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  half: { flex: 1 },
 });

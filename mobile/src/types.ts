@@ -38,9 +38,13 @@ export interface ImportValidationResult {
     phone: string;
     district: string;
     membershipGroup: string;
+    country?: string;
     status: 'valid' | 'invalid' | 'duplicate';
   }>;
   headersMatch: boolean;
   columnMapping?: Record<string, string>;
   sessionId: string;
+  countryBreakdown?: Record<string, number>;
+  errorsByCountry?: Record<string, number>;
+  detectedCountry?: string | null;
 }

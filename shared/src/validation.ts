@@ -1,11 +1,17 @@
 import {
-  DISTRICTS,
   GENDER_OPTIONS,
   MEMBERSHIP_TYPES,
-  SUB_COUNTIES,
-  type District,
-  type Gender,
 } from './constants';
+import {
+  getCountryConfig,
+  getCountryCode,
+  getLevel1Options,
+  getLevel2Options,
+  getLevel3Options,
+  buildLocationPath,
+  type CountryCode,
+} from './regional';
+import { normalizePhoneForCountry, generateFarmerId } from './farmerId';
 
 export interface FarmerInput {
   key: string;
@@ -27,6 +33,8 @@ export interface FarmerInput {
   project2?: string;
   project3?: string;
   picture?: string;
+  kbFarmerId?: string;
+  locationPath?: string;
 }
 
 export interface FieldError {
@@ -44,12 +52,10 @@ export interface ValidationResult {
 
 const NAME_PATTERN = /^[a-zA-Z\s'-]+$/;
 
-export function normalizePhone(phone: string): string | null {
-  const cleaned = phone.replace(/\s/g, '');
-  if (/^\+254[0-9]{9}$/.test(cleaned)) return cleaned;
-  if (/^0[0-9]{9}$/.test(cleaned)) return `+254${cleaned.slice(1)}`;
-  if (/^[0-9]{9}$/.test(cleaned)) return `+254${cleaned}`;
-  return null;
+type Gender = 'M' | 'F' | 'Other';
+
+export function normalizePhone(phone: string, country = 'Kenya'): string | null {
+  return normalizePhoneForCountry(phone, country);
 }
 
 export function normalizeGender(value: string): Gender | null {
@@ -65,8 +71,52 @@ export function normalizeGender(value: string): Gender | null {
   return map[v.toLowerCase()] ?? null;
 }
 
-function isValidDistrict(value: string): value is District {
-  return (DISTRICTS as readonly string[]).includes(value);
+function validateRegionalLocation(
+  country: string,
+  district: string,
+  subCounty: string,
+  parish?: string
+): { valid: boolean; error?: string; suggestion?: string } {
+  const code = getCountryCode(country);
+  if (!code) {
+    return { valid: false, error: `Country "${country}" is not supported` };
+  }
+
+  const level1Options = getLevel1Options(code);
+  const matchL1 = level1Options.find((d) => d.toLowerCase() === district.toLowerCase());
+  if (!matchL1) {
+    return {
+      valid: false,
+      error: `Invalid ${getCountryConfig(country)?.levelLabels[0] ?? 'region'}: "${district}"`,
+      suggestion: level1Options[0] ? `Did you mean "${level1Options[0]}"?` : undefined,
+    };
+  }
+
+  const level2Options = getLevel2Options(code, matchL1);
+  const matchL2 = level2Options.find((s) => s.toLowerCase() === subCounty.toLowerCase());
+  if (!matchL2) {
+    return {
+      valid: false,
+      error: `Invalid ${getCountryConfig(country)?.levelLabels[1] ?? 'sub-region'} for ${matchL1}`,
+      suggestion: level2Options[0] ? `Did you mean "${level2Options[0]}"?` : undefined,
+    };
+  }
+
+  if (parish?.trim()) {
+    const level3Options = getLevel3Options(code, matchL1, matchL2);
+    if (level3Options.length > 0) {
+      const matchL3 = level3Options.find((p) => p.toLowerCase() === parish.toLowerCase());
+      if (!matchL3) {
+        return {
+          valid: false,
+          error: `Invalid ${getCountryConfig(country)?.levelLabels[2] ?? 'area'} for ${matchL2}`,
+          suggestion: level3Options[0] ? `Did you mean "${level3Options[0]}"?` : undefined,
+        };
+      }
+    }
+  }
+
+  return { valid: true };
 }
 
 export function validateFarmerRow(
@@ -158,13 +208,21 @@ export function validateFarmerRow(
     normalized.membershipGroup = membershipGroup;
   }
 
-  const phone = normalizePhone(input.phone ?? '');
+  const country = input.country?.trim() || 'Kenya';
+  const countryConfig = getCountryConfig(country);
+  if (!countryConfig) {
+    errors.push({ field: 'country', value: country, error: `Country "${country}" is not supported` });
+  } else {
+    normalized.country = countryConfig.name;
+  }
+
+  const phone = normalizePhone(input.phone ?? '', country);
   if (!phone) {
     errors.push({
       field: 'phone',
       value: input.phone ?? '',
-      error: 'Invalid format. Expected +254... or 07...',
-      suggestion: input.phone?.startsWith('0') ? `${input.phone}8` : undefined,
+      error: countryConfig?.phoneError ?? 'Invalid phone number format',
+      suggestion: countryConfig?.phoneExample,
     });
   } else if (options.existingPhones?.has(phone)) {
     errors.push({
@@ -176,39 +234,40 @@ export function validateFarmerRow(
     normalized.phone = phone;
   }
 
-  const country = input.country?.trim() || 'Kenya';
-  normalized.country = country;
-
   const district = input.district?.trim();
-  if (!district || !isValidDistrict(district)) {
-    errors.push({
-      field: 'district',
-      value: input.district ?? '',
-      error: 'Please select a valid district',
-    });
-  } else {
-    normalized.district = district;
-    const subCounty = input.subCounty?.trim();
-    const validSubs = SUB_COUNTIES[district];
-    if (!subCounty || subCounty.length < 2 || subCounty.length > 100) {
+  const subCounty = input.subCounty?.trim();
+  if (!district || !subCounty) {
+    if (!district) errors.push({ field: 'district', value: input.district ?? '', error: 'Location level 1 is required' });
+    if (!subCounty) errors.push({ field: 'subCounty', value: input.subCounty ?? '', error: 'Location level 2 is required' });
+  } else if (countryConfig) {
+    const locCheck = validateRegionalLocation(country, district, subCounty, input.parish);
+    if (!locCheck.valid) {
       errors.push({
-        field: 'subCounty',
-        value: input.subCounty ?? '',
-        error: 'Sub-county is required (2-100 characters)',
-      });
-    } else if (!validSubs.some((s) => s.toLowerCase() === subCounty.toLowerCase())) {
-      errors.push({
-        field: 'subCounty',
-        value: subCounty,
-        error: `Sub-county "${subCounty}" does not match district "${district}"`,
-        suggestion: validSubs[0] ? `Did you mean "${validSubs[0]}"?` : undefined,
+        field: 'district',
+        value: district,
+        error: locCheck.error ?? 'Invalid location',
+        suggestion: locCheck.suggestion,
       });
     } else {
-      normalized.subCounty = validSubs.find((s) => s.toLowerCase() === subCounty.toLowerCase())!;
+      const code = getCountryCode(country)!;
+      const l1 = getLevel1Options(code).find((d) => d.toLowerCase() === district.toLowerCase())!;
+      const l2 = getLevel2Options(code, l1).find((s) => s.toLowerCase() === subCounty.toLowerCase())!;
+      normalized.district = l1;
+      normalized.subCounty = l2;
+      if (input.parish?.trim()) {
+        const l3opts = getLevel3Options(code, l1, l2);
+        const l3 = l3opts.find((p) => p.toLowerCase() === input.parish!.toLowerCase());
+        if (l3) normalized.parish = l3;
+        else normalized.parish = input.parish.trim();
+      }
+      normalized.locationPath = buildLocationPath(countryConfig.name, l1, l2, normalized.parish, input.village);
+      if (phone) {
+        normalized.kbFarmerId = generateFarmerId(new Date(), [l1, l2, normalized.parish ?? ''], phone);
+      }
     }
   }
 
-  if (input.parish?.trim()) normalized.parish = input.parish.trim();
+  if (input.parish?.trim() && !normalized.parish) normalized.parish = input.parish.trim();
   if (input.village?.trim()) normalized.village = input.village.trim();
   if (input.aggregationCenter?.trim()) normalized.aggregationCenter = input.aggregationCenter.trim();
 

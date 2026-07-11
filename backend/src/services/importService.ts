@@ -112,15 +112,22 @@ export function validateCsvImport(
   const invalidRows = validationResults.filter((r) => !r.valid && !r.duplicate).length;
   const duplicates = validationResults.filter((r) => r.duplicate).length;
 
-  const preview = validationResults.slice(0, 10).map((r) => ({
-    name: r.normalized.name ?? r.data?.name ?? 'Unknown',
-    phone: r.normalized.phone ?? '',
-    district: r.normalized.district ?? '',
-    membershipGroup: r.normalized.membershipGroup ?? '',
-    status: (r.duplicate ? 'duplicate' : r.valid ? 'valid' : 'invalid') as 'valid' | 'invalid' | 'duplicate',
-  }));
+  const countryBreakdown: Record<string, number> = {};
+  const errorsByCountry: Record<string, number> = {};
 
-  // Fix preview - need data from farmerInput
+  validationResults.forEach((r, i) => {
+    const mappedRow = mapping ? applyColumnMapping(rows[i], mapping) : rows[i];
+    const country = (r.normalized.country ?? mappedRow['Country'] ?? 'Kenya').trim();
+    if (r.valid) {
+      countryBreakdown[country] = (countryBreakdown[country] ?? 0) + 1;
+    } else if (!r.duplicate) {
+      errorsByCountry[country] = (errorsByCountry[country] ?? 0) + 1;
+    }
+  });
+
+  const detectedCountry =
+    Object.entries(countryBreakdown).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
   const fixedPreview = validationResults.slice(0, 10).map((r, i) => {
     const mappedRow = mapping ? applyColumnMapping(rows[i], mapping) : rows[i];
     const input = csvRowToFarmerInput(mappedRow);
@@ -129,6 +136,7 @@ export function validateCsvImport(
       phone: r.normalized.phone ?? input.phone,
       district: r.normalized.district ?? input.district,
       membershipGroup: r.normalized.membershipGroup ?? input.membershipGroup,
+      country: r.normalized.country ?? input.country,
       status: (r.duplicate ? 'duplicate' : r.valid ? 'valid' : 'invalid') as 'valid' | 'invalid' | 'duplicate',
     };
   });
@@ -158,6 +166,9 @@ export function validateCsvImport(
     headersMatch,
     columnMapping: mapping,
     sessionId,
+    countryBreakdown,
+    errorsByCountry,
+    detectedCountry,
   };
 }
 

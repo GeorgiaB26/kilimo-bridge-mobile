@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput, Button, Surface } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { KilimoLogo } from '../../components/KilimoLogo';
 import { COLORS } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
@@ -79,10 +80,7 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.logoWrap}>
-        <Surface style={styles.logo} elevation={2}>
-          <Text style={styles.logoText}>KB</Text>
-        </Surface>
-        <Text style={styles.brand}>Kilimo Bridge</Text>
+        <KilimoLogo width={240} height={66} />
         <Text style={styles.build}>{APP_BUILD}</Text>
       </View>
 
@@ -168,18 +166,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   content: { padding: 20, paddingBottom: 40 },
   logoWrap: { alignItems: 'center', marginBottom: 24, marginTop: 16 },
-  logo: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  logoText: { fontSize: 28, fontWeight: '800', color: COLORS.accent },
-  brand: { fontSize: 26, fontWeight: '700', color: COLORS.primary },
-  build: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
+  build: { fontSize: 12, color: COLORS.muted, marginTop: 8 },
   bannerError: {
     flexDirection: 'row',
     alignItems: 'center',

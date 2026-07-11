@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { KilimoLogo } from '../../components/KilimoLogo';
 import { COLORS } from '../../constants';
 
 const SLIDES = [
   {
     icon: 'cash-outline' as const,
     title: 'Earn Money',
-    subtitle: 'Complete agricultural projects and get paid for your work across Kenya and Uganda.',
+    subtitle: 'Complete agricultural projects and get paid across East Africa — Kenya, Uganda, and beyond.',
   },
   {
     icon: 'phone-portrait-outline' as const,
@@ -45,6 +46,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <KilimoLogo width={180} height={50} />
+      </View>
       <View style={styles.slide}>
         <View style={styles.iconWrap}>
           <Ionicons name={slide.icon} size={64} color={COLORS.primary} />
@@ -95,6 +99,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  header: { alignItems: 'center', paddingTop: 48, paddingBottom: 8 },
   slide: { flex: 1, padding: 32, justifyContent: 'center', alignItems: 'center' },
   iconWrap: {
     width: 120,

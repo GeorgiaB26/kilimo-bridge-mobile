@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StepIndicator } from '../components/StepIndicator';
 import { COLORS } from '../constants';
+import { CountrySelectionScreen } from '../screens/registration/CountrySelectionScreen';
 import { BasicInfoScreen } from '../screens/registration/BasicInfoScreen';
 import { LocationScreen } from '../screens/registration/LocationScreen';
 import { MembershipScreen } from '../screens/registration/MembershipScreen';
@@ -15,16 +16,17 @@ import type { RegistrationStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RegistrationStackParamList>();
 
-const STEP_LABELS = ['Basic Info', 'Location', 'Membership', 'Details', 'Projects', 'Photo', 'Confirm'];
+const STEP_LABELS = ['Country', 'Basic Info', 'Location', 'Membership', 'Details', 'Projects', 'Photo', 'Confirm'];
 
 const STEP_MAP: Record<keyof RegistrationStackParamList, number> = {
-  BasicInfo: 0,
-  Location: 1,
-  Membership: 2,
-  Details: 3,
-  Projects: 4,
-  Photo: 5,
-  Confirm: 6,
+  Country: 0,
+  BasicInfo: 1,
+  Location: 2,
+  Membership: 3,
+  Details: 4,
+  Projects: 5,
+  Photo: 6,
+  Confirm: 7,
 };
 
 function withLayout<P extends object>(
@@ -35,7 +37,7 @@ function withLayout<P extends object>(
     const step = STEP_MAP[routeName];
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <StepIndicator currentStep={step} totalSteps={7} labels={STEP_LABELS} />
+        <StepIndicator currentStep={step} totalSteps={8} labels={STEP_LABELS} />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Screen {...props} />
         </ScrollView>
@@ -54,6 +56,7 @@ export function RegistrationNavigator() {
         title: 'Register Farmer',
       }}
     >
+      <Stack.Screen name="Country" component={withLayout(CountrySelectionScreen, 'Country')} />
       <Stack.Screen name="BasicInfo" component={withLayout(BasicInfoScreen, 'BasicInfo')} />
       <Stack.Screen name="Location" component={withLayout(LocationScreen, 'Location')} />
       <Stack.Screen name="Membership" component={withLayout(MembershipScreen, 'Membership')} />

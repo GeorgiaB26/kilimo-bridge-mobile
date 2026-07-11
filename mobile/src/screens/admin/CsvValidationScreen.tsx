@@ -90,6 +90,23 @@ export function CsvValidationScreen({ navigation, route }: Props) {
       <Text style={styles.importCount}>
         Will import: <Text style={styles.importNumber}>{result.willImport.toLocaleString()}</Text> farmers
       </Text>
+      {result.countryBreakdown && Object.keys(result.countryBreakdown).length > 0 ? (
+        <View style={styles.countryCard}>
+          <Text style={styles.sectionTitle}>
+            Country breakdown{result.detectedCountry ? ` (majority: ${result.detectedCountry})` : ''}
+          </Text>
+          {Object.entries(result.countryBreakdown).map(([country, count]) => (
+            <Text key={country} style={styles.countryRow}>
+              {country}: {count.toLocaleString()} farmers
+            </Text>
+          ))}
+          {result.errorsByCountry && Object.keys(result.errorsByCountry).length > 0 ? (
+            <Text style={styles.countryErrors}>
+              Errors: {Object.entries(result.errorsByCountry).map(([c, n]) => `${c} (${n})`).join(', ')}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <Text style={styles.sectionTitle}>Preview (first 10 rows)</Text>
       <View style={styles.table}>
         <View style={styles.tableHeader}>
@@ -161,6 +178,14 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
   importCount: { fontSize: 16, color: COLORS.text, marginBottom: 16, textAlign: 'center' },
   importNumber: { fontWeight: '700', color: COLORS.accent, fontSize: 20 },
+  countryCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  countryRow: { fontSize: 14, color: COLORS.text, marginBottom: 4 },
+  countryErrors: { fontSize: 12, color: COLORS.alert, marginTop: 8 },
   sectionTitle: { fontSize: 16, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
   table: { borderRadius: 8, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },
   tableHeader: { flexDirection: 'row', backgroundColor: COLORS.primary, padding: 8 },
