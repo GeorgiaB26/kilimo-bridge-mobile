@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { getFarmerDashboard, claimPayment, getFarmerPayments } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
-import { getTimeGreeting } from '../../utils/greeting';
+import { getLocalizedGreeting } from '../../utils/greeting';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
@@ -14,6 +14,7 @@ import { showMessage } from '../../utils/feedback';
 export function FarmerDashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const [data, setData] = useState<{
+    farmer?: { name: string; country?: string };
     pendingAmount: number;
     totalEarnings: number;
     activeProjects: Array<{ project_name: string; completion_percentage: number; payment_amount: number }>;
@@ -58,7 +59,8 @@ export function FarmerDashboardScreen() {
     }
   };
 
-  const firstName = user?.name?.split(' ')[0] ?? 'Farmer';
+  const country = data?.farmer?.country ?? 'Kenya';
+  const greeting = getLocalizedGreeting(country, user?.name ?? 'Farmer');
   const pending = data?.pendingAmount ?? 0;
 
   return (
@@ -68,7 +70,8 @@ export function FarmerDashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />}
       >
         <View style={styles.hero}>
-          <Text style={styles.greeting}>{getTimeGreeting()}, {firstName}!</Text>
+          <Text style={styles.greeting}>{greeting.primary}</Text>
+          <Text style={styles.greetingSub}>{greeting.secondary}</Text>
           <Text style={styles.heroSub}>Here&apos;s your earnings overview</Text>
         </View>
 
@@ -171,7 +174,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 24,
   },
   greeting: { fontSize: 26, fontWeight: '700', color: '#FFFFFF' },
-  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+  greetingSub: { fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: 4 },
+  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 6 },
   pendingCard: {
     marginHorizontal: 16,
     marginTop: -24,

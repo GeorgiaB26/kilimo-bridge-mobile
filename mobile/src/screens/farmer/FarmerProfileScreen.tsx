@@ -6,6 +6,8 @@ import { COLORS } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { getFarmerDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
+import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { getLocalizedGreeting } from '../../utils/greeting';
 
 export function FarmerProfileScreen() {
   const user = useAuthStore((s) => s.user);
@@ -13,9 +15,13 @@ export function FarmerProfileScreen() {
   const [farmer, setFarmer] = useState<{
     name: string;
     phone_number: string;
+    country: string;
     district: string;
     sub_county: string;
     membership_group_name: string;
+    aggregation_center: string | null;
+    kb_farmer_id: string | null;
+    picture_url: string | null;
     status: string;
   } | null>(null);
   const [notifications, setNotifications] = useState(true);
@@ -24,27 +30,53 @@ export function FarmerProfileScreen() {
     getFarmerDashboard().then((d) => setFarmer(d.farmer)).catch(() => {});
   }, []);
 
-  const initials = (farmer?.name ?? user?.name ?? '?')
-    .split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+  const displayName = farmer?.name ?? user?.name ?? 'Farmer';
+  const country = farmer?.country ?? 'Kenya';
+  const greeting = getLocalizedGreeting(country, displayName);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Surface style={styles.header} elevation={1}>
-        <View style={styles.avatar}>
-          <Text style={styles.initials}>{initials}</Text>
+      <View style={styles.hero}>
+        <ProfileAvatar
+          name={displayName}
+          pictureUrl={farmer?.picture_url}
+          size="hero"
+        />
+        <View style={styles.greetingCard}>
+          <Text style={styles.greetingNative}>{greeting.primary}</Text>
+          <Text style={styles.greetingEnglish}>{greeting.secondary}</Text>
+          <Text style={styles.languageTag}>{greeting.languageName}</Text>
         </View>
-        <Text style={styles.name}>{farmer?.name ?? user?.name}</Text>
+        <Text style={styles.name}>{displayName}</Text>
         <Text style={styles.location}>
-          {[farmer?.district, farmer?.sub_county].filter(Boolean).join(' · ') || 'Kenya'}
+          {[farmer?.district, farmer?.sub_county, country].filter(Boolean).join(' · ')}
         </Text>
-        <KBStatusChipInline label="Verified Farmer" />
-      </Surface>
+        <View style={styles.chip}>
+          <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
+          <Text style={styles.chipText}>Verified Farmer</Text>
+        </View>
+      </View>
+
+      {farmer?.kb_farmer_id ? (
+        <>
+          <Text style={styles.sectionTitle}>Kilimo Bridge ID</Text>
+          <Surface style={styles.idCard} elevation={0}>
+            <Text style={styles.idValue}>{farmer.kb_farmer_id}</Text>
+          </Surface>
+        </>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Contact</Text>
       <Surface style={styles.section} elevation={0}>
         <ProfileRow icon="call" label="Phone" value={farmer?.phone_number ?? user?.phoneNumber} verified />
         <Divider />
         <ProfileRow icon="business" label="Cooperative" value={farmer?.membership_group_name} />
+        {farmer?.aggregation_center ? (
+          <>
+            <Divider />
+            <ProfileRow icon="location" label="Aggregation centre" value={farmer.aggregation_center} />
+          </>
+        ) : null}
       </Surface>
 
       <Text style={styles.sectionTitle}>Payment</Text>
@@ -96,38 +128,67 @@ function ProfileRow({
   );
 }
 
-function KBStatusChipInline({ label }: { label: string }) {
-  return (
-    <View style={styles.chip}>
-      <Text style={styles.chipText}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   content: { padding: 16, paddingBottom: 40 },
-  header: {
+  hero: {
     alignItems: 'center',
     padding: 24,
-    borderRadius: 16,
-    backgroundColor: COLORS.background,
+    paddingTop: 20,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
     marginBottom: 20,
   },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  greetingCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
     marginBottom: 12,
+    width: '100%',
+    alignItems: 'center',
   },
-  initials: { fontSize: 32, color: COLORS.accent, fontWeight: '700' },
-  name: { fontSize: 24, fontWeight: '700', color: COLORS.text },
-  location: { fontSize: 14, color: COLORS.muted, marginTop: 4, marginBottom: 12 },
-  chip: { backgroundColor: '#E8F5E9', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
-  chipText: { color: COLORS.success, fontSize: 12, fontWeight: '600' },
+  greetingNative: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 30,
+  },
+  greetingEnglish: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  languageTag: {
+    fontSize: 11,
+    color: COLORS.accent,
+    fontWeight: '600',
+    marginTop: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  name: { fontSize: 24, fontWeight: '700', color: '#FFFFFF', marginTop: 4 },
+  location: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4, marginBottom: 12, textAlign: 'center' },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  chipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
+  idCard: {
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  idValue: { fontSize: 20, fontWeight: '700', color: COLORS.primary, letterSpacing: 1 },
   sectionTitle: { fontSize: 14, fontWeight: '600', color: COLORS.muted, marginBottom: 8, marginLeft: 4 },
   section: { borderRadius: 12, backgroundColor: COLORS.background, marginBottom: 20, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', padding: 16 },

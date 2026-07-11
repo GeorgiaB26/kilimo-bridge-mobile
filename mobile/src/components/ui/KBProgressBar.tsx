@@ -13,7 +13,7 @@ export function KBProgressBar({ progress, label }: KBProgressBarProps) {
   return (
     <View style={styles.wrap}>
       <ProgressBar progress={pct / 100} color={COLORS.success} style={styles.bar} />
-      <Text style={styles.text}>{label ?? `${pct}% complete`}</Text>
+      <Text style={styles.text}>{label ?? `${pct}% done`}</Text>
     </View>
   );
 }
@@ -21,5 +21,5 @@ export function KBProgressBar({ progress, label }: KBProgressBarProps) {
 const styles = StyleSheet.create({
   wrap: { marginTop: 10 },
   bar: { height: 8, borderRadius: 4, backgroundColor: COLORS.border },
-  text: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
+  text: { fontSize: 13, color: COLORS.text, marginTop: 6, fontWeight: '600' },
 });

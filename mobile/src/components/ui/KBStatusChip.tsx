@@ -17,7 +17,7 @@ export function KBStatusChip({ label, variant = 'info' }: { label: string; varia
     <Chip
       compact
       style={{ backgroundColor: v.bg }}
-      textStyle={{ color: v.text, fontSize: 11, fontWeight: '600' }}
+      textStyle={{ color: v.text, fontSize: 12, fontWeight: '700' }}
     >
       {label}
     </Chip>
