@@ -101,6 +101,9 @@ export function CsvValidationScreen({ navigation, route }: Props) {
           <Text style={styles.successText}>• Farmer profile</Text>
           <Text style={styles.successText}>• Login account (OTP sign-in)</Text>
           <Text style={styles.successText}>• Project enrollments (if Project 1/2/3 filled)</Text>
+          <Text style={styles.successNote}>
+            District showing &quot;To be confirmed&quot; is normal — farmers complete their location on first login.
+          </Text>
         </View>
       ) : null}
       {result.countryBreakdown && Object.keys(result.countryBreakdown).length > 0 ? (
@@ -210,6 +213,7 @@ const styles = StyleSheet.create({
   },
   successTitle: { fontWeight: '600', color: COLORS.text, marginBottom: 6 },
   successText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
+  successNote: { fontSize: 12, color: COLORS.muted, marginTop: 10, lineHeight: 18, fontStyle: 'italic' },
   countryCard: {
     backgroundColor: COLORS.cardBg,
     borderRadius: 8,

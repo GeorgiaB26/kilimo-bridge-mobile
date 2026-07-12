@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Pressable } from 'react-native';
 import { COLORS } from '../../constants';
 import { getFarmers } from '../../api/client';
 import { COUNTRY_LIST } from '../../constants/regional';
@@ -34,17 +34,24 @@ export function AdminFarmersScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>All Farmers ({total.toLocaleString()})</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
+      <View style={styles.filterWrap}>
         {FILTER_OPTIONS.map((opt) => (
           <Pressable
             key={opt}
             style={[styles.filterChip, countryFilter === opt && styles.filterChipActive]}
             onPress={() => setCountryFilter(opt)}
+            accessibilityRole="button"
+            accessibilityLabel={`Filter by ${opt}`}
           >
-            <Text style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}>{opt}</Text>
+            <Text
+              numberOfLines={1}
+              style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}
+            >
+              {opt}
+            </Text>
           </Pressable>
         ))}
-      </ScrollView>
+      </View>
       <FlatList
         data={farmers}
         keyExtractor={(item, i) => item.kb_farmer_id ?? item.phone_number ?? String(i)}
@@ -54,7 +61,11 @@ export function AdminFarmersScreen() {
               <Text style={styles.name}>{item.name}</Text>
               <Text style={styles.countryBadge}>{item.country}</Text>
             </View>
-            <Text style={styles.detail}>{item.phone_number} · {item.district}</Text>
+            <Text style={styles.detail}>
+              {item.phone_number}
+              {' · '}
+              {item.district === 'To be confirmed' ? 'Location pending' : item.district}
+            </Text>
             {item.aggregation_center ? (
               <Text style={styles.centre}>Centre: {item.aggregation_center}</Text>
             ) : null}
@@ -70,19 +81,27 @@ export function AdminFarmersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
-  filters: { flexGrow: 0, marginBottom: 12, maxHeight: 40 },
+  filterWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
   filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 38,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-    marginRight: 8,
     backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  filterText: { fontSize: 13, color: COLORS.text },
-  filterTextActive: { color: '#fff', fontWeight: '600' },
+  filterText: { fontSize: 14, lineHeight: 18, color: COLORS.text, fontWeight: '500' },
+  filterTextActive: { color: '#FFFFFF', fontWeight: '700' },
   card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 8 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   name: { fontSize: 16, fontWeight: '600', color: COLORS.text, flex: 1 },

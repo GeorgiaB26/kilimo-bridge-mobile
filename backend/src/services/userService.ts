@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database';
 import type { UserRole } from '../../../shared/src/roles';
+import { getCentreCountByCountry } from './aggregationCentreService';
 
 export function getAllUsers() {
   return db.prepare(`
@@ -50,7 +51,14 @@ export function getAdminStats() {
     SELECT COUNT(*) as count FROM bank_transactions WHERE status IN ('pending', 'timeout')
   `).get() as { count: number };
 
-  const farmersByCountry = getFarmerCountByCountry();
+  const farmersByCountry = db
+    .prepare('SELECT country, COUNT(*) as count FROM farmers GROUP BY country ORDER BY count DESC')
+    .all()
+    .reduce<Record<string, number>>((acc, row) => {
+      const r = row as { country: string; count: number };
+      acc[r.country] = r.count;
+      return acc;
+    }, {});
   const centresByCountry = getCentreCountByCountry();
 
   return {
