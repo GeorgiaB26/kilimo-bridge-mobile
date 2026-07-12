@@ -10,6 +10,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'kilimo-bridge-dev-secret-change-in
 const OTP_EXPIRY_MINUTES = 10;
 const DEV_OTP = '123456';
 
+/** Use fixed OTP until SMS is integrated (set PILOT_OTP=true on hosted environments). */
+function usePilotOtp(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.PILOT_OTP === 'true';
+}
+
 export interface AuthUser {
   userId: string;
   phoneNumber: string;
@@ -54,7 +59,7 @@ export function requestOtp(phone: string): { success: boolean; message: string; 
     return { success: false, message: 'Phone number not registered. Contact your cooperative admin.' };
   }
 
-  const code = process.env.NODE_ENV === 'production' ? String(Math.floor(100000 + Math.random() * 900000)) : DEV_OTP;
+  const code = usePilotOtp() ? DEV_OTP : String(Math.floor(100000 + Math.random() * 900000));
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString();
 
   db.prepare('DELETE FROM otp_codes WHERE phone_number = ?').run(normalized);
@@ -65,7 +70,7 @@ export function requestOtp(phone: string): { success: boolean; message: string; 
   return {
     success: true,
     message: `OTP sent to ${normalized}`,
-    devCode: process.env.NODE_ENV !== 'production' ? DEV_OTP : undefined,
+    devCode: usePilotOtp() ? DEV_OTP : undefined,
   };
 }
 
