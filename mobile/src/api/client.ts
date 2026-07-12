@@ -122,6 +122,16 @@ export async function getFarmerDashboard() {
   return data;
 }
 
+export async function updateFarmerLocation(body: {
+  district: string;
+  subCounty: string;
+  parish?: string;
+  village?: string;
+}) {
+  const { data } = await api.patch('/farmer/profile/location', body);
+  return data;
+}
+
 export async function getFarmerProjects() {
   const { data } = await api.get('/farmer/projects');
   return data;

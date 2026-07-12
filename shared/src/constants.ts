@@ -34,6 +34,9 @@ export const GENDER_LABELS: Record<Gender, string> = {
 export const MEMBERSHIP_TYPES = ['Active', 'Inactive', 'Suspended'] as const;
 export type MembershipType = (typeof MEMBERSHIP_TYPES)[number];
 
+/** Placeholder stored when CSV import has no district/sub-county — farmer completes on first login */
+export const PENDING_LOCATION_LABEL = 'To be confirmed';
+
 export const DISTRICTS = [
   'Kiambu',
   'Nairobi',

@@ -7,6 +7,7 @@ import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KilimoLogo } from '../../components/KilimoLogo';
+import { FarmerLocationPrompt } from '../../components/FarmerLocationPrompt';
 import { COLORS } from '../../constants';
 import { getFarmerDashboard, claimPayment, getFarmerPayments } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -29,7 +30,7 @@ export function FarmerDashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const { formatAmount, formatPayment } = useCurrency();
   const [data, setData] = useState<{
-    farmer?: { name: string; country?: string };
+    farmer?: { name: string; country?: string; profileLocationPending?: boolean };
     pendingAmount: number;
     totalEarnings: number;
     activeProjects: FarmerProject[];
@@ -77,6 +78,7 @@ export function FarmerDashboardScreen() {
   const country = data?.farmer?.country ?? 'Kenya';
   const greeting = getLocalizedGreeting(country, user?.name ?? 'Farmer');
   const pending = data?.pendingAmount ?? 0;
+  const showLocationPrompt = Boolean(data?.farmer?.profileLocationPending);
 
   const openProjectDetail = (project: FarmerProject) => {
     navigation.navigate('Projects', {
@@ -192,6 +194,11 @@ export function FarmerDashboardScreen() {
           loading={claiming}
         />
       ) : null}
+      <FarmerLocationPrompt
+        country={country}
+        visible={showLocationPrompt}
+        onCompleted={load}
+      />
     </View>
   );
 }

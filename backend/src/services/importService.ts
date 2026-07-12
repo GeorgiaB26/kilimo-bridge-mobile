@@ -227,7 +227,7 @@ export function validateCsvImport(
   ).length;
   if (locationMissingCount > 0) {
     importHints.push(
-      `${locationMissingCount} rows are missing District and/or Sub-County — fill these in (e.g. Amuru, Amuru) or merge with your location sheet.`
+      `${locationMissingCount} rows have no District/Sub-County — they can still import; farmers will confirm location when they first log in.`
     );
   }
 

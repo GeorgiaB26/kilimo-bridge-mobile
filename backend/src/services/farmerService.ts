@@ -2,11 +2,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database';
 import type { FarmerInput } from '../../../shared/src/validation';
 import { generateFarmerId } from '../../../shared/src/farmerId';
-import { buildLocationPath, getCountryConfig } from '../../../shared/src/regional';
+import { buildLocationPath, getCountryConfig, getCountryCode, getLevel1Options, getLevel2Options, getLevel3Options } from '../../../shared/src/regional';
+import { validateRegionalLocation } from '../../../shared/src/validation';
 import { encryptField } from './encryptionService';
 import { logAudit } from './auditService';
 import { assignAggregationCentre } from './aggregationCentreService';
 import { linkFarmerToUser } from './userService';
+import { PENDING_LOCATION_LABEL } from '../../../shared/src/constants';
 
 const PROJECT_PAYMENTS: Record<string, number> = {
   'Coffee Training': 15000,
@@ -249,6 +251,67 @@ export function getFarmerCountByCountry(): Record<string, number> {
     .all() as { country: string; count: number }[];
   return Object.fromEntries(rows.map((r) => [r.country, r.count]));
 }
+
+export function isLocationPending(farmer: { district?: string; sub_county?: string }): boolean {
+  return (
+    farmer.district === PENDING_LOCATION_LABEL ||
+    farmer.sub_county === PENDING_LOCATION_LABEL
+  );
+}
+
+export function updateFarmerLocation(
+  farmerId: string,
+  input: { district: string; subCounty: string; parish?: string; village?: string }
+): void {
+  const farmer = db.prepare('SELECT * FROM farmers WHERE farmer_id = ?').get(farmerId) as {
+    country: string;
+    phone_number: string;
+    parish: string | null;
+    village: string | null;
+  } | undefined;
+
+  if (!farmer) throw new Error('Farmer not found');
+
+  const country = farmer.country ?? 'Kenya';
+  const countryConfig = getCountryConfig(country);
+  if (!countryConfig) throw new Error(`Unsupported country: ${country}`);
+
+  const locCheck = validateRegionalLocation(country, input.district, input.subCounty, input.parish, true);
+  if (!locCheck.valid) {
+    throw new Error(locCheck.error ?? 'Invalid location');
+  }
+
+  const code = getCountryCode(country)!;
+  const l1 = getLevel1Options(code).find((d) => d.toLowerCase() === input.district.toLowerCase())!;
+  const l2 = locCheck.subCounty ?? input.subCounty;
+  const parish = input.parish?.trim()
+    ? getLevel3Options(code, l1, l2).find((p) => p.toLowerCase() === input.parish!.toLowerCase()) ?? input.parish.trim()
+    : null;
+  const village = input.village?.trim() || null;
+  const locationPath = buildLocationPath(countryConfig.name, l1, l2, parish ?? undefined, village ?? undefined);
+  const kbFarmerId = generateFarmerId(new Date(), [l1, l2, parish ?? ''], farmer.phone_number);
+  const aggregationCenter = assignAggregationCentre(country, l1, l2) ?? null;
+
+  db.prepare(`
+    UPDATE farmers SET
+      district = ?, sub_county = ?, parish = ?, village = ?,
+      location_level_1 = ?, location_level_2 = ?, location_level_3 = ?, location_level_4 = ?,
+      location_path = ?, kb_farmer_id = ?, aggregation_center = COALESCE(?, aggregation_center),
+      updated_at = datetime('now')
+    WHERE farmer_id = ?
+  `).run(l1, l2, parish, village, l1, l2, parish, village, locationPath, kbFarmerId, aggregationCenter, farmerId);
+
+  logAudit({
+    action: 'farmer.update_location',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: { district: l1, subCounty: l2, parish, village },
+    success: true,
+  });
+}
+
+export { PENDING_LOCATION_LABEL };
 
 export function generateFarmerKey(): string {
   const count = getFarmerCount();

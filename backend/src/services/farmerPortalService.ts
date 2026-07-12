@@ -1,6 +1,7 @@
 import { db } from '../db/database';
 import { logAudit } from './auditService';
 import { processPaymentViaBanking } from './bankingService';
+import { isLocationPending } from './farmerService';
 
 export function getFarmerDashboard(farmerId: string) {
   const farmer = db.prepare(`
@@ -31,7 +32,10 @@ export function getFarmerDashboard(farmerId: string) {
   );
 
   return {
-    farmer,
+    farmer: {
+      ...(farmer as Record<string, unknown>),
+      profileLocationPending: isLocationPending(farmer as { district: string; sub_county: string }),
+    },
     pendingAmount: pendingPayments.total,
     totalEarnings: totalEarnings.total,
     activeProjects,

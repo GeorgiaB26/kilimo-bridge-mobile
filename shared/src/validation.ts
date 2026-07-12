@@ -1,6 +1,7 @@
 import {
   GENDER_OPTIONS,
   MEMBERSHIP_TYPES,
+  PENDING_LOCATION_LABEL,
 } from './constants';
 import {
   getCountryConfig,
@@ -136,7 +137,7 @@ function resolveSubCounty(countryCode: CountryCode, district: string, subCounty:
   return partial ?? null;
 }
 
-function validateRegionalLocation(
+export function validateRegionalLocation(
   country: string,
   district: string,
   subCounty: string,
@@ -320,8 +321,25 @@ export function validateFarmerRow(
   const district = prepared.district?.trim();
   const subCounty = prepared.subCounty?.trim();
   if (!district || !subCounty) {
-    if (!district) errors.push({ field: 'district', value: prepared.district ?? '', error: 'Location level 1 is required' });
-    if (!subCounty) errors.push({ field: 'subCounty', value: prepared.subCounty ?? '', error: 'Location level 2 is required' });
+    if (importMode && phone && normalized.name && normalized.membershipGroup && countryConfig) {
+      normalized.district = district || PENDING_LOCATION_LABEL;
+      normalized.subCounty = subCounty || PENDING_LOCATION_LABEL;
+      normalized.locationPath = buildLocationPath(
+        countryConfig.name,
+        normalized.district,
+        normalized.subCounty,
+        prepared.parish,
+        prepared.village
+      );
+      normalized.kbFarmerId = generateFarmerId(
+        new Date(),
+        district ? [district, subCounty ?? ''] : [countryConfig.name],
+        phone
+      );
+    } else {
+      if (!district) errors.push({ field: 'district', value: prepared.district ?? '', error: 'Location level 1 is required' });
+      if (!subCounty) errors.push({ field: 'subCounty', value: prepared.subCounty ?? '', error: 'Location level 2 is required' });
+    }
   } else if (countryConfig) {
     const locCheck = validateRegionalLocation(country, district, subCounty, prepared.parish, importMode);
     if (!locCheck.valid) {
