@@ -1,11 +1,19 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { FarmerProject } from '../types/farmerProject';
+
 export type AuthStackParamList = {
   Login: undefined;
   Otp: { phone: string; devCode?: string };
 };
 
+export type FarmerProjectsStackParamList = {
+  ProjectsList: undefined;
+  ProjectDetail: { project: FarmerProject };
+};
+
 export type FarmerTabParamList = {
   Dashboard: undefined;
-  Projects: undefined;
+  Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
   Payments: undefined;
   Profile: undefined;
 };

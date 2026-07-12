@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 import { FarmerDashboardScreen } from '../screens/farmer/FarmerDashboardScreen';
-import { FarmerProjectsScreen } from '../screens/farmer/FarmerProjectsScreen';
+import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import type { FarmerTabParamList } from './types';
@@ -42,7 +42,7 @@ export function FarmerNavigator() {
       })}
     >
       <Tab.Screen name="Dashboard" component={FarmerDashboardScreen} options={{ title: 'Home', headerShown: false }} />
-      <Tab.Screen name="Projects" component={FarmerProjectsScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Projects" component={FarmerProjectsNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="Payments" component={FarmerPaymentsScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Profile" component={FarmerProfileScreen} options={{ headerShown: false }} />
     </Tab.Navigator>

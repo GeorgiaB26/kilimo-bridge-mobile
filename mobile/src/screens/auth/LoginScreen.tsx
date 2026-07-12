@@ -5,7 +5,6 @@ import { TextInput, Button, Surface } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { KilimoLogo } from '../../components/KilimoLogo';
 import { COLORS } from '../../constants';
-import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { clearAllSessionData } from '../../utils/session';
@@ -81,7 +80,7 @@ export function LoginScreen({ navigation }: Props) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.logoWrap}>
         <KilimoLogo width={240} height={66} />
-        <Text style={styles.build}>{APP_BUILD}</Text>
+        <Text style={styles.platformName}>Kilimo Bridge Platform</Text>
       </View>
 
       {backendOk === false ? (
@@ -166,7 +165,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   content: { padding: 20, paddingBottom: 40 },
   logoWrap: { alignItems: 'center', marginBottom: 24, marginTop: 16 },
-  build: { fontSize: 12, color: COLORS.muted, marginTop: 8 },
+  platformName: { fontSize: 18, fontWeight: '700', color: COLORS.primary, marginTop: 12 },
   bannerError: {
     flexDirection: 'row',
     alignItems: 'center',

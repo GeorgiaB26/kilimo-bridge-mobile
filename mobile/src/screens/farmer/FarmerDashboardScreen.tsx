@@ -2,25 +2,37 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { Button, FAB } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { CompositeNavigationProp } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../constants';
 import { getFarmerDashboard, claimPayment, getFarmerPayments } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
-import { getLocalizedGreeting } from '../../utils/greeting';
+import { getLocalizedGreeting, formatDueDate } from '../../utils/greeting';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { useCurrency } from '../../context/CurrencyContext';
 import { showMessage } from '../../utils/feedback';
+import type { FarmerProject } from '../../types/farmerProject';
+import type { FarmerTabParamList, FarmerProjectsStackParamList } from '../../navigation/types';
+
+type DashboardNav = CompositeNavigationProp<
+  BottomTabNavigationProp<FarmerTabParamList, 'Dashboard'>,
+  NativeStackNavigationProp<FarmerProjectsStackParamList>
+>;
 
 export function FarmerDashboardScreen() {
+  const navigation = useNavigation<DashboardNav>();
   const user = useAuthStore((s) => s.user);
   const { formatAmount, formatPayment } = useCurrency();
   const [data, setData] = useState<{
     farmer?: { name: string; country?: string };
     pendingAmount: number;
     totalEarnings: number;
-    activeProjects: Array<{ project_name: string; completion_percentage: number; payment_amount: number }>;
-    nextProject: { project_name: string; due_date: string } | null;
+    activeProjects: FarmerProject[];
+    nextProject: FarmerProject | null;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -65,6 +77,13 @@ export function FarmerDashboardScreen() {
   const greeting = getLocalizedGreeting(country, user?.name ?? 'Farmer');
   const pending = data?.pendingAmount ?? 0;
 
+  const openProjectDetail = (project: FarmerProject) => {
+    navigation.navigate('Projects', {
+      screen: 'ProjectDetail',
+      params: { project },
+    });
+  };
+
   return (
     <View style={styles.root}>
       <ScrollView
@@ -104,12 +123,26 @@ export function FarmerDashboardScreen() {
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hScroll}>
             {(data?.activeProjects ?? []).map((p, i) => (
-              <View key={i} style={styles.projectCard}>
-                <Ionicons name="leaf" size={28} color={COLORS.primary} />
-                <Text style={styles.projectName}>{p.project_name}</Text>
+              <Pressable
+                key={p.id ?? `${p.project_name}-${i}`}
+                onPress={() => openProjectDetail(p)}
+                style={styles.projectCard}
+                accessibilityRole="button"
+                accessibilityLabel={`View ${p.project_name} details`}
+              >
+                <View style={styles.projectCardHeader}>
+                  <Ionicons name="leaf" size={24} color={COLORS.primary} />
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
+                </View>
+                <Text style={styles.projectName} numberOfLines={2}>{p.project_name}</Text>
                 <Text style={styles.projectAmount}>{formatAmount(p.payment_amount)}</Text>
-                <KBProgressBar progress={p.completion_percentage} />
-              </View>
+                <KBProgressBar
+                  progress={p.completion_percentage}
+                  label={`${p.completion_percentage}% done`}
+                  rightLabel={p.due_date ? `Due ${formatDueDate(p.due_date)}` : undefined}
+                  stacked
+                />
+              </Pressable>
             ))}
             {(data?.activeProjects ?? []).length === 0 ? (
               <Text style={styles.empty}>No active projects yet</Text>
@@ -120,10 +153,21 @@ export function FarmerDashboardScreen() {
         {data?.nextProject ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>What&apos;s Next?</Text>
-            <KBCard>
-              <Text style={styles.nextName}>{data.nextProject.project_name}</Text>
-              <Text style={styles.nextDue}>Due: {data.nextProject.due_date}</Text>
-            </KBCard>
+            <Pressable onPress={() => openProjectDetail(data.nextProject!)} accessibilityRole="button">
+              <KBCard>
+                <View style={styles.nextRow}>
+                  <View style={styles.nextText}>
+                    <Text style={styles.nextName}>{data.nextProject.project_name}</Text>
+                    <Text style={styles.nextDue}>
+                      {data.nextProject.due_date
+                        ? `Due: ${formatDueDate(data.nextProject.due_date)}`
+                        : 'Tap for project details'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={22} color={COLORS.muted} />
+                </View>
+              </KBCard>
+            </Pressable>
           </View>
         ) : null}
 
@@ -183,12 +227,12 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.primary },
   hScroll: { marginHorizontal: -4 },
   projectCard: {
-    width: 220,
-    minHeight: 168,
+    width: 228,
+    minHeight: 176,
     backgroundColor: COLORS.background,
     borderRadius: 12,
     padding: 16,
-    paddingBottom: 18,
+    paddingBottom: 20,
     marginRight: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -196,9 +240,16 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  projectName: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginTop: 8 },
-  projectAmount: { fontSize: 18, fontWeight: '700', color: COLORS.accent, marginTop: 4, marginBottom: 4 },
+  projectCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  projectName: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginTop: 8, lineHeight: 22 },
+  projectAmount: { fontSize: 18, fontWeight: '700', color: COLORS.accent, marginTop: 4, marginBottom: 2 },
   empty: { color: COLORS.muted, padding: 16 },
+  nextRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  nextText: { flex: 1 },
   nextName: { fontSize: 17, fontWeight: '600', color: COLORS.text },
   nextDue: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
   earningsFooter: {

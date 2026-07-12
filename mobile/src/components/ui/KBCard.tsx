@@ -27,6 +27,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: COLORS.background,
     borderRadius: 12,
+    overflow: 'visible',
   },
-  content: { paddingVertical: 12, paddingHorizontal: 4 },
+  content: {
+    paddingTop: 16,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+  },
 });

@@ -19,6 +19,7 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
       <View style={styles.logoWrap}>
         <KilimoLogo width={260} height={72} />
       </View>
+      <Text style={styles.platformName}>Kilimo Bridge Platform</Text>
       <Text style={styles.tagline}>Earn · Grow · Get Paid</Text>
       <ActivityIndicator animating color={COLORS.accent} size="large" style={styles.spinner} />
     </View>
@@ -37,8 +38,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 12,
+    alignItems: 'center',
   },
+  platformName: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 8 },
   tagline: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginBottom: 40 },
   spinner: { marginTop: 8 },
 });
