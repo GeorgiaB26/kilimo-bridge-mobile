@@ -82,6 +82,22 @@ export function normalizeMembershipType(value?: string): string | undefined {
   return undefined;
 }
 
+/** Uganda districts used to infer country when CSV has no Country column */
+const UGANDA_DISTRICT_HINTS = new Set(
+  [
+    'Amuru', 'Gulu', 'Kampala', 'Lira', 'Mbarara', 'Wakiso', 'Jinja', 'Mbale', 'Arua', 'Kitgum',
+    'Pader', 'Nwoya', 'Omoro', 'Lamwo', 'Agago', 'Oyam', 'Apac', 'Dokolo', 'Nebbi', 'Adjumani',
+  ].map((d) => d.toLowerCase())
+);
+
+function inferCountryFromRow(input: FarmerInput): string {
+  const explicit = input.country?.trim();
+  if (explicit) return explicit;
+  const district = input.district?.trim().toLowerCase();
+  if (district && UGANDA_DISTRICT_HINTS.has(district)) return 'Uganda';
+  return 'Kenya';
+}
+
 /** Fill missing import fields for cooperative bulk uploads (e.g. GWED-G) */
 export function preprocessImportRow(input: FarmerInput, rowNumber: number): FarmerInput {
   const serial = input.key?.trim();
@@ -89,6 +105,7 @@ export function preprocessImportRow(input: FarmerInput, rowNumber: number): Farm
   const idNumber = input.idNumber?.trim() || `PENDING-${key}`;
   const gender = input.gender?.trim() ? input.gender : 'Other';
   const membershipType = normalizeMembershipType(input.membershipType) ?? input.membershipType;
+  const country = inferCountryFromRow(input);
 
   return {
     ...input,
@@ -96,7 +113,7 @@ export function preprocessImportRow(input: FarmerInput, rowNumber: number): Farm
     idNumber,
     gender,
     membershipType,
-    country: input.country?.trim() || 'Uganda',
+    country,
   };
 }
 
@@ -274,7 +291,7 @@ export function validateFarmerRow(
     normalized.membershipGroup = membershipGroup;
   }
 
-  const country = prepared.country?.trim() || 'Kenya';
+  const country = prepared.country?.trim() || inferCountryFromRow(prepared) || 'Kenya';
   const countryConfig = getCountryConfig(country);
   if (!countryConfig) {
     errors.push({ field: 'country', value: country, error: `Country "${country}" is not supported` });
@@ -402,10 +419,17 @@ export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
     name: get('Name'),
     gender: get('Gender', 'Sex', 'SEX'),
     idNumber: get('ID Number', 'ID', 'National ID'),
-    membershipGroup: get('Membership Group', 'Memebrship Group', 'NAMES OF GRPOPS', 'NAMES OF GROUPS', 'Group Name'),
+    membershipGroup: get(
+      'Membership Group',
+      'Memebrship Group',
+      'NAMES OF GRPOPS',
+      'NAMES OF GRPSOPS',
+      'NAMES OF GROUPS',
+      'Group Name'
+    ),
     aggregationCenter: get('Aggregation center', 'Aggregation Centre'),
     phone: get('Phone', 'Phone Number', 'Mobile'),
-    country: get('Country') || 'Kenya',
+    country: get('Country'),
     district: get('District'),
     subCounty: get('Sub-County', 'Sub County', 'Sub Coun', 'Subcounty'),
     parish: get('Parish'),
@@ -444,6 +468,7 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
       'cooperative',
       'coop',
       'membership_group',
+      'names of grpops',
       'names of grpsops',
       'names of groups',
       'group name',

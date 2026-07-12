@@ -48,4 +48,5 @@ export interface ImportValidationResult {
   countryBreakdown?: Record<string, number>;
   errorsByCountry?: Record<string, number>;
   detectedCountry?: string | null;
+  importHints?: string[];
 }

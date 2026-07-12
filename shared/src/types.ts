@@ -55,6 +55,7 @@ export interface ImportValidationResponse {
   countryBreakdown?: Record<string, number>;
   errorsByCountry?: Record<string, number>;
   detectedCountry?: string | null;
+  importHints?: string[];
 }
 
 export interface ImportProgressResponse {

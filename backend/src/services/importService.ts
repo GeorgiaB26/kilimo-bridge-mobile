@@ -6,8 +6,16 @@ import {
   csvRowToFarmerInput,
   headersMatchExpected,
   suggestColumnMapping,
+  preprocessImportRow,
   type FarmerInput,
 } from '../../../shared/src/validation';
+
+function inferCountryFromDistrict(district?: string, country?: string): string {
+  return preprocessImportRow(
+    { key: '', name: '', gender: '', idNumber: '', membershipGroup: '', phone: '', district, country },
+    0
+  ).country ?? 'Kenya';
+}
 import { getMembershipGroupNames, getExistingIdentifiers, importFarmerFromCsv } from './farmerService';
 import type { ImportValidationResponse } from '../../../shared/src/types';
 
@@ -35,14 +43,35 @@ function applyColumnMapping(row: Record<string, string>, mapping: Record<string,
   return mapped;
 }
 
+function detectDelimiter(content: string): string {
+  const firstLine = content.split(/\r?\n/).find((l) => l.trim()) ?? '';
+  const commas = (firstLine.match(/,/g) ?? []).length;
+  const semicolons = (firstLine.match(/;/g) ?? []).length;
+  const tabs = (firstLine.match(/\t/g) ?? []).length;
+  if (tabs >= commas && tabs >= semicolons && tabs > 0) return '\t';
+  if (semicolons > commas) return ';';
+  return ',';
+}
+
 function findHeaderRowIndex(rows: string[][]): number {
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].map((c) => c.trim().toLowerCase());
-    const hasName = cells.some((c) => c === 'name');
-    const hasPhoneOrLocation = cells.some((c) =>
-      ['phone', 'district', 's/n', 'sn', 'membership group', 'memebrship group', 'names of grpsops'].includes(c)
+    const hasName = cells.some((c) => c === 'name' || c === 'farmer name' || c === 'full name');
+    const hasDataHeader = cells.some((c) =>
+      [
+        'phone',
+        'district',
+        's/n',
+        'sn',
+        'sex',
+        'membership group',
+        'memebrship group',
+        'names of grpops',
+        'names of grpsops',
+        'names of groups',
+      ].includes(c)
     );
-    if (hasName && hasPhoneOrLocation) return i;
+    if (hasName && hasDataHeader) return i;
   }
   return 0;
 }
@@ -54,8 +83,10 @@ function isDataRow(row: Record<string, string>): boolean {
 }
 
 export function parseCsvContent(content: string): { headers: string[]; rows: Record<string, string>[] } {
+  const delimiter = detectDelimiter(content);
   const raw = Papa.parse<string[]>(content, {
     skipEmptyLines: true,
+    delimiter,
   });
 
   const matrix = (raw.data as string[][]).filter((row) => row.some((cell) => cell?.trim()));
@@ -100,8 +131,8 @@ export function validateCsvImport(
 
   rows.forEach((rawRow, index) => {
     const rowNumber = index + 2;
-    const mappedRow = mapping ? applyColumnMapping(rawRow, mapping) : rawRow;
-    const farmerInput = csvRowToFarmerInput(mappedRow);
+    // Always parse from raw row — cooperative CSVs use headers like NAMES OF GRPOPS / S/N
+    const farmerInput = csvRowToFarmerInput(rawRow);
 
     const result = validateFarmerRow(farmerInput, {
       existingPhones: existing.phones,
@@ -152,8 +183,8 @@ export function validateCsvImport(
   const errorsByCountry: Record<string, number> = {};
 
   validationResults.forEach((r, i) => {
-    const mappedRow = mapping ? applyColumnMapping(rows[i], mapping) : rows[i];
-    const country = (r.normalized.country ?? mappedRow['Country'] ?? 'Kenya').trim();
+    const input = csvRowToFarmerInput(rows[i]);
+    const country = (r.normalized.country ?? input.country ?? inferCountryFromDistrict(input.district)).trim();
     if (r.valid) {
       countryBreakdown[country] = (countryBreakdown[country] ?? 0) + 1;
     } else if (!r.duplicate) {
@@ -165,17 +196,32 @@ export function validateCsvImport(
     Object.entries(countryBreakdown).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   const fixedPreview = validationResults.slice(0, 10).map((r, i) => {
-    const mappedRow = mapping ? applyColumnMapping(rows[i], mapping) : rows[i];
-    const input = csvRowToFarmerInput(mappedRow);
+    const input = csvRowToFarmerInput(rows[i]);
     return {
       name: r.normalized.name ?? input.name,
       phone: r.normalized.phone ?? input.phone,
       district: r.normalized.district ?? input.district,
       membershipGroup: r.normalized.membershipGroup ?? input.membershipGroup,
-      country: r.normalized.country ?? input.country,
+      country: r.normalized.country ?? inferCountryFromDistrict(input.district, input.country),
       status: (r.duplicate ? 'duplicate' : r.valid ? 'valid' : 'invalid') as 'valid' | 'invalid' | 'duplicate',
     };
   });
+
+  const phoneMissingCount = validationResults.filter((r) =>
+    r.errors.some((e) => e.field === 'phone' && !rows[r.rowNumber - 2]?.['Phone']?.trim())
+  ).length;
+
+  const importHints: string[] = [];
+  if (phoneMissingCount > 0) {
+    importHints.push(
+      `${phoneMissingCount} rows have no Phone number — add a Phone column so farmers can log in after import.`
+    );
+  }
+  if (!headers.some((h) => /phone|mobile/i.test(h))) {
+    importHints.push(
+      'Your CSV has no Phone column. Cooperative list formats (S/N, Name, SEX, District) need a Phone column added before import.'
+    );
+  }
 
   db.prepare(`
     INSERT INTO import_sessions (id, status, total_rows, valid_rows, invalid_rows, duplicates, data, errors)
@@ -205,6 +251,7 @@ export function validateCsvImport(
     countryBreakdown,
     errorsByCountry,
     detectedCountry,
+    importHints,
   };
 }
 

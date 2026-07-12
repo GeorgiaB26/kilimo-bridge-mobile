@@ -90,6 +90,19 @@ export function CsvValidationScreen({ navigation, route }: Props) {
       <Text style={styles.importCount}>
         Will import: <Text style={styles.importNumber}>{result.willImport.toLocaleString()}</Text> farmers
       </Text>
+      {result.importHints?.map((hint) => (
+        <View key={hint} style={styles.hintCard}>
+          <Text style={styles.hintText}>{hint}</Text>
+        </View>
+      ))}
+      {result.willImport > 0 ? (
+        <View style={styles.successCard}>
+          <Text style={styles.successTitle}>On import, each valid row creates:</Text>
+          <Text style={styles.successText}>• Farmer profile</Text>
+          <Text style={styles.successText}>• Login account (OTP sign-in)</Text>
+          <Text style={styles.successText}>• Project enrollments (if Project 1/2/3 filled)</Text>
+        </View>
+      ) : null}
       {result.countryBreakdown && Object.keys(result.countryBreakdown).length > 0 ? (
         <View style={styles.countryCard}>
           <Text style={styles.sectionTitle}>
@@ -178,6 +191,25 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
   importCount: { fontSize: 16, color: COLORS.text, marginBottom: 16, textAlign: 'center' },
   importNumber: { fontWeight: '700', color: COLORS.accent, fontSize: 20 },
+  hintCard: {
+    backgroundColor: '#FFEBEE',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.alert,
+  },
+  hintText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
+  successCard: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.success,
+  },
+  successTitle: { fontWeight: '600', color: COLORS.text, marginBottom: 6 },
+  successText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
   countryCard: {
     backgroundColor: COLORS.cardBg,
     borderRadius: 8,
