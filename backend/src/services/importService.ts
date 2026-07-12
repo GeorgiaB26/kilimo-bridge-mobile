@@ -7,6 +7,7 @@ import {
   headersMatchExpected,
   suggestColumnMapping,
   preprocessImportRow,
+  normalizePhone,
   type FarmerInput,
 } from '../../../shared/src/validation';
 
@@ -133,6 +134,7 @@ export function validateCsvImport(
     const rowNumber = index + 2;
     // Always parse from raw row — cooperative CSVs use headers like NAMES OF GRPOPS / S/N
     const farmerInput = csvRowToFarmerInput(rawRow);
+    const prepared = preprocessImportRow(farmerInput, rowNumber);
 
     const result = validateFarmerRow(farmerInput, {
       existingPhones: existing.phones,
@@ -143,11 +145,11 @@ export function validateCsvImport(
       importMode: true,
     });
 
-    let duplicate = false;
-    const phone = result.normalized.phone;
-    const idNum = result.normalized.idNumber;
-    const key = result.normalized.key;
+    const phone = normalizePhone(prepared.phone ?? '', prepared.country ?? 'Kenya') ?? undefined;
+    const idNum = prepared.idNumber?.trim();
+    const key = prepared.key?.trim();
 
+    let duplicate = false;
     if (phone && (seenPhones.has(phone) || existing.phones.has(phone))) {
       duplicate = true;
       if (!result.errors.some((e) => e.field === 'phone')) {
@@ -228,6 +230,15 @@ export function validateCsvImport(
   if (locationMissingCount > 0) {
     importHints.push(
       `${locationMissingCount} rows have no District/Sub-County — they can still import; farmers will confirm location when they first log in.`
+    );
+  }
+  const alreadyImportedCount = validationResults.filter((r) =>
+    r.duplicate ||
+    r.errors.some((e) => e.error.includes('already exists in system'))
+  ).length;
+  if (alreadyImportedCount > 0) {
+    importHints.push(
+      `${alreadyImportedCount} rows are already in the system (from a previous import or duplicate in this file) — they will be skipped.`
     );
   }
 
