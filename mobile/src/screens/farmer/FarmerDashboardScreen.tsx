@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { KilimoLogo } from '../../components/KilimoLogo';
 import { COLORS } from '../../constants';
 import { getFarmerDashboard, claimPayment, getFarmerPayments } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -91,6 +92,10 @@ export function FarmerDashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />}
       >
         <View style={styles.hero}>
+          <View style={styles.logoBox}>
+            <KilimoLogo width={180} height={50} />
+          </View>
+          <Text style={styles.platformName}>Kilimo Bridge Platform</Text>
           <Text style={styles.greeting}>{greeting.primary}</Text>
           <Text style={styles.greetingSub}>{greeting.secondary}</Text>
           <Text style={styles.heroSub}>Here&apos;s your earnings overview</Text>
@@ -197,14 +202,29 @@ const styles = StyleSheet.create({
   hero: {
     backgroundColor: COLORS.primary,
     padding: 24,
-    paddingTop: 16,
+    paddingTop: 20,
     paddingBottom: 32,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+    alignItems: 'center',
   },
-  greeting: { fontSize: 26, fontWeight: '700', color: '#FFFFFF' },
-  greetingSub: { fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: 4 },
-  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 6 },
+  logoBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  platformName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+    marginBottom: 14,
+    letterSpacing: 0.2,
+  },
+  greeting: { fontSize: 26, fontWeight: '700', color: '#FFFFFF', textAlign: 'center' },
+  greetingSub: { fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: 4, textAlign: 'center' },
+  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 6, textAlign: 'center' },
   pendingCard: {
     marginHorizontal: 16,
     marginTop: -24,
