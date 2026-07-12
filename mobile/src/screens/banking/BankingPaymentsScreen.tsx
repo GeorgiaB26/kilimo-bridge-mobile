@@ -4,7 +4,10 @@ import { Button } from '../../components/Button';
 import { COLORS } from '../../constants';
 import { api } from '../../api/client';
 
+import { useCurrency } from '../../context/CurrencyContext';
+
 export function BankingPaymentsScreen() {
+  const { formatAmount, formatPayment } = useCurrency();
   const [payments, setPayments] = useState<Array<{ id: string; farmer_name: string; amount: number; payment_status: string }>>([]);
   const [processing, setProcessing] = useState<string | null>(null);
 
@@ -36,9 +39,9 @@ export function BankingPaymentsScreen() {
       renderItem={({ item }) => (
         <View style={styles.card}>
           <Text style={styles.name}>{item.farmer_name}</Text>
-          <Text style={styles.amount}>{item.amount?.toLocaleString()} KES</Text>
+          <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
           <Button
-            title="Process via Equity H2H"
+            title={`Process ${formatPayment(item.amount)}`}
             onPress={() => processPayment(item.id)}
             loading={processing === item.id}
             style={styles.btn}

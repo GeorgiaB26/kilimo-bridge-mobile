@@ -15,6 +15,7 @@ const initialFormData: RegistrationFormData = {
   phone: '',
   idNumber: '',
   country: '',
+  currency: '',
   district: '',
   subCounty: '',
   parish: '',

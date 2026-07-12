@@ -4,6 +4,7 @@ export interface RegistrationFormData {
   phone: string;
   idNumber: string;
   country: string;
+  currency?: string;
   district: string;
   subCounty: string;
   parish?: string;

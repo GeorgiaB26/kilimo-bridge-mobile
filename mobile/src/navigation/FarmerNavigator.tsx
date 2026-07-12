@@ -8,11 +8,15 @@ import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import type { FarmerTabParamList } from './types';
 
+import { FarmerCurrencySync } from '../components/FarmerCurrencySync';
+
 const Tab = createBottomTabNavigator<FarmerTabParamList>();
 
 export function FarmerNavigator() {
   return (
-    <Tab.Navigator
+    <>
+      <FarmerCurrencySync />
+      <Tab.Navigator
       screenOptions={({ route }) => ({
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
@@ -42,5 +46,6 @@ export function FarmerNavigator() {
       <Tab.Screen name="Payments" component={FarmerPaymentsScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Profile" component={FarmerProfileScreen} options={{ headerShown: false }} />
     </Tab.Navigator>
+    </>
   );
 }

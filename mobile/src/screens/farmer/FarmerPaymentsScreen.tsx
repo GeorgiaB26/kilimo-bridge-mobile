@@ -7,7 +7,10 @@ import { getFarmerPayments } from '../../api/client';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 
+import { useCurrency } from '../../context/CurrencyContext';
+
 export function FarmerPaymentsScreen() {
+  const { formatAmount } = useCurrency();
   const [payments, setPayments] = useState<Array<{
     project_name: string;
     amount: number;
@@ -36,7 +39,7 @@ export function FarmerPaymentsScreen() {
       ListHeaderComponent={
         <Surface style={styles.summary} elevation={2}>
           <Text style={styles.summaryLabel}>Total Earned</Text>
-          <Text style={styles.summaryAmount}>{total.toLocaleString()} KES</Text>
+          <Text style={styles.summaryAmount}>{formatAmount(total)}</Text>
           <Text style={styles.summarySub}>Lifetime earnings via M-Pesa</Text>
         </Surface>
       }
@@ -55,7 +58,7 @@ export function FarmerPaymentsScreen() {
               <Text style={styles.name}>{item.project_name}</Text>
               <Text style={styles.date}>{item.created_at?.slice(0, 10)}</Text>
             </View>
-            <Text style={styles.amount}>{item.amount?.toLocaleString()}</Text>
+            <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
           </View>
           <View style={styles.badgeRow}>
             <KBStatusChip

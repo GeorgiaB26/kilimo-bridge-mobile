@@ -3,7 +3,10 @@ import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { COLORS } from '../../constants';
 import { api } from '../../api/client';
 
+import { useCurrency } from '../../context/CurrencyContext';
+
 export function BankingDashboardScreen() {
+  const { formatAmount } = useCurrency();
   const [payments, setPayments] = useState<Array<{
     id: string; farmer_name: string; amount: number;
     payment_status: string; phone_number: string; project_name: string;
@@ -34,7 +37,7 @@ export function BankingDashboardScreen() {
       renderItem={({ item }) => (
         <View style={styles.card}>
           <Text style={styles.name}>{item.farmer_name}</Text>
-          <Text style={styles.amount}>{item.amount?.toLocaleString()} KES</Text>
+          <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
           <Text style={styles.detail}>{item.project_name} · {item.phone_number}</Text>
           <Text style={[styles.badge, item.payment_status === 'Transferred' ? styles.done : styles.pending]}>
             {item.payment_status}

@@ -9,10 +9,12 @@ import { getLocalizedGreeting } from '../../utils/greeting';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { useCurrency } from '../../context/CurrencyContext';
 import { showMessage } from '../../utils/feedback';
 
 export function FarmerDashboardScreen() {
   const user = useAuthStore((s) => s.user);
+  const { formatAmount, formatPayment } = useCurrency();
   const [data, setData] = useState<{
     farmer?: { name: string; country?: string };
     pendingAmount: number;
@@ -50,7 +52,7 @@ export function FarmerDashboardScreen() {
         return;
       }
       const result = await claimPayment(pending.id);
-      showMessage('Payment sent!', `${result.amount?.toLocaleString()} KES transferred.\nRef: ${result.reference}`);
+      showMessage('Payment sent!', `${formatAmount(result.amount)} transferred.\nRef: ${result.reference}`);
       load();
     } catch {
       showMessage('Error', 'Could not claim payment. Is the backend running?');
@@ -78,7 +80,7 @@ export function FarmerDashboardScreen() {
         <View style={styles.pendingCard}>
           <KBStatusChip label="Ready to Claim" variant="success" />
           <Text style={styles.pendingLabel}>Pending payment</Text>
-          <Text style={styles.pendingAmount}>{pending.toLocaleString()} KES</Text>
+          <Text style={styles.pendingAmount}>{formatAmount(pending)}</Text>
           <Button
             mode="contained"
             onPress={handleClaim}
@@ -89,7 +91,7 @@ export function FarmerDashboardScreen() {
             contentStyle={{ minHeight: 48 }}
             icon="cash-fast"
           >
-            Claim Now
+            {pending > 0 ? formatPayment(pending) : 'Claim Now'}
           </Button>
         </View>
 
@@ -105,7 +107,7 @@ export function FarmerDashboardScreen() {
               <View key={i} style={styles.projectCard}>
                 <Ionicons name="leaf" size={28} color={COLORS.primary} />
                 <Text style={styles.projectName}>{p.project_name}</Text>
-                <Text style={styles.projectAmount}>{p.payment_amount?.toLocaleString()} KES</Text>
+                <Text style={styles.projectAmount}>{formatAmount(p.payment_amount)}</Text>
                 <KBProgressBar progress={p.completion_percentage} />
               </View>
             ))}
@@ -127,7 +129,7 @@ export function FarmerDashboardScreen() {
 
         <View style={styles.earningsFooter}>
           <Text style={styles.earningsLabel}>Total earned</Text>
-          <Text style={styles.earningsValue}>{(data?.totalEarnings ?? 0).toLocaleString()} KES</Text>
+          <Text style={styles.earningsValue}>{formatAmount(data?.totalEarnings ?? 0)}</Text>
         </View>
       </ScrollView>
 

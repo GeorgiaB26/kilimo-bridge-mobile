@@ -7,6 +7,7 @@ import { COLORS, GENDER_OPTIONS } from '../../constants';
 import { registerFarmer } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCountryConfig, generateFarmerId } from '../../constants/regional';
+import { getCurrencyForCountry } from '../../utils/currencyMap';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Confirm'>;
@@ -32,6 +33,7 @@ export function ConfirmScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
 
   const countryConfig = getCountryConfig(formData.country);
+  const currencyInfo = getCurrencyForCountry(formData.country);
   const labels = countryConfig?.levelLabels ?? ['Region', 'Sub-Region', 'Area', 'Village'];
   const genderLabel = GENDER_OPTIONS.find((g) => g.value === formData.gender)?.label ?? formData.gender;
 
@@ -69,6 +71,7 @@ export function ConfirmScreen({ navigation }: Props) {
       </View>
       <View style={styles.card}>
         <SummaryRow label="Country" value={formData.country} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
+        <SummaryRow label="Currency" value={`${currencyInfo.code} — ${currencyInfo.name}`} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
         <SummaryRow label="Name" value={formData.name} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
         <SummaryRow label="Gender" value={genderLabel} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
         <SummaryRow label="Phone" value={formData.phone} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />

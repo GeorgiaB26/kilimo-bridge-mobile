@@ -8,10 +8,12 @@ import { getFarmerDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { getLocalizedGreeting } from '../../utils/greeting';
+import { useCurrency } from '../../context/CurrencyContext';
 
 export function FarmerProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const { currency, currencyInfo, selectCountry } = useCurrency();
   const [farmer, setFarmer] = useState<{
     name: string;
     phone_number: string;
@@ -27,8 +29,11 @@ export function FarmerProfileScreen() {
   const [notifications, setNotifications] = useState(true);
 
   useEffect(() => {
-    getFarmerDashboard().then((d) => setFarmer(d.farmer)).catch(() => {});
-  }, []);
+    getFarmerDashboard().then((d) => {
+      setFarmer(d.farmer);
+      if (d.farmer?.country) selectCountry(d.farmer.country);
+    }).catch(() => {});
+  }, [selectCountry]);
 
   const displayName = farmer?.name ?? user?.name ?? 'Farmer';
   const country = farmer?.country ?? 'Kenya';
@@ -55,6 +60,7 @@ export function FarmerProfileScreen() {
           <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
           <Text style={styles.chipText}>Verified Farmer</Text>
         </View>
+        <Text style={styles.currencyBadge}>{currencyInfo.name} ({currency})</Text>
       </View>
 
       {farmer?.kb_farmer_id ? (
@@ -181,6 +187,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   chipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
+  currencyBadge: {
+    fontSize: 12,
+    color: COLORS.accent,
+    marginTop: 10,
+    fontWeight: '600',
+  },
   idCard: {
     borderRadius: 12,
     backgroundColor: COLORS.background,

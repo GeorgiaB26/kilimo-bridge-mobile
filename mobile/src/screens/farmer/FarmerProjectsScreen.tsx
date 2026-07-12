@@ -6,11 +6,13 @@ import { getFarmerProjects } from '../../api/client';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { useCurrency } from '../../context/CurrencyContext';
 import { formatDueDate, formatProjectStatus } from '../../utils/greeting';
 
 type Tab = 'active' | 'completed';
 
 export function FarmerProjectsScreen() {
+  const { formatAmount } = useCurrency();
   const [tab, setTab] = useState<Tab>('active');
   const [projects, setProjects] = useState<Array<{
     project_name: string;
@@ -61,7 +63,7 @@ export function FarmerProjectsScreen() {
                 <KBStatusChip label={statusInfo.label} variant={statusInfo.variant} />
               </View>
               <Text style={styles.paymentLabel}>Payment amount</Text>
-              <Text style={styles.amount}>{item.payment_amount?.toLocaleString()} KES</Text>
+              <Text style={styles.amount}>{formatAmount(item.payment_amount)}</Text>
               {!isComplete ? (
                 <KBProgressBar
                   progress={item.completion_percentage}
