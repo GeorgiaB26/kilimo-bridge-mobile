@@ -222,6 +222,14 @@ export function validateCsvImport(
       'Your CSV has no Phone column. Cooperative list formats (S/N, Name, SEX, District) need a Phone column added before import.'
     );
   }
+  const locationMissingCount = validationResults.filter((r) =>
+    r.errors.some((e) => e.field === 'district' || e.field === 'subCounty')
+  ).length;
+  if (locationMissingCount > 0) {
+    importHints.push(
+      `${locationMissingCount} rows are missing District and/or Sub-County — fill these in (e.g. Amuru, Amuru) or merge with your location sheet.`
+    );
+  }
 
   db.prepare(`
     INSERT INTO import_sessions (id, status, total_rows, valid_rows, invalid_rows, duplicates, data, errors)

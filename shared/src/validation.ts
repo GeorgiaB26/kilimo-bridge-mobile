@@ -422,6 +422,7 @@ export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
     membershipGroup: get(
       'Membership Group',
       'Memebrship Group',
+      'Memebership Group',
       'NAMES OF GRPOPS',
       'NAMES OF GRPSOPS',
       'NAMES OF GROUPS',
@@ -434,7 +435,7 @@ export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
     subCounty: get('Sub-County', 'Sub County', 'Sub Coun', 'Subcounty'),
     parish: get('Parish'),
     village: get('Village', 'Venue'),
-    membershipType: get('Membership Type'),
+    membershipType: get('Membership Type', 'Membership'),
     occupation: get('Occupation'),
     sizeOfLand: get('Size of land', 'Land Size'),
     project1: get('Project 1'),
@@ -465,6 +466,7 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
     'Membership Group': [
       'membership group',
       'memebrship group',
+      'memebership group',
       'cooperative',
       'coop',
       'membership_group',
@@ -481,7 +483,7 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
     'Sub-County': ['sub-county', 'sub county', 'sub_county', 'subcounty', 'sub coun'],
     Parish: ['parish'],
     Village: ['village', 'venue'],
-    'Membership Type': ['membership type', 'membership_type', 'status'],
+    'Membership Type': ['membership type', 'membership_type', 'membership', 'status'],
     Occupation: ['occupation', 'job'],
     'Size of land': ['size of land', 'land size', 'size_of_land', 'acres'],
     'Project 1': ['project 1', 'project_1', 'project1'],
