@@ -57,7 +57,7 @@ export function FarmerProjectDetailScreen({ route }: Props) {
             stacked
           />
           {project.start_date ? (
-            <Text style={styles.meta}>Started: {formatDueDate(project.start_date)}</Text>
+            <Text style={styles.metaLine}>Started: {formatDueDate(project.start_date)}</Text>
           ) : null}
         </View>
       ) : (
@@ -108,7 +108,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   description: { fontSize: 15, color: COLORS.text, lineHeight: 22 },
-  amount: { fontSize: 32, fontWeight: '800', color: COLORS.accent },
-  meta: { fontSize: 14, color: COLORS.muted, marginTop: 8 },
-  completeText: { fontSize: 15, color: COLORS.success, fontWeight: '600' },
+  amount: { fontSize: 32, fontWeight: '800', color: COLORS.accent, lineHeight: 40 },
+  meta: { fontSize: 14, lineHeight: 22, color: COLORS.muted, marginTop: 10 },
+  metaLine: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: COLORS.muted,
+    marginTop: 16,
+    paddingTop: 4,
+  },
+  completeText: { fontSize: 15, lineHeight: 22, color: COLORS.success, fontWeight: '600' },
 });

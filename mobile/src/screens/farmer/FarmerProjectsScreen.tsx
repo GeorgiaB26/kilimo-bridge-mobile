@@ -76,13 +76,12 @@ export function FarmerProjectsScreen() {
                   <KBProgressBar
                     progress={item.completion_percentage}
                     label={`${item.completion_percentage}% done`}
-                    rightLabel={`Due ${formatDueDate(item.due_date)}`}
+                    rightLabel={item.due_date ? `Due ${formatDueDate(item.due_date)}` : undefined}
                     stacked
                   />
                 ) : (
                   <Text style={styles.completedNote}>Payment transferred to your M-Pesa</Text>
                 )}
-                <Text style={styles.tapHint}>Tap for details</Text>
               </KBCard>
             </Pressable>
           );
@@ -115,9 +114,8 @@ const styles = StyleSheet.create({
   chevron: { marginLeft: 4 },
   name: { fontSize: 18, fontWeight: '700', color: COLORS.text, flex: 1 },
   paymentLabel: { fontSize: 12, fontWeight: '600', color: COLORS.muted, marginTop: 12, textTransform: 'uppercase', letterSpacing: 0.3 },
-  amount: { fontSize: 24, fontWeight: '800', color: COLORS.accent, marginTop: 2, marginBottom: 4 },
-  completedNote: { fontSize: 14, color: COLORS.success, marginTop: 10, fontWeight: '500' },
-  tapHint: { fontSize: 12, color: COLORS.info, marginTop: 14, fontWeight: '500' },
+  amount: { fontSize: 24, fontWeight: '800', color: COLORS.accent, marginTop: 2, marginBottom: 8 },
+  completedNote: { fontSize: 14, lineHeight: 22, color: COLORS.success, marginTop: 12, fontWeight: '500' },
   emptyWrap: { padding: 24, alignItems: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginBottom: 8 },
   empty: { textAlign: 'center', color: COLORS.muted, fontSize: 14, lineHeight: 20 },

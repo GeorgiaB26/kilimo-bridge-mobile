@@ -16,16 +16,22 @@ export function KBProgressBar({ progress, label, rightLabel, stacked = false }: 
   const left = label ?? `${pct}% done`;
   return (
     <View style={styles.wrap}>
-      <ProgressBar progress={pct / 100} color={COLORS.success} style={styles.bar} />
+      <View style={styles.barTrack}>
+        <ProgressBar progress={pct / 100} color={COLORS.success} style={styles.bar} />
+      </View>
       {stacked ? (
         <View style={styles.stackedLabels}>
-          <Text style={styles.text}>{left}</Text>
-          {rightLabel ? <Text style={styles.subText}>{rightLabel}</Text> : null}
+          <Text style={styles.primaryLine}>{left}</Text>
+          {rightLabel ? <Text style={styles.secondaryLine}>{rightLabel}</Text> : null}
         </View>
       ) : (
         <View style={styles.labelRow}>
-          <Text style={styles.text}>{left}</Text>
-          {rightLabel ? <Text style={styles.rightText} numberOfLines={1}>{rightLabel}</Text> : null}
+          <Text style={styles.primaryLine}>{left}</Text>
+          {rightLabel ? (
+            <Text style={[styles.secondaryLine, styles.inlineRight]} numberOfLines={1}>
+              {rightLabel}
+            </Text>
+          ) : null}
         </View>
       )}
     </View>
@@ -33,19 +39,51 @@ export function KBProgressBar({ progress, label, rightLabel, stacked = false }: 
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 10, marginBottom: 4 },
-  bar: { height: 8, borderRadius: 4, backgroundColor: COLORS.border },
+  wrap: {
+    marginTop: 12,
+    marginBottom: 4,
+    width: '100%',
+  },
+  barTrack: {
+    height: 8,
+    width: '100%',
+    overflow: 'hidden',
+    borderRadius: 4,
+    backgroundColor: COLORS.border,
+  },
+  bar: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'transparent',
+  },
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
+    alignItems: 'flex-start',
+    marginTop: 12,
     gap: 12,
-    minHeight: 20,
-    paddingBottom: 4,
+    width: '100%',
   },
-  stackedLabels: { marginTop: 10, gap: 6, paddingBottom: 6 },
-  text: { fontSize: 14, color: COLORS.text, fontWeight: '600' },
-  subText: { fontSize: 13, color: COLORS.muted, fontWeight: '500' },
-  rightText: { fontSize: 13, color: COLORS.muted, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
+  stackedLabels: {
+    marginTop: 12,
+    width: '100%',
+  },
+  primaryLine: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: COLORS.text,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  secondaryLine: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: COLORS.muted,
+    fontWeight: '500',
+  },
+  inlineRight: {
+    flexShrink: 1,
+    textAlign: 'right',
+    marginBottom: 0,
+  },
 });
