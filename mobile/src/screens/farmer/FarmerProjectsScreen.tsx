@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable } from 'react-native';
+import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -54,36 +54,37 @@ export function FarmerProjectsScreen() {
         density="medium"
       />
       <FlatList
+        style={styles.list}
         data={filtered}
         keyExtractor={(item, i) => item.id ?? `${item.project_name}-${i}`}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={styles.listContent}
         renderItem={({ item }) => {
-          const statusInfo = formatProjectStatus(item.status);
+          const statusInfo = formatProjectStatus(item.status ?? '');
           const isComplete = item.status === 'Completed';
+          const progress = Number(item.completion_percentage) || 0;
+          const amount = Number(item.payment_amount) || 0;
           return (
-            <Pressable onPress={() => openDetail(item)} accessibilityRole="button">
-              <KBCard>
-                <View style={styles.row}>
-                  <Text style={styles.name}>{item.project_name}</Text>
-                  <View style={styles.rowEnd}>
-                    <KBStatusChip label={statusInfo.label} variant={statusInfo.variant} />
-                    <Ionicons name="chevron-forward" size={20} color={COLORS.muted} style={styles.chevron} />
-                  </View>
+            <KBCard onPress={() => openDetail(item)}>
+              <View style={styles.row}>
+                <Text style={styles.name}>{item.project_name}</Text>
+                <View style={styles.rowEnd}>
+                  <KBStatusChip label={statusInfo.label} variant={statusInfo.variant} />
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.muted} style={styles.chevron} />
                 </View>
-                <Text style={styles.paymentLabel}>Payment amount</Text>
-                <Text style={styles.amount}>{formatAmount(item.payment_amount)}</Text>
-                {!isComplete ? (
-                  <KBProgressBar
-                    progress={item.completion_percentage}
-                    label={`${item.completion_percentage}% done`}
-                    rightLabel={item.due_date ? `Due ${formatDueDate(item.due_date)}` : undefined}
-                    stacked
-                  />
-                ) : (
-                  <Text style={styles.completedNote}>Payment transferred to your M-Pesa</Text>
-                )}
-              </KBCard>
-            </Pressable>
+              </View>
+              <Text style={styles.paymentLabel}>Payment amount</Text>
+              <Text style={styles.amount}>{formatAmount(amount)}</Text>
+              {!isComplete ? (
+                <KBProgressBar
+                  progress={progress}
+                  label={`${progress}% done`}
+                  rightLabel={item.due_date ? `Due ${formatDueDate(item.due_date)}` : undefined}
+                  stacked
+                />
+              ) : (
+                <Text style={styles.completedNote}>Payment transferred to your M-Pesa</Text>
+              )}
+            </KBCard>
           );
         }}
         ListEmptyComponent={
@@ -108,7 +109,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '700', color: COLORS.primary },
   subtitle: { fontSize: 14, color: COLORS.muted, marginTop: 4, marginBottom: 16, lineHeight: 20 },
   tabs: { marginBottom: 16 },
-  list: { paddingBottom: 32, gap: 4 },
+  list: { flex: 1 },
+  listContent: { paddingBottom: 32 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   rowEnd: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   chevron: { marginLeft: 4 },

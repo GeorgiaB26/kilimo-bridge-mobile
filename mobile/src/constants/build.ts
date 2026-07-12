@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.5.3-text-layout-fix';
+export const APP_BUILD = 'v2.5.4-projects-error-fix';
