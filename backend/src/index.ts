@@ -22,7 +22,8 @@ seedDatabase();
 app.use(helmet({
   hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
 }));
-app.use(cors());
+const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors(corsOrigins?.length ? { origin: corsOrigins, credentials: true } : undefined));
 app.use(express.json({ limit: '10mb' }));
 app.use(apiRateLimiter);
 
