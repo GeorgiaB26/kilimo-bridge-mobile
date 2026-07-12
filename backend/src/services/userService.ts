@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database';
 import type { UserRole } from '../../../shared/src/roles';
+import { getFarmerCountByCountry } from './farmerService';
+import { getCentreCountByCountry } from './aggregationCentreService';
 
 export function getAllUsers() {
   return db.prepare(`

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Pressable } from 'react-native';
 import { COLORS } from '../../constants';
 import { getFarmers } from '../../api/client';
 import { COUNTRY_LIST } from '../../constants/regional';
@@ -34,12 +34,7 @@ export function AdminFarmersScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>All Farmers ({total.toLocaleString()})</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filters}
-        contentContainerStyle={styles.filterRow}
-      >
+      <View style={styles.filterWrap}>
         {FILTER_OPTIONS.map((opt) => (
           <Pressable
             key={opt}
@@ -48,12 +43,15 @@ export function AdminFarmersScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Filter by ${opt}`}
           >
-            <Text style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}
+            >
               {opt}
             </Text>
           </Pressable>
         ))}
-      </ScrollView>
+      </View>
       <FlatList
         data={farmers}
         keyExtractor={(item, i) => item.kb_farmer_id ?? item.phone_number ?? String(i)}
@@ -83,12 +81,13 @@ export function AdminFarmersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
-  filters: {
-    flexGrow: 0,
+  filterWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
-    ...(Platform.OS === 'web' ? { overflow: 'visible' as const } : {}),
   },
-  filterRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8 },
   filterChip: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -96,11 +95,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-    marginRight: 8,
     backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? { overflow: 'visible' as const } : {}),
   },
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   filterText: { fontSize: 14, lineHeight: 18, color: COLORS.text, fontWeight: '500' },
