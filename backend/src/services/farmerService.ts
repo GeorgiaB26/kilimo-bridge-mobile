@@ -6,6 +6,17 @@ import { buildLocationPath, getCountryConfig } from '../../../shared/src/regiona
 import { encryptField } from './encryptionService';
 import { logAudit } from './auditService';
 import { assignAggregationCentre } from './aggregationCentreService';
+import { linkFarmerToUser } from './userService';
+
+const PROJECT_PAYMENTS: Record<string, number> = {
+  'Coffee Training': 15000,
+  'Soil Health': 8000,
+  'Baseline Survey': 5000,
+  'Water Conservation': 12000,
+  'Pest Management': 7000,
+};
+
+const DEFAULT_PROJECT_PAYMENT = 10000;
 
 export function getMembershipGroupNames(): string[] {
   const rows = db.prepare('SELECT name FROM membership_groups ORDER BY name').all() as { name: string }[];
@@ -28,6 +39,88 @@ export function getExistingIdentifiers() {
     (db.prepare('SELECT key FROM farmers').all() as { key: string }[]).map((r) => r.key)
   );
   return { phones, idNumbers, keys };
+}
+
+export function ensureMembershipGroup(name: string): string {
+  const existing = getMembershipGroupIdByName(name);
+  if (existing) return existing;
+  const id = uuidv4();
+  db.prepare('INSERT INTO membership_groups (id, name) VALUES (?, ?)').run(id, name);
+  return id;
+}
+
+export function getProjectIdByName(name: string): string | null {
+  const row = db.prepare('SELECT id FROM projects WHERE LOWER(name) = LOWER(?)').get(name.trim()) as
+    | { id: string }
+    | undefined;
+  return row?.id ?? null;
+}
+
+export function ensureProject(name: string): string {
+  const existing = getProjectIdByName(name);
+  if (existing) return existing;
+  const id = uuidv4();
+  db.prepare('INSERT INTO projects (id, name) VALUES (?, ?)').run(id, name.trim());
+  return id;
+}
+
+export function enrollFarmerInProjects(
+  farmerId: string,
+  projectNames: Array<string | undefined | null>
+): number {
+  const unique = [...new Set(projectNames.map((p) => p?.trim()).filter(Boolean))] as string[];
+  let enrolled = 0;
+  const startDate = new Date().toISOString().slice(0, 10);
+  const dueDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  for (const projectName of unique) {
+    const projectId = ensureProject(projectName);
+    const existing = db
+      .prepare('SELECT id FROM farmer_projects WHERE farmer_id = ? AND project_id = ?')
+      .get(farmerId, projectId);
+    if (existing) continue;
+
+    const paymentAmount = PROJECT_PAYMENTS[projectName] ?? DEFAULT_PROJECT_PAYMENT;
+    db.prepare(`
+      INSERT INTO farmer_projects (
+        id, farmer_id, project_id, project_name, payment_amount, status,
+        completion_percentage, earnings_amount, payment_status, start_date, due_date
+      ) VALUES (?, ?, ?, ?, ?, 'Assigned', 0, ?, 'Pending', ?, ?)
+    `).run(uuidv4(), farmerId, projectId, projectName, paymentAmount, paymentAmount, startDate, dueDate);
+    enrolled++;
+  }
+
+  return enrolled;
+}
+
+/**
+ * Create farmer profile, login account, and project enrollments from CSV import.
+ */
+export function importFarmerFromCsv(
+  input: FarmerInput & { key: string; phone: string; kbFarmerId?: string; locationPath?: string },
+  registeredBy?: string
+): { farmerId: string; projectsEnrolled: number } {
+  ensureMembershipGroup(input.membershipGroup);
+  const farmerId = createFarmer(input, registeredBy);
+  linkFarmerToUser(farmerId, input.phone, input.name);
+  const projectsEnrolled = enrollFarmerInProjects(farmerId, [input.project1, input.project2, input.project3]);
+
+  logAudit({
+    userId: registeredBy,
+    action: 'farmer.import',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: {
+      key: input.key,
+      phone: input.phone,
+      projectsEnrolled,
+      membershipGroup: input.membershipGroup,
+    },
+    success: true,
+  });
+
+  return { farmerId, projectsEnrolled };
 }
 
 export function createFarmer(

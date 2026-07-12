@@ -189,7 +189,7 @@ router.post('/admin/farmers/import/confirm', authenticate, requirePermission('fa
   }
 
   try {
-    const result = await executeImport(sessionId, skipDuplicates);
+    const result = await executeImport(sessionId, skipDuplicates, req.user?.userId);
     res.json({
       status: 'import_started',
       ...result,

@@ -8,7 +8,7 @@ import {
   suggestColumnMapping,
   type FarmerInput,
 } from '../../../shared/src/validation';
-import { getMembershipGroupNames, getExistingIdentifiers, createFarmer } from './farmerService';
+import { getMembershipGroupNames, getExistingIdentifiers, importFarmerFromCsv } from './farmerService';
 import type { ImportValidationResponse } from '../../../shared/src/types';
 
 interface ParsedRow {
@@ -35,14 +35,49 @@ function applyColumnMapping(row: Record<string, string>, mapping: Record<string,
   return mapped;
 }
 
+function findHeaderRowIndex(rows: string[][]): number {
+  for (let i = 0; i < rows.length; i++) {
+    const cells = rows[i].map((c) => c.trim().toLowerCase());
+    const hasName = cells.some((c) => c === 'name');
+    const hasPhoneOrLocation = cells.some((c) =>
+      ['phone', 'district', 's/n', 'sn', 'membership group', 'memebrship group', 'names of grpsops'].includes(c)
+    );
+    if (hasName && hasPhoneOrLocation) return i;
+  }
+  return 0;
+}
+
+function isDataRow(row: Record<string, string>): boolean {
+  const input = csvRowToFarmerInput(row);
+  const name = input.name?.trim() ?? '';
+  return name.length >= 2 && !/^name$/i.test(name);
+}
+
 export function parseCsvContent(content: string): { headers: string[]; rows: Record<string, string>[] } {
-  const result = Papa.parse<Record<string, string>>(content, {
-    header: true,
+  const raw = Papa.parse<string[]>(content, {
     skipEmptyLines: true,
-    transformHeader: (h) => h.trim(),
   });
-  const headers = result.meta.fields ?? [];
-  return { headers, rows: result.data };
+
+  const matrix = (raw.data as string[][]).filter((row) => row.some((cell) => cell?.trim()));
+  if (matrix.length === 0) {
+    return { headers: [], rows: [] };
+  }
+
+  const headerIdx = findHeaderRowIndex(matrix);
+  const headers = matrix[headerIdx].map((h) => h.trim());
+  const dataRows = matrix.slice(headerIdx + 1);
+
+  const rows = dataRows
+    .map((cells) => {
+      const obj: Record<string, string> = {};
+      headers.forEach((header, i) => {
+        if (header) obj[header] = (cells[i] ?? '').trim();
+      });
+      return obj;
+    })
+    .filter(isDataRow);
+
+  return { headers, rows };
 }
 
 export function validateCsvImport(
@@ -74,6 +109,7 @@ export function validateCsvImport(
       existingKeys: existing.keys,
       membershipGroups,
       rowNumber,
+      importMode: true,
     });
 
     let duplicate = false;
@@ -174,7 +210,8 @@ export function validateCsvImport(
 
 export async function executeImport(
   sessionId: string,
-  skipDuplicates = true
+  skipDuplicates = true,
+  registeredBy?: string
 ): Promise<{ importId: string; totalToImport: number; estimatedTimeSeconds: number }> {
   const session = db.prepare('SELECT * FROM import_sessions WHERE id = ?').get(sessionId) as {
     id: string;
@@ -193,7 +230,7 @@ export async function executeImport(
   const estimatedTimeSeconds = Math.ceil(toImport.length / 50);
 
   // Run import asynchronously
-  setTimeout(() => runImport(importId, sessionId, toImport), 100);
+  setTimeout(() => runImport(importId, sessionId, toImport, registeredBy), 100);
 
   return {
     importId,
@@ -202,7 +239,12 @@ export async function executeImport(
   };
 }
 
-function runImport(importId: string, sessionId: string, rows: ValidationRowResult[]): void {
+function runImport(
+  importId: string,
+  sessionId: string,
+  rows: ValidationRowResult[],
+  registeredBy?: string
+): void {
   let imported = 0;
   const total = rows.length;
   const importErrors: Array<{ row: number; field: string; value: string; error: string }> = [];
@@ -215,7 +257,7 @@ function runImport(importId: string, sessionId: string, rows: ValidationRowResul
       const row = rows[i];
       try {
         const data = row.normalized as FarmerInput & { key: string; phone: string };
-        createFarmer(data);
+        importFarmerFromCsv(data, registeredBy);
       } catch (err) {
         importErrors.push({
           row: row.rowNumber,

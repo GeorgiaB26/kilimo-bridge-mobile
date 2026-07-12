@@ -70,6 +70,10 @@ export const UGANDA_DETAILED: LocationTree = {
     Hoima: ['Mparo', 'Bujumbura', 'Kahoora'],
     Bugahya: ['Bugahya', 'Kigorobya', 'Kyangwali'],
   },
+  Amuru: {
+    Amuru: ['Labongogali', 'Lakwana', 'Pabbo', 'Atiak'],
+    'Amuru North': ['Lakwana North', 'Pabbo North'],
+  },
 };
 
 export const UGANDA_LOCATIONS = buildLocationTree(UGANDA_DISTRICTS, UGANDA_DETAILED);

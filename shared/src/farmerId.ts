@@ -58,7 +58,7 @@ export function normalizePhoneForCountry(phone: string, countryName: string): st
   const code = getCountryCode(countryName);
   if (!code) return null;
 
-  const cleaned = phone.replace(/\s/g, '');
+  const cleaned = phone.replace(/[\s().-]/g, '');
   const prefix = INTL_PREFIX[code];
   const localLen = LOCAL_LEN[code];
 

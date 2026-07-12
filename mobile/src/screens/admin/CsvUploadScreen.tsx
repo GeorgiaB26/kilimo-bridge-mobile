@@ -49,11 +49,14 @@ export function CsvUploadScreen({ navigation }: Props) {
     <View style={styles.container}>
       <ScreenHeader
         title="Import Farmers"
-        subtitle="Upload a CSV file to bulk-import farmers"
+        subtitle="Upload a CSV — profiles, login accounts, and projects are created automatically"
       />
       <View style={styles.infoCard}>
         <Text style={styles.infoTitle}>Expected CSV columns:</Text>
         <Text style={styles.columns}>{CSV_COLUMNS.join(' | ')}</Text>
+        <Text style={styles.hint}>
+          Cooperative files (e.g. GWED-G) with preamble rows, Memebrship Group typo, or S/N columns are supported. Phone is required so each farmer can sign in.
+        </Text>
       </View>
       <View style={styles.uploadArea}>
         {fileName ? (
@@ -92,6 +95,7 @@ const styles = StyleSheet.create({
   },
   infoTitle: { fontSize: 13, fontWeight: '600', color: COLORS.primary, marginBottom: 6 },
   columns: { fontSize: 11, color: COLORS.muted, lineHeight: 18 },
+  hint: { fontSize: 12, color: COLORS.info, marginTop: 10, lineHeight: 18 },
   uploadArea: {
     borderWidth: 2,
     borderStyle: 'dashed',
