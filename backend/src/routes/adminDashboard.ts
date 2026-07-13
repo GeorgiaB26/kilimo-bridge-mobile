@@ -77,8 +77,8 @@ router.get('/farmers/:farmerId', requirePermission('farmers.read'), (req: Reques
   }
 
   if (isAgentRole(req.user!.role) && req.user!.district) {
-    const row = farmer as { district: string };
-    if (row.district !== req.user!.district) {
+    const district = (farmer as { district?: string }).district;
+    if (district !== req.user!.district) {
       res.status(403).json({ error: 'Farmer is outside your region' });
       return;
     }

@@ -1,0 +1,22 @@
+# Render Blueprint — Kilimo Bridge API
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: kilimo-bridge-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: PILOT_OTP
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false

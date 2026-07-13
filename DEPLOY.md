@@ -118,7 +118,8 @@ Open the URL `serve` prints.
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
 | Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
-| Slow first load | Render free tier sleeps after 15 min idle — first request takes ~30s |
+| Build fails on Render | Use branch **main**, Root Directory **backend**, Build `npm install && npm run build`, Start `npm start` |
+| `tsc` / TypeScript errors | Pull latest `main` — shared package paths are fixed for production build |
 
 ---
 

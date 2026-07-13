@@ -8,6 +8,7 @@ export type AuditAction =
   | 'farmer.read'
   | 'farmer.create'
   | 'farmer.update'
+  | 'farmer.update_location'
   | 'farmer.import'
   | 'agent.register'
   | 'agent.action'

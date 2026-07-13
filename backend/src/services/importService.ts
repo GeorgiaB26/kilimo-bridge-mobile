@@ -12,7 +12,7 @@ import {
 
 function inferCountryFromDistrict(district?: string, country?: string): string {
   return preprocessImportRow(
-    { key: '', name: '', gender: '', idNumber: '', membershipGroup: '', phone: '', district, country },
+    { key: '', name: '', gender: '', idNumber: '', membershipGroup: '', phone: '', district: district ?? '', subCounty: '', country: country ?? '' },
     0
   ).country ?? 'Kenya';
 }
