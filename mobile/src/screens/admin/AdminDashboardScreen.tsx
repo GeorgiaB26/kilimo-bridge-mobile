@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { COLORS } from '../../constants';
+import { COLORS, API_BASE_URL } from '../../constants';
 import { getAdminDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 
@@ -67,6 +67,7 @@ export function AdminDashboardScreen() {
       {error ? (
         <View style={styles.errorCard}>
           <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorApi}>API: {API_BASE_URL}</Text>
         </View>
       ) : null}
 
@@ -136,6 +137,7 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.alert,
   },
   errorText: { color: COLORS.alert, fontSize: 14 },
+  errorApi: { color: COLORS.muted, fontSize: 12, marginTop: 6 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
   statCard: { flex: 1, minWidth: '45%', backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 16, alignItems: 'center' },
   statValue: { fontSize: 24, fontWeight: '700', color: COLORS.primary },
