@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants';
 import { getAdminDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -17,25 +18,58 @@ export function AdminDashboardScreen() {
     recentImports: Array<{ status: string; imported_count: number; total_rows: number; created_at: string }>;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const data = await getAdminDashboard();
       setStats(data);
-    } catch { /* */ }
+      setError(null);
+    } catch {
+      setError('Could not load dashboard — is the backend running?');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   };
 
-  useEffect(() => { load(); }, []);
-
   const countryEntries = Object.entries(stats?.farmersByCountry ?? {}).sort((a, b) => b[1] - a[1]);
+
+  if (loading && !stats) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
       style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <Text style={styles.greeting}>Admin Dashboard</Text>
       <Text style={styles.role}>{user?.name} · {user?.role?.replace('_', ' ')}</Text>
+
+      {error ? (
+        <View style={styles.errorCard}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.grid}>
         <StatCard label="Farmers" value={stats?.totalFarmers ?? 0} />
         <StatCard label="Users" value={stats?.totalUsers ?? 0} />
@@ -89,8 +123,19 @@ function StatCard({ label, value, accent }: { label: string; value: number; acce
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { marginTop: 12, color: COLORS.muted },
   greeting: { fontSize: 24, fontWeight: '700', color: COLORS.primary },
   role: { fontSize: 14, color: COLORS.muted, marginBottom: 20, textTransform: 'capitalize' },
+  errorCard: {
+    backgroundColor: '#FFEBEE',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.alert,
+  },
+  errorText: { color: COLORS.alert, fontSize: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
   statCard: { flex: 1, minWidth: '45%', backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 16, alignItems: 'center' },
   statValue: { fontSize: 24, fontWeight: '700', color: COLORS.primary },

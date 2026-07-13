@@ -1,12 +1,29 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database';
 import type { UserRole } from '../../../shared/src/roles';
+import { getCentreCountByCountry } from './aggregationCentreService';
 
-export function getAllUsers() {
+export function getAllUsers(search?: string) {
+  const term = search?.trim();
+  if (!term) {
+    return db.prepare(`
+      SELECT user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, status, created_at
+      FROM users ORDER BY created_at DESC
+    `).all();
+  }
+
+  const pattern = `%${term}%`;
+  const phonePattern = `%${term.replace(/\D/g, '')}%`;
   return db.prepare(`
     SELECT user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, status, created_at
-    FROM users ORDER BY created_at DESC
-  `).all();
+    FROM users
+    WHERE name LIKE ? COLLATE NOCASE
+       OR phone_number LIKE ?
+       OR role LIKE ? COLLATE NOCASE
+       OR COALESCE(district, '') LIKE ? COLLATE NOCASE
+    ORDER BY name COLLATE NOCASE
+    LIMIT 100
+  `).all(pattern, phonePattern, pattern, pattern);
 }
 
 export function createUser(data: {
@@ -50,7 +67,14 @@ export function getAdminStats() {
     SELECT COUNT(*) as count FROM bank_transactions WHERE status IN ('pending', 'timeout')
   `).get() as { count: number };
 
-  const farmersByCountry = getFarmerCountByCountry();
+  const farmersByCountry = db
+    .prepare('SELECT country, COUNT(*) as count FROM farmers GROUP BY country ORDER BY count DESC')
+    .all()
+    .reduce<Record<string, number>>((acc, row) => {
+      const r = row as { country: string; count: number };
+      acc[r.country] = r.count;
+      return acc;
+    }, {});
   const centresByCountry = getCentreCountByCountry();
 
   return {

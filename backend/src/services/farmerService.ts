@@ -236,29 +236,64 @@ export function getFarmerById(farmerId: string) {
   return { ...farmer, projects };
 }
 
-export function getAllFarmers(limit = 100, offset = 0, country?: string) {
+function farmerSearchClause(search?: string): { sql: string; params: string[] } {
+  const term = search?.trim();
+  if (!term) return { sql: '', params: [] };
+  const pattern = `%${term}%`;
+  const phonePattern = `%${term.replace(/\D/g, '')}%`;
+  return {
+    sql: ` AND (
+      f.name LIKE ? COLLATE NOCASE OR
+      f.phone_number LIKE ? OR
+      COALESCE(f.kb_farmer_id, '') LIKE ? COLLATE NOCASE OR
+      f.district LIKE ? COLLATE NOCASE OR
+      mg.name LIKE ? COLLATE NOCASE
+    )`,
+    params: [pattern, phonePattern, pattern, pattern, pattern],
+  };
+}
+
+export function getAllFarmers(limit = 100, offset = 0, country?: string, search?: string) {
+  const { sql: searchSql, params: searchParams } = farmerSearchClause(search);
   if (country) {
     return db.prepare(`
       SELECT f.*, mg.name as membership_group_name
       FROM farmers f
       JOIN membership_groups mg ON f.membership_group_id = mg.id
-      WHERE f.country = ?
-      ORDER BY f.created_at DESC
+      WHERE f.country = ?${searchSql}
+      ORDER BY f.name COLLATE NOCASE
       LIMIT ? OFFSET ?
-    `).all(country, limit, offset);
+    `).all(country, ...searchParams, limit, offset);
   }
+  const whereSearch = searchSql ? `WHERE 1=1${searchSql}` : '';
   return db.prepare(`
     SELECT f.*, mg.name as membership_group_name
     FROM farmers f
     JOIN membership_groups mg ON f.membership_group_id = mg.id
-    ORDER BY f.created_at DESC
+    ${whereSearch}
+    ORDER BY f.name COLLATE NOCASE
     LIMIT ? OFFSET ?
-  `).all(limit, offset);
+  `).all(...searchParams, limit, offset);
 }
 
-export function getFarmerCount(country?: string): number {
+export function getFarmerCount(country?: string, search?: string): number {
+  const { sql: searchSql, params: searchParams } = farmerSearchClause(search);
   if (country) {
-    const row = db.prepare('SELECT COUNT(*) as count FROM farmers WHERE country = ?').get(country) as { count: number };
+    const row = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM farmers f
+      JOIN membership_groups mg ON f.membership_group_id = mg.id
+      WHERE f.country = ?${searchSql}
+    `).get(country, ...searchParams) as { count: number };
+    return row.count;
+  }
+  if (searchSql) {
+    const row = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM farmers f
+      JOIN membership_groups mg ON f.membership_group_id = mg.id
+      WHERE 1=1${searchSql}
+    `).get(...searchParams) as { count: number };
     return row.count;
   }
   const row = db.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };

@@ -16,8 +16,9 @@ router.get('/dashboard', requirePermission('reports.read'), (_req: Request, res:
   res.json(getAdminStats());
 });
 
-router.get('/users', requirePermission('users.read'), (_req: Request, res: Response) => {
-  res.json({ users: getAllUsers() });
+router.get('/users', requirePermission('users.read'), (req: Request, res: Response) => {
+  const q = (req.query.q as string) || undefined;
+  res.json({ users: getAllUsers(q) });
 });
 
 router.post('/users', requirePermission('users.write'), (req: Request, res: Response) => {
@@ -48,7 +49,8 @@ router.get('/farmers', requirePermission('farmers.read'), (req: Request, res: Re
   const limit = parseInt(req.query.limit as string) || 100;
   const offset = parseInt(req.query.offset as string) || 0;
   const country = (req.query.country as string) || undefined;
-  let farmers = getAllFarmers(limit, offset, country);
+  const q = (req.query.q as string) || undefined;
+  let farmers = getAllFarmers(limit, offset, country, q);
 
   if (isAgentRole(req.user!.role) && req.user!.district) {
     farmers = (farmers as { district: string }[]).filter((f) => f.district === req.user!.district);
@@ -59,12 +61,12 @@ router.get('/farmers', requirePermission('farmers.read'), (req: Request, res: Re
     userRole: req.user?.role,
     action: 'farmer.read',
     category: 'farmer_data',
-    details: { count: (farmers as unknown[]).length, country },
+    details: { count: (farmers as unknown[]).length, country, search: q },
     ipAddress: req.ip,
     success: true,
   });
 
-  res.json({ farmers, total: getFarmerCount(country) });
+  res.json({ farmers, total: getFarmerCount(country, q) });
 });
 
 router.get('/farmers/:farmerId', requirePermission('farmers.read'), (req: Request, res: Response) => {

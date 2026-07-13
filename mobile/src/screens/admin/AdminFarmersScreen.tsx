@@ -14,10 +14,12 @@ import { COLORS } from '../../constants';
 import { getFarmers } from '../../api/client';
 import { COUNTRY_LIST } from '../../constants/regional';
 import { PENDING_LOCATION_LABEL } from '../../../../shared/src/constants';
+import { KBSearchBar } from '../../components/KBSearchBar';
 import type { AdminFarmerSummary, AdminFarmersStackParamList } from '../../navigation/types';
 
 const FILTER_OPTIONS = ['All', ...COUNTRY_LIST.map((c) => c.name)];
 const PAGE_SIZE = 50;
+const SEARCH_MIN = 2;
 
 type Nav = NativeStackNavigationProp<AdminFarmersStackParamList, 'FarmersList'>;
 
@@ -30,6 +32,8 @@ export function AdminFarmersScreen() {
   const [farmers, setFarmers] = useState<AdminFarmerSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [countryFilter, setCountryFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -39,6 +43,13 @@ export function AdminFarmersScreen() {
 
   farmersRef.current = farmers;
   hasMoreRef.current = hasMore;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const activeSearch = debouncedSearch.length >= SEARCH_MIN ? debouncedSearch : undefined;
 
   const loadPage = useCallback(async (reset: boolean) => {
     if (!reset && (loadingMoreRef.current || !hasMoreRef.current)) return;
@@ -52,7 +63,7 @@ export function AdminFarmersScreen() {
     try {
       const country = countryFilter === 'All' ? undefined : countryFilter;
       const offset = reset ? 0 : farmersRef.current.length;
-      const d = await getFarmers(PAGE_SIZE, offset, country);
+      const d = await getFarmers(PAGE_SIZE, offset, country, activeSearch);
       const batch = (d.farmers ?? []) as AdminFarmerSummary[];
       const nextTotal = d.total ?? 0;
       setTotal(nextTotal);
@@ -65,13 +76,13 @@ export function AdminFarmersScreen() {
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-  }, [countryFilter]);
+  }, [countryFilter, activeSearch]);
 
   useEffect(() => {
     setHasMore(true);
     hasMoreRef.current = true;
     loadPage(true);
-  }, [countryFilter, loadPage]);
+  }, [countryFilter, activeSearch, loadPage]);
 
   const openFarmer = (farmer: AdminFarmerSummary) => {
     navigation.navigate('FarmerDetail', {
@@ -83,9 +94,18 @@ export function AdminFarmersScreen() {
   const listHeader = (
     <View>
       <Text style={styles.title}>All Farmers ({total.toLocaleString()})</Text>
+      <KBSearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search name, phone, district, cooperative..."
+      />
+      {searchQuery.length > 0 && searchQuery.length < SEARCH_MIN ? (
+        <Text style={styles.searchHint}>Type at least {SEARCH_MIN} characters to search</Text>
+      ) : null}
       <Text style={styles.subtitle}>
-        Showing {farmers.length.toLocaleString()} of {total.toLocaleString()}
-        {hasMore ? ' — scroll for more' : ''}
+        {activeSearch
+          ? `${total.toLocaleString()} match${total === 1 ? '' : 'es'} for "${activeSearch}"`
+          : `Showing ${farmers.length.toLocaleString()} of ${total.toLocaleString()}${hasMore ? ' — scroll for more' : ''}`}
       </Text>
       <View style={styles.filterWrap}>
         {FILTER_OPTIONS.map((opt) => (
@@ -165,6 +185,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   loadingText: { marginTop: 12, color: COLORS.muted },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
+  searchHint: { fontSize: 12, color: COLORS.muted, marginTop: -8, marginBottom: 8 },
   subtitle: { fontSize: 13, color: COLORS.muted, marginBottom: 12 },
   filterWrap: {
     flexDirection: 'row',

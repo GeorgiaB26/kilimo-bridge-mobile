@@ -102,8 +102,8 @@ export async function getImportComplete(sessionId: string) {
   return data;
 }
 
-export async function getFarmers(limit = 50, offset = 0, country?: string) {
-  const { data } = await api.get('/admin/farmers', { params: { limit, offset, country } });
+export async function getFarmers(limit = 50, offset = 0, country?: string, q?: string) {
+  const { data } = await api.get('/admin/farmers', { params: { limit, offset, country, q: q || undefined } });
   return data;
 }
 
@@ -117,8 +117,8 @@ export async function getAdminDashboard() {
   return data;
 }
 
-export async function getUsers() {
-  const { data } = await api.get('/admin/users');
+export async function getUsers(q?: string) {
+  const { data } = await api.get('/admin/users', { params: { q: q || undefined } });
   return data;
 }
 
