@@ -239,17 +239,33 @@ export function getFarmerById(farmerId: string) {
 function farmerSearchClause(search?: string): { sql: string; params: string[] } {
   const term = search?.trim();
   if (!term) return { sql: '', params: [] };
+
   const pattern = `%${term}%`;
-  const phonePattern = `%${term.replace(/\D/g, '')}%`;
+  const phoneDigits = term.replace(/\D/g, '');
+  const clauses = [
+    'f.name LIKE ? COLLATE NOCASE',
+    "COALESCE(f.kb_farmer_id, '') LIKE ? COLLATE NOCASE",
+    'f.district LIKE ? COLLATE NOCASE',
+    'mg.name LIKE ? COLLATE NOCASE',
+  ];
+  const params: string[] = [pattern, pattern, pattern, pattern];
+
+  // Only match phone when the query contains digits (avoid LIKE '%%' matching everyone)
+  if (phoneDigits.length >= 3) {
+    clauses.push('f.phone_number LIKE ?');
+    params.push(`%${phoneDigits}%`);
+  }
+
+  // Also match individual name parts: "Mary Aguka" finds either word
+  for (const part of term.split(/\s+/).filter((p) => p.length >= 2)) {
+    if (part.toLowerCase() === term.toLowerCase()) continue;
+    clauses.push('f.name LIKE ? COLLATE NOCASE');
+    params.push(`%${part}%`);
+  }
+
   return {
-    sql: ` AND (
-      f.name LIKE ? COLLATE NOCASE OR
-      f.phone_number LIKE ? OR
-      COALESCE(f.kb_farmer_id, '') LIKE ? COLLATE NOCASE OR
-      f.district LIKE ? COLLATE NOCASE OR
-      mg.name LIKE ? COLLATE NOCASE
-    )`,
-    params: [pattern, phonePattern, pattern, pattern, pattern],
+    sql: ` AND (${clauses.join(' OR ')})`,
+    params,
   };
 }
 

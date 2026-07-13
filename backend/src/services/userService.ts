@@ -13,17 +13,26 @@ export function getAllUsers(search?: string) {
   }
 
   const pattern = `%${term}%`;
-  const phonePattern = `%${term.replace(/\D/g, '')}%`;
+  const phoneDigits = term.replace(/\D/g, '');
+  const clauses = [
+    'name LIKE ? COLLATE NOCASE',
+    'role LIKE ? COLLATE NOCASE',
+    "COALESCE(district, '') LIKE ? COLLATE NOCASE",
+  ];
+  const params: string[] = [pattern, pattern, pattern];
+
+  if (phoneDigits.length >= 3) {
+    clauses.push('phone_number LIKE ?');
+    params.push(`%${phoneDigits}%`);
+  }
+
   return db.prepare(`
     SELECT user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, status, created_at
     FROM users
-    WHERE name LIKE ? COLLATE NOCASE
-       OR phone_number LIKE ?
-       OR role LIKE ? COLLATE NOCASE
-       OR COALESCE(district, '') LIKE ? COLLATE NOCASE
+    WHERE ${clauses.join(' OR ')}
     ORDER BY name COLLATE NOCASE
     LIMIT 100
-  `).all(pattern, phonePattern, pattern, pattern);
+  `).all(...params);
 }
 
 export function createUser(data: {

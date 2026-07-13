@@ -19,7 +19,7 @@ import type { AdminFarmerSummary, AdminFarmersStackParamList } from '../../navig
 
 const FILTER_OPTIONS = ['All', ...COUNTRY_LIST.map((c) => c.name)];
 const PAGE_SIZE = 50;
-const SEARCH_MIN = 2;
+const SEARCH_MIN = 1;
 
 type Nav = NativeStackNavigationProp<AdminFarmersStackParamList, 'FarmersList'>;
 
@@ -81,6 +81,9 @@ export function AdminFarmersScreen() {
   useEffect(() => {
     setHasMore(true);
     hasMoreRef.current = true;
+    if (activeSearch) {
+      setFarmers([]);
+    }
     loadPage(true);
   }, [countryFilter, activeSearch, loadPage]);
 
@@ -174,7 +177,11 @@ export function AdminFarmersScreen() {
           <ActivityIndicator style={styles.footerLoader} color={COLORS.primary} />
         ) : null
       }
-      ListEmptyComponent={<Text style={styles.empty}>No farmers found</Text>}
+      ListEmptyComponent={
+        <Text style={styles.empty}>
+          {activeSearch ? `No farmers matching "${activeSearch}"` : 'No farmers found'}
+        </Text>
+      }
     />
   );
 }

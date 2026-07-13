@@ -13,7 +13,7 @@ const ROLE_COLORS: Record<string, string> = {
   farmer: COLORS.success,
 };
 
-const SEARCH_MIN = 2;
+const SEARCH_MIN = 1;
 
 export function AdminUsersScreen() {
   const user = useAuthStore((s) => s.user);
