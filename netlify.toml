@@ -1,0 +1,11 @@
+# Kilimo Bridge — Netlify (web app) + Render (API)
+# See DEPLOY.md for step-by-step instructions.
+
+[build]
+  command = "bash scripts/build-web.sh"
+  publish = "mobile/dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

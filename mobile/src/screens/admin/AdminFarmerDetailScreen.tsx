@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-nat
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { COLORS } from '../../constants';
 import { getFarmerById } from '../../api/client';
-import { PENDING_LOCATION_LABEL } from '../../../../shared/src/constants';
+import { PENDING_LOCATION_LABEL } from '../../constants/regional';
 import type { AdminFarmersStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<AdminFarmersStackParamList, 'FarmerDetail'>;
