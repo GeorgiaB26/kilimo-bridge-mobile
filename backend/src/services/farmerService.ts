@@ -240,27 +240,25 @@ function farmerSearchClause(search?: string): { sql: string; params: string[] } 
   const term = search?.trim();
   if (!term) return { sql: '', params: [] };
 
-  const pattern = `%${term}%`;
+  const pattern = `%${term.toLowerCase()}%`;
   const phoneDigits = term.replace(/\D/g, '');
   const clauses = [
-    'f.name LIKE ? COLLATE NOCASE',
-    "COALESCE(f.kb_farmer_id, '') LIKE ? COLLATE NOCASE",
-    'f.district LIKE ? COLLATE NOCASE',
-    'mg.name LIKE ? COLLATE NOCASE',
+    'LOWER(f.name) LIKE ?',
+    "LOWER(COALESCE(f.kb_farmer_id, '')) LIKE ?",
+    'LOWER(f.district) LIKE ?',
+    'LOWER(mg.name) LIKE ?',
   ];
   const params: string[] = [pattern, pattern, pattern, pattern];
 
-  // Only match phone when the query contains digits (avoid LIKE '%%' matching everyone)
   if (phoneDigits.length >= 3) {
     clauses.push('f.phone_number LIKE ?');
     params.push(`%${phoneDigits}%`);
   }
 
-  // Also match individual name parts: "Mary Aguka" finds either word
   for (const part of term.split(/\s+/).filter((p) => p.length >= 2)) {
     if (part.toLowerCase() === term.toLowerCase()) continue;
-    clauses.push('f.name LIKE ? COLLATE NOCASE');
-    params.push(`%${part}%`);
+    clauses.push('LOWER(f.name) LIKE ?');
+    params.push(`%${part.toLowerCase()}%`);
   }
 
   return {
@@ -269,9 +267,16 @@ function farmerSearchClause(search?: string): { sql: string; params: string[] } 
   };
 }
 
+/** When searching, ignore country filter so names are found across all countries */
+function resolveCountryFilter(country?: string, search?: string): string | undefined {
+  if (search?.trim()) return undefined;
+  return country;
+}
+
 export function getAllFarmers(limit = 100, offset = 0, country?: string, search?: string) {
+  const effectiveCountry = resolveCountryFilter(country, search);
   const { sql: searchSql, params: searchParams } = farmerSearchClause(search);
-  if (country) {
+  if (effectiveCountry) {
     return db.prepare(`
       SELECT f.*, mg.name as membership_group_name
       FROM farmers f
@@ -279,7 +284,7 @@ export function getAllFarmers(limit = 100, offset = 0, country?: string, search?
       WHERE f.country = ?${searchSql}
       ORDER BY f.name COLLATE NOCASE
       LIMIT ? OFFSET ?
-    `).all(country, ...searchParams, limit, offset);
+    `).all(effectiveCountry, ...searchParams, limit, offset);
   }
   const whereSearch = searchSql ? `WHERE 1=1${searchSql}` : '';
   return db.prepare(`
@@ -293,14 +298,15 @@ export function getAllFarmers(limit = 100, offset = 0, country?: string, search?
 }
 
 export function getFarmerCount(country?: string, search?: string): number {
+  const effectiveCountry = resolveCountryFilter(country, search);
   const { sql: searchSql, params: searchParams } = farmerSearchClause(search);
-  if (country) {
+  if (effectiveCountry) {
     const row = db.prepare(`
       SELECT COUNT(*) as count
       FROM farmers f
       JOIN membership_groups mg ON f.membership_group_id = mg.id
       WHERE f.country = ?${searchSql}
-    `).get(country, ...searchParams) as { count: number };
+    `).get(effectiveCountry, ...searchParams) as { count: number };
     return row.count;
   }
   if (searchSql) {

@@ -1,5 +1,8 @@
 # Kilimo Bridge - Developer Setup Guide
 
+> **Note:** The app in this repo runs on **SQLite + Express** (`backend/data/kilimo.db`), not Supabase.
+> Supabase references below are for a planned future phase.
+
 **Get the app running on your computer in 10 minutes**
 
 ---

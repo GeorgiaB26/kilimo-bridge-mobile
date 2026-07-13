@@ -13,13 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { getFarmers } from '../../api/client';
 import { COUNTRY_LIST } from '../../constants/regional';
-import { PENDING_LOCATION_LABEL } from '../../../../shared/src/constants';
+import { PENDING_LOCATION_LABEL } from '../../constants/regional';
 import { KBSearchBar } from '../../components/KBSearchBar';
 import type { AdminFarmerSummary, AdminFarmersStackParamList } from '../../navigation/types';
 
 const FILTER_OPTIONS = ['All', ...COUNTRY_LIST.map((c) => c.name)];
 const PAGE_SIZE = 50;
-const SEARCH_MIN = 1;
 
 type Nav = NativeStackNavigationProp<AdminFarmersStackParamList, 'FarmersList'>;
 
@@ -37,6 +36,7 @@ export function AdminFarmersScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const farmersRef = useRef<AdminFarmerSummary[]>([]);
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -45,11 +45,11 @@ export function AdminFarmersScreen() {
   hasMoreRef.current = hasMore;
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const activeSearch = debouncedSearch.length >= SEARCH_MIN ? debouncedSearch : undefined;
+  const activeSearch = debouncedSearch.length > 0 ? debouncedSearch : undefined;
 
   const loadPage = useCallback(async (reset: boolean) => {
     if (!reset && (loadingMoreRef.current || !hasMoreRef.current)) return;
@@ -69,8 +69,12 @@ export function AdminFarmersScreen() {
       setTotal(nextTotal);
       setFarmers((prev) => (reset ? batch : [...prev, ...batch]));
       setHasMore(offset + batch.length < nextTotal);
+      setSearchError(null);
     } catch {
-      if (reset) setFarmers([]);
+      if (reset) {
+        setFarmers([]);
+        setSearchError('Search failed — restart the backend (npm run dev in backend/)');
+      }
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -81,9 +85,7 @@ export function AdminFarmersScreen() {
   useEffect(() => {
     setHasMore(true);
     hasMoreRef.current = true;
-    if (activeSearch) {
-      setFarmers([]);
-    }
+    if (activeSearch) setFarmers([]);
     loadPage(true);
   }, [countryFilter, activeSearch, loadPage]);
 
@@ -94,112 +96,116 @@ export function AdminFarmersScreen() {
     });
   };
 
-  const listHeader = (
-    <View>
-      <Text style={styles.title}>All Farmers ({total.toLocaleString()})</Text>
-      <KBSearchBar
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Search name, phone, district, cooperative..."
-      />
-      {searchQuery.length > 0 && searchQuery.length < SEARCH_MIN ? (
-        <Text style={styles.searchHint}>Type at least {SEARCH_MIN} characters to search</Text>
-      ) : null}
-      <Text style={styles.subtitle}>
-        {activeSearch
-          ? `${total.toLocaleString()} match${total === 1 ? '' : 'es'} for "${activeSearch}"`
-          : `Showing ${farmers.length.toLocaleString()} of ${total.toLocaleString()}${hasMore ? ' — scroll for more' : ''}`}
-      </Text>
-      <View style={styles.filterWrap}>
-        {FILTER_OPTIONS.map((opt) => (
-          <Pressable
-            key={opt}
-            style={[styles.filterChip, countryFilter === opt && styles.filterChipActive]}
-            onPress={() => setCountryFilter(opt)}
-            accessibilityRole="button"
-            accessibilityLabel={`Filter by ${opt}`}
-          >
-            <Text style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}>
-              {opt}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-
-  if (loading && farmers.length === 0) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading farmers...</Text>
-      </View>
-    );
-  }
-
   return (
-    <FlatList
-      style={styles.list}
-      contentContainerStyle={styles.listContent}
-      data={farmers}
-      keyExtractor={(item) => item.farmer_id}
-      ListHeaderComponent={listHeader}
-      renderItem={({ item }) => (
-        <Pressable
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={() => openFarmer(item)}
-          accessibilityRole="button"
-          accessibilityLabel={`View ${item.name}`}
-        >
-          <View style={styles.cardHeader}>
-            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-            <Text style={styles.countryBadge}>{item.country}</Text>
-          </View>
-          <Text style={styles.detail}>
-            {item.phone_number}
-            {' · '}
-            {formatDistrict(item.district)}
-          </Text>
-          {item.aggregation_center ? (
-            <Text style={styles.centre}>Centre: {item.aggregation_center}</Text>
-          ) : null}
-          <Text style={styles.coop} numberOfLines={1}>{item.membership_group_name}</Text>
-          <View style={styles.cardFooter}>
-            <Text style={styles.tapHint}>View profile</Text>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-          </View>
-        </Pressable>
-      )}
-      onEndReached={() => loadPage(false)}
-      onEndReachedThreshold={0.4}
-      ListFooterComponent={
-        loadingMore ? (
-          <ActivityIndicator style={styles.footerLoader} color={COLORS.primary} />
-        ) : null
-      }
-      ListEmptyComponent={
-        <Text style={styles.empty}>
-          {activeSearch ? `No farmers matching "${activeSearch}"` : 'No farmers found'}
+    <View style={styles.screen}>
+      <View style={styles.header}>
+        <Text style={styles.title}>All Farmers ({total.toLocaleString()})</Text>
+        <KBSearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search name, phone, district, cooperative..."
+        />
+        {activeSearch ? (
+          <Text style={styles.searchNote}>Searching all countries for "{activeSearch}"</Text>
+        ) : null}
+        {searchError ? <Text style={styles.searchError}>{searchError}</Text> : null}
+        <Text style={styles.subtitle}>
+          {activeSearch
+            ? `${total.toLocaleString()} match${total === 1 ? '' : 'es'}`
+            : `Showing ${farmers.length.toLocaleString()} of ${total.toLocaleString()}${hasMore ? ' — scroll for more' : ''}`}
         </Text>
-      }
-    />
+        <View style={styles.filterWrap}>
+          {FILTER_OPTIONS.map((opt) => (
+            <Pressable
+              key={opt}
+              style={[styles.filterChip, countryFilter === opt && styles.filterChipActive]}
+              onPress={() => setCountryFilter(opt)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter by ${opt}`}
+            >
+              <Text style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}>
+                {opt}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {loading && farmers.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>
+            {activeSearch ? `Searching for "${activeSearch}"...` : 'Loading farmers...'}
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          data={farmers}
+          keyExtractor={(item) => item.farmer_id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              onPress={() => openFarmer(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${item.name}`}
+            >
+              <View style={styles.cardHeader}>
+                <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.countryBadge}>{item.country}</Text>
+              </View>
+              <Text style={styles.detail}>
+                {item.phone_number}
+                {' · '}
+                {formatDistrict(item.district)}
+              </Text>
+              {item.aggregation_center ? (
+                <Text style={styles.centre}>Centre: {item.aggregation_center}</Text>
+              ) : null}
+              <Text style={styles.coop} numberOfLines={1}>{item.membership_group_name}</Text>
+              <View style={styles.cardFooter}>
+                <Text style={styles.tapHint}>View profile</Text>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
+              </View>
+            </Pressable>
+          )}
+          onEndReached={() => loadPage(false)}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator style={styles.footerLoader} color={COLORS.primary} />
+            ) : null
+          }
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {activeSearch ? `No farmers matching "${activeSearch}"` : 'No farmers found'}
+            </Text>
+          }
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: COLORS.surface },
-  listContent: { padding: 16, paddingBottom: 32 },
+  screen: { flex: 1, backgroundColor: COLORS.surface },
+  header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   loadingText: { marginTop: 12, color: COLORS.muted },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
-  searchHint: { fontSize: 12, color: COLORS.muted, marginTop: -8, marginBottom: 8 },
+  searchNote: { fontSize: 12, color: COLORS.info, marginBottom: 6 },
+  searchError: { fontSize: 12, color: COLORS.alert, marginBottom: 6 },
   subtitle: { fontSize: 13, color: COLORS.muted, marginBottom: 12 },
   filterWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   filterChip: {
     paddingHorizontal: 16,

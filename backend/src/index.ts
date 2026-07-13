@@ -11,6 +11,7 @@ import bankingRoutes, { equityWebhookRouter } from './routes/banking';
 import agentRoutes from './routes/agents';
 import auditRoutes from './routes/audit';
 import { apiRateLimiter } from './middleware/security';
+import { getAdminStats } from './services/userService';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -47,6 +48,29 @@ app.use('/api', apiRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+/** Live metrics for external project tracker dashboard (Netlify) */
+app.get('/api/metrics/live', (req, res) => {
+  const trackerKey = process.env.TRACKER_API_KEY;
+  const provided = req.headers['x-tracker-key'] as string | undefined;
+  if (trackerKey && provided !== trackerKey) {
+    res.status(401).json({ error: 'Invalid tracker API key' });
+    return;
+  }
+  const stats = getAdminStats();
+  res.json({
+    updatedAt: new Date().toISOString(),
+    totalFarmers: stats.totalFarmers,
+    totalUsers: stats.totalUsers,
+    activeAgents: stats.activeAgents,
+    activeProjects: stats.activeProjects,
+    pendingPaymentsTotal: stats.pendingPaymentsTotal,
+    pendingBankTransactions: stats.pendingBankTransactions,
+    farmersByCountry: stats.farmersByCountry,
+    centresByCountry: stats.centresByCountry,
+    recentImports: stats.recentImports,
+  });
 });
 
 app.listen(PORT, () => {
