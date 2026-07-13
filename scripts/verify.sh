@@ -19,8 +19,9 @@ echo ""
 echo "2. Backend API (http://localhost:3001)"
 if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
   echo "   ✓ Backend is running"
-  FARMERS=$(curl -s http://localhost:3001/api/farmers | head -c 200)
+  FARMERS=$(curl -s http://localhost:3001/api/farmers 2>/dev/null | head -c 80)
   echo "   Farmers endpoint: $FARMERS..."
+  echo "   Search tip: Farmers tab needs backend restarted after git pull"
 else
   echo "   ✗ Backend NOT running"
   echo "   → Start it with:  cd backend && npm run dev"

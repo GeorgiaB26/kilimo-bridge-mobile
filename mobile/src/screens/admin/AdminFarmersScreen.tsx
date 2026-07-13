@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
-import { getFarmers } from '../../api/client';
+import { getFarmers, searchFarmers } from '../../api/client';
 import { COUNTRY_LIST } from '../../constants/regional';
 import { PENDING_LOCATION_LABEL } from '../../constants/regional';
 import { KBSearchBar } from '../../components/KBSearchBar';
@@ -19,11 +19,31 @@ import type { AdminFarmerSummary, AdminFarmersStackParamList } from '../../navig
 
 const FILTER_OPTIONS = ['All', ...COUNTRY_LIST.map((c) => c.name)];
 const PAGE_SIZE = 50;
+const SEARCH_LIMIT = 200;
 
 type Nav = NativeStackNavigationProp<AdminFarmersStackParamList, 'FarmersList'>;
 
 function formatDistrict(district: string): string {
   return district === PENDING_LOCATION_LABEL ? 'Location pending' : district;
+}
+
+function farmerMatchesQuery(farmer: AdminFarmerSummary, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const digits = q.replace(/\D/g, '');
+  const haystacks = [
+    farmer.name,
+    farmer.phone_number,
+    farmer.district,
+    farmer.membership_group_name,
+    farmer.kb_farmer_id,
+    farmer.country,
+  ];
+  if (haystacks.some((v) => v?.toLowerCase().includes(q))) return true;
+  if (digits.length >= 3 && farmer.phone_number?.replace(/\D/g, '').includes(digits)) return true;
+  return q.split(/\s+/).some(
+    (part) => part.length >= 2 && farmer.name?.toLowerCase().includes(part)
+  );
 }
 
 export function AdminFarmersScreen() {
@@ -32,7 +52,6 @@ export function AdminFarmersScreen() {
   const [total, setTotal] = useState(0);
   const [countryFilter, setCountryFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -40,54 +59,78 @@ export function AdminFarmersScreen() {
   const farmersRef = useRef<AdminFarmerSummary[]>([]);
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(true);
+  const fetchIdRef = useRef(0);
 
   farmersRef.current = farmers;
   hasMoreRef.current = hasMore;
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const activeSearch = searchQuery.trim();
 
-  const activeSearch = debouncedSearch.length > 0 ? debouncedSearch : undefined;
+  const runSearch = useCallback(async () => {
+    const fetchId = ++fetchIdRef.current;
+    setLoading(true);
+    setSearchError(null);
 
-  const loadPage = useCallback(async (reset: boolean) => {
-    if (!reset && (loadingMoreRef.current || !hasMoreRef.current)) return;
+    try {
+      if (activeSearch) {
+        const d = await searchFarmers(activeSearch, SEARCH_LIMIT);
+        if (fetchId !== fetchIdRef.current) return;
+        const batch = ((d.farmers ?? []) as AdminFarmerSummary[]).filter((f) =>
+          farmerMatchesQuery(f, activeSearch)
+        );
+        setFarmers(batch);
+        setTotal(d.total ?? batch.length);
+        setHasMore(false);
+        hasMoreRef.current = false;
+        return;
+      }
 
-    if (reset) setLoading(true);
-    else {
-      loadingMoreRef.current = true;
-      setLoadingMore(true);
+      const country = countryFilter === 'All' ? undefined : countryFilter;
+      const d = await getFarmers(PAGE_SIZE, 0, country);
+      if (fetchId !== fetchIdRef.current) return;
+      const batch = (d.farmers ?? []) as AdminFarmerSummary[];
+      const nextTotal = d.total ?? 0;
+      setFarmers(batch);
+      setTotal(nextTotal);
+      setHasMore(batch.length < nextTotal);
+      hasMoreRef.current = batch.length < nextTotal;
+    } catch {
+      if (fetchId !== fetchIdRef.current) return;
+      setFarmers([]);
+      setSearchError('Could not load farmers — restart backend: cd backend && npm run dev');
+    } finally {
+      if (fetchId === fetchIdRef.current) setLoading(false);
     }
+  }, [activeSearch, countryFilter]);
+
+  const loadMore = useCallback(async () => {
+    if (activeSearch || loadingMoreRef.current || !hasMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    const fetchId = ++fetchIdRef.current;
 
     try {
       const country = countryFilter === 'All' ? undefined : countryFilter;
-      const offset = reset ? 0 : farmersRef.current.length;
-      const d = await getFarmers(PAGE_SIZE, offset, country, activeSearch);
+      const offset = farmersRef.current.length;
+      const d = await getFarmers(PAGE_SIZE, offset, country);
+      if (fetchId !== fetchIdRef.current) return;
       const batch = (d.farmers ?? []) as AdminFarmerSummary[];
       const nextTotal = d.total ?? 0;
-      setTotal(nextTotal);
-      setFarmers((prev) => (reset ? batch : [...prev, ...batch]));
+      setFarmers((prev) => [...prev, ...batch]);
       setHasMore(offset + batch.length < nextTotal);
-      setSearchError(null);
+      hasMoreRef.current = offset + batch.length < nextTotal;
     } catch {
-      if (reset) {
-        setFarmers([]);
-        setSearchError('Search failed — restart the backend (npm run dev in backend/)');
-      }
+      /* keep existing list */
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
       loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
-  }, [countryFilter, activeSearch]);
+  }, [activeSearch, countryFilter]);
 
   useEffect(() => {
-    setHasMore(true);
-    hasMoreRef.current = true;
-    if (activeSearch) setFarmers([]);
-    loadPage(true);
-  }, [countryFilter, activeSearch, loadPage]);
+    const timer = setTimeout(() => runSearch(), activeSearch ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [activeSearch, countryFilter, runSearch]);
 
   const openFarmer = (farmer: AdminFarmerSummary) => {
     navigation.navigate('FarmerDetail', {
@@ -96,42 +139,55 @@ export function AdminFarmersScreen() {
     });
   };
 
+  const displayedFarmers = activeSearch
+    ? farmers.filter((f) => farmerMatchesQuery(f, activeSearch))
+    : farmers;
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.title}>All Farmers ({total.toLocaleString()})</Text>
+        <Text style={styles.title}>
+          {activeSearch
+            ? `Search results (${displayedFarmers.length.toLocaleString()})`
+            : `All Farmers (${total.toLocaleString()})`}
+        </Text>
         <KBSearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
+          onSubmit={() => runSearch()}
           placeholder="Search name, phone, district, cooperative..."
         />
         {activeSearch ? (
-          <Text style={styles.searchNote}>Searching all countries for "{activeSearch}"</Text>
+          <Pressable onPress={() => setSearchQuery('')} style={styles.clearLink}>
+            <Text style={styles.clearLinkText}>Clear search</Text>
+          </Pressable>
         ) : null}
         {searchError ? <Text style={styles.searchError}>{searchError}</Text> : null}
         <Text style={styles.subtitle}>
           {activeSearch
-            ? `${total.toLocaleString()} match${total === 1 ? '' : 'es'}`
+            ? displayedFarmers.length > 0
+              ? `Showing ${displayedFarmers.length.toLocaleString()} match${displayedFarmers.length === 1 ? '' : 'es'} for "${activeSearch}"`
+              : `No matches for "${activeSearch}"`
             : `Showing ${farmers.length.toLocaleString()} of ${total.toLocaleString()}${hasMore ? ' — scroll for more' : ''}`}
         </Text>
-        <View style={styles.filterWrap}>
-          {FILTER_OPTIONS.map((opt) => (
-            <Pressable
-              key={opt}
-              style={[styles.filterChip, countryFilter === opt && styles.filterChipActive]}
-              onPress={() => setCountryFilter(opt)}
-              accessibilityRole="button"
-              accessibilityLabel={`Filter by ${opt}`}
-            >
-              <Text style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}>
-                {opt}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        {!activeSearch ? (
+          <View style={styles.filterWrap}>
+            {FILTER_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt}
+                style={[styles.filterChip, countryFilter === opt && styles.filterChipActive]}
+                onPress={() => setCountryFilter(opt)}
+              >
+                <Text style={[styles.filterText, countryFilter === opt && styles.filterTextActive]}>
+                  {opt}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
 
-      {loading && farmers.length === 0 ? (
+      {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>
@@ -142,15 +198,13 @@ export function AdminFarmersScreen() {
         <FlatList
           style={styles.list}
           contentContainerStyle={styles.listContent}
-          data={farmers}
+          data={displayedFarmers}
           keyExtractor={(item) => item.farmer_id}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <Pressable
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
               onPress={() => openFarmer(item)}
-              accessibilityRole="button"
-              accessibilityLabel={`View ${item.name}`}
             >
               <View style={styles.cardHeader}>
                 <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
@@ -161,17 +215,10 @@ export function AdminFarmersScreen() {
                 {' · '}
                 {formatDistrict(item.district)}
               </Text>
-              {item.aggregation_center ? (
-                <Text style={styles.centre}>Centre: {item.aggregation_center}</Text>
-              ) : null}
               <Text style={styles.coop} numberOfLines={1}>{item.membership_group_name}</Text>
-              <View style={styles.cardFooter}>
-                <Text style={styles.tapHint}>View profile</Text>
-                <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-              </View>
             </Pressable>
           )}
-          onEndReached={() => loadPage(false)}
+          onEndReached={loadMore}
           onEndReachedThreshold={0.4}
           ListFooterComponent={
             loadingMore ? (
@@ -197,16 +244,11 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   loadingText: { marginTop: 12, color: COLORS.muted },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
-  searchNote: { fontSize: 12, color: COLORS.info, marginBottom: 6 },
+  clearLink: { alignSelf: 'flex-start', marginBottom: 6 },
+  clearLinkText: { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
   searchError: { fontSize: 12, color: COLORS.alert, marginBottom: 6 },
   subtitle: { fontSize: 13, color: COLORS.muted, marginBottom: 12 },
-  filterWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
+  filterWrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 },
   filterChip: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -242,10 +284,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   detail: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  centre: { fontSize: 12, color: COLORS.info, marginTop: 2 },
   coop: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 8, gap: 4 },
-  tapHint: { fontSize: 12, color: COLORS.primary, fontWeight: '600' },
   footerLoader: { marginVertical: 16 },
   empty: { color: COLORS.muted, fontStyle: 'italic', textAlign: 'center', marginTop: 24 },
 });

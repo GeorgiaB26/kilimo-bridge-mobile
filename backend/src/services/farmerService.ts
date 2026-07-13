@@ -243,10 +243,10 @@ function farmerSearchClause(search?: string): { sql: string; params: string[] } 
   const pattern = `%${term.toLowerCase()}%`;
   const phoneDigits = term.replace(/\D/g, '');
   const clauses = [
-    'LOWER(f.name) LIKE ?',
+    'LOWER(TRIM(f.name)) LIKE ?',
     "LOWER(COALESCE(f.kb_farmer_id, '')) LIKE ?",
-    'LOWER(f.district) LIKE ?',
-    'LOWER(mg.name) LIKE ?',
+    'LOWER(TRIM(f.district)) LIKE ?',
+    'LOWER(TRIM(mg.name)) LIKE ?',
   ];
   const params: string[] = [pattern, pattern, pattern, pattern];
 
@@ -257,7 +257,7 @@ function farmerSearchClause(search?: string): { sql: string; params: string[] } 
 
   for (const part of term.split(/\s+/).filter((p) => p.length >= 2)) {
     if (part.toLowerCase() === term.toLowerCase()) continue;
-    clauses.push('LOWER(f.name) LIKE ?');
+    clauses.push('LOWER(TRIM(f.name)) LIKE ?');
     params.push(`%${part.toLowerCase()}%`);
   }
 

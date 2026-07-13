@@ -103,7 +103,17 @@ export async function getImportComplete(sessionId: string) {
 }
 
 export async function getFarmers(limit = 50, offset = 0, country?: string, q?: string) {
-  const { data } = await api.get('/admin/farmers', { params: { limit, offset, country, q: q || undefined } });
+  const params: Record<string, string | number> = { limit, offset };
+  if (country) params.country = country;
+  if (q?.trim()) params.q = q.trim();
+  const { data } = await api.get('/admin/farmers', { params });
+  return data;
+}
+
+export async function searchFarmers(query: string, limit = 200) {
+  const { data } = await api.get('/admin/farmers', {
+    params: { limit, offset: 0, q: query.trim() },
+  });
   return data;
 }
 
