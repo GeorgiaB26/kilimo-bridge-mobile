@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 import { useAuthStore, isAdminRole } from '../store/authStore';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
-import { AdminFarmersScreen } from '../screens/admin/AdminFarmersScreen';
+import { AdminFarmersNavigator } from './AdminFarmersNavigator';
 import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
 import { AdminProfileScreen } from '../screens/admin/AdminProfileScreen';
 import { ImportNavigator } from './ImportNavigator';
@@ -38,7 +38,7 @@ export function AdminPlatformNavigator() {
       })}
     >
       <Tab.Screen name="Dashboard" component={AdminDashboardScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Dashboard' }} />
-      <Tab.Screen name="Farmers" component={AdminFarmersScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Farmers' }} />
+      <Tab.Screen name="Farmers" component={AdminFarmersNavigator} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Farmers' }} />
       {canImport ? (
         <Tab.Screen name="Import" component={ImportNavigator} options={{ title: 'Import' }} />
       ) : null}

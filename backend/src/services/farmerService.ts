@@ -216,6 +216,26 @@ export function getFarmerByPhone(phone: string) {
   `).get(phone);
 }
 
+export function getFarmerById(farmerId: string) {
+  const farmer = db.prepare(`
+    SELECT f.*, mg.name as membership_group_name
+    FROM farmers f
+    JOIN membership_groups mg ON f.membership_group_id = mg.id
+    WHERE f.farmer_id = ?
+  `).get(farmerId) as Record<string, unknown> | undefined;
+
+  if (!farmer) return null;
+
+  const projects = db.prepare(`
+    SELECT project_name, status, completion_percentage, payment_amount, payment_status
+    FROM farmer_projects
+    WHERE farmer_id = ?
+    ORDER BY created_at DESC
+  `).all(farmerId);
+
+  return { ...farmer, projects };
+}
+
 export function getAllFarmers(limit = 100, offset = 0, country?: string) {
   if (country) {
     return db.prepare(`

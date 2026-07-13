@@ -107,6 +107,11 @@ export async function getFarmers(limit = 50, offset = 0, country?: string) {
   return data;
 }
 
+export async function getFarmerById(farmerId: string) {
+  const { data } = await api.get(`/admin/farmers/${farmerId}`);
+  return data;
+}
+
 export async function getAdminDashboard() {
   const { data } = await api.get('/admin/dashboard');
   return data;

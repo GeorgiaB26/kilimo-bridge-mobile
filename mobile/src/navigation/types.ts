@@ -27,6 +27,24 @@ export type AdminTabParamList = {
   Profile: undefined;
 };
 
+export type AdminFarmerSummary = {
+  farmer_id: string;
+  name: string;
+  phone_number: string;
+  country: string;
+  district: string;
+  sub_county?: string;
+  aggregation_center: string | null;
+  membership_group_name: string;
+  status: string;
+  kb_farmer_id?: string;
+};
+
+export type AdminFarmersStackParamList = {
+  FarmersList: undefined;
+  FarmerDetail: { farmerId: string; name: string };
+};
+
 export type RegistrationStackParamList = {
   Country: undefined;
   BasicInfo: undefined;

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
-import { getAllFarmers, getFarmerCount, getFarmerCountByCountry } from '../services/farmerService';
+import { getAllFarmers, getFarmerCount, getFarmerCountByCountry, getFarmerById } from '../services/farmerService';
 import { getCentreCountByCountry } from '../services/aggregationCentreService';
 import { logAudit } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
@@ -65,6 +65,35 @@ router.get('/farmers', requirePermission('farmers.read'), (req: Request, res: Re
   });
 
   res.json({ farmers, total: getFarmerCount(country) });
+});
+
+router.get('/farmers/:farmerId', requirePermission('farmers.read'), (req: Request, res: Response) => {
+  const farmer = getFarmerById(req.params.farmerId);
+  if (!farmer) {
+    res.status(404).json({ error: 'Farmer not found' });
+    return;
+  }
+
+  if (isAgentRole(req.user!.role) && req.user!.district) {
+    const row = farmer as { district: string };
+    if (row.district !== req.user!.district) {
+      res.status(403).json({ error: 'Farmer is outside your region' });
+      return;
+    }
+  }
+
+  logAudit({
+    userId: req.user?.userId,
+    userRole: req.user?.role,
+    action: 'farmer.read',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: req.params.farmerId,
+    ipAddress: req.ip,
+    success: true,
+  });
+
+  res.json({ farmer });
 });
 
 export default router;
