@@ -22,7 +22,7 @@ Netlify alone cannot run the backend or your SQLite database.
 | Name | `kilimo-bridge-api` |
 | Root Directory | `backend` |
 | Runtime | Node |
-| Build Command | `npm install && npm run build` |
+| Build Command | `npm run build:render` |
 | Start Command | `npm start` |
 | Plan | Free |
 
@@ -118,8 +118,8 @@ Open the URL `serve` prints.
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
 | Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
-| Build fails on Render | Use branch **main**, Root Directory **backend**, Build `npm install && npm run build`, Start `npm start` |
-| `tsc` / TypeScript errors | Pull latest `main` — shared package paths are fixed for production build |
+| Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start` |
+| `tsc` / missing `@types` errors | Render skips devDependencies when `NODE_ENV=production` — use `build:render` script |
 
 ---
 
