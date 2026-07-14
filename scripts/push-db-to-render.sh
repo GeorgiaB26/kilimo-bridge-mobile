@@ -55,15 +55,12 @@ if [ "$HTTP_CODE" != "200" ]; then
   exit 1
 fi
 
+UPLOAD_COUNT=$(python3 -c "import json; print(json.load(open('/tmp/kb-restore-response.json')).get('totalFarmers','?'))" 2>/dev/null || echo "?")
+echo "Server confirmed $UPLOAD_COUNT farmers loaded."
+
 echo ""
-echo "==> Waiting for Render to restart (~60s)…"
-sleep 60
-
-curl -s "$API_URL/health" && echo ""
-
-echo "==> Verifying farmer count on Render…"
-curl -s -X POST "$API_URL/auth/request-otp" -H "Content-Type: application/json" -d '{"phone":"+254700000002"}' > /dev/null
-VERIFY=$(curl -s -X POST "$API_URL/auth/verify-otp" -H "Content-Type: application/json" -d '{"phone":"+254700000002","code":"123456"}')
+echo "==> Verifying via API…"
+VERIFY=$(curl -s -X POST "$API_URL/auth/dev-login" -H "Content-Type: application/json" -d '{"phone":"+254700000002"}')
 TOKEN=$(echo "$VERIFY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
 if [ -n "$TOKEN" ]; then
   REMOTE_COUNT=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/admin/dashboard" | python3 -c "import sys,json; print(json.load(sys.stdin).get('totalFarmers','?'))" 2>/dev/null || echo "?")

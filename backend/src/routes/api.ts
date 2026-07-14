@@ -21,8 +21,7 @@ import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../sh
 import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
 import { AGGREGATION_CENTRES } from '../../../shared/src/locations/aggregationCentres';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
-import { closeDatabase, getDatabasePath } from '../db/database';
-import fs from 'fs';
+import { replaceDatabaseFile } from '../db/database';
 
 const router = Router();
 const upload = multer({
@@ -229,7 +228,7 @@ router.get('/admin/farmers/import/:sessionId/complete', authenticate, requirePer
   res.json(result);
 });
 
-/** Upload local kilimo.db to hosted preview (pilot only). Server restarts after restore. */
+/** Upload local kilimo.db to hosted preview (pilot only). Hot-reloads DB without server restart. */
 router.post('/setup/database/restore', dbUpload.single('database'), (req: Request, res: Response) => {
   const secret = req.headers['x-restore-secret'] as string | undefined;
   if (!process.env.RESTORE_DB_SECRET || secret !== process.env.RESTORE_DB_SECRET) {
@@ -241,20 +240,13 @@ router.post('/setup/database/restore', dbUpload.single('database'), (req: Reques
     return;
   }
 
-  const target = getDatabasePath();
   try {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const p = suffix ? target + suffix : target;
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    }
-    fs.writeFileSync(target, req.file.buffer);
+    const farmerCount = replaceDatabaseFile(req.file.buffer);
     res.json({
       success: true,
-      message: 'Database restored. Server restarting…',
-      farmers: 'Data will be live after restart (~30s).',
+      message: 'Database restored and live immediately.',
+      totalFarmers: farmerCount,
     });
-    setTimeout(() => process.exit(0), 800);
   } catch (err) {
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Restore failed',

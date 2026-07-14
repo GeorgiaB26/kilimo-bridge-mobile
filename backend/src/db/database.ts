@@ -12,7 +12,15 @@ const dbDir = path.dirname(dbPath);
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
-export const db = new Database(dbPath);
+
+function openDatabase(): InstanceType<typeof Database> {
+  const instance = new Database(dbPath);
+  instance.pragma('journal_mode = WAL');
+  instance.pragma('foreign_keys = ON');
+  return instance;
+}
+
+export let db = openDatabase();
 
 export function getDatabasePath(): string {
   return dbPath;
@@ -22,8 +30,18 @@ export function closeDatabase(): void {
   db.close();
 }
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+/** Replace SQLite file in place and reopen — no process restart (Render free tier wipes disk on restart). */
+export function replaceDatabaseFile(buffer: Buffer): number {
+  db.close();
+  for (const suffix of ['', '-wal', '-shm']) {
+    const p = suffix ? dbPath + suffix : dbPath;
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  }
+  fs.writeFileSync(dbPath, buffer);
+  db = openDatabase();
+  const row = db.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };
+  return row.count;
+}
 
 export function initDatabase(): void {
   db.exec(`
