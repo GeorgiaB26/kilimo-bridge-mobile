@@ -16,6 +16,7 @@
     "mobile:fresh": "bash scripts/fresh-mobile.sh",
     "build:web": "cd mobile && npm install && npm run build:web",
     "share:demo": "bash scripts/share-demo.sh",
+    "push:db": "bash scripts/push-db-to-render.sh",
     "seed": "cd backend && npm run seed",
     "test:import": "cd backend && npx tsx src/test-import.ts"
   }

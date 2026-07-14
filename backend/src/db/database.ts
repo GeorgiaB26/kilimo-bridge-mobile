@@ -14,6 +14,14 @@ if (!fs.existsSync(dbDir)) {
 }
 export const db = new Database(dbPath);
 
+export function getDatabasePath(): string {
+  return dbPath;
+}
+
+export function closeDatabase(): void {
+  db.close();
+}
+
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 

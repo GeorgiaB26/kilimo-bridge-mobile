@@ -79,11 +79,39 @@ curl https://kilimo-bridge-api.onrender.com/health
 
 ### Your farmer data (important)
 
-Render starts with an **empty** database. To show your 2,600+ imported farmers:
+The Netlify link is only the **web app**. Your imported farmers live in **`backend/data/kilimo.db` on your Mac** — Render starts empty.
 
-- Copy `backend/data/kilimo.db` from your Mac to Render (persistent disk on paid plan), **or**
-- Re-import CSVs via the admin UI once live, **or**
-- For a quick demo, use demo seed data (few sample farmers)
+**Option A — Upload your database (fastest, ~2 min):**
+
+1. Render → Environment → add:
+   ```
+   RESTORE_DB_SECRET=<pick a long random password>
+   ```
+2. Redeploy Render, then on your Mac:
+   ```bash
+   cd ~/kilimo-bridge-mobile
+   git pull
+   export RESTORE_DB_SECRET='same-password-as-render'
+   bash scripts/push-db-to-render.sh
+   ```
+3. Wait ~45s, refresh Netlify — all farmers and accounts appear.
+
+**Option B — Re-import CSVs** via Admin → Import on the live site (slower).
+
+**Option C — ngrok demo** from your Mac with full data: `bash scripts/share-demo.sh`
+
+### Preview login — all account types
+
+With `PILOT_OTP=true`, the login screen **Quick access** buttons work on Netlify:
+
+| Button | Account |
+|--------|---------|
+| Open Farmer Platform | +254712345678 |
+| Open Admin Dashboard | +254700000002 |
+| Open Agent Platform | +254700000003 |
+| Open Banking Platform | +254700000004 (password `Banking@2026`) |
+
+Or use phone OTP: any seeded account + code `123456`.
 
 ---
 

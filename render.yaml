@@ -20,3 +20,5 @@ services:
         generateValue: true
       - key: CORS_ORIGINS
         sync: false
+      - key: RESTORE_DB_SECRET
+        sync: false

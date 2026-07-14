@@ -143,11 +143,12 @@ export function verifyToken(token: string): AuthUser | null {
   }
 }
 
-/** Dev only — one-step login for demo accounts (no OTP round-trip). */
+/** Dev / pilot preview — one-step login for demo accounts (no OTP round-trip). */
 export function devQuickLogin(phone: string, ipAddress?: string): {
   success: boolean; token?: string; user?: AuthUser; error?: string;
 } {
-  if (process.env.NODE_ENV === 'production') {
+  const pilotDemo = process.env.PILOT_OTP === 'true';
+  if (process.env.NODE_ENV === 'production' && !pilotDemo) {
     return { success: false, error: 'Not available' };
   }
 

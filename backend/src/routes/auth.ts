@@ -34,9 +34,10 @@ router.post('/verify-otp', authRateLimiter, (req: Request, res: Response) => {
   res.json({ token: result.token, user: result.user });
 });
 
-/** Dev only — skip OTP for demo quick-login buttons */
+/** Dev / pilot preview — skip OTP for demo quick-login buttons */
 router.post('/dev-login', authRateLimiter, (req: Request, res: Response) => {
-  if (process.env.NODE_ENV === 'production') {
+  const pilotDemo = process.env.PILOT_OTP === 'true';
+  if (process.env.NODE_ENV === 'production' && !pilotDemo) {
     res.status(404).json({ error: 'Not found' });
     return;
   }
