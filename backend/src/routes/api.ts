@@ -230,7 +230,7 @@ router.get('/admin/farmers/import/:sessionId/complete', authenticate, requirePer
 });
 
 /** Upload local kilimo.db to hosted preview (pilot only). Server restarts after restore. */
-router.post('/admin/database/restore', dbUpload.single('database'), (req: Request, res: Response) => {
+router.post('/setup/database/restore', dbUpload.single('database'), (req: Request, res: Response) => {
   const secret = req.headers['x-restore-secret'] as string | undefined;
   if (!process.env.RESTORE_DB_SECRET || secret !== process.env.RESTORE_DB_SECRET) {
     res.status(401).json({ error: 'Invalid restore secret' });

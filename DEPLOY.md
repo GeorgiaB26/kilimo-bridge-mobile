@@ -94,7 +94,9 @@ The Netlify link is only the **web app**. Your imported farmers live in **`backe
    export RESTORE_DB_SECRET='same-password-as-render'
    bash scripts/push-db-to-render.sh
    ```
-3. Wait ~45s, refresh Netlify — all farmers and accounts appear.
+3. Wait ~60s, refresh Netlify — script prints local vs Render farmer counts.
+
+**Important:** Do not redeploy Render after uploading — free tier wipes the database on each deploy. Upload last, after all code deploys are done.
 
 **Option B — Re-import CSVs** via Admin → Import on the live site (slower).
 

@@ -33,6 +33,11 @@ const DEMO_FARMER = {
 };
 
 export function seedDatabase(): void {
+  const existingFarmers = db.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };
+  if (existingFarmers.count > 10) {
+    return;
+  }
+
   seedAggregationCentres();
 
   const insertGroup = db.prepare(
