@@ -1,5 +1,33 @@
 # Deploy Kilimo Bridge for client preview
 
+## Easiest way to share with a client (recommended for now)
+
+Skip Render/Netlify while you're testing. Run the app on your Mac and use **ngrok** for a public link your client can open in any browser.
+
+**One-time setup:**
+```bash
+brew install ngrok
+# Sign up free at https://ngrok.com, then:
+ngrok config add-authtoken YOUR_TOKEN
+```
+
+**Each time you want to share:**
+```bash
+cd ~/kilimo-bridge-mobile
+bash scripts/share-demo.sh
+```
+
+The script prints a link like `https://abc123.ngrok-free.app` — send that to your client.
+
+- **Login:** `+254700000002`
+- **OTP:** `123456`
+- Keep the terminal open while they test
+- Your full farmer database stays on your Mac (2,600+ records)
+
+---
+
+## Permanent hosting (Render + Netlify)
+
 You need **two** hosts:
 
 | Part | Host | Purpose |
@@ -35,8 +63,9 @@ PILOT_OTP=true
 JWT_SECRET=<run: openssl rand -hex 32>
 ENCRYPTION_KEY=<run: openssl rand -hex 16>
 CORS_ORIGINS=https://YOUR-NETLIFY-SITE.netlify.app
-DATABASE_PATH=/opt/render/project/src/data/kilimo.db
 ```
+
+Do **not** set `DATABASE_PATH` unless you know you need a custom location — the default `backend/data/kilimo.db` works on Render.
 
 5. Click **Create Web Service**. Note your API URL, e.g.:
 
@@ -118,6 +147,7 @@ Open the URL `serve` prints.
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
 | Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
+| API crashes: directory does not exist | Remove `DATABASE_PATH` from Render env vars, redeploy latest `main` |
 | Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start` |
 | `tsc` / missing `@types` errors | Render skips devDependencies when `NODE_ENV=production` — use `build:render` script |
 
