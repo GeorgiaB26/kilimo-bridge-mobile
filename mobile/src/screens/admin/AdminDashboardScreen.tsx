@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { extractApiError } from '../../utils/feedback';
 import { COLORS, API_BASE_URL } from '../../constants';
 import { getAdminDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -26,8 +27,14 @@ export function AdminDashboardScreen() {
       const data = await getAdminDashboard();
       setStats(data);
       setError(null);
-    } catch {
-      setError('Could not load dashboard — is the backend running?');
+    } catch (err: unknown) {
+      const detail = extractApiError(err, '');
+      const staleSession = detail.toLowerCase().includes('authentication') || detail.toLowerCase().includes('invalid or expired');
+      setError(
+        staleSession
+          ? 'Session expired after server update — log out and sign in again.'
+          : detail || 'Could not load dashboard — is the backend running?'
+      );
     } finally {
       setLoading(false);
     }

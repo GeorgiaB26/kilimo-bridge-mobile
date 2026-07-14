@@ -51,16 +51,26 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loadStoredAuth: async () => {
     try {
-      const [token, userJson] = await AsyncStorage.multiGet([TOKEN_KEY, USER_KEY]);
-      if (token[1] && userJson[1]) {
+      const [tokenEntry, userJson] = await AsyncStorage.multiGet([TOKEN_KEY, USER_KEY]);
+      const storedToken = tokenEntry[1];
+      if (!storedToken || !userJson[1]) {
+        set({ isLoading: false });
+        return;
+      }
+      const { setAuthToken, fetchMe } = await import('../api/client');
+      setAuthToken(storedToken);
+      try {
+        const { user } = await fetchMe();
         set({
-          token: token[1],
-          user: JSON.parse(userJson[1]),
+          token: storedToken,
+          user,
           isAuthenticated: true,
           isLoading: false,
         });
-      } else {
-        set({ isLoading: false });
+      } catch {
+        await clearAllSessionData();
+        setAuthToken(null);
+        set({ token: null, user: null, isAuthenticated: false, isLoading: false });
       }
     } catch {
       set({ isLoading: false });
