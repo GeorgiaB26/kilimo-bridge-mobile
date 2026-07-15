@@ -21,7 +21,8 @@ import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../sh
 import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
 import { AGGREGATION_CENTRES } from '../../../shared/src/locations/aggregationCentres';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
-import { replaceDatabaseFile } from '../db/database';
+import { replaceDatabaseFile, getDatabasePath, getFarmerCount as getDbFarmerCount } from '../db/database';
+import fs from 'fs';
 
 const router = Router();
 const upload = multer({
@@ -226,6 +227,26 @@ router.get('/admin/farmers/import/:sessionId/complete', authenticate, requirePer
     return;
   }
   res.json(result);
+});
+
+/** Check hosted database status (pilot only). */
+router.get('/setup/database/status', (req: Request, res: Response) => {
+  const secret = req.headers['x-restore-secret'] as string | undefined;
+  if (!process.env.RESTORE_DB_SECRET || secret !== process.env.RESTORE_DB_SECRET) {
+    res.status(401).json({ error: 'Invalid restore secret' });
+    return;
+  }
+  try {
+    const path = getDatabasePath();
+    const fileSizeBytes = fs.existsSync(path) ? fs.statSync(path).size : 0;
+    res.json({
+      totalFarmers: getDbFarmerCount(),
+      dbPath: path,
+      fileSizeBytes,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Status failed' });
+  }
 });
 
 /** Upload local kilimo.db to hosted preview (pilot only). Hot-reloads DB without server restart. */

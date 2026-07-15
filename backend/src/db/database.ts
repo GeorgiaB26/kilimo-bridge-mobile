@@ -20,27 +20,42 @@ function openDatabase(): InstanceType<typeof Database> {
   return instance;
 }
 
-export let db = openDatabase();
+let dbInstance = openDatabase();
+
+/** Proxy so hot-reload after upload updates all importers using `db`. */
+export const db: InstanceType<typeof Database> = new Proxy({} as InstanceType<typeof Database>, {
+  get(_target, prop) {
+    const value = (dbInstance as unknown as Record<string | symbol, unknown>)[prop];
+    if (typeof value === 'function') {
+      return (value as (...args: unknown[]) => unknown).bind(dbInstance);
+    }
+    return value;
+  },
+});
 
 export function getDatabasePath(): string {
   return dbPath;
 }
 
+export function getFarmerCount(): number {
+  const row = dbInstance.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };
+  return row.count;
+}
+
 export function closeDatabase(): void {
-  db.close();
+  dbInstance.close();
 }
 
 /** Replace SQLite file in place and reopen — no process restart (Render free tier wipes disk on restart). */
 export function replaceDatabaseFile(buffer: Buffer): number {
-  db.close();
+  dbInstance.close();
   for (const suffix of ['', '-wal', '-shm']) {
     const p = suffix ? dbPath + suffix : dbPath;
     if (fs.existsSync(p)) fs.unlinkSync(p);
   }
   fs.writeFileSync(dbPath, buffer);
-  db = openDatabase();
-  const row = db.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };
-  return row.count;
+  dbInstance = openDatabase();
+  return getFarmerCount();
 }
 
 export function initDatabase(): void {
