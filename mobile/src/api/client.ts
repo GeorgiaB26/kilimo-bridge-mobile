@@ -62,9 +62,10 @@ export async function devQuickLogin(phone: string) {
 }
 
 export async function checkBackendHealth(): Promise<boolean> {
+  const base = API_BASE_URL.replace(/\/api$/, '');
+  const timeoutMs = base.includes('onrender.com') ? 90000 : 8000;
   try {
-    const base = API_BASE_URL.replace(/\/api$/, '');
-    const { data } = await axios.get(`${base}/health`, { timeout: 5000 });
+    const { data } = await axios.get(`${base}/health`, { timeout: timeoutMs });
     return data?.status === 'ok';
   } catch {
     return false;

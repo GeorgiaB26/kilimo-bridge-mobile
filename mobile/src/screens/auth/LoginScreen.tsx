@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput, Button, Surface } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { KilimoLogo } from '../../components/KilimoLogo';
-import { COLORS } from '../../constants';
+import { COLORS, API_BASE_URL, IS_HOSTED_API } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -19,6 +19,10 @@ const DEMO_ADMIN = '+254700000002';
 const DEMO_AGENT = '+254700000003';
 const DEMO_BANKING = '+254700000004';
 const BANKING_PASSWORD = 'Banking@2026';
+
+const BACKEND_OFFLINE_MSG = IS_HOSTED_API
+  ? 'API waking up — wait up to 60 seconds and refresh the page (Render free tier).'
+  : 'Backend offline — run: npm run backend';
 
 export function LoginScreen({ navigation }: Props) {
   const [phone, setPhone] = useState('');
@@ -42,7 +46,7 @@ export function LoginScreen({ navigation }: Props) {
       const healthy = await checkBackendHealth();
       setBackendOk(healthy);
       if (!healthy) {
-        setError('Backend offline — run: npm run backend');
+        setError(BACKEND_OFFLINE_MSG);
         return;
       }
       const result = await requestOtp(phone);
@@ -62,7 +66,7 @@ export function LoginScreen({ navigation }: Props) {
     try {
       await clearAllSessionData();
       if (!(await checkBackendHealth())) {
-        setError('Backend offline — run: npm run backend');
+        setError(BACKEND_OFFLINE_MSG);
         return;
       }
       const { token, user } = await devQuickLogin(demoPhone);
@@ -87,7 +91,10 @@ export function LoginScreen({ navigation }: Props) {
       {backendOk === false ? (
         <Surface style={styles.bannerError} elevation={0}>
           <Ionicons name="cloud-offline-outline" size={20} color={COLORS.alert} />
-          <Text style={styles.bannerErrorText}>Backend offline — run npm run backend in Terminal</Text>
+          <Text style={styles.bannerErrorText}>{BACKEND_OFFLINE_MSG}</Text>
+          {IS_HOSTED_API ? (
+            <Text style={styles.bannerApiHint}>API: {API_BASE_URL}</Text>
+          ) : null}
         </Surface>
       ) : backendOk ? (
         <Surface style={styles.bannerOk} elevation={0}>
@@ -178,6 +185,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   bannerErrorText: { flex: 1, color: COLORS.alert, fontSize: 13 },
+  bannerApiHint: { fontSize: 11, color: COLORS.muted, marginTop: 6 },
   bannerOk: {
     flexDirection: 'row',
     alignItems: 'center',

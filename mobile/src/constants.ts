@@ -48,3 +48,8 @@ export const PROJECTS = [
 ];
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api';
+
+export const IS_HOSTED_API =
+  API_BASE_URL.includes('onrender.com') ||
+  API_BASE_URL.includes('netlify.app') ||
+  !API_BASE_URL.includes('localhost');
