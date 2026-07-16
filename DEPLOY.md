@@ -96,7 +96,31 @@ The Netlify link is only the **web app**. Your imported farmers live in **`backe
    ```
 3. Wait ~60s, refresh Netlify — script prints local vs Render farmer counts.
 
-**Important:** Do not redeploy Render after uploading — free tier wipes the database on each deploy. Upload last, after all code deploys are done.
+**Important:** On Render **free** tier, redeploys wipe the database. For a stable client demo:
+
+1. **Keep Render awake (free)** — see “Stop Render sleeping” below
+2. **Persistent disk ($7/mo)** — Render → Settings → add disk, set `DATABASE_PATH=/var/data/kilimo.db`, upload once
+3. After any accidental wipe, re-run: `RESTORE_DB_SECRET='…' bash scripts/push-db-to-render.sh`
+
+### Stop Render sleeping (free — do this today)
+
+Render sleeps after ~15 min idle → clients see timeouts and empty data.
+
+1. Go to [uptimerobot.com](https://uptimerobot.com) (free account)
+2. **Add monitor** → type **HTTP(s)**
+3. URL: `https://kilimo-bridge-mobile.onrender.com/health`
+4. Interval: **5 minutes**
+5. Save
+
+This pings Render every 5 min so it stays awake for clients. Your laptop can be off.
+
+### Persistent farmer data (recommended for clients)
+
+Render free tier **does not keep** uploaded SQLite across redeploys. Upgrade to **Starter ($7/mo)** and add a **1GB disk**:
+
+1. Render → your service → **Disks** → Add disk → mount `/var/data`
+2. Environment → `DATABASE_PATH=/var/data/kilimo.db`
+3. Redeploy, then run `push-db-to-render.sh` **once** — data survives future redeploys
 
 **Option B — Re-import CSVs** via Admin → Import on the live site (slower).
 

@@ -1,5 +1,5 @@
 # Render Blueprint — Kilimo Bridge API
-# https://render.com/docs/blueprint-spec
+# Persistent disk ($7/mo Starter) keeps farmer data across redeploys.
 services:
   - type: web
     name: kilimo-bridge-api
@@ -7,11 +7,17 @@ services:
     rootDir: backend
     buildCommand: npm run build:render
     startCommand: npm start
+    disk:
+      name: kilimo-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
+      - key: DATABASE_PATH
+        value: /var/data/kilimo.db
       - key: PILOT_OTP
         value: "true"
       - key: JWT_SECRET
@@ -21,4 +27,8 @@ services:
       - key: CORS_ORIGINS
         sync: false
       - key: RESTORE_DB_SECRET
+        sync: false
+      - key: STARTUP_DB_URL
+        sync: false
+      - key: STARTUP_DB_TOKEN
         sync: false
