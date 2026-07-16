@@ -13,6 +13,7 @@ import agentRoutes from './routes/agents';
 import auditRoutes from './routes/audit';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
+import { getFarmerCount } from './db/database';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -55,7 +56,11 @@ async function bootstrap(): Promise<void> {
   app.use('/api', apiRoutes);
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      farmers: getFarmerCount(),
+    });
   });
 
   app.get('/api/metrics/live', (req, res) => {

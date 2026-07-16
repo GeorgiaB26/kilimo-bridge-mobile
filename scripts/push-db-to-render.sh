@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Copy your local farmer database to the hosted Render preview.
 #
-# ONE line to run on your Mac:
-#   cd ~/kilimo-bridge-mobile && git pull && RESTORE_DB_SECRET='KilimoPineappleTest123!' bash scripts/push-db-to-render.sh
+# ONE line to upload farmers to Render right now:
+#   cd ~/kilimo-bridge-mobile && RESTORE_DB_SECRET='KilimoPineappleTest123!' bash scripts/push-db-to-render.sh
+#
+# PERMANENT fix (auto-restore on every Render boot):
+#   bash scripts/publish-db-backup.sh
+#   Then set STARTUP_DB_URL + STARTUP_DB_TOKEN on Render (see script output)
 #
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

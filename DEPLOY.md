@@ -81,6 +81,37 @@ curl https://kilimo-bridge-api.onrender.com/health
 
 The Netlify link is only the **web app**. Your imported farmers live in **`backend/data/kilimo.db` on your Mac** — Render starts empty.
 
+### Permanent farmer data (do this once — fixes wipe/timeouts)
+
+Render free tier **keeps wiping** your uploaded database. Auto-restore on every boot:
+
+**On your Mac:**
+
+```bash
+brew install gh          # if needed
+gh auth login
+cd ~/kilimo-bridge-mobile
+git pull
+bash scripts/publish-db-backup.sh
+```
+
+The script prints two values. Add them in **Render → Environment**:
+
+```
+STARTUP_DB_URL=https://github.com/GeorgiaB26/kilimo-bridge-mobile/releases/download/db-backup/kilimo.db
+STARTUP_DB_TOKEN=<GitHub token — Settings → Developer settings → Personal access tokens → read repo>
+```
+
+Then **Manual Deploy** on Render. Open `https://kilimo-bridge-mobile.onrender.com/health` — should show `"farmers":2617`.
+
+**Also set up UptimeRobot** (free) pinging `/health` every 5 min so clients don't see timeouts.
+
+### Quick re-upload (temporary)
+
+```bash
+RESTORE_DB_SECRET='KilimoPineappleTest123!' bash scripts/push-db-to-render.sh
+```
+
 **Option A — Upload your database (fastest, ~2 min):**
 
 1. Render → Environment → add:
