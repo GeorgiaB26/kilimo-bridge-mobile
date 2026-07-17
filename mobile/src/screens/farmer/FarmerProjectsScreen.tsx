@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../constants';
 import { getFarmerHierarchyProjects, getFarmerProjects } from '../../api/client';
+import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
@@ -34,18 +35,31 @@ export function FarmerProjectsScreen() {
   const [hierarchyProjects, setHierarchyProjects] = useState<HierarchyProject[]>([]);
   const [useHierarchy, setUseHierarchy] = useState(false);
 
-  useEffect(() => {
+  const [hierarchyError, setHierarchyError] = useState<string | null>(null);
+  const [hierarchyChecked, setHierarchyChecked] = useState(false);
+
+  const loadHierarchy = useCallback(() => {
     getFarmerHierarchyProjects()
       .then((d) => {
         const list = d.projects ?? [];
         setHierarchyProjects(list);
-        setUseHierarchy(list.length > 0);
+        setUseHierarchy(true);
+        setHierarchyError(list.length === 0 ? 'No program projects assigned. Restart backend to load demo data.' : null);
       })
-      .catch(() => setUseHierarchy(false));
-    getFarmerProjects().then((d) => setProjects(d.projects ?? [])).catch(() => {});
+      .catch((err: unknown) => {
+        setHierarchyProjects([]);
+        setUseHierarchy(true);
+        setHierarchyError(extractApiError(err, 'Could not load program projects'));
+      })
+      .finally(() => setHierarchyChecked(true));
   }, []);
 
-  if (useHierarchy) {
+  useEffect(() => {
+    loadHierarchy();
+    getFarmerProjects().then((d) => setProjects(d.projects ?? [])).catch(() => {});
+  }, [loadHierarchy]);
+
+  if (useHierarchy || hierarchyChecked) {
     const active = hierarchyProjects.filter((p) => p.status !== 'completed');
     const done = hierarchyProjects.filter((p) => p.status === 'completed');
     const shown = tab === 'active' ? active : done;
@@ -53,7 +67,13 @@ export function FarmerProjectsScreen() {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Your program projects</Text>
-        <Text style={styles.subtitle}>Sector → program tasks with payments per step</Text>
+        <Text style={styles.subtitle}>Tap a project to see your 5 tasks and mark them complete</Text>
+        {hierarchyError ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{hierarchyError}</Text>
+            <Text style={styles.errorHint}>Run: cd backend && npm run dev — then refresh</Text>
+          </View>
+        ) : null}
         <SegmentedButtons
           value={tab}
           onValueChange={(v) => setTab(v as Tab)}
@@ -184,4 +204,7 @@ const styles = StyleSheet.create({
   emptyWrap: { padding: 24, alignItems: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginBottom: 8 },
   empty: { textAlign: 'center', color: COLORS.muted, fontSize: 14, lineHeight: 20 },
+  errorCard: { backgroundColor: '#FFEBEE', padding: 12, borderRadius: 8, marginBottom: 12 },
+  errorText: { color: COLORS.alert, fontWeight: '600', fontSize: 14 },
+  errorHint: { color: COLORS.muted, fontSize: 13, marginTop: 6 },
 });

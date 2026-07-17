@@ -4,7 +4,7 @@ export function taskStatusLabel(status: TaskStatus | string): string {
   const map: Record<string, string> = {
     'not-started': 'Not started',
     'in-progress': 'In progress',
-    'submitted-for-approval': 'Awaiting approval',
+    'submitted-for-approval': 'Submitted for Approval',
     approved: 'Approved',
     completed: 'Completed',
     rejected: 'Needs rework',

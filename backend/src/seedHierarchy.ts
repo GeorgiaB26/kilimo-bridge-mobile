@@ -1,18 +1,37 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../src/db/database';
+import { db } from './db/database';
 import {
   createSector,
   createProgram,
   createProgramProject,
   createTask,
   assignFarmersToProject,
-} from '../src/services/hierarchyService';
+} from './services/hierarchyService';
 
-/** Seed demo hierarchy if sectors table is empty. Safe to call on every startup. */
-export function seedHierarchyIfEmpty(): void {
-  const existing = db.prepare('SELECT COUNT(*) as c FROM sectors').get() as { c: number };
-  if (existing.c > 0) return;
+const DEMO_FARMER_PHONE = '+254712345678';
+const DEMO_PROJECT_NAME = 'Tree Planting Project - Nairobi Q3 2026';
 
+function findDemoProjectId(): string | null {
+  const row = db.prepare('SELECT id FROM program_projects WHERE name = ?').get(DEMO_PROJECT_NAME) as
+    | { id: string }
+    | undefined;
+  return row?.id ?? null;
+}
+
+function linkDemoFarmerUser(): string | null {
+  const farmer = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get(DEMO_FARMER_PHONE) as
+    | { farmer_id: string }
+    | undefined;
+  if (!farmer) return null;
+
+  db.prepare('UPDATE users SET farmer_id = ? WHERE phone_number = ? AND farmer_id IS NULL').run(
+    farmer.farmer_id,
+    DEMO_FARMER_PHONE
+  );
+  return farmer.farmer_id;
+}
+
+function seedFullHierarchy(): string {
   console.log('Seeding Phase 2 hierarchy (Conservation → Tree Planting → Nairobi)...');
 
   const sector = createSector({
@@ -32,7 +51,7 @@ export function seedHierarchyIfEmpty(): void {
     | undefined;
 
   const project = createProgramProject({
-    name: 'Tree Planting Project - Nairobi Q3 2026',
+    name: DEMO_PROJECT_NAME,
     program_id: program.id,
     region: 'Nairobi',
     budget_kes: 20000,
@@ -62,18 +81,44 @@ export function seedHierarchyIfEmpty(): void {
     });
   }
 
-  const farmers = db.prepare('SELECT farmer_id FROM farmers LIMIT 10').all() as { farmer_id: string }[];
-  const farmerIds = farmers.map((f) => f.farmer_id);
-  if (farmerIds.length > 0) {
-    assignFarmersToProject(project.id, farmerIds);
-  }
-
-  // Demo aggregation centre for UAT
   db.prepare(`
     INSERT OR IGNORE INTO aggregation_centres (
       centre_id, name, country, location_level_1, region, status, manager_name, manager_phone
-    ) VALUES (?, ?, 'Kenya', 'Nairobi', 'Nairobi', 'Active', 'James Kipchoge', '+254712345678')
-  `).run(uuidv4(), 'Nairobi Market Hub');
+    ) VALUES (?, ?, 'Kenya', 'Nairobi', 'Nairobi', 'Active', 'James Kipchoge', ?)
+  `).run(uuidv4(), 'Nairobi Market Hub', DEMO_FARMER_PHONE);
 
-  console.log(`Hierarchy seeded: project ${project.id}, ${farmerIds.length} farmers assigned`);
+  return project.id;
+}
+
+/** Seed hierarchy if missing; always ensure demo farmer John Doe is assigned. */
+export function seedHierarchyIfEmpty(): void {
+  let projectId = findDemoProjectId();
+
+  const sectorCount = db.prepare('SELECT COUNT(*) as c FROM sectors').get() as { c: number };
+  if (sectorCount.c === 0 || !projectId) {
+    projectId = seedFullHierarchy();
+  }
+
+  linkDemoFarmerUser();
+
+  const demoFarmerId = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get(DEMO_FARMER_PHONE) as
+    | { farmer_id: string }
+    | undefined;
+  const farmersToAssign: string[] = [];
+
+  if (demoFarmerId) farmersToAssign.push(demoFarmerId.farmer_id);
+
+  const extras = db.prepare('SELECT farmer_id FROM farmers LIMIT 10').all() as { farmer_id: string }[];
+  for (const f of extras) {
+    if (!farmersToAssign.includes(f.farmer_id)) farmersToAssign.push(f.farmer_id);
+  }
+
+  if (projectId && farmersToAssign.length > 0) {
+    assignFarmersToProject(projectId, farmersToAssign);
+    const fid = demoFarmerId?.farmer_id ?? farmersToAssign[0];
+    const taskCount = db.prepare(`
+      SELECT COUNT(*) as c FROM farmer_tasks WHERE program_project_id = ? AND farmer_id = ?
+    `).get(projectId, fid) as { c: number };
+    console.log(`Hierarchy ready: project ${projectId}, demo farmer tasks: ${taskCount?.c ?? 0}`);
+  }
 }
