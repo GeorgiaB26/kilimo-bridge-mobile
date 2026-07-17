@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../constants';
 import { getFarmerHierarchyProjects, getFarmerProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
+import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
@@ -69,10 +70,7 @@ export function FarmerProjectsScreen() {
         <Text style={styles.title}>Your program projects</Text>
         <Text style={styles.subtitle}>Tap a project to see your 5 tasks and mark them complete</Text>
         {hierarchyError ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorText}>{hierarchyError}</Text>
-            <Text style={styles.errorHint}>Run: cd backend && npm run dev — then refresh</Text>
-          </View>
+          <FarmerOfflineBanner message={hierarchyError} hint="Restart backend, then log out and use Farmer quick login (+254712345678)." />
         ) : null}
         <SegmentedButtons
           value={tab}

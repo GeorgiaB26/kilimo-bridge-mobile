@@ -10,6 +10,8 @@ import { KilimoLogo } from '../../components/KilimoLogo';
 import { FarmerLocationPrompt } from '../../components/FarmerLocationPrompt';
 import { COLORS } from '../../constants';
 import { getFarmerDashboard, claimPayment, getFarmerPayments } from '../../api/client';
+import { extractApiError } from '../../utils/feedback';
+import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { useAuthStore } from '../../store/authStore';
 import { getLocalizedGreeting, formatDueDate } from '../../utils/greeting';
 import { KBCard } from '../../components/ui/KBCard';
@@ -38,13 +40,16 @@ export function FarmerDashboardScreen() {
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const result = await getFarmerDashboard();
       setData(result);
-    } catch {
-      // offline
+      setError(null);
+    } catch (err: unknown) {
+      setData(null);
+      setError(extractApiError(err, 'Backend offline or farmer account not linked'));
     }
   }, []);
 
@@ -102,6 +107,8 @@ export function FarmerDashboardScreen() {
           <Text style={styles.greetingSub}>{greeting.secondary}</Text>
           <Text style={styles.heroSub}>Here&apos;s your earnings overview</Text>
         </View>
+
+        {error ? <FarmerOfflineBanner message={error} /> : null}
 
         <View style={styles.pendingCard}>
           <KBStatusChip label="Ready to Claim" variant="success" />
