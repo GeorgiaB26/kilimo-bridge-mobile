@@ -178,3 +178,102 @@ export async function getFarmerNotifications() {
   const { data } = await api.get('/farmer/notifications');
   return data;
 }
+
+// Phase 2 hierarchy
+export async function getHierarchyDashboard() {
+  const { data } = await api.get('/admin/hierarchy/dashboard');
+  return data;
+}
+
+export async function getProgramProjects(programId?: string) {
+  const { data } = await api.get('/admin/program-projects', { params: programId ? { program_id: programId } : {} });
+  return data;
+}
+
+export async function getProgramProject(projectId: string) {
+  const { data } = await api.get(`/admin/program-projects/${projectId}`);
+  return data;
+}
+
+export async function assignFarmersToProgramProject(projectId: string, farmerIds: string[]) {
+  const { data } = await api.post(`/admin/program-projects/${projectId}/assign-farmers`, { farmer_ids: farmerIds });
+  return data;
+}
+
+export async function getPendingFarmerTasks(programProjectId?: string) {
+  const { data } = await api.get('/admin/farmer-tasks/pending', {
+    params: programProjectId ? { program_project_id: programProjectId } : {},
+  });
+  return data;
+}
+
+export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
+  const { data } = await api.post(`/admin/farmer-tasks/${farmerTaskId}/approve`, { notes });
+  return data;
+}
+
+export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: string) {
+  const { data } = await api.post(`/admin/farmer-tasks/${farmerTaskId}/reject`, { rejection_reason });
+  return data;
+}
+
+export async function getFarmerHierarchyProjects() {
+  const { data } = await api.get('/farmer/hierarchy/projects');
+  return data;
+}
+
+export async function getFarmerHierarchyTasks(params?: { status?: string; program_project_id?: string }) {
+  const { data } = await api.get('/farmer/hierarchy/tasks', { params });
+  return data;
+}
+
+export async function getFarmerHierarchyTask(farmerTaskId: string) {
+  const { data } = await api.get(`/farmer/hierarchy/tasks/${farmerTaskId}`);
+  return data;
+}
+
+export async function submitFarmerHierarchyTask(farmerTaskId: string, body: { photo_url?: string; notes?: string }) {
+  const { data } = await api.post(`/farmer/hierarchy/tasks/${farmerTaskId}/submit`, body);
+  return data;
+}
+
+export async function getFarmerPaymentPending() {
+  const { data } = await api.get('/farmer/hierarchy/payment-pending');
+  return data;
+}
+
+export async function getCentreDashboard(centreId?: string) {
+  const path = centreId ? `/aggregation/centre/${centreId}/dashboard` : '/aggregation/centre/dashboard';
+  const { data } = await api.get(path);
+  return data;
+}
+
+export async function getCentreInventory(centreId?: string) {
+  const path = centreId ? `/aggregation/centre/${centreId}/inventory` : '/aggregation/centre/inventory';
+  const { data } = await api.get(path);
+  return data;
+}
+
+export async function receiveCentreDelivery(centreId: string | 'self', body: {
+  farmer_id: string;
+  task_id?: string;
+  product_name: string;
+  quantity_received: number;
+  unit?: string;
+  notes?: string;
+}) {
+  const path = centreId === 'self'
+    ? '/aggregation/centre/receive-delivery'
+    : `/aggregation/centre/${centreId}/receive-delivery`;
+  const { data } = await api.post(path, body);
+  return data;
+}
+
+export async function approveInventoryQuality(inventoryId: string, body: {
+  quality_status: 'approved' | 'rejected';
+  quality_notes?: string;
+  marketplace_price_per_unit?: number;
+}) {
+  const { data } = await api.post(`/aggregation/inventory/${inventoryId}/approve-quality`, body);
+  return data;
+}

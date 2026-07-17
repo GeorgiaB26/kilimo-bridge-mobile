@@ -8,7 +8,8 @@
     "build": "tsc",
     "build:render": "npm install --include=dev && npm run build",
     "start": "node dist/backend/src/index.js",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "seed:hierarchy": "tsx scripts/seed-hierarchy.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

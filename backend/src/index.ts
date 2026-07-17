@@ -11,6 +11,8 @@ import adminDashboardRoutes from './routes/adminDashboard';
 import bankingRoutes, { equityWebhookRouter } from './routes/banking';
 import agentRoutes from './routes/agents';
 import auditRoutes from './routes/audit';
+import hierarchyAdminRoutes from './routes/hierarchyAdmin';
+import aggregationRoutes from './routes/aggregation';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
 import { getFarmerCount } from './db/database';
@@ -49,6 +51,8 @@ async function bootstrap(): Promise<void> {
   app.use('/api/auth', authRoutes);
   app.use('/api/farmer', farmerRoutes);
   app.use('/api/admin', adminDashboardRoutes);
+  app.use('/api/admin', hierarchyAdminRoutes);
+  app.use('/api/aggregation', aggregationRoutes);
   app.use('/api/banking', bankingRoutes);
   app.use('/api/agents', agentRoutes);
   app.use('/api/audit', auditRoutes);

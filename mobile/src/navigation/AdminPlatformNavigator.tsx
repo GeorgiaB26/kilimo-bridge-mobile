@@ -7,6 +7,7 @@ import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { AdminFarmersNavigator } from './AdminFarmersNavigator';
 import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
 import { AdminProfileScreen } from '../screens/admin/AdminProfileScreen';
+import { AdminProgramsNavigator } from './AdminProgramsNavigator';
 import { ImportNavigator } from './ImportNavigator';
 import { RegistrationNavigator } from './RegistrationNavigator';
 import type { AdminTabParamList } from './types';
@@ -28,6 +29,7 @@ export function AdminPlatformNavigator() {
           const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
             Dashboard: 'grid',
             Farmers: 'people',
+            Programs: 'layers',
             Import: 'cloud-upload',
             Register: 'person-add',
             Users: 'shield',
@@ -39,6 +41,7 @@ export function AdminPlatformNavigator() {
     >
       <Tab.Screen name="Dashboard" component={AdminDashboardScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Dashboard' }} />
       <Tab.Screen name="Farmers" component={AdminFarmersNavigator} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Farmers' }} />
+      <Tab.Screen name="Programs" component={AdminProgramsNavigator} options={{ headerShown: false, title: 'Programs' }} />
       {canImport ? (
         <Tab.Screen name="Import" component={ImportNavigator} options={{ title: 'Import' }} />
       ) : null}

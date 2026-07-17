@@ -41,6 +41,17 @@ export const PERMISSIONS = {
   'profile.read': ['farmer'] as UserRole[],
   'projects.read': ['farmer'] as UserRole[],
 
+  // Phase 2 hierarchy
+  'hierarchy.read': ['agent', 'admin', 'super_admin'] as UserRole[],
+  'hierarchy.read.own': ['farmer'] as UserRole[],
+  'hierarchy.write': ['admin', 'super_admin'] as UserRole[],
+  'hierarchy.assign': ['admin', 'super_admin', 'agent'] as UserRole[],
+  'tasks.read': ['agent', 'admin', 'super_admin', 'farmer'] as UserRole[],
+  'tasks.submit': ['farmer'] as UserRole[],
+  'tasks.approve': ['agent', 'admin', 'super_admin'] as UserRole[],
+  'centres.read': ['agent', 'admin', 'super_admin'] as UserRole[],
+  'centres.manage': ['agent', 'admin', 'super_admin'] as UserRole[],
+
   // Banking H2H
   'banking.h2h': ['banking', 'super_admin'] as UserRole[],
 } as const;

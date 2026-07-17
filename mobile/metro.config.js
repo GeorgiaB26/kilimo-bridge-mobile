@@ -7,7 +7,6 @@ const monorepoRoot = path.resolve(projectRoot, '..');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
 
-// Allow imports from ../shared in this monorepo
 config.watchFolders = [monorepoRoot];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),

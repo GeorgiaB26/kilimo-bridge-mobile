@@ -9,6 +9,8 @@ export type AuthStackParamList = {
 export type FarmerProjectsStackParamList = {
   ProjectsList: undefined;
   ProjectDetail: { project: FarmerProject };
+  HierarchyProjectDetail: { projectId: string; projectName: string };
+  HierarchyTaskDetail: { farmerTaskId: string; taskName: string };
 };
 
 export type FarmerTabParamList = {
@@ -21,10 +23,17 @@ export type FarmerTabParamList = {
 export type AdminTabParamList = {
   Dashboard: undefined;
   Farmers: undefined;
+  Programs: undefined;
   Import: undefined;
   Register: undefined;
   Users: undefined;
   Profile: undefined;
+};
+
+export type AdminProgramsStackParamList = {
+  ProgramProjectsList: undefined;
+  ProgramProjectDetail: { projectId: string; name: string };
+  PendingTasks: undefined;
 };
 
 export type AdminFarmerSummary = {
