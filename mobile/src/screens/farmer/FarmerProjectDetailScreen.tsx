@@ -6,6 +6,7 @@ import { COLORS } from '../../constants';
 import { useCurrency } from '../../context/CurrencyContext';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { FarmerProjectTasksSection } from '../../components/farmer/FarmerProjectTasksSection';
 import { formatDueDate, formatProjectStatus } from '../../utils/greeting';
 import { PROJECT_DESCRIPTIONS } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
@@ -13,7 +14,7 @@ import type { FarmerProjectsStackParamList } from '../../navigation/types';
 type Props = NativeStackScreenProps<FarmerProjectsStackParamList, 'ProjectDetail'>;
 
 export function FarmerProjectDetailScreen({ route }: Props) {
-  const { project } = route.params;
+  const { project, programProjectId } = route.params;
   const { formatAmount } = useCurrency();
   const statusInfo = formatProjectStatus(project.status);
   const isComplete = project.status === 'Completed';
@@ -42,9 +43,6 @@ export function FarmerProjectDetailScreen({ route }: Props) {
         {project.payment_status ? (
           <Text style={styles.meta}>Payment status: {project.payment_status}</Text>
         ) : null}
-        {project.earnings_amount ? (
-          <Text style={styles.meta}>Earnings: {formatAmount(project.earnings_amount)}</Text>
-        ) : null}
       </View>
 
       {!isComplete ? (
@@ -56,19 +54,12 @@ export function FarmerProjectDetailScreen({ route }: Props) {
             rightLabel={project.due_date ? `Due ${formatDueDate(project.due_date)}` : undefined}
             stacked
           />
-          {project.start_date ? (
-            <Text style={styles.metaLine}>Started: {formatDueDate(project.start_date)}</Text>
-          ) : null}
         </View>
-      ) : (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Completed</Text>
-          <Text style={styles.completeText}>Payment transferred to your M-Pesa wallet.</Text>
-          {project.completed_at ? (
-            <Text style={styles.meta}>Finished: {formatDueDate(project.completed_at)}</Text>
-          ) : null}
-        </View>
-      )}
+      ) : null}
+
+      <View style={styles.tasksCard}>
+        <FarmerProjectTasksSection programProjectId={programProjectId} />
+      </View>
     </ScrollView>
   );
 }
@@ -99,6 +90,12 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 12,
   },
+  tasksCard: {
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: 18,
+    marginBottom: 12,
+  },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -110,12 +107,4 @@ const styles = StyleSheet.create({
   description: { fontSize: 15, color: COLORS.text, lineHeight: 22 },
   amount: { fontSize: 32, fontWeight: '800', color: COLORS.accent, lineHeight: 40 },
   meta: { fontSize: 14, lineHeight: 22, color: COLORS.muted, marginTop: 10 },
-  metaLine: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: COLORS.muted,
-    marginTop: 16,
-    paddingTop: 4,
-  },
-  completeText: { fontSize: 15, lineHeight: 22, color: COLORS.success, fontWeight: '600' },
 });

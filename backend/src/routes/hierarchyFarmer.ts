@@ -6,7 +6,7 @@ import {
   getFarmerTask,
   submitFarmerTask,
 } from '../services/hierarchyService';
-import { sendSms } from '../services/notificationService';
+import { getAdminNotifyPhone, sendSms } from '../services/notificationService';
 
 const router = Router();
 router.use(authenticate);
@@ -81,6 +81,10 @@ router.post('/tasks/:farmerTaskId/submit-completion', requirePermission('tasks.s
   if (task.farmer_phone) {
     sendSms(task.farmer_phone, `Task "${task.name}" submitted for approval. Awaiting review.`);
   }
+  const adminPhone = getAdminNotifyPhone();
+  if (adminPhone) {
+    sendSms(adminPhone, `Farmer submitted task "${task.name}" for approval. Review in Kilimo Bridge admin.`);
+  }
   res.json(updated);
 });
 
@@ -131,6 +135,10 @@ router.post('/hierarchy/tasks/:farmerTaskId/submit', requirePermission('tasks.su
   const updated = submitFarmerTask(req.params.farmerTaskId, { photo_url, notes });
   if (task.farmer_phone) {
     sendSms(task.farmer_phone, `Task "${task.name}" submitted for approval. Awaiting review.`);
+  }
+  const adminPhone = getAdminNotifyPhone();
+  if (adminPhone) {
+    sendSms(adminPhone, `Farmer submitted task "${task.name}" for approval. Review in Kilimo Bridge admin.`);
   }
   res.json(updated);
 });
