@@ -241,8 +241,30 @@ export async function getFarmerHierarchyTasks(params?: { status?: string; progra
   return data;
 }
 
+/** Spec alias: GET /api/farmer/tasks?project_id=X */
+export async function getFarmerProjectTasks(projectId: string, status?: string) {
+  const { data } = await api.get('/farmer/tasks', {
+    params: { project_id: projectId, status },
+  });
+  return data;
+}
+
 export async function getFarmerHierarchyTask(farmerTaskId: string) {
   const { data } = await api.get(`/farmer/hierarchy/tasks/${farmerTaskId}`);
+  return data;
+}
+
+export async function getFarmerTaskApprovalStatus(farmerTaskId: string) {
+  const { data } = await api.get(`/farmer/tasks/${farmerTaskId}/approval-status`);
+  return data;
+}
+
+/** Spec alias: POST /api/farmer/tasks/:id/submit-completion */
+export async function submitFarmerTaskCompletion(
+  farmerTaskId: string,
+  body: { photo_url?: string; notes?: string }
+) {
+  const { data } = await api.post(`/farmer/tasks/${farmerTaskId}/submit-completion`, body);
   return data;
 }
 
