@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
-import { AgentCentreDashboardScreen } from '../screens/agent/AgentCentreDashboardScreen';
+import { AggregationCentreDashboardScreen } from '../screens/aggregation/AggregationCentreDashboardScreen';
 import { AgentPendingTasksScreen } from '../screens/agent/AgentPendingTasksScreen';
 import { AgentFarmersScreen } from '../screens/agent/AgentFarmersScreen';
 import { AgentAuditScreen } from '../screens/agent/AgentAuditScreen';
@@ -28,7 +28,7 @@ export function AgentNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Centre" component={AgentCentreDashboardScreen} options={{ title: 'Centre' }} />
+      <Tab.Screen name="Centre" component={AggregationCentreDashboardScreen} options={{ title: 'Centre' }} />
       <Tab.Screen name="Farmers" component={AgentFarmersScreen} />
       <Tab.Screen name="Tasks" component={AgentPendingTasksScreen} options={{ title: 'Task approvals' }} />
       <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register' }} />

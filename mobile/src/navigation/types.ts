@@ -4,6 +4,7 @@ import type { FarmerProject } from '../types/farmerProject';
 export type AuthStackParamList = {
   Login: undefined;
   Otp: { phone: string; devCode?: string };
+  AggregationLogin: undefined;
 };
 
 export type FarmerProjectsStackParamList = {
@@ -23,7 +24,7 @@ export type FarmerTabParamList = {
 export type AdminTabParamList = {
   Dashboard: undefined;
   Farmers: undefined;
-  Programs: undefined;
+  Manage: undefined;
   Tasks: undefined;
   Centre: undefined;
   Import: undefined;

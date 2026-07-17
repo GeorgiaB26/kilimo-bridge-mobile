@@ -69,8 +69,8 @@ function ensureDemoFarmerRecord(): string | null {
   db.prepare(`
     INSERT INTO farmers (
       farmer_id, key, name, gender, id_number, membership_group_id,
-      phone_number, country, district, sub_county, membership_type, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Kenya', ?, ?, 'Active', 'Active')
+      phone_number, country, district, sub_county, membership_type, status, aggregation_center
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Kenya', ?, ?, 'Active', 'Active', 'Kiambu Town Hall')
   `).run(
     farmerId, DEMO_FARMER.key, DEMO_FARMER.name, DEMO_FARMER.gender,
     DEMO_FARMER.idNumber, groupId, DEMO_FARMER_PHONE,
@@ -118,6 +118,13 @@ function ensureDemoStaffUsers(): void {
       });
     }
   }
+}
+
+/** Demo aggregation centre login: +254700000003 / 12345 */
+export async function ensureDemoAgentPassword(): Promise<void> {
+  const { hashPassword } = await import('./services/encryptionService');
+  const hash = await hashPassword('12345');
+  db.prepare(`UPDATE users SET password_hash = ? WHERE phone_number = ?`).run(hash, '+254700000003');
 }
 
 function ensureDemoFarmerLegacyData(farmerId: string, projectIds: Record<string, string>): void {

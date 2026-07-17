@@ -20,13 +20,30 @@ function farmerIdOr400(req: Request, res: Response): string | null {
   return farmerId;
 }
 
+function mapFarmerTaskRow(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name,
+    payment: row.payment_value_kes,
+    payment_value_kes: row.payment_value_kes,
+    status: row.status,
+    due_date: row.due_date,
+    sequence_order: row.task_order,
+    task_order: row.task_order,
+    photo_url: row.photo_evidence_url,
+    notes: row.notes,
+    approval_date: row.approved_date,
+  };
+}
+
 /** Spec aliases: GET /api/farmer/tasks?project_id=X */
 router.get('/tasks', requirePermission('hierarchy.read.own'), (req: Request, res: Response) => {
   const farmerId = farmerIdOr400(req, res);
   if (!farmerId) return;
   const project_id = (req.query.project_id ?? req.query.program_project_id) as string | undefined;
   const status = req.query.status as string | undefined;
-  res.json({ tasks: listFarmerTasks(farmerId, { program_project_id: project_id, status }) });
+  const rows = listFarmerTasks(farmerId, { program_project_id: project_id, status }) as Record<string, unknown>[];
+  res.json({ tasks: rows.map(mapFarmerTaskRow) });
 });
 
 router.get('/tasks/:farmerTaskId/approval-status', requirePermission('hierarchy.read.own'), (req: Request, res: Response) => {
@@ -63,7 +80,7 @@ router.get('/tasks/:farmerTaskId', requirePermission('hierarchy.read.own'), (req
     res.status(403).json({ error: 'Not your task' });
     return;
   }
-  res.json(task);
+  res.json(mapFarmerTaskRow(task as Record<string, unknown>));
 });
 
 router.post('/tasks/:farmerTaskId/submit-completion', requirePermission('tasks.submit'), (req: Request, res: Response) => {
@@ -85,7 +102,11 @@ router.post('/tasks/:farmerTaskId/submit-completion', requirePermission('tasks.s
   if (adminPhone) {
     sendSms(adminPhone, `Farmer submitted task "${task.name}" for approval. Review in Kilimo Bridge admin.`);
   }
-  res.json(updated);
+  res.json({
+    status: 'submitted',
+    message: 'Task submitted for approval',
+    task: mapFarmerTaskRow(updated as Record<string, unknown>),
+  });
 });
 
 router.get('/hierarchy/projects', requirePermission('hierarchy.read.own'), (req: Request, res: Response) => {

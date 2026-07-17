@@ -141,6 +141,9 @@ export function LoginScreen({ navigation }: Props) {
       <Button mode="outlined" onPress={() => quickLogin(DEMO_AGENT, 'Agent')} loading={loading} style={styles.quickBtn}>
         Open Agent Platform
       </Button>
+      <Button mode="outlined" onPress={() => navigation.navigate('AggregationLogin')} style={styles.quickBtn}>
+        Aggregation Centre Login
+      </Button>
       <Button
         mode="outlined"
         loading={loading}
