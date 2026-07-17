@@ -8,6 +8,8 @@ import { AdminFarmersNavigator } from './AdminFarmersNavigator';
 import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
 import { AdminProfileScreen } from '../screens/admin/AdminProfileScreen';
 import { AdminProgramsNavigator } from './AdminProgramsNavigator';
+import { AdminTasksScreen } from '../screens/admin/AdminTasksScreen';
+import { AdminCentreScreen } from '../screens/admin/AdminCentreScreen';
 import { ImportNavigator } from './ImportNavigator';
 import { RegistrationNavigator } from './RegistrationNavigator';
 import type { AdminTabParamList } from './types';
@@ -30,6 +32,8 @@ export function AdminPlatformNavigator() {
             Dashboard: 'grid',
             Farmers: 'people',
             Programs: 'layers',
+            Tasks: 'checkbox',
+            Centre: 'storefront',
             Import: 'cloud-upload',
             Register: 'person-add',
             Users: 'shield',
@@ -42,6 +46,8 @@ export function AdminPlatformNavigator() {
       <Tab.Screen name="Dashboard" component={AdminDashboardScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Dashboard' }} />
       <Tab.Screen name="Farmers" component={AdminFarmersNavigator} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Farmers' }} />
       <Tab.Screen name="Programs" component={AdminProgramsNavigator} options={{ headerShown: false, title: 'Programs' }} />
+      <Tab.Screen name="Tasks" component={AdminTasksScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Tasks' }} />
+      <Tab.Screen name="Centre" component={AdminCentreScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Centre' }} />
       {canImport ? (
         <Tab.Screen name="Import" component={ImportNavigator} options={{ title: 'Import' }} />
       ) : null}

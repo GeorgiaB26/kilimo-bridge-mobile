@@ -14,8 +14,10 @@ import {
   rejectFarmerTask,
   getFarmerTask,
   listPendingFarmerTasks,
+  listAllFarmerTasks,
   getHierarchyDashboardStats,
 } from '../services/hierarchyService';
+import { sendSms } from '../services/notificationService';
 
 const router = Router();
 router.use(authenticate);
@@ -103,6 +105,13 @@ router.post('/program-projects/:projectId/assign-farmers', requirePermission('hi
   res.json(assignFarmersToProject(req.params.projectId, farmer_ids));
 });
 
+router.get('/farmer-tasks', requirePermission('hierarchy.read'), (req: Request, res: Response) => {
+  const program_project_id = req.query.program_project_id as string | undefined;
+  const status = req.query.status as string | undefined;
+  const farmer_id = req.query.farmer_id as string | undefined;
+  res.json({ tasks: listAllFarmerTasks({ program_project_id, status, farmer_id }) });
+});
+
 router.get('/farmer-tasks/pending', requirePermission('tasks.approve'), (req: Request, res: Response) => {
   const projectId = req.query.program_project_id as string | undefined;
   res.json({ tasks: listPendingFarmerTasks(projectId) });
@@ -119,7 +128,18 @@ router.get('/farmer-tasks/:farmerTaskId', requirePermission('hierarchy.read'), (
 
 router.post('/farmer-tasks/:farmerTaskId/approve', requirePermission('tasks.approve'), (req: Request, res: Response) => {
   const { notes } = req.body;
-  res.json(approveFarmerTask(req.params.farmerTaskId, notes));
+  const task = approveFarmerTask(req.params.farmerTaskId, notes) as {
+    name?: string;
+    payment_value_kes?: number;
+    farmer_phone?: string;
+  };
+  if (task?.farmer_phone) {
+    sendSms(
+      task.farmer_phone,
+      `Task "${task.name}" approved! ${task.payment_value_kes ?? 0} KES pending settlement. Thank you!`
+    );
+  }
+  res.json(task);
 });
 
 router.post('/farmer-tasks/:farmerTaskId/reject', requirePermission('tasks.approve'), (req: Request, res: Response) => {
@@ -128,7 +148,14 @@ router.post('/farmer-tasks/:farmerTaskId/reject', requirePermission('tasks.appro
     res.status(400).json({ error: 'rejection_reason is required' });
     return;
   }
-  res.json(rejectFarmerTask(req.params.farmerTaskId, rejection_reason));
+  const task = rejectFarmerTask(req.params.farmerTaskId, rejection_reason) as {
+    name?: string;
+    farmer_phone?: string;
+  };
+  if (task?.farmer_phone) {
+    sendSms(task.farmer_phone, `Task "${task.name}" rejected. Reason: ${rejection_reason}. Please resubmit.`);
+  }
+  res.json(task);
 });
 
 export default router;

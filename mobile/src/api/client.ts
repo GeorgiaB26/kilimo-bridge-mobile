@@ -207,6 +207,20 @@ export async function getPendingFarmerTasks(programProjectId?: string) {
   return data;
 }
 
+export async function getAdminFarmerTasks(params?: {
+  program_project_id?: string;
+  status?: string;
+  farmer_id?: string;
+}) {
+  const { data } = await api.get('/admin/farmer-tasks', { params });
+  return data;
+}
+
+export async function getAdminFarmerTask(farmerTaskId: string) {
+  const { data } = await api.get(`/admin/farmer-tasks/${farmerTaskId}`);
+  return data;
+}
+
 export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
   const { data } = await api.post(`/admin/farmer-tasks/${farmerTaskId}/approve`, { notes });
   return data;
@@ -275,5 +289,18 @@ export async function approveInventoryQuality(inventoryId: string, body: {
   marketplace_price_per_unit?: number;
 }) {
   const { data } = await api.post(`/aggregation/inventory/${inventoryId}/approve-quality`, body);
+  return data;
+}
+
+export async function getAggregationCentres() {
+  const { data } = await api.get('/aggregation/centres');
+  return data;
+}
+
+export async function getPendingDeliveries(centreId?: string) {
+  const path = centreId
+    ? `/aggregation/centre/${centreId}/pending-deliveries`
+    : '/aggregation/centre/pending-deliveries';
+  const { data } = await api.get(path);
   return data;
 }

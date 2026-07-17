@@ -188,7 +188,7 @@ export function assignFarmersToProject(programProjectId: string, farmerIds: stri
 export function getFarmerTask(farmerTaskId: string) {
   return db.prepare(`
     SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
-      pp.name as program_project_name, f.name as farmer_name
+      pp.name as program_project_name, f.name as farmer_name, f.phone_number as farmer_phone
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
@@ -359,6 +359,20 @@ export function findCentreByName(name: string) {
   return db.prepare('SELECT * FROM aggregation_centres WHERE name = ?').get(name);
 }
 
+export function getFarmerPhone(farmerId: string): string | null {
+  const row = db.prepare('SELECT phone_number FROM farmers WHERE farmer_id = ?').get(farmerId) as
+    | { phone_number?: string }
+    | undefined;
+  return row?.phone_number ?? null;
+}
+
+export function getCentreName(centreId: string): string | null {
+  const row = db.prepare('SELECT name FROM aggregation_centres WHERE centre_id = ?').get(centreId) as
+    | { name?: string }
+    | undefined;
+  return row?.name ?? null;
+}
+
 export function listPendingFarmerTasks(programProjectId?: string) {
   const sql = `
     SELECT ft.*, t.name, t.task_order, t.payment_value_kes, f.name as farmer_name, pp.name as program_project_name
@@ -371,4 +385,54 @@ export function listPendingFarmerTasks(programProjectId?: string) {
     ORDER BY ft.submitted_date DESC
   `;
   return programProjectId ? db.prepare(sql).all(programProjectId) : db.prepare(sql).all();
+}
+
+export function listAllFarmerTasks(filters?: {
+  program_project_id?: string;
+  status?: string;
+  farmer_id?: string;
+}) {
+  let sql = `
+    SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
+      f.name as farmer_name, f.phone_number as farmer_phone,
+      pp.name as program_project_name
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    JOIN farmers f ON f.farmer_id = ft.farmer_id
+    JOIN program_projects pp ON pp.id = ft.program_project_id
+    WHERE 1=1
+  `;
+  const params: string[] = [];
+  if (filters?.program_project_id) {
+    sql += ' AND ft.program_project_id = ?';
+    params.push(filters.program_project_id);
+  }
+  if (filters?.status) {
+    sql += ' AND ft.status = ?';
+    params.push(filters.status);
+  }
+  if (filters?.farmer_id) {
+    sql += ' AND ft.farmer_id = ?';
+    params.push(filters.farmer_id);
+  }
+  sql += ' ORDER BY pp.name, t.task_order, f.name';
+  return db.prepare(sql).all(...params);
+}
+
+export function listPendingDeliveries() {
+  return db.prepare(`
+    SELECT ft.id as farmer_task_id, ft.farmer_id, ft.task_id, t.name as task_name,
+      f.name as farmer_name, f.phone_number as farmer_phone,
+      pp.name as program_project_name, ft.approved_date
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    JOIN farmers f ON f.farmer_id = ft.farmer_id
+    JOIN program_projects pp ON pp.id = ft.program_project_id
+    WHERE ft.status = 'approved'
+      AND NOT EXISTS (
+        SELECT 1 FROM centre_inventory ci
+        WHERE ci.task_id = ft.task_id AND ci.farmer_id = ft.farmer_id
+      )
+    ORDER BY ft.approved_date DESC
+  `).all();
 }

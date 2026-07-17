@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { initDatabase } from './db/database';
 import { seedDatabase } from './seed';
+import { seedHierarchyIfEmpty } from './seedHierarchy';
 import { maybeRestoreDatabaseOnStartup } from './startupRestore';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
@@ -24,6 +25,7 @@ async function bootstrap(): Promise<void> {
   initDatabase();
   await maybeRestoreDatabaseOnStartup();
   seedDatabase();
+  seedHierarchyIfEmpty();
 
   app.use(helmet({
     hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,

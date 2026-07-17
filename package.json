@@ -5,6 +5,7 @@
   "scripts": {
     "setup": "cd backend && npm install && cd ../mobile && npm install",
     "start": "bash scripts/start.sh",
+    "load": "bash scripts/load.sh",
     "verify": "bash scripts/verify.sh",
     "doctor": "bash scripts/doctor.sh",
     "test:backend": "node scripts/test-backend.js",

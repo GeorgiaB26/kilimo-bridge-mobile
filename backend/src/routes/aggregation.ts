@@ -7,7 +7,11 @@ import {
   approveInventoryQuality,
   getCentreDashboard,
   findCentreByName,
+  listPendingDeliveries,
+  getFarmerPhone,
+  getCentreName,
 } from '../services/hierarchyService';
+import { sendSms } from '../services/notificationService';
 
 const router = Router();
 
@@ -34,6 +38,14 @@ router.get('/centre/dashboard', requirePermission('centres.read'), (req: Request
   res.json(getCentreDashboard(centreId));
 });
 
+router.get('/centre/pending-deliveries', requirePermission('centres.read'), (_req: Request, res: Response) => {
+  res.json({ deliveries: listPendingDeliveries() });
+});
+
+router.get('/centre/:centreId/pending-deliveries', requirePermission('centres.read'), (_req: Request, res: Response) => {
+  res.json({ deliveries: listPendingDeliveries() });
+});
+
 router.get('/centre/inventory', requirePermission('centres.read'), (req: Request, res: Response) => {
   const centreId = resolveCentreId(req);
   if (!centreId) {
@@ -54,7 +66,7 @@ router.post('/centre/receive-delivery', requirePermission('centres.manage'), (re
     res.status(400).json({ error: 'farmer_id, product_name, and quantity_received are required' });
     return;
   }
-  res.status(201).json(receiveDelivery({
+  const record = receiveDelivery({
     centre_id: centreId,
     farmer_id,
     task_id,
@@ -63,7 +75,12 @@ router.post('/centre/receive-delivery', requirePermission('centres.manage'), (re
     unit,
     notes,
     scanned_by_user_id: req.user?.userId,
-  }));
+  });
+  const phone = getFarmerPhone(farmer_id);
+  if (phone) {
+    sendSms(phone, `Delivery received at ${getCentreName(centreId) ?? 'aggregation centre'}. Thank you!`);
+  }
+  res.status(201).json(record);
 });
 
 router.get('/centre/:centreId/inventory', requirePermission('centres.read'), (req: Request, res: Response) => {
@@ -80,7 +97,7 @@ router.post('/centre/:centreId/receive-delivery', requirePermission('centres.man
     res.status(400).json({ error: 'farmer_id, product_name, and quantity_received are required' });
     return;
   }
-  res.status(201).json(receiveDelivery({
+  const record = receiveDelivery({
     centre_id: req.params.centreId,
     farmer_id,
     task_id,
@@ -89,7 +106,12 @@ router.post('/centre/:centreId/receive-delivery', requirePermission('centres.man
     unit,
     notes,
     scanned_by_user_id: req.user?.userId,
-  }));
+  });
+  const phone = getFarmerPhone(farmer_id);
+  if (phone) {
+    sendSms(phone, `Delivery received at ${getCentreName(req.params.centreId) ?? 'aggregation centre'}. Thank you!`);
+  }
+  res.status(201).json(record);
 });
 
 router.post('/inventory/:inventoryId/approve-quality', requirePermission('centres.manage'), (req: Request, res: Response) => {

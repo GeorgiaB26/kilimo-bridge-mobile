@@ -24,6 +24,8 @@ export type AdminTabParamList = {
   Dashboard: undefined;
   Farmers: undefined;
   Programs: undefined;
+  Tasks: undefined;
+  Centre: undefined;
   Import: undefined;
   Register: undefined;
   Users: undefined;
