@@ -5,6 +5,7 @@
   "scripts": {
     "predev": "node scripts/ensure-deps.js",
     "dev": "tsx watch src/index.ts",
+    "dev:clean": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true; tsx watch src/index.ts",
     "build": "tsc",
     "build:render": "npm install --include=dev && npm run build",
     "start": "node dist/backend/src/index.js",

@@ -11,6 +11,7 @@
     "test:backend": "node scripts/test-backend.js",
     "reset": "bash scripts/reset.sh",
     "backend": "bash scripts/start-backend.sh",
+    "backend:clean": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true; bash scripts/start-backend.sh",
     "backend:start": "cd backend && npm start",
     "mobile": "cd mobile && npm start",
     "mobile:web": "cd mobile && npx expo start --web --clear",
