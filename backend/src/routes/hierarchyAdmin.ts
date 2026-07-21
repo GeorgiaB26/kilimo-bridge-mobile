@@ -274,11 +274,12 @@ router.get('/projects/:projectId/farmers', requirePermission('hierarchy.read'), 
 
 function assignFarmersHandler(req: Request, res: Response): void {
   const farmer_ids = req.body.farmer_ids ?? (req.body.farmer_id ? [req.body.farmer_id] : []);
+  const task_ids = req.body.task_ids as string[] | undefined;
   if (!Array.isArray(farmer_ids) || farmer_ids.length === 0) {
     res.status(400).json({ error: 'farmer_ids array is required' });
     return;
   }
-  res.json(assignFarmersToProject(req.params.projectId, farmer_ids));
+  res.json(assignFarmersToProject(req.params.projectId, farmer_ids, task_ids));
 }
 
 router.post('/program-projects/:projectId/assign-farmers', requirePermission('hierarchy.assign'), assignFarmersHandler);

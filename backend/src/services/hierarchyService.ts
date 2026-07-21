@@ -301,7 +301,11 @@ export function reorderTask(id: string, direction: 'up' | 'down') {
 
 export function listProjectFarmers(programProjectId: string) {
   return db.prepare(`
-    SELECT f.farmer_id, f.name, f.phone_number, pf.status, pf.created_at as assigned_date
+    SELECT f.farmer_id, f.name, f.phone_number, pf.status, pf.created_at as assigned_date,
+      (SELECT GROUP_CONCAT(t.name, ' · ') FROM farmer_tasks ft
+        JOIN tasks t ON t.id = ft.task_id
+        WHERE ft.farmer_id = f.farmer_id AND ft.program_project_id = pf.program_project_id
+        ORDER BY t.task_order) as assigned_tasks
     FROM program_project_farmers pf
     JOIN farmers f ON f.farmer_id = pf.farmer_id
     WHERE pf.program_project_id = ?
@@ -316,11 +320,19 @@ export function removeFarmerFromProject(programProjectId: string, farmerId: stri
   return result.changes > 0;
 }
 
-export function assignFarmersToProject(programProjectId: string, farmerIds: string[]) {
+export function assignFarmersToProject(programProjectId: string, farmerIds: string[], taskIds?: string[]) {
   const insert = db.prepare(`
     INSERT OR IGNORE INTO program_project_farmers (id, program_project_id, farmer_id) VALUES (?, ?, ?)
   `);
-  const taskRows = db.prepare('SELECT id FROM tasks WHERE program_project_id = ?').all(programProjectId) as { id: string }[];
+  let taskRows: { id: string }[];
+  if (taskIds && taskIds.length > 0) {
+    const placeholders = taskIds.map(() => '?').join(',');
+    taskRows = db.prepare(
+      `SELECT id FROM tasks WHERE program_project_id = ? AND id IN (${placeholders})`
+    ).all(programProjectId, ...taskIds) as { id: string }[];
+  } else {
+    taskRows = db.prepare('SELECT id FROM tasks WHERE program_project_id = ?').all(programProjectId) as { id: string }[];
+  }
   const insertFarmerTask = db.prepare(`
     INSERT OR IGNORE INTO farmer_tasks (id, task_id, farmer_id, program_project_id) VALUES (?, ?, ?, ?)
   `);
@@ -333,7 +345,7 @@ export function assignFarmersToProject(programProjectId: string, farmerIds: stri
     }
     assigned++;
   }
-  return { assigned, farmer_ids: farmerIds };
+  return { assigned, farmer_ids: farmerIds, task_ids: taskRows.map((t) => t.id) };
 }
 
 export function getFarmerTask(farmerTaskId: string) {

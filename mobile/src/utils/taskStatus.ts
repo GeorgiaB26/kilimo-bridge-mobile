@@ -7,15 +7,16 @@ export function taskStatusLabel(status: TaskStatus | string): string {
     'submitted-for-approval': 'Submitted for Approval',
     approved: 'Approved',
     completed: 'Completed',
-    rejected: 'Needs rework',
+    rejected: 'Rejected',
   };
   return map[status] ?? status;
 }
 
-export function taskStatusVariant(status: TaskStatus | string): 'success' | 'pending' | 'info' | 'warning' {
-  if (status === 'approved' || status === 'completed') return 'success';
-  if (status === 'submitted-for-approval') return 'pending';
-  if (status === 'rejected') return 'warning';
-  if (status === 'in-progress') return 'info';
-  return 'info';
+export function taskStatusVariant(status: TaskStatus | string): 'success' | 'pending' | 'info' | 'warning' | 'danger' {
+  if (status === 'approved') return 'success';
+  if (status === 'completed') return 'success';
+  if (status === 'submitted-for-approval') return 'info';
+  if (status === 'rejected') return 'danger';
+  if (status === 'in-progress') return 'warning';
+  return 'pending';
 }
