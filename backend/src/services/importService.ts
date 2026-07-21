@@ -6,7 +6,10 @@ import {
   csvRowToFarmerInput,
   headersMatchExpected,
   suggestColumnMapping,
+  applyColumnMapping,
   preprocessImportRow,
+  PHONE_HEADER_PATTERN,
+  rowHasPhoneValue,
   type FarmerInput,
 } from '../../../shared/src/validation';
 
@@ -35,14 +38,6 @@ interface ValidationRowResult {
 
 const activeImports = new Map<string, { interval?: NodeJS.Timeout; status: string }>();
 
-function applyColumnMapping(row: Record<string, string>, mapping: Record<string, string>): Record<string, string> {
-  const mapped: Record<string, string> = {};
-  for (const [systemCol, csvCol] of Object.entries(mapping)) {
-    mapped[systemCol] = row[csvCol] ?? '';
-  }
-  return mapped;
-}
-
 function detectDelimiter(content: string): string {
   const firstLine = content.split(/\r?\n/).find((l) => l.trim()) ?? '';
   const commas = (firstLine.match(/,/g) ?? []).length;
@@ -60,6 +55,9 @@ function findHeaderRowIndex(rows: string[][]): number {
     const hasDataHeader = cells.some((c) =>
       [
         'phone',
+        'mobile',
+        'contact',
+        'tel',
         'district',
         's/n',
         'sn',
@@ -69,7 +67,7 @@ function findHeaderRowIndex(rows: string[][]): number {
         'names of grpops',
         'names of grpsops',
         'names of groups',
-      ].includes(c)
+      ].includes(c) || PHONE_HEADER_PATTERN.test(c)
     );
     if (hasName && hasDataHeader) return i;
   }
@@ -119,6 +117,8 @@ export function validateCsvImport(
   const { headers, rows } = parseCsvContent(content);
   const headersMatch = headersMatchExpected(headers);
   const mapping = columnMapping ?? (headersMatch ? undefined : suggestColumnMapping(headers));
+  const parseRow = (rawRow: Record<string, string>) =>
+    csvRowToFarmerInput(mapping ? applyColumnMapping(rawRow, mapping) : rawRow);
 
   const membershipGroups = getMembershipGroupNames();
   const existing = getExistingIdentifiers();
@@ -131,8 +131,7 @@ export function validateCsvImport(
 
   rows.forEach((rawRow, index) => {
     const rowNumber = index + 2;
-    // Always parse from raw row — cooperative CSVs use headers like NAMES OF GRPOPS / S/N
-    const farmerInput = csvRowToFarmerInput(rawRow);
+    const farmerInput = parseRow(rawRow);
 
     const result = validateFarmerRow(farmerInput, {
       existingPhones: existing.phones,
@@ -183,7 +182,7 @@ export function validateCsvImport(
   const errorsByCountry: Record<string, number> = {};
 
   validationResults.forEach((r, i) => {
-    const input = csvRowToFarmerInput(rows[i]);
+    const input = parseRow(rows[i]);
     const country = (r.normalized.country ?? input.country ?? inferCountryFromDistrict(input.district)).trim();
     if (r.valid) {
       countryBreakdown[country] = (countryBreakdown[country] ?? 0) + 1;
@@ -196,7 +195,7 @@ export function validateCsvImport(
     Object.entries(countryBreakdown).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   const fixedPreview = validationResults.slice(0, 10).map((r, i) => {
-    const input = csvRowToFarmerInput(rows[i]);
+    const input = parseRow(rows[i]);
     return {
       name: r.normalized.name ?? input.name,
       phone: r.normalized.phone ?? input.phone,
@@ -207,8 +206,8 @@ export function validateCsvImport(
     };
   });
 
-  const phoneMissingCount = validationResults.filter((r) =>
-    r.errors.some((e) => e.field === 'phone' && !rows[r.rowNumber - 2]?.['Phone']?.trim())
+  const phoneMissingCount = validationResults.filter((r, i) =>
+    r.errors.some((e) => e.field === 'phone' && !rowHasPhoneValue(rows[i]))
   ).length;
 
   const importHints: string[] = [];
@@ -217,7 +216,7 @@ export function validateCsvImport(
       `${phoneMissingCount} rows have no Phone number — add a Phone column so farmers can log in after import.`
     );
   }
-  if (!headers.some((h) => /phone|mobile/i.test(h))) {
+  if (!headers.some((h) => PHONE_HEADER_PATTERN.test(h))) {
     importHints.push(
       'Your CSV has no Phone column. Cooperative list formats (S/N, Name, SEX, District) need a Phone column added before import.'
     );
