@@ -15,6 +15,7 @@ export interface AuthUser {
   district?: string;
   region?: string;
   aggregationCenter?: string;
+  aggregationCenterId?: string;
 }
 
 interface AuthState {

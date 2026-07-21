@@ -180,6 +180,107 @@ export async function getFarmerNotifications() {
 }
 
 // Phase 2 hierarchy
+// Phase 2 hierarchy — admin CRUD
+export async function getAdminSectors() {
+  const { data } = await api.get('/admin/sectors');
+  return data;
+}
+
+export async function createAdminSector(body: { name: string; description?: string; country?: string }) {
+  const { data } = await api.post('/admin/sectors', body);
+  return data;
+}
+
+export async function updateAdminSector(id: string, body: { name?: string; description?: string; country?: string }) {
+  const { data } = await api.put(`/admin/sectors/${id}`, body);
+  return data;
+}
+
+export async function deleteAdminSector(id: string) {
+  const { data } = await api.delete(`/admin/sectors/${id}`);
+  return data;
+}
+
+export async function getAdminPrograms(sectorId?: string) {
+  const { data } = await api.get('/admin/programs', { params: sectorId ? { sector_id: sectorId } : {} });
+  return data;
+}
+
+export async function createAdminProgram(body: { name: string; sector_id: string; description?: string; budget_kes?: number }) {
+  const { data } = await api.post('/admin/programs', body);
+  return data;
+}
+
+export async function updateAdminProgram(id: string, body: Record<string, unknown>) {
+  const { data } = await api.put(`/admin/programs/${id}`, body);
+  return data;
+}
+
+export async function deleteAdminProgram(id: string) {
+  const { data } = await api.delete(`/admin/programs/${id}`);
+  return data;
+}
+
+export async function getAdminProjects(programId?: string) {
+  const { data } = await api.get('/admin/projects', { params: programId ? { program_id: programId } : {} });
+  return data;
+}
+
+export async function createAdminProject(body: Record<string, unknown>) {
+  const { data } = await api.post('/admin/projects', body);
+  return data;
+}
+
+export async function updateAdminProject(id: string, body: Record<string, unknown>) {
+  const { data } = await api.put(`/admin/projects/${id}`, body);
+  return data;
+}
+
+export async function deleteAdminProject(id: string) {
+  const { data } = await api.delete(`/admin/projects/${id}`);
+  return data;
+}
+
+export async function getAdminProjectTasks(projectId: string) {
+  const { data } = await api.get(`/admin/projects/${projectId}/tasks`);
+  return data;
+}
+
+export async function createAdminProjectTask(projectId: string, body: Record<string, unknown>) {
+  const { data } = await api.post(`/admin/projects/${projectId}/tasks`, body);
+  return data;
+}
+
+export async function updateAdminProjectTask(taskId: string, body: Record<string, unknown>) {
+  const { data } = await api.put(`/admin/tasks/${taskId}`, body);
+  return data;
+}
+
+export async function deleteAdminProjectTask(taskId: string) {
+  const { data } = await api.delete(`/admin/tasks/${taskId}`);
+  return data;
+}
+
+export async function reorderAdminProjectTask(taskId: string, direction: 'up' | 'down') {
+  const { data } = await api.post(`/admin/tasks/${taskId}/reorder`, { direction });
+  return data;
+}
+
+export async function getAdminProjectFarmers(projectId: string) {
+  const { data } = await api.get(`/admin/projects/${projectId}/farmers`);
+  return data;
+}
+
+export async function assignAdminProjectFarmers(projectId: string, farmerIds: string[], taskIds?: string[]) {
+  const { data } = await api.post(`/admin/projects/${projectId}/farmers`, { farmer_ids: farmerIds, task_ids: taskIds });
+  return data;
+}
+
+export async function removeAdminProjectFarmer(projectId: string, farmerId: string) {
+  const { data } = await api.delete(`/admin/projects/${projectId}/farmers/${farmerId}`);
+  return data;
+}
+
 export async function getHierarchyDashboard() {
   const { data } = await api.get('/admin/hierarchy/dashboard');
   return data;
@@ -259,6 +360,12 @@ export async function getFarmerTaskApprovalStatus(farmerTaskId: string) {
   return data;
 }
 
+/** Spec alias: GET /api/farmer/tasks/:task_id/status */
+export async function getFarmerTaskStatus(farmerTaskId: string) {
+  const { data } = await api.get(`/farmer/tasks/${farmerTaskId}/status`);
+  return data;
+}
+
 /** Spec alias: POST /api/farmer/tasks/:id/submit-completion */
 export async function submitFarmerTaskCompletion(
   farmerTaskId: string,
@@ -284,9 +391,9 @@ export async function getCentreDashboard(centreId?: string) {
   return data;
 }
 
-export async function getCentreInventory(centreId?: string) {
+export async function getCentreInventory(centreId?: string, status?: string) {
   const path = centreId ? `/aggregation/centre/${centreId}/inventory` : '/aggregation/centre/inventory';
-  const { data } = await api.get(path);
+  const { data } = await api.get(path, { params: status ? { status } : {} });
   return data;
 }
 
@@ -324,5 +431,29 @@ export async function getPendingDeliveries(centreId?: string) {
     ? `/aggregation/centre/${centreId}/pending-deliveries`
     : '/aggregation/centre/pending-deliveries';
   const { data } = await api.get(path);
+  return data;
+}
+
+export async function aggregationCentreLogin(body: { centre_id: string; phone_number: string; password: string }) {
+  const { data } = await api.post('/aggregation/login', body);
+  return data;
+}
+
+export async function approveCentreQuality(centreId: string | undefined, body: {
+  inventory_id: string;
+  quality_notes: string;
+  marketplace_price_per_unit: number;
+}) {
+  const payload = {
+    inventory_id: body.inventory_id,
+    quality_status: 'approved' as const,
+    quality_notes: body.quality_notes,
+    marketplace_price_per_unit: body.marketplace_price_per_unit,
+  };
+  if (centreId) {
+    const { data } = await api.post(`/aggregation/centre/${centreId}/approve-quality`, payload);
+    return data;
+  }
+  const { data } = await api.post(`/aggregation/inventory/${body.inventory_id}/approve-quality`, payload);
   return data;
 }

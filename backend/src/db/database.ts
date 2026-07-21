@@ -452,6 +452,7 @@ function migratePhase2Hierarchy(): void {
   };
   addCol('aggregation_centres', 'manager_name', 'TEXT');
   addCol('aggregation_centres', 'manager_phone', 'TEXT');
+  addCol('programs', 'budget_kes', 'INTEGER');
 }
 
 /** Recreate users table when legacy CHECK constraint blocks agent/banking roles */

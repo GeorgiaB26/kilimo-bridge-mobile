@@ -19,16 +19,16 @@ export interface FarmerTaskRow {
   payment_value_kes: number;
   status: string;
   due_date?: string;
+  description?: string;
+  rejection_reason?: string;
 }
 
 interface Props {
-  /** Program project UUID. If omitted, uses the farmer's first hierarchy project. */
   programProjectId?: string;
-  /** Hide the section heading when parent already shows project info */
   compact?: boolean;
 }
 
-function canMarkComplete(status: string): boolean {
+function canOpenTask(status: string): boolean {
   return ['not-started', 'in-progress', 'rejected'].includes(status);
 }
 
@@ -38,7 +38,6 @@ function displayStatus(status: string): string {
 }
 
 export function FarmerProjectTasksSection({ programProjectId, compact }: Props) {
-  const [resolvedProjectId, setResolvedProjectId] = useState<string | null>(programProjectId ?? null);
   const [tasks, setTasks] = useState<FarmerTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,14 +46,12 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
   const resolveProjectId = useCallback(async (): Promise<string | null> => {
     if (programProjectId) return programProjectId;
     const data = await getFarmerHierarchyProjects();
-    const projects = data.projects ?? [];
-    return projects[0]?.id ?? null;
+    return data.projects?.[0]?.id ?? null;
   }, [programProjectId]);
 
   const load = useCallback(async () => {
     try {
       const pid = await resolveProjectId();
-      setResolvedProjectId(pid);
       if (!pid) {
         setTasks([]);
         setError('No program tasks assigned yet. Restart the backend if you expect demo tasks.');
@@ -74,7 +71,6 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
   }, [resolveProjectId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
   useTaskApprovalPolling(tasks, load);
 
   const completedCount = tasks.filter((t) => ['approved', 'completed'].includes(t.status)).length;
@@ -104,14 +100,14 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       {tasks.map((item) => {
         const isApproved = item.status === 'approved' || item.status === 'completed';
         const isSubmitted = item.status === 'submitted-for-approval';
-        const locked = isApproved || isSubmitted;
+        const isRejected = item.status === 'rejected';
 
         return (
           <KBCard key={item.id} elevated={false}>
             <View style={styles.row}>
               <View style={styles.nameCol}>
-                <Text style={styles.step}>Step {item.task_order}</Text>
                 <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.pay}>KES {item.payment_value_kes?.toLocaleString()}</Text>
               </View>
               <View style={styles.badgeCol}>
                 {isApproved ? (
@@ -120,35 +116,34 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
                     <Text style={styles.approvedText}>Approved</Text>
                   </View>
                 ) : (
-                  <KBStatusChip
-                    label={displayStatus(item.status)}
-                    variant={taskStatusVariant(item.status)}
-                  />
+                  <KBStatusChip label={displayStatus(item.status)} variant={taskStatusVariant(item.status)} />
                 )}
               </View>
             </View>
 
-            <View style={styles.metaRow}>
-              <Text style={styles.pay}>KES {item.payment_value_kes?.toLocaleString()}</Text>
-              {item.due_date ? <Text style={styles.due}>Due {item.due_date}</Text> : null}
-            </View>
+            {item.description ? <Text style={styles.description}>{item.description}</Text> : null}
+            {item.due_date ? <Text style={styles.due}>Due {item.due_date}</Text> : null}
 
             {isSubmitted ? (
-              <Text style={styles.awaiting}>Awaiting approval — you&apos;ll get an SMS when approved</Text>
+              <Text style={styles.awaiting}>Awaiting approval — status updates every 30 seconds</Text>
             ) : null}
 
-            {canMarkComplete(item.status) ? (
+            {isRejected && item.rejection_reason ? (
+              <Text style={styles.rejected}>Rejected: {item.rejection_reason}</Text>
+            ) : null}
+
+            {canOpenTask(item.status) ? (
               <Button
                 mode="contained"
-                buttonColor={COLORS.primary}
+                buttonColor={isRejected ? COLORS.warning : COLORS.primary}
                 onPress={() => setSubmitTask(item)}
-                style={styles.completeBtn}
+                style={styles.openBtn}
               >
-                Mark Complete
+                {isRejected ? 'Resubmit' : 'Open'}
               </Button>
             ) : null}
 
-            {locked && !canMarkComplete(item.status) ? (
+            {(isApproved || isSubmitted) ? (
               <Text style={styles.locked}>Task locked — no further edits</Text>
             ) : null}
           </KBCard>
@@ -178,13 +173,13 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   nameCol: { flex: 1 },
   badgeCol: { alignItems: 'flex-end' },
-  step: { fontSize: 12, fontWeight: '600', color: COLORS.muted },
-  name: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginTop: 2 },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
-  pay: { fontSize: 16, fontWeight: '700', color: COLORS.accent },
-  due: { fontSize: 13, color: COLORS.muted },
-  awaiting: { fontSize: 13, color: COLORS.warning, marginTop: 8, fontStyle: 'italic' },
-  completeBtn: { marginTop: 12 },
+  name: { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  pay: { fontSize: 16, fontWeight: '700', color: COLORS.accent, marginTop: 4 },
+  description: { fontSize: 14, color: COLORS.text, marginTop: 8, lineHeight: 20 },
+  due: { fontSize: 13, color: COLORS.muted, marginTop: 6 },
+  awaiting: { fontSize: 13, color: COLORS.info, marginTop: 8, fontStyle: 'italic' },
+  rejected: { fontSize: 13, color: COLORS.alert, marginTop: 8, lineHeight: 18 },
+  openBtn: { marginTop: 12 },
   locked: { fontSize: 12, color: COLORS.muted, marginTop: 8, fontStyle: 'italic' },
   approvedBadge: {
     flexDirection: 'row',

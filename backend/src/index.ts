@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import { initDatabase } from './db/database';
 import { seedDatabase } from './seed';
 import { seedHierarchyIfEmpty } from './seedHierarchy';
-import { ensureDemoFarmerPortal } from './ensureDemoFarmerPortal';
+import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFarmerPortal';
 import { maybeRestoreDatabaseOnStartup } from './startupRestore';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
@@ -27,6 +27,7 @@ async function bootstrap(): Promise<void> {
   await maybeRestoreDatabaseOnStartup();
   seedDatabase();
   ensureDemoFarmerPortal();
+  await ensureDemoAgentPassword();
   seedHierarchyIfEmpty();
 
   app.use(helmet({

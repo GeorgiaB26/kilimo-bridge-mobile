@@ -26,6 +26,25 @@ export function createSector(data: { name: string; description?: string; country
   return db.prepare('SELECT * FROM sectors WHERE id = ?').get(id);
 }
 
+export function updateSector(id: string, data: { name?: string; description?: string; country?: string }) {
+  db.prepare(`
+    UPDATE sectors SET
+      name = COALESCE(?, name),
+      description = COALESCE(?, description),
+      country = COALESCE(?, country),
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(data.name ?? null, data.description ?? null, data.country ?? null, id);
+  return db.prepare('SELECT * FROM sectors WHERE id = ?').get(id);
+}
+
+export function deleteSector(id: string): boolean {
+  const programs = db.prepare('SELECT COUNT(*) as c FROM programs WHERE sector_id = ?').get(id) as { c: number };
+  if (programs.c > 0) throw new Error('Sector has programs — delete programs first');
+  const result = db.prepare('DELETE FROM sectors WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
 export function listPrograms(sectorId?: string) {
   if (sectorId) {
     return db.prepare(`
@@ -40,12 +59,32 @@ export function listPrograms(sectorId?: string) {
   `).all();
 }
 
-export function createProgram(data: { name: string; sector_id: string; description?: string }) {
+export function createProgram(data: { name: string; sector_id: string; description?: string; budget_kes?: number }) {
   const id = uuidv4();
-  db.prepare('INSERT INTO programs (id, sector_id, name, description) VALUES (?, ?, ?, ?)').run(
-    id, data.sector_id, data.name, data.description ?? null
+  db.prepare('INSERT INTO programs (id, sector_id, name, description, budget_kes) VALUES (?, ?, ?, ?, ?)').run(
+    id, data.sector_id, data.name, data.description ?? null, data.budget_kes ?? null
   );
   return getProgram(id);
+}
+
+export function updateProgram(id: string, data: { name?: string; sector_id?: string; description?: string; budget_kes?: number }) {
+  db.prepare(`
+    UPDATE programs SET
+      name = COALESCE(?, name),
+      sector_id = COALESCE(?, sector_id),
+      description = COALESCE(?, description),
+      budget_kes = COALESCE(?, budget_kes),
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(data.name ?? null, data.sector_id ?? null, data.description ?? null, data.budget_kes ?? null, id);
+  return getProgram(id);
+}
+
+export function deleteProgram(id: string): boolean {
+  const projects = db.prepare('SELECT COUNT(*) as c FROM program_projects WHERE program_id = ?').get(id) as { c: number };
+  if (projects.c > 0) throw new Error('Program has projects — delete projects first');
+  const result = db.prepare('DELETE FROM programs WHERE id = ?').run(id);
+  return result.changes > 0;
 }
 
 export function getProgram(id: string) {
@@ -87,6 +126,41 @@ export function createProgramProject(data: {
     data.start_date ?? null, data.end_date ?? null, data.country_manager_id ?? null
   );
   return getProgramProject(id);
+}
+
+export function updateProgramProject(id: string, data: {
+  name?: string;
+  program_id?: string;
+  region?: string;
+  budget_kes?: number;
+  start_date?: string;
+  end_date?: string;
+  status?: string;
+}) {
+  db.prepare(`
+    UPDATE program_projects SET
+      name = COALESCE(?, name),
+      program_id = COALESCE(?, program_id),
+      region = COALESCE(?, region),
+      budget_kes = COALESCE(?, budget_kes),
+      start_date = COALESCE(?, start_date),
+      end_date = COALESCE(?, end_date),
+      status = COALESCE(?, status),
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    data.name ?? null, data.program_id ?? null, data.region ?? null, data.budget_kes ?? null,
+    data.start_date ?? null, data.end_date ?? null, data.status ?? null, id
+  );
+  return getProgramProject(id);
+}
+
+export function deleteProgramProject(id: string): boolean {
+  db.prepare('DELETE FROM farmer_tasks WHERE program_project_id = ?').run(id);
+  db.prepare('DELETE FROM program_project_farmers WHERE program_project_id = ?').run(id);
+  db.prepare('DELETE FROM tasks WHERE program_project_id = ?').run(id);
+  const result = db.prepare('DELETE FROM program_projects WHERE id = ?').run(id);
+  return result.changes > 0;
 }
 
 export function getProgramProject(id: string) {
@@ -165,11 +239,100 @@ export function createTask(data: {
   return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
 }
 
-export function assignFarmersToProject(programProjectId: string, farmerIds: string[]) {
+export function updateTask(id: string, data: {
+  name?: string;
+  description?: string;
+  task_order?: number;
+  payment_value_kes?: number;
+  due_date?: string;
+}) {
+  const row = db.prepare('SELECT program_project_id FROM tasks WHERE id = ?').get(id) as
+    | { program_project_id: string }
+    | undefined;
+  if (!row) return null;
+  db.prepare(`
+    UPDATE tasks SET
+      name = COALESCE(?, name),
+      description = COALESCE(?, description),
+      task_order = COALESCE(?, task_order),
+      payment_value_kes = COALESCE(?, payment_value_kes),
+      due_date = COALESCE(?, due_date),
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    data.name ?? null, data.description ?? null, data.task_order ?? null,
+    data.payment_value_kes ?? null, data.due_date ?? null, id
+  );
+  refreshProjectTaskCounts(row.program_project_id);
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+}
+
+export function deleteTask(id: string): boolean {
+  const row = db.prepare('SELECT program_project_id FROM tasks WHERE id = ?').get(id) as
+    | { program_project_id: string }
+    | undefined;
+  if (!row) return false;
+  db.prepare('DELETE FROM farmer_tasks WHERE task_id = ?').run(id);
+  const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+  refreshProjectTaskCounts(row.program_project_id);
+  return result.changes > 0;
+}
+
+export function reorderTask(id: string, direction: 'up' | 'down') {
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as {
+    id: string;
+    program_project_id: string;
+    task_order: number;
+  } | undefined;
+  if (!task) return null;
+  const neighbor = db.prepare(`
+    SELECT * FROM tasks WHERE program_project_id = ?
+      AND task_order ${direction === 'up' ? '<' : '>'} ?
+    ORDER BY task_order ${direction === 'up' ? 'DESC' : 'ASC'}
+    LIMIT 1
+  `).get(task.program_project_id, task.task_order) as { id: string; task_order: number } | undefined;
+  if (!neighbor) return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  db.prepare('UPDATE tasks SET task_order = ?, updated_at = datetime(\'now\') WHERE id = ?')
+    .run(neighbor.task_order, task.id);
+  db.prepare('UPDATE tasks SET task_order = ?, updated_at = datetime(\'now\') WHERE id = ?')
+    .run(task.task_order, neighbor.id);
+  return listTasks(task.program_project_id);
+}
+
+export function listProjectFarmers(programProjectId: string) {
+  return db.prepare(`
+    SELECT f.farmer_id, f.name, f.phone_number, pf.status, pf.created_at as assigned_date,
+      (SELECT GROUP_CONCAT(t.name, ' · ') FROM farmer_tasks ft
+        JOIN tasks t ON t.id = ft.task_id
+        WHERE ft.farmer_id = f.farmer_id AND ft.program_project_id = pf.program_project_id
+        ORDER BY t.task_order) as assigned_tasks
+    FROM program_project_farmers pf
+    JOIN farmers f ON f.farmer_id = pf.farmer_id
+    WHERE pf.program_project_id = ?
+    ORDER BY pf.created_at DESC
+  `).all(programProjectId);
+}
+
+export function removeFarmerFromProject(programProjectId: string, farmerId: string): boolean {
+  db.prepare('DELETE FROM farmer_tasks WHERE program_project_id = ? AND farmer_id = ?').run(programProjectId, farmerId);
+  const result = db.prepare('DELETE FROM program_project_farmers WHERE program_project_id = ? AND farmer_id = ?')
+    .run(programProjectId, farmerId);
+  return result.changes > 0;
+}
+
+export function assignFarmersToProject(programProjectId: string, farmerIds: string[], taskIds?: string[]) {
   const insert = db.prepare(`
     INSERT OR IGNORE INTO program_project_farmers (id, program_project_id, farmer_id) VALUES (?, ?, ?)
   `);
-  const taskRows = db.prepare('SELECT id FROM tasks WHERE program_project_id = ?').all(programProjectId) as { id: string }[];
+  let taskRows: { id: string }[];
+  if (taskIds && taskIds.length > 0) {
+    const placeholders = taskIds.map(() => '?').join(',');
+    taskRows = db.prepare(
+      `SELECT id FROM tasks WHERE program_project_id = ? AND id IN (${placeholders})`
+    ).all(programProjectId, ...taskIds) as { id: string }[];
+  } else {
+    taskRows = db.prepare('SELECT id FROM tasks WHERE program_project_id = ?').all(programProjectId) as { id: string }[];
+  }
   const insertFarmerTask = db.prepare(`
     INSERT OR IGNORE INTO farmer_tasks (id, task_id, farmer_id, program_project_id) VALUES (?, ?, ?, ?)
   `);
@@ -182,7 +345,7 @@ export function assignFarmersToProject(programProjectId: string, farmerIds: stri
     }
     assigned++;
   }
-  return { assigned, farmer_ids: farmerIds };
+  return { assigned, farmer_ids: farmerIds, task_ids: taskRows.map((t) => t.id) };
 }
 
 export function getFarmerTask(farmerTaskId: string) {
@@ -285,12 +448,19 @@ export function getHierarchyDashboardStats() {
   };
 }
 
-export function listCentreInventory(centreId: string) {
-  return db.prepare(`
+export function listCentreInventory(centreId: string, status?: string) {
+  let sql = `
     SELECT ci.*, f.name as farmer_name FROM centre_inventory ci
     JOIN farmers f ON f.farmer_id = ci.farmer_id
-    WHERE ci.centre_id = ? ORDER BY ci.received_date DESC
-  `).all(centreId);
+    WHERE ci.centre_id = ?
+  `;
+  if (status === 'awaiting_qc') {
+    sql += " AND ci.quality_status = 'pending'";
+  } else if (status === 'ready_for_marketplace') {
+    sql += ' AND ci.is_marketplace_ready = 1';
+  }
+  sql += ' ORDER BY ci.received_date DESC';
+  return db.prepare(sql).all(centreId);
 }
 
 export function receiveDelivery(data: {
@@ -419,11 +589,13 @@ export function listAllFarmerTasks(filters?: {
   return db.prepare(sql).all(...params);
 }
 
-export function listPendingDeliveries() {
-  return db.prepare(`
+export function listPendingDeliveries(centreId?: string) {
+  const centreName = centreId ? getCentreName(centreId) : null;
+  let sql = `
     SELECT ft.id as farmer_task_id, ft.farmer_id, ft.task_id, t.name as task_name,
       f.name as farmer_name, f.phone_number as farmer_phone,
-      pp.name as program_project_name, ft.approved_date
+      pp.name as program_project_name, ft.approved_date as submitted_date,
+      ft.submitted_date as task_submitted_date
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id
@@ -433,6 +605,12 @@ export function listPendingDeliveries() {
         SELECT 1 FROM centre_inventory ci
         WHERE ci.task_id = ft.task_id AND ci.farmer_id = ft.farmer_id
       )
-    ORDER BY ft.approved_date DESC
-  `).all();
+  `;
+  const params: string[] = [];
+  if (centreName) {
+    sql += ' AND f.aggregation_center = ?';
+    params.push(centreName);
+  }
+  sql += ' ORDER BY ft.approved_date DESC';
+  return params.length ? db.prepare(sql).all(...params) : db.prepare(sql).all();
 }
