@@ -158,7 +158,8 @@ router.post('/admin/farmers/import/validate', authenticate, requirePermission('f
   }
 
   try {
-    const result = validateCsvImport(content, columnMapping);
+    const fileName = (req.file?.originalname || req.body?.fileName || req.headers['x-import-file-name']) as string | undefined;
+    const result = validateCsvImport(content, columnMapping, { fileName });
     res.json(result);
   } catch (err) {
     res.status(500).json({
@@ -174,8 +175,8 @@ router.post('/admin/farmers/import/validate-text', authenticate, requirePermissi
     return;
   }
   try {
-    const payload = content.startsWith(BINARY_IMPORT_PREFIX) ? content : content;
-    const result = validateCsvImport(payload);
+    const fileName = req.headers['x-import-file-name'] as string | undefined;
+    const result = validateCsvImport(content, undefined, { fileName });
     res.json(result);
   } catch (err) {
     res.status(500).json({

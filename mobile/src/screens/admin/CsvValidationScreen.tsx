@@ -41,7 +41,7 @@ export function CsvValidationScreen({ navigation, route }: Props) {
   useEffect(() => {
     const runValidation = async () => {
       try {
-        const data = await validateCsvImportText(fileContent);
+        const data = await validateCsvImportText(fileContent, fileName);
         setResult(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Validation failed');

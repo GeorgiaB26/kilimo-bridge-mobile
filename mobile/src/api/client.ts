@@ -92,9 +92,12 @@ export async function registerFarmer(farmerData: RegistrationFormData) {
   return data;
 }
 
-export async function validateCsvImportText(content: string) {
+export async function validateCsvImportText(content: string, fileName?: string) {
   const { data } = await api.post('/admin/farmers/import/validate-text', content, {
-    headers: { 'Content-Type': 'text/plain' },
+    headers: {
+      'Content-Type': 'text/plain',
+      ...(fileName ? { 'X-Import-File-Name': fileName } : {}),
+    },
   });
   return data;
 }

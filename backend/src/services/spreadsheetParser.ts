@@ -85,7 +85,22 @@ function findHeaderRowIndex(rows: string[][]): number {
   return 0;
 }
 
-function matrixToRows(matrix: string[][]): { headers: string[]; rows: Record<string, string>[] } {
+function extractCooperativeHint(matrix: string[][], headerIdx: number): string | null {
+  for (let i = 0; i < headerIdx; i++) {
+    const text = matrix[i].filter((cell) => cell).join(' ').trim();
+    if (text.length < 10) continue;
+    if (/farmer|association|cooperative|co-op|fpo|sacco|leoart|grp|group|society/i.test(text)) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function matrixToRows(matrix: string[][]): {
+  headers: string[];
+  rows: Record<string, string>[];
+  cooperativeHint?: string;
+} {
   const cleaned = matrix
     .map((row) => row.map((cell) => normalizeCell(cell)))
     .filter((row) => row.some((cell) => cell));
@@ -95,6 +110,7 @@ function matrixToRows(matrix: string[][]): { headers: string[]; rows: Record<str
   }
 
   const headerIdx = findHeaderRowIndex(cleaned);
+  const cooperativeHint = extractCooperativeHint(cleaned, headerIdx) ?? undefined;
   const headers = cleaned[headerIdx].map((h) => h.trim());
   const dataRows = cleaned.slice(headerIdx + 1);
 
@@ -111,10 +127,14 @@ function matrixToRows(matrix: string[][]): { headers: string[]; rows: Record<str
       return name.length >= 2 && !/^name$/i.test(name);
     });
 
-  return { headers, rows };
+  return { headers, rows, cooperativeHint };
 }
 
-function parseExcelBuffer(buffer: Buffer): { headers: string[]; rows: Record<string, string>[] } {
+function parseExcelBuffer(buffer: Buffer): {
+  headers: string[];
+  rows: Record<string, string>[];
+  cooperativeHint?: string;
+} {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false, raw: false });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return { headers: [], rows: [] };
@@ -129,7 +149,11 @@ function parseExcelBuffer(buffer: Buffer): { headers: string[]; rows: Record<str
   return matrixToRows(matrix);
 }
 
-function parseCsvText(content: string): { headers: string[]; rows: Record<string, string>[] } {
+function parseCsvText(content: string): {
+  headers: string[];
+  rows: Record<string, string>[];
+  cooperativeHint?: string;
+} {
   const delimiter = detectDelimiter(content);
   const raw = Papa.parse<string[]>(content, {
     skipEmptyLines: true,
@@ -141,7 +165,7 @@ function parseCsvText(content: string): { headers: string[]; rows: Record<string
 
 export function parseSpreadsheetContent(
   content: string | Buffer
-): { headers: string[]; rows: Record<string, string>[]; source: 'csv' | 'xlsx' } {
+): { headers: string[]; rows: Record<string, string>[]; source: 'csv' | 'xlsx'; cooperativeHint?: string } {
   const decoded = decodeImportPayload(content);
 
   if (Buffer.isBuffer(decoded)) {

@@ -10,6 +10,7 @@ import {
   preprocessImportRow,
   PHONE_HEADER_PATTERN,
   rowHasPhoneValue,
+  inferCooperativeNameFromFileName,
   type FarmerInput,
 } from '../../../shared/src/validation';
 
@@ -45,10 +46,15 @@ export function parseCsvContent(content: string | Buffer): { headers: string[]; 
 
 export function validateCsvImport(
   content: string | Buffer,
-  columnMapping?: Record<string, string>
+  columnMapping?: Record<string, string>,
+  options?: { fileName?: string }
 ): ImportValidationResponse {
   const sessionId = uuidv4();
-  const { headers, rows, source } = parseSpreadsheetContent(content);
+  const { headers, rows, source, cooperativeHint } = parseSpreadsheetContent(content);
+  const defaultMembershipGroup =
+    cooperativeHint ||
+    (options?.fileName ? inferCooperativeNameFromFileName(options.fileName) : null) ||
+    undefined;
   const headersMatch = headersMatchExpected(headers);
   const mapping = columnMapping ?? (headersMatch ? undefined : suggestColumnMapping(headers));
   const parseRow = (rawRow: Record<string, string>) =>
@@ -74,6 +80,7 @@ export function validateCsvImport(
       membershipGroups,
       rowNumber,
       importMode: true,
+      defaultMembershipGroup,
     });
 
     let duplicate = false;
@@ -156,6 +163,14 @@ export function validateCsvImport(
   }
   if (source === 'xlsx' && rows.length > 0) {
     importHints.push('Excel workbook detected — data was read from the first sheet.');
+  }
+  if (
+    defaultMembershipGroup &&
+    !headers.some((h) => /membership|group|association|cooperative|co-op|fpo|sacco/i.test(h))
+  ) {
+    importHints.push(
+      `No cooperative column found — all farmers will be assigned to: "${defaultMembershipGroup}".`
+    );
   }
   if (phoneMissingCount > 0) {
     importHints.push(

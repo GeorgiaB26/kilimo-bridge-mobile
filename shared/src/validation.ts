@@ -99,14 +99,32 @@ function inferCountryFromRow(input: FarmerInput): string {
   return 'Kenya';
 }
 
-/** Fill missing import fields for cooperative bulk uploads (e.g. GWED-G) */
-export function preprocessImportRow(input: FarmerInput, rowNumber: number): FarmerInput {
+/** Fill missing import fields for cooperative bulk uploads (e.g. GWED-G, LEOART) */
+export function inferCooperativeNameFromFileName(fileName: string): string | null {
+  const base = fileName.replace(/\.[^.]+$/, '').trim();
+  if (!base) return null;
+  const name = base
+    .replace(/\s*\d{4}\s*v?\d*\.?\d*\s*$/i, '')
+    .replace(/\s*v\d+(\.\d+)?\s*$/i, '')
+    .trim();
+  if (name.length < 4) return null;
+  if (/^(export|sheet|data|farmers|members|list|copy of)/i.test(name)) return null;
+  return name;
+}
+
+export function preprocessImportRow(
+  input: FarmerInput,
+  rowNumber: number,
+  options?: { defaultMembershipGroup?: string }
+): FarmerInput {
   const serial = input.key?.trim();
-  const key = serial || `GWED-${String(rowNumber).padStart(5, '0')}`;
+  const key = serial || `IMPORT-${String(rowNumber).padStart(5, '0')}`;
   const idNumber = input.idNumber?.trim() || `PENDING-${key}`;
   const gender = input.gender?.trim() ? input.gender : 'Other';
   const membershipType = normalizeMembershipType(input.membershipType) ?? input.membershipType;
   const country = inferCountryFromRow(input);
+  const membershipGroup =
+    input.membershipGroup?.trim() || options?.defaultMembershipGroup?.trim() || '';
 
   return {
     ...input,
@@ -115,6 +133,7 @@ export function preprocessImportRow(input: FarmerInput, rowNumber: number): Farm
     gender,
     membershipType,
     country,
+    membershipGroup,
   };
 }
 
@@ -204,11 +223,15 @@ export function validateFarmerRow(
     rowNumber?: number;
     /** Bulk import: auto-create unknown cooperatives, relax location matching */
     importMode?: boolean;
+    /** When CSV has no cooperative column — use filename or sheet title */
+    defaultMembershipGroup?: string;
   } = {}
 ): ValidationResult {
   const importMode = options.importMode ?? false;
   const rowNumber = options.rowNumber ?? 0;
-  const prepared = importMode ? preprocessImportRow(input, rowNumber) : input;
+  const prepared = importMode
+    ? preprocessImportRow(input, rowNumber, { defaultMembershipGroup: options.defaultMembershipGroup })
+    : input;
   const errors: FieldError[] = [];
   const normalized: Partial<FarmerInput> = {};
 
@@ -459,7 +482,19 @@ export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
       'NAMES OF GRPOPS',
       'NAMES OF GRPSOPS',
       'NAMES OF GROUPS',
-      'Group Name'
+      'Group Name',
+      'Association',
+      'Cooperative',
+      'Co-operative',
+      'Coop',
+      'FPO',
+      'SACCO',
+      'CBO',
+      'Organisation',
+      'Organization',
+      'Society',
+      'Farmer Group',
+      'Producer Group'
     ),
     aggregationCenter: get('Aggregation center', 'Aggregation Centre', 'Aggregation Center'),
     phone: get(
@@ -527,6 +562,18 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
       'names of groups',
       'group name',
       'names of grpop',
+      'association',
+      'cooperative',
+      'co-operative',
+      'coop',
+      'fpo',
+      'sacco',
+      'cbo',
+      'organisation',
+      'organization',
+      'society',
+      'farmer group',
+      'producer group',
     ],
     'Aggregation center': ['aggregation center', 'aggregation_center', 'aggregation centre', 'center'],
     Phone: [
