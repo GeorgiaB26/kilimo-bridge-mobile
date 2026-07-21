@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import Papa from 'papaparse';
 import { db } from '../db/database';
+import { parseSpreadsheetContent } from './spreadsheetParser';
 import {
   validateFarmerRow,
   csvRowToFarmerInput,
@@ -38,83 +38,17 @@ interface ValidationRowResult {
 
 const activeImports = new Map<string, { interval?: NodeJS.Timeout; status: string }>();
 
-function detectDelimiter(content: string): string {
-  const firstLine = content.split(/\r?\n/).find((l) => l.trim()) ?? '';
-  const commas = (firstLine.match(/,/g) ?? []).length;
-  const semicolons = (firstLine.match(/;/g) ?? []).length;
-  const tabs = (firstLine.match(/\t/g) ?? []).length;
-  if (tabs >= commas && tabs >= semicolons && tabs > 0) return '\t';
-  if (semicolons > commas) return ';';
-  return ',';
-}
-
-function findHeaderRowIndex(rows: string[][]): number {
-  for (let i = 0; i < rows.length; i++) {
-    const cells = rows[i].map((c) => c.trim().toLowerCase());
-    const hasName = cells.some((c) => c === 'name' || c === 'farmer name' || c === 'full name');
-    const hasDataHeader = cells.some((c) =>
-      [
-        'phone',
-        'mobile',
-        'contact',
-        'tel',
-        'district',
-        's/n',
-        'sn',
-        'sex',
-        'membership group',
-        'memebrship group',
-        'names of grpops',
-        'names of grpsops',
-        'names of groups',
-      ].includes(c) || PHONE_HEADER_PATTERN.test(c)
-    );
-    if (hasName && hasDataHeader) return i;
-  }
-  return 0;
-}
-
-function isDataRow(row: Record<string, string>): boolean {
-  const input = csvRowToFarmerInput(row);
-  const name = input.name?.trim() ?? '';
-  return name.length >= 2 && !/^name$/i.test(name);
-}
-
-export function parseCsvContent(content: string): { headers: string[]; rows: Record<string, string>[] } {
-  const delimiter = detectDelimiter(content);
-  const raw = Papa.parse<string[]>(content, {
-    skipEmptyLines: true,
-    delimiter,
-  });
-
-  const matrix = (raw.data as string[][]).filter((row) => row.some((cell) => cell?.trim()));
-  if (matrix.length === 0) {
-    return { headers: [], rows: [] };
-  }
-
-  const headerIdx = findHeaderRowIndex(matrix);
-  const headers = matrix[headerIdx].map((h) => h.trim());
-  const dataRows = matrix.slice(headerIdx + 1);
-
-  const rows = dataRows
-    .map((cells) => {
-      const obj: Record<string, string> = {};
-      headers.forEach((header, i) => {
-        if (header) obj[header] = (cells[i] ?? '').trim();
-      });
-      return obj;
-    })
-    .filter(isDataRow);
-
+export function parseCsvContent(content: string | Buffer): { headers: string[]; rows: Record<string, string>[] } {
+  const { headers, rows } = parseSpreadsheetContent(content);
   return { headers, rows };
 }
 
 export function validateCsvImport(
-  content: string,
+  content: string | Buffer,
   columnMapping?: Record<string, string>
 ): ImportValidationResponse {
   const sessionId = uuidv4();
-  const { headers, rows } = parseCsvContent(content);
+  const { headers, rows, source } = parseSpreadsheetContent(content);
   const headersMatch = headersMatchExpected(headers);
   const mapping = columnMapping ?? (headersMatch ? undefined : suggestColumnMapping(headers));
   const parseRow = (rawRow: Record<string, string>) =>
@@ -211,6 +145,18 @@ export function validateCsvImport(
   ).length;
 
   const importHints: string[] = [];
+  if (rows.length === 0 && source === 'xlsx') {
+    importHints.push(
+      'Excel workbook was read but no farmer rows were found. Check that the first sheet has a header row with Name and Phone/Mobile columns.'
+    );
+  } else if (rows.length === 0) {
+    importHints.push(
+      'No rows were found. If this is an Excel file (.xlsx), upload the original workbook — do not rename it to .csv. Or export from Excel using File → Save As → CSV (Comma delimited).'
+    );
+  }
+  if (source === 'xlsx' && rows.length > 0) {
+    importHints.push('Excel workbook detected — data was read from the first sheet.');
+  }
   if (phoneMissingCount > 0) {
     importHints.push(
       `${phoneMissingCount} rows have no Phone number — add a Phone column so farmers can log in after import.`

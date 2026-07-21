@@ -449,7 +449,7 @@ export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
 
   return {
     key: get('Key', 'S/N', 'SN', 'Serial'),
-    name: get('Name', 'Full Name', 'Farmer Name'),
+    name: get('Name', 'Full Name', 'Farmer Name', 'Name of Farmer', 'NAME OF FARMER'),
     gender: get('Gender', 'Sex', 'SEX'),
     idNumber: get('ID Number', 'ID', 'National ID', 'National ID Number'),
     membershipGroup: get(
@@ -512,7 +512,7 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
   const mapping: Record<string, string> = {};
   const aliases: Record<string, string[]> = {
     Key: ['key', 'id', 'farmer_key', 'farmer id', 's/n', 'sn', 'serial', '#'],
-    Name: ['name', 'full name', 'farmer name'],
+    Name: ['name', 'full name', 'farmer name', 'name of farmer'],
     Gender: ['gender', 'sex'],
     'ID Number': ['id number', 'id_number', 'national id', 'national_id', 'id'],
     'Membership Group': [
@@ -551,7 +551,7 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
       'mpesa',
     ],
     Country: ['country'],
-    District: ['district', 'county'],
+    District: ['district', 'county', 'sub county', 'sub-county'],
     'Sub-County': ['sub-county', 'sub county', 'sub_county', 'subcounty', 'sub coun'],
     Parish: ['parish'],
     Village: ['village', 'venue'],

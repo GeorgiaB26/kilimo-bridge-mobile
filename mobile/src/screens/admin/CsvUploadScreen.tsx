@@ -12,6 +12,7 @@ type Props = NativeStackScreenProps<ImportStackParamList, 'CsvUpload'>;
 export function CsvUploadScreen({ navigation }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [isExcel, setIsExcel] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const pickFile = async () => {
@@ -21,6 +22,7 @@ export function CsvUploadScreen({ navigation }: Props) {
       if (!picked) return;
       setFileName(picked.name);
       setFileContent(picked.content);
+      setIsExcel(Boolean(picked.isExcel));
     } catch (err: unknown) {
       if (err instanceof Error && err.message === 'FILE_TOO_LARGE') {
         Alert.alert('File too large', 'CSV file must be under 50MB.');
@@ -53,7 +55,7 @@ export function CsvUploadScreen({ navigation }: Props) {
           Cooperative files (e.g. GWED-G) with preamble rows, Memebrship Group typo, or S/N columns are supported. Phone is required so each farmer can sign in.
         </Text>
         <Text style={styles.macHint}>
-          Mac tip: If files look greyed out, export from Excel using File → Save As → CSV (Comma delimited). .xlsx files cannot be imported directly.
+          Excel (.xlsx) and CSV are supported. On Mac, if CSV files look greyed out, pick them anyway or export from Excel as CSV (Comma delimited).
         </Text>
       </View>
       <View style={styles.uploadArea}>
@@ -61,13 +63,13 @@ export function CsvUploadScreen({ navigation }: Props) {
           <>
             <Text style={styles.fileIcon}>📄</Text>
             <Text style={styles.fileName}>{fileName}</Text>
-            <Text style={styles.fileHint}>Ready to validate</Text>
+            <Text style={styles.fileHint}>{isExcel ? 'Excel workbook ready to validate' : 'Ready to validate'}</Text>
           </>
         ) : (
           <>
             <Text style={styles.fileIcon}>📁</Text>
             <Text style={styles.uploadText}>Select a CSV file</Text>
-            <Text style={styles.uploadHint}>Max size: 50MB · .csv or .txt</Text>
+            <Text style={styles.uploadHint}>Max size: 50MB · .csv, .txt, or .xlsx</Text>
           </>
         )}
       </View>

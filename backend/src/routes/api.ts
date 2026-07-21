@@ -10,12 +10,8 @@ import {
   getMembershipGroupNames,
   getExistingIdentifiers,
 } from '../services/farmerService';
-import {
-  validateCsvImport,
-  executeImport,
-  getImportProgress,
-  getImportComplete,
-} from '../services/importService';
+import { validateCsvImport, executeImport, getImportProgress, getImportComplete } from '../services/importService';
+import { BINARY_IMPORT_PREFIX } from '../services/spreadsheetParser';
 import { MAX_CSV_SIZE_BYTES } from '../../../shared/src/constants';
 import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../shared/src/constants';
 import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
@@ -134,18 +130,18 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
 });
 
 router.post('/admin/farmers/import/validate', authenticate, requirePermission('farmers.import'), upload.single('file'), (req: Request, res: Response) => {
-  let content: string | undefined;
+  let content: string | Buffer | undefined;
   let columnMapping: Record<string, string> | undefined;
 
   if (req.file) {
-    content = req.file.buffer.toString('utf-8');
+    content = req.file.buffer;
   } else if (typeof req.body === 'string' && req.body.length > 0) {
     content = req.body;
   } else if (req.body?.content) {
     content = req.body.content;
   }
 
-  if (!content) {
+  if (!content || (typeof content === 'string' && content.length === 0) || (Buffer.isBuffer(content) && content.length === 0)) {
     res.status(400).json({ error: 'No CSV content provided' });
     return;
   }
@@ -178,7 +174,8 @@ router.post('/admin/farmers/import/validate-text', authenticate, requirePermissi
     return;
   }
   try {
-    const result = validateCsvImport(content);
+    const payload = content.startsWith(BINARY_IMPORT_PREFIX) ? content : content;
+    const result = validateCsvImport(payload);
     res.json(result);
   } catch (err) {
     res.status(500).json({
