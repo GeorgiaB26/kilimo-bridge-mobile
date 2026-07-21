@@ -1,12 +1,16 @@
 import { v4 as uuidv4 } from 'uuid';
-import Papa from 'papaparse';
 import { db } from '../db/database';
+import { parseSpreadsheetContent } from './spreadsheetParser';
 import {
   validateFarmerRow,
   csvRowToFarmerInput,
   headersMatchExpected,
   suggestColumnMapping,
+  applyColumnMapping,
   preprocessImportRow,
+  PHONE_HEADER_PATTERN,
+  rowHasPhoneValue,
+  inferCooperativeNameFromFileName,
   type FarmerInput,
 } from '../../../shared/src/validation';
 
@@ -35,90 +39,26 @@ interface ValidationRowResult {
 
 const activeImports = new Map<string, { interval?: NodeJS.Timeout; status: string }>();
 
-function applyColumnMapping(row: Record<string, string>, mapping: Record<string, string>): Record<string, string> {
-  const mapped: Record<string, string> = {};
-  for (const [systemCol, csvCol] of Object.entries(mapping)) {
-    mapped[systemCol] = row[csvCol] ?? '';
-  }
-  return mapped;
-}
-
-function detectDelimiter(content: string): string {
-  const firstLine = content.split(/\r?\n/).find((l) => l.trim()) ?? '';
-  const commas = (firstLine.match(/,/g) ?? []).length;
-  const semicolons = (firstLine.match(/;/g) ?? []).length;
-  const tabs = (firstLine.match(/\t/g) ?? []).length;
-  if (tabs >= commas && tabs >= semicolons && tabs > 0) return '\t';
-  if (semicolons > commas) return ';';
-  return ',';
-}
-
-function findHeaderRowIndex(rows: string[][]): number {
-  for (let i = 0; i < rows.length; i++) {
-    const cells = rows[i].map((c) => c.trim().toLowerCase());
-    const hasName = cells.some((c) => c === 'name' || c === 'farmer name' || c === 'full name');
-    const hasDataHeader = cells.some((c) =>
-      [
-        'phone',
-        'district',
-        's/n',
-        'sn',
-        'sex',
-        'membership group',
-        'memebrship group',
-        'names of grpops',
-        'names of grpsops',
-        'names of groups',
-      ].includes(c)
-    );
-    if (hasName && hasDataHeader) return i;
-  }
-  return 0;
-}
-
-function isDataRow(row: Record<string, string>): boolean {
-  const input = csvRowToFarmerInput(row);
-  const name = input.name?.trim() ?? '';
-  return name.length >= 2 && !/^name$/i.test(name);
-}
-
-export function parseCsvContent(content: string): { headers: string[]; rows: Record<string, string>[] } {
-  const delimiter = detectDelimiter(content);
-  const raw = Papa.parse<string[]>(content, {
-    skipEmptyLines: true,
-    delimiter,
-  });
-
-  const matrix = (raw.data as string[][]).filter((row) => row.some((cell) => cell?.trim()));
-  if (matrix.length === 0) {
-    return { headers: [], rows: [] };
-  }
-
-  const headerIdx = findHeaderRowIndex(matrix);
-  const headers = matrix[headerIdx].map((h) => h.trim());
-  const dataRows = matrix.slice(headerIdx + 1);
-
-  const rows = dataRows
-    .map((cells) => {
-      const obj: Record<string, string> = {};
-      headers.forEach((header, i) => {
-        if (header) obj[header] = (cells[i] ?? '').trim();
-      });
-      return obj;
-    })
-    .filter(isDataRow);
-
+export function parseCsvContent(content: string | Buffer): { headers: string[]; rows: Record<string, string>[] } {
+  const { headers, rows } = parseSpreadsheetContent(content);
   return { headers, rows };
 }
 
 export function validateCsvImport(
-  content: string,
-  columnMapping?: Record<string, string>
+  content: string | Buffer,
+  columnMapping?: Record<string, string>,
+  options?: { fileName?: string }
 ): ImportValidationResponse {
   const sessionId = uuidv4();
-  const { headers, rows } = parseCsvContent(content);
+  const { headers, rows, source, cooperativeHint } = parseSpreadsheetContent(content);
+  const defaultMembershipGroup =
+    cooperativeHint ||
+    (options?.fileName ? inferCooperativeNameFromFileName(options.fileName) : null) ||
+    undefined;
   const headersMatch = headersMatchExpected(headers);
   const mapping = columnMapping ?? (headersMatch ? undefined : suggestColumnMapping(headers));
+  const parseRow = (rawRow: Record<string, string>) =>
+    csvRowToFarmerInput(mapping ? applyColumnMapping(rawRow, mapping) : rawRow);
 
   const membershipGroups = getMembershipGroupNames();
   const existing = getExistingIdentifiers();
@@ -131,8 +71,7 @@ export function validateCsvImport(
 
   rows.forEach((rawRow, index) => {
     const rowNumber = index + 2;
-    // Always parse from raw row — cooperative CSVs use headers like NAMES OF GRPOPS / S/N
-    const farmerInput = csvRowToFarmerInput(rawRow);
+    const farmerInput = parseRow(rawRow);
 
     const result = validateFarmerRow(farmerInput, {
       existingPhones: existing.phones,
@@ -141,6 +80,7 @@ export function validateCsvImport(
       membershipGroups,
       rowNumber,
       importMode: true,
+      defaultMembershipGroup,
     });
 
     let duplicate = false;
@@ -183,7 +123,7 @@ export function validateCsvImport(
   const errorsByCountry: Record<string, number> = {};
 
   validationResults.forEach((r, i) => {
-    const input = csvRowToFarmerInput(rows[i]);
+    const input = parseRow(rows[i]);
     const country = (r.normalized.country ?? input.country ?? inferCountryFromDistrict(input.district)).trim();
     if (r.valid) {
       countryBreakdown[country] = (countryBreakdown[country] ?? 0) + 1;
@@ -196,7 +136,7 @@ export function validateCsvImport(
     Object.entries(countryBreakdown).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   const fixedPreview = validationResults.slice(0, 10).map((r, i) => {
-    const input = csvRowToFarmerInput(rows[i]);
+    const input = parseRow(rows[i]);
     return {
       name: r.normalized.name ?? input.name,
       phone: r.normalized.phone ?? input.phone,
@@ -207,17 +147,37 @@ export function validateCsvImport(
     };
   });
 
-  const phoneMissingCount = validationResults.filter((r) =>
-    r.errors.some((e) => e.field === 'phone' && !rows[r.rowNumber - 2]?.['Phone']?.trim())
+  const phoneMissingCount = validationResults.filter((r, i) =>
+    r.errors.some((e) => e.field === 'phone' && !rowHasPhoneValue(rows[i]))
   ).length;
 
   const importHints: string[] = [];
+  if (rows.length === 0 && source === 'xlsx') {
+    importHints.push(
+      'Excel workbook was read but no farmer rows were found. Check that the first sheet has a header row with Name and Phone/Mobile columns.'
+    );
+  } else if (rows.length === 0) {
+    importHints.push(
+      'No rows were found. If this is an Excel file (.xlsx), upload the original workbook — do not rename it to .csv. Or export from Excel using File → Save As → CSV (Comma delimited).'
+    );
+  }
+  if (source === 'xlsx' && rows.length > 0) {
+    importHints.push('Excel workbook detected — data was read from the first sheet.');
+  }
+  if (
+    defaultMembershipGroup &&
+    !headers.some((h) => /membership|group|association|cooperative|co-op|fpo|sacco/i.test(h))
+  ) {
+    importHints.push(
+      `No cooperative column found — all farmers will be assigned to: "${defaultMembershipGroup}".`
+    );
+  }
   if (phoneMissingCount > 0) {
     importHints.push(
       `${phoneMissingCount} rows have no Phone number — add a Phone column so farmers can log in after import.`
     );
   }
-  if (!headers.some((h) => /phone|mobile/i.test(h))) {
+  if (!headers.some((h) => PHONE_HEADER_PATTERN.test(h))) {
     importHints.push(
       'Your CSV has no Phone column. Cooperative list formats (S/N, Name, SEX, District) need a Phone column added before import.'
     );

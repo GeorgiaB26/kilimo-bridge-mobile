@@ -4,6 +4,8 @@ import { Surface } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { getFarmerPayments } from '../../api/client';
+import { extractApiError } from '../../utils/feedback';
+import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 
@@ -20,6 +22,7 @@ export function FarmerPaymentsScreen() {
     mpesa_reference?: string;
   }>>([]);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getFarmerPayments().then((d) => {
@@ -28,7 +31,10 @@ export function FarmerPaymentsScreen() {
         .filter((p: { payment_status: string }) => p.payment_status === 'Transferred')
         .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
       setTotal(earned);
-    }).catch(() => {});
+      setError(null);
+    }).catch((err: unknown) => {
+      setError(extractApiError(err, 'Could not load payments'));
+    });
   }, []);
 
   return (
@@ -37,11 +43,14 @@ export function FarmerPaymentsScreen() {
       data={payments}
       keyExtractor={(_, i) => String(i)}
       ListHeaderComponent={
-        <Surface style={styles.summary} elevation={2}>
+        <>
+          {error ? <FarmerOfflineBanner message={error} /> : null}
+          <Surface style={styles.summary} elevation={2}>
           <Text style={styles.summaryLabel}>Total Earned</Text>
           <Text style={styles.summaryAmount}>{formatAmount(total)}</Text>
           <Text style={styles.summarySub}>Lifetime earnings via M-Pesa</Text>
         </Surface>
+        </>
       }
       contentContainerStyle={styles.list}
       renderItem={({ item }) => (

@@ -99,14 +99,32 @@ function inferCountryFromRow(input: FarmerInput): string {
   return 'Kenya';
 }
 
-/** Fill missing import fields for cooperative bulk uploads (e.g. GWED-G) */
-export function preprocessImportRow(input: FarmerInput, rowNumber: number): FarmerInput {
+/** Fill missing import fields for cooperative bulk uploads (e.g. GWED-G, LEOART) */
+export function inferCooperativeNameFromFileName(fileName: string): string | null {
+  const base = fileName.replace(/\.[^.]+$/, '').trim();
+  if (!base) return null;
+  const name = base
+    .replace(/\s*\d{4}\s*v?\d*\.?\d*\s*$/i, '')
+    .replace(/\s*v\d+(\.\d+)?\s*$/i, '')
+    .trim();
+  if (name.length < 4) return null;
+  if (/^(export|sheet|data|farmers|members|list|copy of)/i.test(name)) return null;
+  return name;
+}
+
+export function preprocessImportRow(
+  input: FarmerInput,
+  rowNumber: number,
+  options?: { defaultMembershipGroup?: string }
+): FarmerInput {
   const serial = input.key?.trim();
-  const key = serial || `GWED-${String(rowNumber).padStart(5, '0')}`;
+  const key = serial || `IMPORT-${String(rowNumber).padStart(5, '0')}`;
   const idNumber = input.idNumber?.trim() || `PENDING-${key}`;
   const gender = input.gender?.trim() ? input.gender : 'Other';
   const membershipType = normalizeMembershipType(input.membershipType) ?? input.membershipType;
   const country = inferCountryFromRow(input);
+  const membershipGroup =
+    input.membershipGroup?.trim() || options?.defaultMembershipGroup?.trim() || '';
 
   return {
     ...input,
@@ -115,6 +133,7 @@ export function preprocessImportRow(input: FarmerInput, rowNumber: number): Farm
     gender,
     membershipType,
     country,
+    membershipGroup,
   };
 }
 
@@ -204,11 +223,15 @@ export function validateFarmerRow(
     rowNumber?: number;
     /** Bulk import: auto-create unknown cooperatives, relax location matching */
     importMode?: boolean;
+    /** When CSV has no cooperative column — use filename or sheet title */
+    defaultMembershipGroup?: string;
   } = {}
 ): ValidationResult {
   const importMode = options.importMode ?? false;
   const rowNumber = options.rowNumber ?? 0;
-  const prepared = importMode ? preprocessImportRow(input, rowNumber) : input;
+  const prepared = importMode
+    ? preprocessImportRow(input, rowNumber, { defaultMembershipGroup: options.defaultMembershipGroup })
+    : input;
   const errors: FieldError[] = [];
   const normalized: Partial<FarmerInput> = {};
 
@@ -423,20 +446,35 @@ export function validateFarmerRow(
   return { valid: errors.length === 0, errors, normalized };
 }
 
-export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
-  const get = (...keys: string[]) => {
-    for (const key of keys) {
-      const val = row[key]?.trim();
-      if (val) return val;
+export const PHONE_HEADER_PATTERN = /phone|mobile|contact|tel|cell|whatsapp|sms|mpesa/i;
+
+function normalizeHeaderLabel(header: string): string {
+  return header.trim().toLowerCase().replace(/[_\s]+/g, ' ');
+}
+
+/** Case-insensitive CSV column lookup with fuzzy match for phone-like headers */
+export function getRowValue(row: Record<string, string>, ...aliases: string[]): string {
+  const aliasNorms = new Set(aliases.map((a) => normalizeHeaderLabel(a)));
+  for (const [key, val] of Object.entries(row)) {
+    if (aliasNorms.has(normalizeHeaderLabel(key))) return (val ?? '').trim();
+  }
+  const wantsPhone = aliases.some((a) => /phone|mobile|contact|tel|cell/i.test(a));
+  if (wantsPhone) {
+    for (const [key, val] of Object.entries(row)) {
+      if (PHONE_HEADER_PATTERN.test(key) && (val ?? '').trim()) return val.trim();
     }
-    return '';
-  };
+  }
+  return '';
+}
+
+export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
+  const get = (...keys: string[]) => getRowValue(row, ...keys);
 
   return {
     key: get('Key', 'S/N', 'SN', 'Serial'),
-    name: get('Name'),
+    name: get('Name', 'Full Name', 'Farmer Name', 'Name of Farmer', 'NAME OF FARMER'),
     gender: get('Gender', 'Sex', 'SEX'),
-    idNumber: get('ID Number', 'ID', 'National ID'),
+    idNumber: get('ID Number', 'ID', 'National ID', 'National ID Number'),
     membershipGroup: get(
       'Membership Group',
       'Memebrship Group',
@@ -444,10 +482,41 @@ export function csvRowToFarmerInput(row: Record<string, string>): FarmerInput {
       'NAMES OF GRPOPS',
       'NAMES OF GRPSOPS',
       'NAMES OF GROUPS',
-      'Group Name'
+      'Group Name',
+      'Association',
+      'Cooperative',
+      'Co-operative',
+      'Coop',
+      'FPO',
+      'SACCO',
+      'CBO',
+      'Organisation',
+      'Organization',
+      'Society',
+      'Farmer Group',
+      'Producer Group'
     ),
-    aggregationCenter: get('Aggregation center', 'Aggregation Centre'),
-    phone: get('Phone', 'Phone Number', 'Mobile'),
+    aggregationCenter: get('Aggregation center', 'Aggregation Centre', 'Aggregation Center'),
+    phone: get(
+      'Phone',
+      'Phone Number',
+      'Phone No',
+      'Phone #',
+      'Mobile',
+      'Mobile Number',
+      'Mobile No',
+      'Mobile Phone',
+      'Cell',
+      'Cellphone',
+      'Contact',
+      'Contact Number',
+      'Tel',
+      'Telephone',
+      'Whatsapp',
+      'SMS',
+      'M-Pesa Number',
+      'MPESA'
+    ),
     country: get('Country'),
     district: get('District'),
     subCounty: get('Sub-County', 'Sub County', 'Sub Coun', 'Subcounty'),
@@ -478,7 +547,7 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
   const mapping: Record<string, string> = {};
   const aliases: Record<string, string[]> = {
     Key: ['key', 'id', 'farmer_key', 'farmer id', 's/n', 'sn', 'serial', '#'],
-    Name: ['name', 'full name', 'farmer name'],
+    Name: ['name', 'full name', 'farmer name', 'name of farmer'],
     Gender: ['gender', 'sex'],
     'ID Number': ['id number', 'id_number', 'national id', 'national_id', 'id'],
     'Membership Group': [
@@ -493,11 +562,43 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
       'names of groups',
       'group name',
       'names of grpop',
+      'association',
+      'cooperative',
+      'co-operative',
+      'coop',
+      'fpo',
+      'sacco',
+      'cbo',
+      'organisation',
+      'organization',
+      'society',
+      'farmer group',
+      'producer group',
     ],
     'Aggregation center': ['aggregation center', 'aggregation_center', 'aggregation centre', 'center'],
-    Phone: ['phone', 'phone number', 'phone_number', 'mobile'],
+    Phone: [
+      'phone',
+      'phone number',
+      'phone_number',
+      'phone no',
+      'phone #',
+      'mobile',
+      'mobile number',
+      'mobile no',
+      'mobile phone',
+      'cell',
+      'cellphone',
+      'contact',
+      'contact number',
+      'tel',
+      'telephone',
+      'whatsapp',
+      'sms',
+      'm-pesa',
+      'mpesa',
+    ],
     Country: ['country'],
-    District: ['district', 'county'],
+    District: ['district', 'county', 'sub county', 'sub-county'],
     'Sub-County': ['sub-county', 'sub county', 'sub_county', 'subcounty', 'sub coun'],
     Parish: ['parish'],
     Village: ['village', 'venue'],
@@ -513,9 +614,32 @@ export function suggestColumnMapping(headers: string[]): Record<string, string> 
   const expectedCols = Object.keys(aliases);
   for (const col of expectedCols) {
     const header = headers.find((h) =>
-      aliases[col].includes(h.trim().toLowerCase())
+      aliases[col].includes(normalizeHeaderLabel(h))
     );
     if (header) mapping[col] = header;
   }
+  if (!mapping.Phone) {
+    const phoneHeader = headers.find((h) => PHONE_HEADER_PATTERN.test(h));
+    if (phoneHeader) mapping.Phone = phoneHeader;
+  }
   return mapping;
+}
+
+/** Map cooperative CSV headers onto canonical field names while keeping original columns */
+export function applyColumnMapping(
+  row: Record<string, string>,
+  mapping: Record<string, string>
+): Record<string, string> {
+  const mapped = { ...row };
+  for (const [systemCol, csvCol] of Object.entries(mapping)) {
+    if (csvCol in row) mapped[systemCol] = row[csvCol] ?? '';
+  }
+  return mapped;
+}
+
+export function rowHasPhoneValue(row: Record<string, string>): boolean {
+  if (getRowValue(row, 'Phone', 'Mobile', 'Contact', 'Tel').trim()) return true;
+  return Object.entries(row).some(
+    ([key, value]) => PHONE_HEADER_PATTERN.test(key) && (value ?? '').trim().length > 0
+  );
 }

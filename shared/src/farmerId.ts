@@ -58,13 +58,22 @@ export function normalizePhoneForCountry(phone: string, countryName: string): st
   const code = getCountryCode(countryName);
   if (!code) return null;
 
-  const cleaned = phone.replace(/[\s().-]/g, '');
+  let cleaned = String(phone ?? '').trim();
+  // Excel exports: ="0712345678" or '0712345678
+  cleaned = cleaned.replace(/^=+/, '').replace(/^['"]+|['"]+$/g, '');
+  cleaned = cleaned.replace(/[\s().\-]/g, '');
+
   const prefix = INTL_PREFIX[code];
+  const callingCode = prefix.slice(1);
   const localLen = LOCAL_LEN[code];
 
   if (cleaned.startsWith(prefix) && cleaned.length === prefix.length + localLen) return cleaned;
   if (cleaned.startsWith('0') && cleaned.length === localLen + 1) return prefix + cleaned.slice(1);
   if (/^[0-9]+$/.test(cleaned) && cleaned.length === localLen) return prefix + cleaned;
+  // 254712345678 or 256756900324 without leading +
+  if (/^[0-9]+$/.test(cleaned) && cleaned.startsWith(callingCode) && cleaned.length === callingCode.length + localLen) {
+    return `+${cleaned}`;
+  }
 
   return null;
 }

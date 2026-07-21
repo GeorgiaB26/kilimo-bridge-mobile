@@ -322,6 +322,137 @@ function runMigrations(): void {
   } catch {
     // table exists
   }
+
+  migratePhase2Hierarchy();
+}
+
+function migratePhase2Hierarchy(): void {
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sectors (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        country TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS programs (
+        id TEXT PRIMARY KEY,
+        sector_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (sector_id) REFERENCES sectors(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_programs_sector ON programs(sector_id);
+
+      CREATE TABLE IF NOT EXISTS program_projects (
+        id TEXT PRIMARY KEY,
+        program_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        region TEXT,
+        budget_kes INTEGER,
+        start_date TEXT,
+        end_date TEXT,
+        status TEXT DEFAULT 'active',
+        country_manager_id TEXT,
+        total_tasks INTEGER DEFAULT 0,
+        completed_tasks INTEGER DEFAULT 0,
+        is_test INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (program_id) REFERENCES programs(id),
+        FOREIGN KEY (country_manager_id) REFERENCES users(user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_program_projects_program ON program_projects(program_id);
+
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        program_project_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        task_order INTEGER NOT NULL,
+        payment_value_kes INTEGER DEFAULT 0,
+        assigned_agronomist_id TEXT,
+        due_date TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (program_project_id) REFERENCES program_projects(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(program_project_id);
+
+      CREATE TABLE IF NOT EXISTS program_project_farmers (
+        id TEXT PRIMARY KEY,
+        program_project_id TEXT NOT NULL,
+        farmer_id TEXT NOT NULL,
+        status TEXT DEFAULT 'assigned',
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(program_project_id, farmer_id),
+        FOREIGN KEY (program_project_id) REFERENCES program_projects(id),
+        FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS farmer_tasks (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        farmer_id TEXT NOT NULL,
+        program_project_id TEXT NOT NULL,
+        status TEXT DEFAULT 'not-started',
+        submitted_date TEXT,
+        approved_date TEXT,
+        completed_date TEXT,
+        photo_evidence_url TEXT,
+        notes TEXT,
+        rejection_reason TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(task_id, farmer_id),
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id),
+        FOREIGN KEY (program_project_id) REFERENCES program_projects(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_farmer_tasks_farmer ON farmer_tasks(farmer_id);
+      CREATE INDEX IF NOT EXISTS idx_farmer_tasks_status ON farmer_tasks(status);
+
+      CREATE TABLE IF NOT EXISTS centre_inventory (
+        id TEXT PRIMARY KEY,
+        centre_id TEXT NOT NULL,
+        farmer_id TEXT NOT NULL,
+        task_id TEXT,
+        product_name TEXT NOT NULL,
+        quantity_received REAL NOT NULL,
+        unit TEXT DEFAULT 'kg',
+        quality_status TEXT DEFAULT 'pending',
+        quality_notes TEXT,
+        received_date TEXT DEFAULT (datetime('now')),
+        scanned_by_user_id TEXT,
+        is_marketplace_ready INTEGER DEFAULT 0,
+        marketplace_price_per_unit REAL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (centre_id) REFERENCES aggregation_centres(centre_id),
+        FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id),
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_centre_inventory_centre ON centre_inventory(centre_id);
+    `);
+  } catch {
+    // tables exist
+  }
+
+  const addCol = (table: string, column: string, def: string) => {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+    } catch {
+      // exists
+    }
+  };
+  addCol('aggregation_centres', 'manager_name', 'TEXT');
+  addCol('aggregation_centres', 'manager_phone', 'TEXT');
+  addCol('programs', 'budget_kes', 'INTEGER');
 }
 
 /** Recreate users table when legacy CHECK constraint blocks agent/banking roles */

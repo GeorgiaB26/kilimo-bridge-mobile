@@ -2,7 +2,8 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
-import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
+import { AggregationCentreDashboardScreen } from '../screens/aggregation/AggregationCentreDashboardScreen';
+import { AgentPendingTasksScreen } from '../screens/agent/AgentPendingTasksScreen';
 import { AgentFarmersScreen } from '../screens/agent/AgentFarmersScreen';
 import { AgentAuditScreen } from '../screens/agent/AgentAuditScreen';
 import { RegistrationNavigator } from './RegistrationNavigator';
@@ -20,15 +21,16 @@ export function AgentNavigator() {
         tabBarActiveTintColor: COLORS.primary,
         tabBarIcon: ({ color, size }) => {
           const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-            Dashboard: 'grid', Farmers: 'people', Register: 'person-add',
+            Centre: 'storefront', Farmers: 'people', Tasks: 'checkmark-circle', Register: 'person-add',
             Audit: 'list', Settings: 'settings',
           };
           return <Ionicons name={icons[route.name] ?? 'ellipse'} size={size} color={color} />;
         },
       })}
     >
-      <Tab.Screen name="Dashboard" component={AdminDashboardScreen} />
+      <Tab.Screen name="Centre" component={AggregationCentreDashboardScreen} options={{ title: 'Centre' }} />
       <Tab.Screen name="Farmers" component={AgentFarmersScreen} />
+      <Tab.Screen name="Tasks" component={AgentPendingTasksScreen} options={{ title: 'Task approvals' }} />
       <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register' }} />
       <Tab.Screen name="Audit" component={AgentAuditScreen} options={{ title: 'Activity Log' }} />
       <Tab.Screen name="Settings" component={AdminProfileScreen} />

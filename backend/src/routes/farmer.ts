@@ -9,11 +9,13 @@ import {
 } from '../services/farmerPortalService';
 import { updateFarmerLocation } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
+import hierarchyFarmerRoutes from './hierarchyFarmer';
 
 const router = Router();
 
 router.use(authenticate);
 router.use(requireRole('farmer'));
+router.use(hierarchyFarmerRoutes);
 
 function logFarmerDataAccess(req: Request, resource: string, farmerId: string): void {
   logAudit({

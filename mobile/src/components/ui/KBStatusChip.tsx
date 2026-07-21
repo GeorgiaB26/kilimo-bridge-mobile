@@ -2,13 +2,14 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { COLORS } from '../../constants';
 
-type Variant = 'success' | 'pending' | 'info' | 'warning';
+type Variant = 'success' | 'pending' | 'info' | 'warning' | 'danger';
 
 const VARIANT_STYLES: Record<Variant, { bg: string; text: string }> = {
   success: { bg: '#E8F5E9', text: COLORS.success },
-  pending: { bg: '#FFF8E1', text: COLORS.warning },
+  pending: { bg: '#F5F5F5', text: COLORS.muted },
   info: { bg: '#E3F2FD', text: COLORS.info },
-  warning: { bg: '#FFF3E0', text: COLORS.warning },
+  warning: { bg: '#FFF8E1', text: COLORS.warning },
+  danger: { bg: '#FFEBEE', text: COLORS.alert },
 };
 
 export function KBStatusChip({ label, variant = 'info' }: { label: string; variant?: Variant }) {

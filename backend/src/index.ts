@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { initDatabase } from './db/database';
 import { seedDatabase } from './seed';
+import { seedHierarchyIfEmpty } from './seedHierarchy';
+import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFarmerPortal';
 import { maybeRestoreDatabaseOnStartup } from './startupRestore';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
@@ -11,9 +13,11 @@ import adminDashboardRoutes from './routes/adminDashboard';
 import bankingRoutes, { equityWebhookRouter } from './routes/banking';
 import agentRoutes from './routes/agents';
 import auditRoutes from './routes/audit';
+import hierarchyAdminRoutes from './routes/hierarchyAdmin';
+import aggregationRoutes from './routes/aggregation';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
-import { getFarmerCount } from './db/database';
+import { getFarmerCount, db } from './db/database';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,6 +26,9 @@ async function bootstrap(): Promise<void> {
   initDatabase();
   await maybeRestoreDatabaseOnStartup();
   seedDatabase();
+  ensureDemoFarmerPortal();
+  await ensureDemoAgentPassword();
+  seedHierarchyIfEmpty();
 
   app.use(helmet({
     hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -49,6 +56,8 @@ async function bootstrap(): Promise<void> {
   app.use('/api/auth', authRoutes);
   app.use('/api/farmer', farmerRoutes);
   app.use('/api/admin', adminDashboardRoutes);
+  app.use('/api/admin', hierarchyAdminRoutes);
+  app.use('/api/aggregation', aggregationRoutes);
   app.use('/api/banking', bankingRoutes);
   app.use('/api/agents', agentRoutes);
   app.use('/api/audit', auditRoutes);
@@ -56,10 +65,25 @@ async function bootstrap(): Promise<void> {
   app.use('/api', apiRoutes);
 
   app.get('/health', (_req, res) => {
+    let hierarchyProjects = 0;
+    let demoFarmerTasks = 0;
+    try {
+      hierarchyProjects = (db.prepare('SELECT COUNT(*) as c FROM program_projects').get() as { c: number }).c;
+      const demoFarmer = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get('+254712345678') as
+        | { farmer_id: string }
+        | undefined;
+      if (demoFarmer) {
+        demoFarmerTasks = (db.prepare('SELECT COUNT(*) as c FROM farmer_tasks WHERE farmer_id = ?').get(demoFarmer.farmer_id) as { c: number }).c;
+      }
+    } catch {
+      // optional
+    }
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       farmers: getFarmerCount(),
+      hierarchy_projects: hierarchyProjects,
+      demo_farmer_tasks: demoFarmerTasks,
     });
   });
 

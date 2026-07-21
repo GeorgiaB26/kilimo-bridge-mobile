@@ -4,11 +4,14 @@ import type { FarmerProject } from '../types/farmerProject';
 export type AuthStackParamList = {
   Login: undefined;
   Otp: { phone: string; devCode?: string };
+  AggregationLogin: undefined;
 };
 
 export type FarmerProjectsStackParamList = {
   ProjectsList: undefined;
-  ProjectDetail: { project: FarmerProject };
+  ProjectDetail: { project: FarmerProject; programProjectId?: string };
+  HierarchyProjectDetail: { projectId: string; projectName: string };
+  HierarchyTaskDetail: { farmerTaskId: string; taskName: string };
 };
 
 export type FarmerTabParamList = {
@@ -21,10 +24,19 @@ export type FarmerTabParamList = {
 export type AdminTabParamList = {
   Dashboard: undefined;
   Farmers: undefined;
+  Manage: undefined;
+  Tasks: undefined;
+  Centre: undefined;
   Import: undefined;
   Register: undefined;
   Users: undefined;
   Profile: undefined;
+};
+
+export type AdminProgramsStackParamList = {
+  ProgramProjectsList: undefined;
+  ProgramProjectDetail: { projectId: string; name: string };
+  PendingTasks: undefined;
 };
 
 export type AdminFarmerSummary = {

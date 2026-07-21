@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import * as DocumentPicker from 'expo-document-picker';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS, CSV_COLUMNS } from '../../constants';
+import { pickCsvFile } from '../../utils/pickCsvFile';
 import type { ImportStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<ImportStackParamList, 'CsvUpload'>;
@@ -12,28 +12,25 @@ type Props = NativeStackScreenProps<ImportStackParamList, 'CsvUpload'>;
 export function CsvUploadScreen({ navigation }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [isExcel, setIsExcel] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const pickFile = async () => {
+    setLoading(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'application/csv', '*/*'],
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        if (asset.size && asset.size > 50 * 1024 * 1024) {
-          Alert.alert('File too large', 'CSV file must be under 50MB.');
-          return;
-        }
-        setFileName(asset.name);
-        const response = await fetch(asset.uri);
-        const content = await response.text();
-        setFileContent(content);
+      const picked = await pickCsvFile();
+      if (!picked) return;
+      setFileName(picked.name);
+      setFileContent(picked.content);
+      setIsExcel(Boolean(picked.isExcel));
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'FILE_TOO_LARGE') {
+        Alert.alert('File too large', 'CSV file must be under 50MB.');
+        return;
       }
-    } catch {
-      Alert.alert('Error', 'Failed to read CSV file.');
+      Alert.alert('Error', 'Failed to read CSV file. Try exporting from Excel as CSV (Comma delimited).');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -57,28 +54,35 @@ export function CsvUploadScreen({ navigation }: Props) {
         <Text style={styles.hint}>
           Cooperative files (e.g. GWED-G) with preamble rows, Memebrship Group typo, or S/N columns are supported. Phone is required so each farmer can sign in.
         </Text>
+        <Text style={styles.macHint}>
+          Excel (.xlsx) and CSV are supported. On Mac, if CSV files look greyed out, pick them anyway or export from Excel as CSV (Comma delimited).
+        </Text>
       </View>
       <View style={styles.uploadArea}>
         {fileName ? (
           <>
             <Text style={styles.fileIcon}>📄</Text>
             <Text style={styles.fileName}>{fileName}</Text>
-            <Text style={styles.fileHint}>Ready to validate</Text>
+            <Text style={styles.fileHint}>{isExcel ? 'Excel workbook ready to validate' : 'Ready to validate'}</Text>
           </>
         ) : (
           <>
             <Text style={styles.fileIcon}>📁</Text>
             <Text style={styles.uploadText}>Select a CSV file</Text>
-            <Text style={styles.uploadHint}>Max size: 50MB</Text>
+            <Text style={styles.uploadHint}>Max size: 50MB · .csv, .txt, or .xlsx</Text>
           </>
         )}
       </View>
-      <Button title={fileName ? 'Change File' : 'Choose CSV File'} onPress={pickFile} variant="outline" />
+      <Button
+        title={fileName ? 'Change File' : 'Choose CSV File'}
+        onPress={pickFile}
+        variant="outline"
+        loading={loading}
+      />
       <Button
         title="Validate & Preview"
         onPress={handleValidate}
         disabled={!fileContent}
-        loading={loading}
         style={styles.validateBtn}
       />
     </View>
@@ -96,6 +100,7 @@ const styles = StyleSheet.create({
   infoTitle: { fontSize: 13, fontWeight: '600', color: COLORS.primary, marginBottom: 6 },
   columns: { fontSize: 11, color: COLORS.muted, lineHeight: 18 },
   hint: { fontSize: 12, color: COLORS.info, marginTop: 10, lineHeight: 18 },
+  macHint: { fontSize: 12, color: COLORS.warning, marginTop: 8, lineHeight: 18 },
   uploadArea: {
     borderWidth: 2,
     borderStyle: 'dashed',

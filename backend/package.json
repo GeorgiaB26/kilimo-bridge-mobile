@@ -5,10 +5,12 @@
   "scripts": {
     "predev": "node scripts/ensure-deps.js",
     "dev": "tsx watch src/index.ts",
+    "dev:clean": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true; tsx watch src/index.ts",
     "build": "tsc",
     "build:render": "npm install --include=dev && npm run build",
     "start": "node dist/backend/src/index.js",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "seed:hierarchy": "tsx scripts/seed-hierarchy.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -20,7 +22,8 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.1",
     "papaparse": "^5.4.1",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

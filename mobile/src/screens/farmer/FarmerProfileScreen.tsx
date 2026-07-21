@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { getFarmerDashboard } from '../../api/client';
+import { extractApiError } from '../../utils/feedback';
+import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { getLocalizedGreeting } from '../../utils/greeting';
@@ -27,12 +29,16 @@ export function FarmerProfileScreen() {
     status: string;
   } | null>(null);
   const [notifications, setNotifications] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getFarmerDashboard().then((d) => {
       setFarmer(d.farmer);
       if (d.farmer?.country) selectCountry(d.farmer.country);
-    }).catch(() => {});
+      setError(null);
+    }).catch((err: unknown) => {
+      setError(extractApiError(err, 'Could not load profile'));
+    });
   }, [selectCountry]);
 
   const displayName = farmer?.name ?? user?.name ?? 'Farmer';
@@ -41,6 +47,7 @@ export function FarmerProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {error ? <FarmerOfflineBanner message={error} /> : null}
       <View style={styles.hero}>
         <ProfileAvatar
           name={displayName}
