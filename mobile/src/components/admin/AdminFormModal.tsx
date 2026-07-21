@@ -2,8 +2,13 @@ import React, { useState } from 'react';
 import {
   View, Text, Modal, StyleSheet, ScrollView, Pressable, TextInput as RNTextInput,
 } from 'react-native';
-import { Button } from 'react-native-paper';
+import { Button, Menu } from 'react-native-paper';
 import { COLORS } from '../../constants';
+
+export interface FormFieldOption {
+  value: string;
+  label: string;
+}
 
 export interface FormField {
   key: string;
@@ -12,6 +17,8 @@ export interface FormField {
   required?: boolean;
   multiline?: boolean;
   keyboardType?: 'default' | 'numeric' | 'phone-pad';
+  type?: 'text' | 'select';
+  options?: FormFieldOption[];
 }
 
 interface Props {
@@ -29,12 +36,13 @@ export function AdminFormModal({
 }: Props) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [openSelect, setOpenSelect] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (visible) {
       const init: Record<string, string> = {};
       for (const f of fields) {
-        init[f.key] = initialValues?.[f.key] ?? '';
+        init[f.key] = initialValues?.[f.key] ?? f.options?.[0]?.value ?? '';
       }
       setValues(init);
     }
@@ -69,15 +77,40 @@ export function AdminFormModal({
                 <Text style={styles.label}>
                   {f.label}{f.required ? ' *' : ''}
                 </Text>
-                <RNTextInput
-                  style={[styles.input, f.multiline && styles.multiline]}
-                  value={values[f.key] ?? ''}
-                  onChangeText={(t) => setValues((v) => ({ ...v, [f.key]: t }))}
-                  placeholder={f.placeholder}
-                  multiline={f.multiline}
-                  numberOfLines={f.multiline ? 3 : 1}
-                  keyboardType={f.keyboardType ?? 'default'}
-                />
+                {f.type === 'select' && f.options ? (
+                  <Menu
+                    visible={openSelect === f.key}
+                    onDismiss={() => setOpenSelect(null)}
+                    anchor={
+                      <Pressable style={styles.selectBtn} onPress={() => setOpenSelect(f.key)}>
+                        <Text style={styles.selectText}>
+                          {f.options.find((o) => o.value === values[f.key])?.label ?? 'Select...'}
+                        </Text>
+                      </Pressable>
+                    }
+                  >
+                    {f.options.map((o) => (
+                      <Menu.Item
+                        key={o.value}
+                        title={o.label}
+                        onPress={() => {
+                          setValues((v) => ({ ...v, [f.key]: o.value }));
+                          setOpenSelect(null);
+                        }}
+                      />
+                    ))}
+                  </Menu>
+                ) : (
+                  <RNTextInput
+                    style={[styles.input, f.multiline && styles.multiline]}
+                    value={values[f.key] ?? ''}
+                    onChangeText={(t) => setValues((v) => ({ ...v, [f.key]: t }))}
+                    placeholder={f.placeholder}
+                    multiline={f.multiline}
+                    numberOfLines={f.multiline ? 3 : 1}
+                    keyboardType={f.keyboardType ?? 'default'}
+                  />
+                )}
               </View>
             ))}
           </ScrollView>
@@ -108,4 +141,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   multiline: { minHeight: 72, textAlignVertical: 'top' },
+  selectBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: COLORS.surface,
+  },
+  selectText: { fontSize: 15, color: COLORS.text },
 });

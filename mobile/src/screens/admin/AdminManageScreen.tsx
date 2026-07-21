@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, Alert, Pressable, TextInput,
+  View, Text, ScrollView, StyleSheet, RefreshControl, Alert, Pressable, TextInput, Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button, Menu } from 'react-native-paper';
@@ -33,14 +33,19 @@ export function AdminManageScreen() {
   const [sectors, setSectors] = useState<Array<{ id: string; name: string; description?: string; created_at?: string }>>([]);
   const [programs, setPrograms] = useState<Array<{ id: string; name: string; sector_name?: string; budget_kes?: number }>>([]);
   const [projects, setProjects] = useState<Array<{ id: string; name: string; program_name?: string; budget_kes?: number; start_date?: string; end_date?: string }>>([]);
-  const [tasks, setTasks] = useState<Array<{ id: string; name: string; task_order: number; payment_value_kes: number; due_date?: string }>>([]);
-  const [farmers, setFarmers] = useState<Array<{ farmer_id: string; name: string; phone_number: string; assigned_date?: string }>>([]);
+  const [tasks, setTasks] = useState<Array<{ id: string; name: string; task_order: number; payment_value_kes: number; due_date?: string; description?: string }>>([]);
+  const [farmers, setFarmers] = useState<Array<{ farmer_id: string; name: string; phone_number: string; assigned_date?: string; assigned_tasks?: string }>>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [modal, setModal] = useState<{ type: ManageTab; item?: Record<string, unknown> } | null>(null);
   const [farmerSearch, setFarmerSearch] = useState('');
   const [searchResults, setSearchResults] = useState<Array<{ farmer_id: string; name: string; phone_number: string }>>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<{ farmer_id: string; name: string } | null>(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignProjectId, setAssignProjectId] = useState('');
+  const [assignTaskIds, setAssignTaskIds] = useState<string[]>([]);
+  const [assignProjectTasks, setAssignProjectTasks] = useState<Array<{ id: string; name: string; task_order: number }>>([]);
+  const [assignProjectMenuOpen, setAssignProjectMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -158,12 +163,14 @@ export function AdminManageScreen() {
       </Button>
       {tasks.map((t) => (
         <KBCard key={t.id} elevated={false}>
+          <Text style={styles.orderBadge}>Order {t.task_order}</Text>
           <Text style={styles.preview}>Task {t.task_order}: {t.name} — {t.payment_value_kes?.toLocaleString()} KES</Text>
+          {t.description ? <Text style={styles.meta}>{t.description}</Text> : null}
           <Text style={styles.meta}>Due {t.due_date ?? '—'}</Text>
           <View style={styles.actions}>
             <Button compact onPress={() => setModal({ type: 'tasks', item: t })}>Edit</Button>
-            <Button compact onPress={() => reorderAdminProjectTask(t.id, 'up').then(load)}>↑</Button>
-            <Button compact onPress={() => reorderAdminProjectTask(t.id, 'down').then(load)}>↓</Button>
+            <Button compact onPress={() => reorderAdminProjectTask(t.id, 'up').then(load)}>↑ Move up</Button>
+            <Button compact onPress={() => reorderAdminProjectTask(t.id, 'down').then(load)}>↓ Move down</Button>
             <Button compact textColor={COLORS.alert} onPress={() => confirmDelete(t.name, () => deleteAdminProjectTask(t.id))}>Delete</Button>
           </View>
         </KBCard>
@@ -177,44 +184,42 @@ export function AdminManageScreen() {
     setSearchResults(data.farmers ?? []);
   };
 
+  const openAssignModal = async (farmer: { farmer_id: string; name: string }) => {
+    setSelectedFarmer(farmer);
+    const pid = selectedProjectId || projects[0]?.id || '';
+    setAssignProjectId(pid);
+    if (pid) {
+      const data = await getAdminProjectTasks(pid);
+      const list = (data.tasks ?? []) as Array<{ id: string; name: string; task_order: number }>;
+      setAssignProjectTasks(list);
+      setAssignTaskIds(list.map((t) => t.id));
+    }
+    setAssignModalOpen(true);
+  };
+
   const renderAssign = () => (
     <>
-      {renderProjectFilter()}
       <Text style={styles.sectionLabel}>Search farmer by name or phone</Text>
       <View style={styles.searchRow}>
         <TextInput style={styles.searchInput} value={farmerSearch} onChangeText={setFarmerSearch} placeholder="Name or phone" />
         <Button mode="outlined" onPress={doFarmerSearch}>Search</Button>
       </View>
       {searchResults.map((f) => (
-        <Pressable key={f.farmer_id} onPress={() => setSelectedFarmer(f)}>
-          <KBCard elevated={false} style={selectedFarmer?.farmer_id === f.farmer_id ? styles.selected : undefined}>
-            <Text style={styles.rowTitle}>{f.name}</Text>
-            <Text style={styles.meta}>{f.phone_number}</Text>
-          </KBCard>
-        </Pressable>
+        <KBCard key={f.farmer_id} elevated={false}>
+          <Text style={styles.rowTitle}>{f.name}</Text>
+          <Text style={styles.meta}>{f.phone_number}</Text>
+          <Button mode="contained" buttonColor={COLORS.primary} style={styles.newBtn} onPress={() => openAssignModal(f)}>
+            Assign to Project
+          </Button>
+        </KBCard>
       ))}
-      <Button
-        mode="contained"
-        buttonColor={COLORS.primary}
-        style={styles.newBtn}
-        disabled={!selectedFarmer || !selectedProjectId}
-        onPress={async () => {
-          if (!selectedFarmer || !selectedProjectId) return;
-          await assignAdminProjectFarmers(selectedProjectId, [selectedFarmer.farmer_id]);
-          setSelectedFarmer(null);
-          setSearchResults([]);
-          setFarmerSearch('');
-          await load();
-          Alert.alert('Assigned', `${selectedFarmer.name} assigned to project.`);
-        }}
-      >
-        Assign
-      </Button>
       <Text style={styles.sectionLabel}>Assigned farmers</Text>
+      {renderProjectFilter()}
       {farmers.map((f) => (
         <KBCard key={f.farmer_id} elevated={false}>
           <Text style={styles.rowTitle}>{f.name}</Text>
           <Text style={styles.meta}>{f.phone_number} · {f.assigned_date?.slice(0, 10) ?? '—'}</Text>
+          {f.assigned_tasks ? <Text style={styles.meta}>Tasks: {f.assigned_tasks}</Text> : null}
           <Button compact textColor={COLORS.alert} onPress={() => confirmDelete(f.name, () => removeAdminProjectFarmer(selectedProjectId, f.farmer_id))}>
             Remove
           </Button>
@@ -243,10 +248,16 @@ export function AdminManageScreen() {
     }
     if (modal.type === 'programs') {
       return {
-        title: item ? 'Edit Program' : 'New Program',
+        title: item ? 'Edit Program' : 'Create Program',
         fields: [
           { key: 'name', label: 'Name', required: true },
-          { key: 'sector_id', label: 'Sector ID (pick from list)', required: true, placeholder: sectors[0]?.id },
+          {
+            key: 'sector_id',
+            label: 'Sector',
+            required: true,
+            type: 'select',
+            options: sectors.map((s) => ({ value: s.id, label: s.name })),
+          },
           { key: 'budget_kes', label: 'Budget (KES)', keyboardType: 'numeric' },
           { key: 'description', label: 'Description', multiline: true },
         ],
@@ -265,13 +276,19 @@ export function AdminManageScreen() {
     }
     if (modal.type === 'projects') {
       return {
-        title: item ? 'Edit Project' : 'New Project',
+        title: item ? 'Edit Project' : 'Create Project',
         fields: [
           { key: 'name', label: 'Name', required: true },
-          { key: 'program_id', label: 'Program ID', required: true, placeholder: programs[0]?.id },
+          {
+            key: 'program_id',
+            label: 'Program',
+            required: true,
+            type: 'select',
+            options: programs.map((p) => ({ value: p.id, label: p.name })),
+          },
           { key: 'budget_kes', label: 'Budget (KES)', required: true, keyboardType: 'numeric' },
           { key: 'start_date', label: 'Start Date (YYYY-MM-DD)' },
-          { key: 'end_date', label: 'Due Date (YYYY-MM-DD)' },
+          { key: 'end_date', label: 'End Date (YYYY-MM-DD)' },
         ],
         onSubmit: async (v) => {
           const body = { ...v, budget_kes: Number(v.budget_kes) };
@@ -348,6 +365,65 @@ export function AdminManageScreen() {
           submitLabel={modal?.item ? 'Update' : 'Create'}
         />
       ) : null}
+
+      <Modal visible={assignModalOpen} transparent animationType="slide">
+        <View style={styles.assignOverlay}>
+          <View style={styles.assignCard}>
+            <Text style={styles.assignTitle}>Assign {selectedFarmer?.name}</Text>
+            <Menu visible={assignProjectMenuOpen} onDismiss={() => setAssignProjectMenuOpen(false)} anchor={
+              <Button mode="outlined" onPress={() => setAssignProjectMenuOpen(true)} style={styles.filterBtn}>
+                {projects.find((p) => p.id === assignProjectId)?.name ?? 'Select project'}
+              </Button>
+            }>
+              {projects.map((p) => (
+                <Menu.Item
+                  key={p.id}
+                  title={p.name}
+                  onPress={async () => {
+                    setAssignProjectId(p.id);
+                    setAssignProjectMenuOpen(false);
+                    const data = await getAdminProjectTasks(p.id);
+                    const list = (data.tasks ?? []) as Array<{ id: string; name: string; task_order: number }>;
+                    setAssignProjectTasks(list);
+                    setAssignTaskIds(list.map((t) => t.id));
+                  }}
+                />
+              ))}
+            </Menu>
+            <Text style={styles.sectionLabel}>Select tasks to assign</Text>
+            {assignProjectTasks.map((t) => {
+              const checked = assignTaskIds.includes(t.id);
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => setAssignTaskIds((ids) => checked ? ids.filter((id) => id !== t.id) : [...ids, t.id])}
+                >
+                  <KBCard elevated={false} style={checked ? styles.selected : undefined}>
+                    <Text style={styles.rowTitle}>{t.task_order}. {t.name}</Text>
+                  </KBCard>
+                </Pressable>
+              );
+            })}
+            <Button
+              mode="contained"
+              buttonColor={COLORS.primary}
+              disabled={!selectedFarmer || !assignProjectId || assignTaskIds.length === 0}
+              onPress={async () => {
+                if (!selectedFarmer || !assignProjectId) return;
+                await assignAdminProjectFarmers(assignProjectId, [selectedFarmer.farmer_id], assignTaskIds);
+                setAssignModalOpen(false);
+                setSearchResults([]);
+                setFarmerSearch('');
+                await load();
+                Alert.alert('Assigned', `${selectedFarmer.name} assigned to ${assignTaskIds.length} task(s).`);
+              }}
+            >
+              Confirm
+            </Button>
+            <Button mode="text" onPress={() => setAssignModalOpen(false)}>Cancel</Button>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -379,4 +455,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   selected: { borderWidth: 2, borderColor: COLORS.primary },
+  orderBadge: { fontSize: 12, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
+  assignOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 },
+  assignCard: { backgroundColor: COLORS.background, borderRadius: 12, padding: 20, maxHeight: '85%' },
+  assignTitle: { fontSize: 20, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
 });

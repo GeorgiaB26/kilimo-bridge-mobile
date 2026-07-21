@@ -271,8 +271,8 @@ export async function getAdminProjectFarmers(projectId: string) {
   return data;
 }
 
-export async function assignAdminProjectFarmers(projectId: string, farmerIds: string[]) {
-  const { data } = await api.post(`/admin/projects/${projectId}/farmers`, { farmer_ids: farmerIds });
+export async function assignAdminProjectFarmers(projectId: string, farmerIds: string[], taskIds?: string[]) {
+  const { data } = await api.post(`/admin/projects/${projectId}/farmers`, { farmer_ids: farmerIds, task_ids: taskIds });
   return data;
 }
 
@@ -357,6 +357,12 @@ export async function getFarmerHierarchyTask(farmerTaskId: string) {
 
 export async function getFarmerTaskApprovalStatus(farmerTaskId: string) {
   const { data } = await api.get(`/farmer/tasks/${farmerTaskId}/approval-status`);
+  return data;
+}
+
+/** Spec alias: GET /api/farmer/tasks/:task_id/status */
+export async function getFarmerTaskStatus(farmerTaskId: string) {
+  const { data } = await api.get(`/farmer/tasks/${farmerTaskId}/status`);
   return data;
 }
 

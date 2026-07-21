@@ -7,11 +7,14 @@ import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { submitFarmerTaskCompletion } from '../../api/client';
-import { extractApiError } from '../../utils/feedback';
+import { extractApiError, showMessage } from '../../utils/feedback';
+
+const MIN_NOTES_LENGTH = 50;
 
 export interface FarmerTaskSubmitTarget {
   id: string;
   name: string;
+  description?: string;
   payment_value_kes?: number;
 }
 
@@ -63,6 +66,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
             aspect: [4, 3],
             quality: 0.7,
             base64: true,
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
           });
       if (!result.canceled && result.assets[0]) {
         setPhotoUri(result.assets[0].uri);
@@ -75,21 +79,26 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
   const submit = async () => {
     if (!task) return;
+    if (!photoUri && !photoBase64) {
+      Alert.alert('Photo required', 'Please upload a photo (JPEG or PNG) of your completed work.');
+      return;
+    }
+    if (notes.trim().length < MIN_NOTES_LENGTH) {
+      Alert.alert('Notes required', `Please add at least ${MIN_NOTES_LENGTH} characters describing your work.`);
+      return;
+    }
     setSubmitting(true);
     try {
       const photo_url = photoBase64
         ? `data:image/jpeg;base64,${photoBase64}`
         : photoUri ?? undefined;
       await submitFarmerTaskCompletion(task.id, {
-        notes: notes.trim() || undefined,
+        notes: notes.trim(),
         photo_url,
       });
       reset();
       onSubmitted();
-      Alert.alert(
-        'Submitted for approval',
-        'Your task completion was sent to your manager. You will receive an SMS when it is approved.'
-      );
+      showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not submit task'));
     } finally {
@@ -106,41 +115,44 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
           </Pressable>
           {task ? (
             <>
-              <Text style={styles.title}>Mark complete</Text>
-              <Text style={styles.taskName}>{task.name}</Text>
+              <Text style={styles.title}>Submit Task: {task.name}</Text>
+              {task.description ? (
+                <Text style={styles.description}>{task.description}</Text>
+              ) : null}
               {task.payment_value_kes != null ? (
                 <Text style={styles.pay}>Payment: KES {task.payment_value_kes.toLocaleString()}</Text>
               ) : null}
 
-              <Text style={styles.label}>Photo evidence</Text>
+              <Text style={styles.label}>Photo evidence *</Text>
               {photoUri ? (
                 <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="cover" />
               ) : (
                 <View style={styles.photoPlaceholder}>
                   <Ionicons name="camera-outline" size={40} color={COLORS.muted} />
-                  <Text style={styles.photoHint}>Add a photo of your completed work</Text>
+                  <Text style={styles.photoHint}>JPEG or PNG required</Text>
                 </View>
               )}
               <View style={styles.photoBtns}>
-                <Button mode="outlined" onPress={() => pickImage(true)} loading={picking} style={styles.photoBtn}>
+                <Button mode="outlined" onPress={() => pickImage(true)} loading={picking} style={styles.photoBtn} icon="camera">
                   {Platform.OS === 'web' ? 'Upload photo' : 'Camera'}
                 </Button>
                 {Platform.OS !== 'web' ? (
-                  <Button mode="outlined" onPress={() => pickImage(false)} loading={picking} style={styles.photoBtn}>
+                  <Button mode="outlined" onPress={() => pickImage(false)} loading={picking} style={styles.photoBtn} icon="image">
                     Gallery
                   </Button>
                 ) : null}
               </View>
 
-              <Text style={styles.label}>Notes</Text>
+              <Text style={styles.label}>Notes * (min {MIN_NOTES_LENGTH} characters)</Text>
               <TextInput
                 style={styles.input}
                 multiline
                 numberOfLines={4}
                 value={notes}
                 onChangeText={setNotes}
-                placeholder="Describe what you completed..."
+                placeholder="Add any notes about your work..."
               />
+              <Text style={styles.charCount}>{notes.trim().length}/{MIN_NOTES_LENGTH}</Text>
 
               <Button
                 mode="contained"
@@ -149,7 +161,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
                 buttonColor={COLORS.primary}
                 style={styles.submitBtn}
               >
-                Submit for approval
+                Submit
               </Button>
             </>
           ) : null}
@@ -166,7 +178,7 @@ const styles = StyleSheet.create({
   closeRow: { alignSelf: 'flex-end', marginBottom: 4 },
   close: { color: COLORS.muted, fontSize: 16 },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
-  taskName: { fontSize: 17, fontWeight: '600', color: COLORS.text, marginTop: 4 },
+  description: { fontSize: 14, color: COLORS.text, marginTop: 8, lineHeight: 20 },
   pay: { fontSize: 16, fontWeight: '700', color: COLORS.accent, marginTop: 8, marginBottom: 16 },
   label: { fontSize: 13, fontWeight: '600', color: COLORS.muted, marginTop: 12, marginBottom: 6 },
   preview: { width: '100%', height: 200, borderRadius: 12, backgroundColor: COLORS.surface },
@@ -192,5 +204,6 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
+  charCount: { fontSize: 12, color: COLORS.muted, textAlign: 'right', marginTop: 4 },
   submitBtn: { marginTop: 20 },
 });
