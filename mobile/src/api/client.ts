@@ -112,8 +112,12 @@ export async function getImportProgress(sessionId: string, importId: string) {
   return data;
 }
 
-export async function getImportComplete(sessionId: string) {
-  const { data } = await api.get(`/admin/farmers/import/${sessionId}/complete`);
+export async function getImportErrorsCsv(sessionId: string): Promise<string> {
+  const { data } = await api.get<string>(`/admin/farmers/import/${sessionId}/errors`, {
+    params: { format: 'csv' },
+    responseType: 'text',
+    transformResponse: [(d) => d],
+  });
   return data;
 }
 

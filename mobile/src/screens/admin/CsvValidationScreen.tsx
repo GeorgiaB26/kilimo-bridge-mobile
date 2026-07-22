@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS } from '../../constants';
 import { validateCsvImportText } from '../../api/client';
+import { downloadImportErrorsCsv, fetchAndDownloadImportErrors } from '../../utils/downloadImportErrors';
 import type { ImportValidationResult } from '../../types';
 import type { ImportStackParamList } from '../../navigation/types';
 
@@ -37,6 +38,23 @@ export function CsvValidationScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<ImportValidationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadErrors = async () => {
+    if (!result?.sessionId) return;
+    setDownloading(true);
+    try {
+      try {
+        await fetchAndDownloadImportErrors(result.sessionId, fileName);
+      } catch {
+        downloadImportErrorsCsv(result.errors, fileName);
+      }
+    } catch {
+      Alert.alert('Download failed', 'Could not save errors file. Try again on web (Chrome/Safari).');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     const runValidation = async () => {
@@ -139,11 +157,26 @@ export function CsvValidationScreen({ navigation, route }: Props) {
       </View>
       {result.errors.length > 0 ? (
         <>
-          <Text style={styles.sectionTitle}>Errors ({result.errors.length})</Text>
-          {result.errors.slice(0, 20).map((err, i) => (
-            <View key={i} style={styles.errorRow}>
+          <View style={styles.errorsHeader}>
+            <Text style={styles.sectionTitle}>
+              Errors ({result.totalErrors ?? result.errors.length})
+            </Text>
+            <Button
+              title={downloading ? 'Downloading…' : 'Download errors CSV'}
+              onPress={handleDownloadErrors}
+              variant="outline"
+              loading={downloading}
+              style={styles.downloadBtn}
+            />
+          </View>
+          <Text style={styles.errorsHint}>
+            Open the CSV in Excel — use the Row column to find and fix each line in your file.
+          </Text>
+          {result.errors.map((err, i) => (
+            <View key={`${err.row}-${err.field}-${i}`} style={styles.errorRow}>
               <Text style={styles.errorRowText}>
                 Row {err.row}: {err.field} — {err.error}
+                {err.value ? ` [${err.value}]` : ''}
                 {err.suggestion ? ` (${err.suggestion})` : ''}
               </Text>
             </View>
@@ -219,6 +252,9 @@ const styles = StyleSheet.create({
   countryRow: { fontSize: 14, color: COLORS.text, marginBottom: 4 },
   countryErrors: { fontSize: 12, color: COLORS.alert, marginTop: 8 },
   sectionTitle: { fontSize: 16, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
+  errorsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
+  downloadBtn: { flexShrink: 0 },
+  errorsHint: { fontSize: 12, color: COLORS.muted, marginBottom: 8, lineHeight: 18 },
   table: { borderRadius: 8, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },
   tableHeader: { flexDirection: 'row', backgroundColor: COLORS.primary, padding: 8 },
   headerCell: { color: '#fff', fontWeight: '600', fontSize: 12 },

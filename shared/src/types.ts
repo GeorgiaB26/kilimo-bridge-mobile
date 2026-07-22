@@ -41,6 +41,7 @@ export interface ImportValidationResponse {
     error: string;
     suggestion?: string;
   }>;
+  totalErrors?: number;
   preview: Array<{
     name: string;
     phone: string;
