@@ -113,12 +113,13 @@ export async function getImportProgress(sessionId: string, importId: string) {
 }
 
 export async function getImportErrorsCsv(sessionId: string): Promise<string> {
-  const { data } = await api.get<string>(`/admin/farmers/import/${sessionId}/errors`, {
-    params: { format: 'csv' },
-    responseType: 'text',
-    transformResponse: [(d) => d],
+  const base = API_BASE_URL.replace(/\/api$/, '');
+  const token = api.defaults.headers.common.Authorization as string | undefined;
+  const res = await fetch(`${base}/api/admin/farmers/import/${sessionId}/errors?format=csv`, {
+    headers: token ? { Authorization: token } : {},
   });
-  return data;
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  return res.text();
 }
 
 export async function getFarmers(limit = 50, offset = 0, country?: string, q?: string) {

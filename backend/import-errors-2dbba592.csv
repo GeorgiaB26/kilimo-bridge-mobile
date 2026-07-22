@@ -1,0 +1,2 @@
+Row,Field,Value,Error,Suggestion
+3,phone,"0712345678","Phone number already exists in system",""

@@ -21,6 +21,7 @@
     "push:db": "bash scripts/push-db-to-render.sh",
     "publish:db": "bash scripts/publish-db-backup.sh",
     "seed": "cd backend && npm run seed",
-    "test:import": "cd backend && npx tsx src/test-import.ts"
+    "test:import": "cd backend && npx tsx src/test-import.ts",
+    "export:import-errors": "cd backend && npx tsx scripts/export-import-errors.ts"
   }
 }
