@@ -4,28 +4,35 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS } from '../../constants';
+import { APP_BUILD } from '../../constants/build';
 import { confirmCsvImport, getImportProgress, getImportComplete } from '../../api/client';
+import { showMessage } from '../../utils/feedback';
 import type { ImportStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<ImportStackParamList, 'CsvImport'>;
 
 export function CsvImportScreen({ navigation, route }: Props) {
   const { sessionId, willImport } = route.params;
+  const target = Number(willImport) || 0;
+
   const [importId, setImportId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [imported, setImported] = useState(0);
   const [failed, setFailed] = useState(false);
-  const [completeData, setCompleteData] = useState<{
-    importedCount: number;
-    duplicatesSkipped: number;
-    errorsCount: number;
-    errors: Array<{ row: number; field: string; error: string }>;
-  } | null>(null);
+  const [duplicatesSkipped, setDuplicatesSkipped] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const finishedRef = useRef(false);
+  const alertedRef = useRef(false);
 
-  const target = Number(willImport) || 0;
   const isDone = target > 0 && imported >= target;
+
+  useEffect(() => {
+    if (!isDone || alertedRef.current) return;
+    alertedRef.current = true;
+    showMessage(
+      'Import successful!',
+      `${imported.toLocaleString()} farmers have been imported and can now log in with their phone numbers.`
+    );
+  }, [isDone, imported]);
 
   useEffect(() => {
     const startImport = async () => {
@@ -40,7 +47,7 @@ export function CsvImportScreen({ navigation, route }: Props) {
   }, [sessionId]);
 
   useEffect(() => {
-    if (!importId || finishedRef.current) return;
+    if (!importId || isDone) return;
 
     const stopPolling = () => {
       if (intervalRef.current) {
@@ -49,96 +56,73 @@ export function CsvImportScreen({ navigation, route }: Props) {
       }
     };
 
-    const markDone = async (count: number) => {
-      if (finishedRef.current) return;
-      finishedRef.current = true;
-      stopPolling();
-      setProgress(100);
-      setImported(count);
-      setCompleteData((prev) => prev ?? {
-        importedCount: count,
-        duplicatesSkipped: 0,
-        errorsCount: 0,
-        errors: [],
-      });
-      try {
-        const complete = await getImportComplete(sessionId);
-        if (complete) {
-          setCompleteData({
-            importedCount: complete.importedCount,
-            duplicatesSkipped: complete.duplicatesSkipped,
-            errorsCount: complete.errorsCount,
-            errors: complete.errors,
-          });
-        }
-      } catch {
-        // progress count is enough for success UI
-      }
-    };
-
     const poll = async () => {
       try {
         const prog = await getImportProgress(sessionId, importId);
+        const count = prog.importedCount;
         setProgress(prog.percentComplete);
-        setImported(prog.importedCount);
-        if (
+        setImported(count);
+
+        const finished =
           prog.status === 'complete' ||
-          (target > 0 && prog.importedCount >= target) ||
-          prog.percentComplete >= 100
-        ) {
-          await markDone(prog.importedCount);
+          (target > 0 && count >= target) ||
+          prog.percentComplete >= 100;
+
+        if (finished) {
+          stopPolling();
+          setProgress(100);
+          setImported(Math.max(count, target));
+          try {
+            const complete = await getImportComplete(sessionId);
+            if (complete) setDuplicatesSkipped(complete.duplicatesSkipped ?? 0);
+          } catch {
+            // counts from progress are enough
+          }
         }
       } catch {
         // keep polling
       }
     };
 
-    intervalRef.current = setInterval(poll, 600);
+    intervalRef.current = setInterval(poll, 500);
     poll();
-
     return () => stopPolling();
-  }, [importId, sessionId, target]);
-
-  if (isDone) {
-    const count = completeData?.importedCount ?? imported;
-    return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <ScreenHeader title="Import Complete" subtitle="Farmers have been imported" />
-        <View style={styles.successCard}>
-          <Text style={styles.successIcon}>✓</Text>
-          <Text style={styles.successTitle}>Import successful!</Text>
-          <Text style={styles.successStat}>{count.toLocaleString()} farmers imported</Text>
-          {completeData && completeData.duplicatesSkipped > 0 ? (
-            <Text style={styles.successDetail}>{completeData.duplicatesSkipped} duplicates skipped</Text>
-          ) : null}
-          {completeData && completeData.errorsCount > 0 ? (
-            <Text style={styles.successDetail}>{completeData.errorsCount} rows had errors</Text>
-          ) : null}
-        </View>
-        <Button title="Done — back to Import" onPress={() => navigation.popToTop()} />
-      </ScrollView>
-    );
-  }
+  }, [importId, sessionId, target, isDone]);
 
   const remaining = Math.max(0, target - imported);
 
   return (
-    <View style={styles.container}>
-      <ScreenHeader title="Importing..." subtitle={`Importing ${target.toLocaleString()} farmers`} />
-      <View style={styles.progressCard}>
-        <Text style={styles.progressPercent}>{progress}%</Text>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
-        </View>
-        <Text style={styles.progressDetail}>
-          {imported.toLocaleString()} imported, {remaining.toLocaleString()} remaining
-        </Text>
-      </View>
-      {failed ? <Text style={styles.failedText}>Import failed. Please try again.</Text> : null}
-      {target > 0 && imported >= target ? (
-        <Button title="Done" onPress={() => navigation.popToTop()} style={styles.doneBtn} />
-      ) : null}
-    </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {isDone ? (
+        <>
+          <ScreenHeader title="Import Complete" subtitle="Farmers have been imported" />
+          <View style={styles.successCard}>
+            <Text style={styles.successIcon}>✓</Text>
+            <Text style={styles.successTitle}>Import successful!</Text>
+            <Text style={styles.successStat}>{imported.toLocaleString()} farmers imported</Text>
+            {duplicatesSkipped > 0 ? (
+              <Text style={styles.successDetail}>{duplicatesSkipped} duplicates were skipped</Text>
+            ) : null}
+          </View>
+          <Button title="Done — back to Import" onPress={() => navigation.popToTop()} />
+        </>
+      ) : (
+        <>
+          <ScreenHeader title="Importing..." subtitle={`Importing ${target.toLocaleString()} farmers`} />
+          <View style={styles.progressCard}>
+            <Text style={styles.progressPercent}>{progress}%</Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
+            </View>
+            <Text style={styles.progressDetail}>
+              {imported.toLocaleString()} imported, {remaining.toLocaleString()} remaining
+            </Text>
+          </View>
+          {failed ? <Text style={styles.failedText}>Import failed. Please try again.</Text> : null}
+        </>
+      )}
+      <Text style={styles.buildTag}>Screen build {APP_BUILD}</Text>
+    </ScrollView>
   );
 }
 
@@ -150,8 +134,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 24,
     alignItems: 'center',
-    marginTop: 32,
-    marginHorizontal: 16,
+    marginTop: 16,
   },
   progressPercent: { fontSize: 48, fontWeight: '700', color: COLORS.primary },
   progressBar: {
@@ -164,17 +147,19 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: '100%', backgroundColor: COLORS.success, borderRadius: 6 },
   progressDetail: { fontSize: 14, color: COLORS.text },
-  failedText: { color: COLORS.alert, textAlign: 'center', marginTop: 16, paddingHorizontal: 16 },
-  doneBtn: { marginHorizontal: 16, marginTop: 16 },
+  failedText: { color: COLORS.alert, textAlign: 'center', marginTop: 16 },
   successCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: '#E8F5E9',
     borderRadius: 12,
     padding: 32,
     alignItems: 'center',
-    marginBottom: 24,
+    marginVertical: 16,
+    borderWidth: 2,
+    borderColor: COLORS.success,
   },
-  successIcon: { fontSize: 48, color: COLORS.success },
-  successTitle: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginTop: 8 },
-  successStat: { fontSize: 18, color: COLORS.accent, fontWeight: '600', marginTop: 8 },
-  successDetail: { fontSize: 14, color: COLORS.muted, marginTop: 4 },
+  successIcon: { fontSize: 56, color: COLORS.success },
+  successTitle: { fontSize: 24, fontWeight: '700', color: COLORS.primary, marginTop: 8 },
+  successStat: { fontSize: 20, color: COLORS.accent, fontWeight: '600', marginTop: 12 },
+  successDetail: { fontSize: 14, color: COLORS.muted, marginTop: 8 },
+  buildTag: { fontSize: 11, color: COLORS.muted, textAlign: 'center', marginTop: 24 },
 });

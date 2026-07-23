@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.8.2-import-done';
+export const APP_BUILD = 'v2.8.3-import-alert';
