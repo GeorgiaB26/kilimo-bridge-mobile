@@ -37,61 +37,80 @@ export function CsvImportScreen({ navigation, route }: Props) {
   }, [sessionId]);
 
   useEffect(() => {
-    if (!importId || status !== 'in_progress') return;
+    if (!importId) return;
 
     let cancelled = false;
 
+    const finishImport = (importedCount: number, details?: typeof completeData) => {
+      if (cancelled) return;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setCompleteData(
+        details ?? {
+          importedCount,
+          duplicatesSkipped: 0,
+          errorsCount: 0,
+          errors: [],
+        }
+      );
+      setStatus('complete');
+      setProgress(100);
+      setImported(importedCount);
+    };
+
     const poll = async () => {
+      if (cancelled || status === 'complete') return;
       try {
         const prog = await getImportProgress(sessionId, importId);
         if (cancelled) return;
         setProgress(prog.percentComplete);
         setImported(prog.importedCount);
 
-        const finished =
+        const done =
           prog.status === 'complete' ||
-          (prog.percentComplete >= 100 && prog.importedCount >= willImport);
+          (willImport > 0 && prog.importedCount >= willImport) ||
+          (willImport > 0 && prog.percentComplete >= 100);
 
-        if (finished) {
-          for (let attempt = 0; attempt < 5; attempt++) {
-            try {
-              const complete = await getImportComplete(sessionId);
-              if (complete) {
-                setCompleteData(complete);
-                setStatus('complete');
-                return;
-              }
-            } catch {
-              // DB may still be finishing — retry
-            }
-            await new Promise((r) => setTimeout(r, 400));
+        if (!done) return;
+
+        try {
+          const complete = await getImportComplete(sessionId);
+          if (complete) {
+            finishImport(complete.importedCount, {
+              importedCount: complete.importedCount,
+              duplicatesSkipped: complete.duplicatesSkipped,
+              errorsCount: complete.errorsCount,
+              errors: complete.errors,
+            });
+            return;
           }
-          // Progress done but /complete unavailable — still show success
-          setCompleteData({
-            importedCount: prog.importedCount,
-            duplicatesSkipped: 0,
-            errorsCount: 0,
-            errors: [],
-          });
-          setStatus('complete');
+        } catch {
+          // fall through to progress-based success
         }
+        finishImport(prog.importedCount);
       } catch {
         // keep polling
       }
     };
 
-    intervalRef.current = setInterval(poll, 1000);
-    poll();
+    if (status === 'in_progress') {
+      intervalRef.current = setInterval(poll, 800);
+      poll();
+    }
 
     return () => {
       cancelled = true;
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [importId, sessionId, status, willImport]);
 
-  const showSuccess =
-    status === 'complete' &&
-    (completeData !== null || (progress >= 100 && imported >= willImport && willImport > 0));
+  const importFinished = willImport > 0 && imported >= willImport;
+  const showSuccess = status === 'complete' || (importFinished && progress >= 100);
 
   if (showSuccess) {
     const count = completeData?.importedCount ?? imported;
@@ -171,6 +190,8 @@ const styles = StyleSheet.create({
   progressDetail: { fontSize: 14, color: COLORS.text },
   eta: { fontSize: 13, color: COLORS.muted, marginTop: 8 },
   failedText: { color: COLORS.alert, textAlign: 'center', marginTop: 16 },
+  doneHint: { color: COLORS.success, textAlign: 'center', marginTop: 20, fontSize: 14 },
+  doneBtn: { marginTop: 12 },
   successCard: {
     backgroundColor: COLORS.cardBg,
     borderRadius: 12,
