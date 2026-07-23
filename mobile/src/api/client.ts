@@ -112,6 +112,23 @@ export async function getImportProgress(sessionId: string, importId: string) {
   return data;
 }
 
+export async function getImportComplete(sessionId: string) {
+  try {
+    const { data } = await api.get(`/admin/farmers/import/${sessionId}/complete`);
+    return data as {
+      status: 'import_complete';
+      importId: string;
+      importedCount: number;
+      duplicatesSkipped: number;
+      errorsCount: number;
+      timestamp: string;
+    };
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
 export async function getImportErrorsCsv(sessionId: string): Promise<string> {
   const base = API_BASE_URL.replace(/\/api$/, '');
   const token = api.defaults.headers.common.Authorization as string | undefined;

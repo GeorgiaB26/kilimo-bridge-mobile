@@ -341,7 +341,14 @@ export function getImportProgress(importId: string, sessionId: string) {
 
   const total = session.valid_rows;
   const imported = session.imported_count;
-  const percent = total > 0 ? Math.round((imported / total) * 100) : 100;
+  const percent =
+    total > 0
+      ? imported >= total || session.status === 'complete'
+        ? 100
+        : Math.min(99, Math.round((imported / total) * 100))
+      : session.status === 'complete'
+        ? 100
+        : 0;
   const status = session.status === 'complete' ? 'complete' : 'in_progress';
 
   return {
