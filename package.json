@@ -23,6 +23,8 @@
     "seed": "cd backend && npm run seed",
     "test:import": "cd backend && npx tsx src/test-import.ts",
     "export:import-errors": "cd backend && npx tsx scripts/export-import-errors.ts",
-    "generate:import-brief-pdf": "bash scripts/generate-import-brief-pdf.sh"
+    "generate:import-brief-pdf": "bash scripts/generate-import-brief-pdf.sh",
+    "build:render": "cd backend && npm run build:render",
+    "start:api": "cd backend && npm start"
   }
 }

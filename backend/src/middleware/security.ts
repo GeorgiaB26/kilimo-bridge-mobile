@@ -1,9 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type Options } from 'express-rate-limit';
 import { logAudit } from '../services/auditService';
 
 const isPilot = process.env.PILOT_OTP === 'true';
 const isProd = process.env.NODE_ENV === 'production';
+
+function clientKey(req: Request): string {
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+/** Render sits behind a proxy — avoid hard crashes on odd proxy IP headers */
+const proxySafeRateLimit: Partial<Options> = {
+  validate: {
+    ip: false,
+    trustProxy: false,
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+  },
+  keyGenerator: (req) => clientKey(req),
+};
 
 function authLimitMax(normal: number, pilot: number): number {
   if (!isProd) return 200;
@@ -12,6 +27,7 @@ function authLimitMax(normal: number, pilot: number): number {
 
 function createAuthLimiter(opts: { normal: number; pilot: number }) {
   return rateLimit({
+    ...proxySafeRateLimit,
     windowMs: 15 * 60 * 1000,
     max: authLimitMax(opts.normal, opts.pilot),
     standardHeaders: true,
@@ -38,6 +54,7 @@ function createAuthLimiter(opts: { normal: number; pilot: number }) {
 
 /** General API rate limit — 100 requests per minute per IP */
 export const apiRateLimiter = rateLimit({
+  ...proxySafeRateLimit,
   windowMs: 60 * 1000,
   max: isPilot && isProd ? 300 : 100,
   standardHeaders: true,
@@ -69,6 +86,7 @@ export const authRateLimiter = loginLimiter;
 
 /** Banking H2H endpoints — 30 per minute */
 export const bankingRateLimiter = rateLimit({
+  ...proxySafeRateLimit,
   windowMs: 60 * 1000,
   max: 30,
   message: { error: 'Banking API rate limit exceeded.' },
@@ -76,6 +94,7 @@ export const bankingRateLimiter = rateLimit({
 
 /** Webhook receiver — 60 per minute */
 export const webhookRateLimiter = rateLimit({
+  ...proxySafeRateLimit,
   windowMs: 60 * 1000,
   max: 60,
 });

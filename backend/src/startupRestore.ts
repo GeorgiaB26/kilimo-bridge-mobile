@@ -18,23 +18,30 @@ export async function maybeRestoreDatabaseOnStartup(): Promise<void> {
     return;
   }
 
-  console.log('Downloading database backup from STARTUP_DB_URL…');
-  const headers: Record<string, string> = {};
-  const token = process.env.STARTUP_DB_TOKEN;
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  try {
+    console.log('Downloading database backup from STARTUP_DB_URL…');
+    const headers: Record<string, string> = {};
+    const token = process.env.STARTUP_DB_TOKEN;
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
 
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    throw new Error(`STARTUP_DB_URL download failed: HTTP ${response.status}`);
-  }
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      throw new Error(`STARTUP_DB_URL download failed: HTTP ${response.status}`);
+    }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (buffer.length < 10_000) {
-    throw new Error('Downloaded database file is too small — check STARTUP_DB_URL');
-  }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length < 10_000) {
+      throw new Error('Downloaded database file is too small — check STARTUP_DB_URL');
+    }
 
-  const farmers = replaceDatabaseFile(buffer);
-  console.log(`Restored ${farmers} farmers from startup backup`);
+    const farmers = replaceDatabaseFile(buffer);
+    console.log(`Restored ${farmers} farmers from startup backup`);
+  } catch (err) {
+    console.error(
+      'STARTUP_DB_URL restore failed — continuing with existing database:',
+      err instanceof Error ? err.message : err
+    );
+  }
 }
