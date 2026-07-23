@@ -14,8 +14,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: DATABASE_PATH
         value: /var/data/kilimo.db
       - key: PILOT_OTP
