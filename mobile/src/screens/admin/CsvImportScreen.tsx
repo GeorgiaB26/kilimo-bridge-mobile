@@ -10,44 +10,50 @@ import { showMessage } from '../../utils/feedback';
 import type { ImportStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<ImportStackParamList, 'CsvImport'>;
+type ImportPhase = 'starting' | 'running' | 'complete' | 'failed';
 
 export function CsvImportScreen({ navigation, route }: Props) {
   const { sessionId, willImport } = route.params;
-  const target = Number(willImport) || 0;
+  const initialTarget = Number(willImport) || 0;
 
   const [importId, setImportId] = useState<string | null>(null);
+  const [importTarget, setImportTarget] = useState(initialTarget);
+  const [phase, setPhase] = useState<ImportPhase>('starting');
   const [progress, setProgress] = useState(0);
   const [imported, setImported] = useState(0);
-  const [failed, setFailed] = useState(false);
   const [duplicatesSkipped, setDuplicatesSkipped] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const alertedRef = useRef(false);
+  const completingRef = useRef(false);
 
-  const isDone = target > 0 && imported >= target;
+  const isComplete = phase === 'complete';
 
   useEffect(() => {
-    if (!isDone || alertedRef.current) return;
+    if (!isComplete || alertedRef.current) return;
     alertedRef.current = true;
     showMessage(
       'Import successful!',
       `${imported.toLocaleString()} farmers have been imported and can now log in with their phone numbers.`
     );
-  }, [isDone, imported]);
+  }, [isComplete, imported]);
 
   useEffect(() => {
     const startImport = async () => {
       try {
         const result = await confirmCsvImport(sessionId, true);
+        const total = Number(result.totalToImport) || initialTarget;
         setImportId(result.importId);
+        setImportTarget(total);
+        setPhase('running');
       } catch {
-        setFailed(true);
+        setPhase('failed');
       }
     };
     startImport();
-  }, [sessionId]);
+  }, [sessionId, initialTarget]);
 
   useEffect(() => {
-    if (!importId || isDone) return;
+    if (!importId || phase !== 'running') return;
 
     const stopPolling = () => {
       if (intervalRef.current) {
@@ -56,44 +62,53 @@ export function CsvImportScreen({ navigation, route }: Props) {
       }
     };
 
+    const finishImport = (count: number, duplicates = 0) => {
+      if (completingRef.current) return;
+      completingRef.current = true;
+      stopPolling();
+      setImported(count);
+      setProgress(100);
+      setDuplicatesSkipped(duplicates);
+      setPhase('complete');
+    };
+
     const poll = async () => {
       try {
         const prog = await getImportProgress(sessionId, importId);
-        const count = prog.importedCount;
         setProgress(prog.percentComplete);
-        setImported(count);
+        setImported(prog.importedCount);
 
-        const finished =
+        const doneByProgress =
           prog.status === 'complete' ||
-          (target > 0 && count >= target) ||
+          (importTarget > 0 && prog.importedCount >= importTarget) ||
           prog.percentComplete >= 100;
 
-        if (finished) {
-          stopPolling();
-          setProgress(100);
-          setImported(Math.max(count, target));
-          try {
-            const complete = await getImportComplete(sessionId);
-            if (complete) setDuplicatesSkipped(complete.duplicatesSkipped ?? 0);
-          } catch {
-            // counts from progress are enough
-          }
+        if (!doneByProgress) return;
+
+        const complete = await getImportComplete(sessionId);
+        if (complete) {
+          finishImport(complete.importedCount, complete.duplicatesSkipped ?? 0);
+          return;
+        }
+
+        if (prog.status === 'complete' || prog.importedCount >= importTarget) {
+          finishImport(Math.max(prog.importedCount, importTarget));
         }
       } catch {
-        // keep polling
+        // keep polling until backend marks session complete
       }
     };
 
     intervalRef.current = setInterval(poll, 500);
     poll();
     return () => stopPolling();
-  }, [importId, sessionId, target, isDone]);
+  }, [importId, sessionId, importTarget, phase]);
 
-  const remaining = Math.max(0, target - imported);
+  const remaining = Math.max(0, importTarget - imported);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {isDone ? (
+      {isComplete ? (
         <>
           <ScreenHeader title="Import Complete" subtitle="Farmers have been imported" />
           <View style={styles.successCard}>
@@ -108,9 +123,16 @@ export function CsvImportScreen({ navigation, route }: Props) {
         </>
       ) : (
         <>
-          <ScreenHeader title="Importing..." subtitle={`Importing ${target.toLocaleString()} farmers`} />
+          <ScreenHeader
+            title={phase === 'failed' ? 'Import failed' : 'Importing...'}
+            subtitle={
+              phase === 'failed'
+                ? 'Could not start import'
+                : `Importing ${importTarget.toLocaleString()} farmers`
+            }
+          />
           <View style={styles.progressCard}>
-            <Text style={styles.progressPercent}>{progress}%</Text>
+            <Text style={styles.progressPercent}>{phase === 'failed' ? '!' : `${progress}%`}</Text>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
             </View>
@@ -118,7 +140,9 @@ export function CsvImportScreen({ navigation, route }: Props) {
               {imported.toLocaleString()} imported, {remaining.toLocaleString()} remaining
             </Text>
           </View>
-          {failed ? <Text style={styles.failedText}>Import failed. Please try again.</Text> : null}
+          {phase === 'failed' ? (
+            <Button title="Back" onPress={() => navigation.goBack()} style={{ marginTop: 16 }} />
+          ) : null}
         </>
       )}
       <Text style={styles.buildTag}>Screen build {APP_BUILD}</Text>
@@ -147,7 +171,6 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: '100%', backgroundColor: COLORS.success, borderRadius: 6 },
   progressDetail: { fontSize: 14, color: COLORS.text },
-  failedText: { color: COLORS.alert, textAlign: 'center', marginTop: 16 },
   successCard: {
     backgroundColor: '#E8F5E9',
     borderRadius: 12,
