@@ -3,7 +3,14 @@ import { Alert, Platform } from 'react-native';
 export function extractApiError(err: unknown, fallback: string): string {
   if (err && typeof err === 'object') {
     if ('response' in err) {
-      const data = (err as { response?: { data?: { error?: string; message?: string } } }).response?.data;
+      const response = (err as {
+        response?: { status?: number; data?: { error?: string; message?: string; hint?: string } };
+      }).response;
+      if (response?.status === 429) {
+        const base = response.data?.error ?? 'Too many login attempts. Please wait 15 minutes and try again.';
+        return response.data?.hint ? `${base}\n\n${response.data.hint}` : base;
+      }
+      const data = response?.data;
       return data?.error ?? data?.message ?? fallback;
     }
     if ('message' in err && typeof (err as { message: unknown }).message === 'string') {

@@ -2,10 +2,44 @@ import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { logAudit } from '../services/auditService';
 
+const isPilot = process.env.PILOT_OTP === 'true';
+const isProd = process.env.NODE_ENV === 'production';
+
+function authLimitMax(normal: number, pilot: number): number {
+  if (!isProd) return 200;
+  return isPilot ? pilot : normal;
+}
+
+function createAuthLimiter(opts: { normal: number; pilot: number }) {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: authLimitMax(opts.normal, opts.pilot),
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+    handler: (req, res) => {
+      logAudit({
+        action: 'permission.denied',
+        category: 'system',
+        details: { reason: 'auth_rate_limit_exceeded', path: req.path },
+        ipAddress: req.ip,
+        success: false,
+      });
+      res.status(429).json({
+        error: 'Too many login attempts. Please wait 15 minutes and try again.',
+        hint: isPilot
+          ? 'Use the Quick access buttons on the login screen (Farmer, Admin, Agent).'
+          : undefined,
+      });
+    },
+  });
+}
+
 /** General API rate limit — 100 requests per minute per IP */
 export const apiRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: isPilot && isProd ? 300 : 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
@@ -21,12 +55,17 @@ export const apiRateLimiter = rateLimit({
   },
 });
 
-/** Stricter limit for auth endpoints — relaxed in development */
-export const authRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 10 : 200,
-  message: { error: 'Too many login attempts. Try again in 15 minutes.' },
-});
+/** OTP send — separate bucket so verify attempts do not block resend */
+export const otpRequestLimiter = createAuthLimiter({ normal: 25, pilot: 100 });
+
+/** OTP verify — allow several wrong digits during demo */
+export const otpVerifyLimiter = createAuthLimiter({ normal: 40, pilot: 150 });
+
+/** Password / quick demo login */
+export const loginLimiter = createAuthLimiter({ normal: 40, pilot: 150 });
+
+/** @deprecated Use otpRequestLimiter, otpVerifyLimiter, or loginLimiter */
+export const authRateLimiter = loginLimiter;
 
 /** Banking H2H endpoints — 30 per minute */
 export const bankingRateLimiter = rateLimit({
