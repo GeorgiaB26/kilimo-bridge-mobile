@@ -234,7 +234,8 @@ Open the URL `serve` prints.
 | **Too many login attempts** | Redeploy latest backend (needs `trust proxy` for Render). Ensure `PILOT_OTP=true`. Tell clients to use **Quick access** buttons (Farmer / Admin / Agent) instead of typing OTP repeatedly. Wait 15 min if blocked. |
 | Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
 | API crashes: directory does not exist | Remove `DATABASE_PATH` from Render env vars, redeploy latest `main` |
-| Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start` |
+| Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start`. If Root Directory is blank, use Build `npm run build:render` and Start `npm run start:api` from repo root. |
+| Deploy fails after merge | Open Render **Logs**. Common causes: `STARTUP_DB_URL` token expired (API now continues anyway), or health check blocked. Redeploy after latest `main`. |
 | `tsc` / missing `@types` errors | Render skips devDependencies when `NODE_ENV=production` — use `build:render` script |
 
 ---

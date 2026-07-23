@@ -35,40 +35,7 @@ async function bootstrap(): Promise<void> {
   await ensureDemoAgentPassword();
   seedHierarchyIfEmpty();
 
-  app.use(helmet({
-    hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
-  }));
-  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
-  app.use(
-    cors(
-      corsOrigins?.length
-        ? { origin: corsOrigins, credentials: true }
-        : { origin: true, credentials: true }
-    )
-  );
-  app.use(express.json({ limit: '10mb' }));
-  app.use(apiRateLimiter);
-
-  if (process.env.NODE_ENV === 'production') {
-    app.use((req, res, next) => {
-      if (req.headers['x-forwarded-proto'] !== 'https') {
-        return res.redirect(301, `https://${req.headers.host}${req.url}`);
-      }
-      next();
-    });
-  }
-
-  app.use('/api/auth', authRoutes);
-  app.use('/api/farmer', farmerRoutes);
-  app.use('/api/admin', adminDashboardRoutes);
-  app.use('/api/admin', hierarchyAdminRoutes);
-  app.use('/api/aggregation', aggregationRoutes);
-  app.use('/api/banking', bankingRoutes);
-  app.use('/api/agents', agentRoutes);
-  app.use('/api/audit', auditRoutes);
-  app.use('/api/webhooks', equityWebhookRouter);
-  app.use('/api', apiRoutes);
-
+  // Health probe for Render — register before rate limits / HTTPS redirect
   app.get('/health', (_req, res) => {
     let hierarchyProjects = 0;
     let demoFarmerTasks = 0;
@@ -91,6 +58,41 @@ async function bootstrap(): Promise<void> {
       demo_farmer_tasks: demoFarmerTasks,
     });
   });
+
+  app.use(helmet({
+    hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
+  }));
+  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
+  app.use(
+    cors(
+      corsOrigins?.length
+        ? { origin: corsOrigins, credentials: true }
+        : { origin: true, credentials: true }
+    )
+  );
+  app.use(express.json({ limit: '10mb' }));
+  app.use(apiRateLimiter);
+
+  if (process.env.NODE_ENV === 'production') {
+    app.use((req, res, next) => {
+      if (req.path === '/health') return next();
+      if (req.headers['x-forwarded-proto'] !== 'https') {
+        return res.redirect(301, `https://${req.headers.host}${req.url}`);
+      }
+      next();
+    });
+  }
+
+  app.use('/api/auth', authRoutes);
+  app.use('/api/farmer', farmerRoutes);
+  app.use('/api/admin', adminDashboardRoutes);
+  app.use('/api/admin', hierarchyAdminRoutes);
+  app.use('/api/aggregation', aggregationRoutes);
+  app.use('/api/banking', bankingRoutes);
+  app.use('/api/agents', agentRoutes);
+  app.use('/api/audit', auditRoutes);
+  app.use('/api/webhooks', equityWebhookRouter);
+  app.use('/api', apiRoutes);
 
   app.get('/api/metrics/live', (req, res) => {
     const trackerKey = process.env.TRACKER_API_KEY;
