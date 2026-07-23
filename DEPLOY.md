@@ -231,6 +231,7 @@ Open the URL `serve` prints.
 | Blank page on Netlify | Check Netlify deploy logs; build must finish without errors |
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
+| **Too many login attempts** | Redeploy latest backend (needs `trust proxy` for Render). Ensure `PILOT_OTP=true`. Tell clients to use **Quick access** buttons (Farmer / Admin / Agent) instead of typing OTP repeatedly. Wait 15 min if blocked. |
 | Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
 | API crashes: directory does not exist | Remove `DATABASE_PATH` from Render env vars, redeploy latest `main` |
 | Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start` |

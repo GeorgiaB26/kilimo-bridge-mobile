@@ -113,8 +113,30 @@ export async function getImportProgress(sessionId: string, importId: string) {
 }
 
 export async function getImportComplete(sessionId: string) {
-  const { data } = await api.get(`/admin/farmers/import/${sessionId}/complete`);
-  return data;
+  try {
+    const { data } = await api.get(`/admin/farmers/import/${sessionId}/complete`);
+    return data as {
+      status: 'import_complete';
+      importId: string;
+      importedCount: number;
+      duplicatesSkipped: number;
+      errorsCount: number;
+      timestamp: string;
+    };
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function getImportErrorsCsv(sessionId: string): Promise<string> {
+  const base = API_BASE_URL.replace(/\/api$/, '');
+  const token = api.defaults.headers.common.Authorization as string | undefined;
+  const res = await fetch(`${base}/api/admin/farmers/import/${sessionId}/errors?format=csv`, {
+    headers: token ? { Authorization: token } : {},
+  });
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  return res.text();
 }
 
 export async function getFarmers(limit = 50, offset = 0, country?: string, q?: string) {

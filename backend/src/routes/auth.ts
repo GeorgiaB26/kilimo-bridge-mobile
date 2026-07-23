@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { requestOtp, verifyOtp, loginWithPassword, devQuickLogin } from '../services/authService';
 import { authenticate } from '../middleware/auth';
-import { authRateLimiter } from '../middleware/security';
+import { loginLimiter, otpRequestLimiter, otpVerifyLimiter } from '../middleware/security';
 import { logAudit } from '../services/auditService';
 
 const router = Router();
 
-router.post('/request-otp', authRateLimiter, (req: Request, res: Response) => {
+router.post('/request-otp', otpRequestLimiter, (req: Request, res: Response) => {
   const { phone } = req.body;
   if (!phone) {
     res.status(400).json({ error: 'Phone number is required' });
@@ -20,7 +20,7 @@ router.post('/request-otp', authRateLimiter, (req: Request, res: Response) => {
   res.json(result);
 });
 
-router.post('/verify-otp', authRateLimiter, (req: Request, res: Response) => {
+router.post('/verify-otp', otpVerifyLimiter, (req: Request, res: Response) => {
   const { phone, code } = req.body;
   if (!phone || !code) {
     res.status(400).json({ error: 'Phone and OTP code are required' });
@@ -35,7 +35,7 @@ router.post('/verify-otp', authRateLimiter, (req: Request, res: Response) => {
 });
 
 /** Dev / pilot preview — skip OTP for demo quick-login buttons */
-router.post('/dev-login', authRateLimiter, (req: Request, res: Response) => {
+router.post('/dev-login', loginLimiter, (req: Request, res: Response) => {
   const pilotDemo = process.env.PILOT_OTP === 'true';
   if (process.env.NODE_ENV === 'production' && !pilotDemo) {
     res.status(404).json({ error: 'Not found' });
@@ -55,7 +55,7 @@ router.post('/dev-login', authRateLimiter, (req: Request, res: Response) => {
 });
 
 /** Password login for admin/banking roles (bcrypt hashed) */
-router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   const { phone, password } = req.body;
   if (!phone || !password) {
     res.status(400).json({ error: 'Phone and password are required' });

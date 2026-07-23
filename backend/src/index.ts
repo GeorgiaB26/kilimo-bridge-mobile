@@ -22,6 +22,11 @@ import { getFarmerCount, db } from './db/database';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Render / Netlify proxies — required so rate limits apply per client IP, not one shared IP
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 async function bootstrap(): Promise<void> {
   initDatabase();
   await maybeRestoreDatabaseOnStartup();

@@ -27,6 +27,7 @@ export interface ImportValidationResult {
   invalidRows: number;
   duplicates: number;
   willImport: number;
+  totalErrors?: number;
   errors: Array<{
     row: number;
     field: string;

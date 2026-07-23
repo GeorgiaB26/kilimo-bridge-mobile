@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Kilimo Bridge — Farmer Import Guide</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 720px; margin: 40px auto; padding: 0 24px; color: #1a1a1a; line-height: 1.5; }
+    h1 { color: #1b5e20; font-size: 28px; margin-bottom: 4px; }
+    h2 { color: #2e7d32; font-size: 18px; margin-top: 28px; border-bottom: 2px solid #c8e6c9; padding-bottom: 4px; }
+    .subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: left; }
+    th { background: #e8f5e9; }
+    .ok { color: #2e7d32; }
+    .bad { color: #c62828; }
+    ul { padding-left: 20px; }
+    li { margin: 6px 0; }
+    .checklist { background: #f1f8e9; padding: 16px 20px; border-radius: 8px; }
+    .footer { margin-top: 40px; font-size: 12px; color: #888; text-align: center; }
+    @media print { body { margin: 20px; } }
+  </style>
+</head>
+<body>
+  <h1>Kilimo Bridge</h1>
+  <p class="subtitle">Farmer Import File Guide · For cooperative administrators · July 2026</p>
+
+  <h2>File format</h2>
+  <table>
+    <tr><th>Format</th><th>Notes</th></tr>
+    <tr><td><strong>Excel (.xlsx)</strong></td><td>Preferred — upload the original workbook</td></tr>
+    <tr><td><strong>CSV (.csv)</strong></td><td>Excel → File → Save As → CSV (Comma delimited)</td></tr>
+  </table>
+  <p>One cooperative per file. Name the file after the cooperative (e.g. <em>LEOART MACADAMIA FARMERS ASSOCIATION KENYA 2026.xlsx</em>). If there is no Membership Group column, the file name is used as the cooperative name.</p>
+
+  <h2>Required columns</h2>
+  <p><strong>Name</strong> — headers: Name, Farmer Name, Full Name, Name of Farmer</p>
+  <ul>
+    <li>Letters, spaces, hyphens, apostrophes only</li>
+    <li class="ok">John Kamau ✓</li>
+    <li class="bad">John2 ✗ &nbsp; Mary &amp; Sons ✗</li>
+  </ul>
+  <p><strong>Phone</strong> — headers: Phone, Mobile, Mobile No, Contact, Tel</p>
+  <ul>
+    <li>One unique number per farmer</li>
+    <li>Kenya: <code>0712345678</code> or <code>+254712345678</code></li>
+    <li>Format the phone column as <strong>Text</strong> in Excel (keeps the leading 0)</li>
+  </ul>
+
+  <h2>Recommended columns</h2>
+  <table>
+    <tr><th>Column</th><th>Examples</th></tr>
+    <tr><td>District / County</td><td>Kirinyaga</td></tr>
+    <tr><td>Sub-County</td><td>Kirinyaga Central</td></tr>
+    <tr><td>Gender / Sex</td><td>M, F (blank → Other)</td></tr>
+    <tr><td>ID Number</td><td>Optional (blank → auto PENDING-ID)</td></tr>
+  </table>
+
+  <h2>Minimum file example</h2>
+  <table>
+    <tr><th>Name</th><th>Phone</th><th>District</th></tr>
+    <tr><td>Karanja Njiiri</td><td>0723875429</td><td>Kirinyaga</td></tr>
+    <tr><td>Charles Njagi</td><td>0712345678</td><td>Kirinyaga</td></tr>
+  </table>
+
+  <h2>Before you upload</h2>
+  <div class="checklist">
+    <ul>
+      <li>Every farmer has a <strong>unique</strong> phone number</li>
+      <li>All phones are <code>07……</code> or <code>+254……</code> format</li>
+      <li>Names contain letters only</li>
+      <li>Phone column formatted as Text in Excel</li>
+      <li>File saved as .xlsx or CSV (Comma delimited)</li>
+    </ul>
+  </div>
+
+  <h2>Import results</h2>
+  <table>
+    <tr><th>Status</th><th>Meaning</th></tr>
+    <tr><td><strong>Valid</strong></td><td>Will import — profile + login created</td></tr>
+    <tr><td><strong>Duplicate</strong></td><td>Phone already in system — skipped</td></tr>
+    <tr><td><strong>Invalid</strong></td><td>Fix using the errors report, then re-upload</td></tr>
+  </table>
+
+  <p class="footer">Kilimo Bridge — connecting farmers, cooperatives, and markets</p>
+  <p class="footer"><em>To save as PDF: open this page in Chrome/Safari → File → Print → Save as PDF</em></p>
+</body>
+</html>

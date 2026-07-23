@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { COLORS } from '../../constants';
 import { validateCsvImportText } from '../../api/client';
+import { downloadImportErrorsCsv, fetchAndDownloadImportErrors, importErrorsToCsv } from '../../utils/downloadImportErrors';
 import type { ImportValidationResult } from '../../types';
 import type { ImportStackParamList } from '../../navigation/types';
 
@@ -37,6 +38,36 @@ export function CsvValidationScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<ImportValidationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const errorCount = result?.totalErrors ?? result?.errors.length ?? 0;
+
+  const handleDownloadErrors = async () => {
+    if (!result?.sessionId) return;
+    setDownloading(true);
+    try {
+      try {
+        await fetchAndDownloadImportErrors(result.sessionId, fileName);
+      } catch {
+        downloadImportErrorsCsv(result.errors, fileName);
+      }
+    } catch {
+      Alert.alert('Download failed', 'Could not save errors file. Try "Copy errors" or the terminal command below.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleCopyErrors = async () => {
+    if (!result?.errors.length) return;
+    const csv = importErrorsToCsv(result.errors);
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(csv);
+      Alert.alert('Copied', `${errorCount} errors copied. Paste into Excel or a text file.`);
+      return;
+    }
+    Alert.alert('Copy', 'Use Download errors CSV on web, or run the terminal export command.');
+  };
 
   useEffect(() => {
     const runValidation = async () => {
@@ -71,7 +102,7 @@ export function CsvValidationScreen({ navigation, route }: Props) {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ScreenHeader title="Validation Results" subtitle={fileName} />
       {!result.headersMatch && result.columnMapping ? (
         <View style={styles.warningCard}>
@@ -90,11 +121,52 @@ export function CsvValidationScreen({ navigation, route }: Props) {
       <Text style={styles.importCount}>
         Will import: <Text style={styles.importNumber}>{result.willImport.toLocaleString()}</Text> farmers
       </Text>
+
+      {errorCount > 0 ? (
+        <View style={styles.errorsPanel}>
+          <Text style={styles.errorsPanelTitle}>Fix in Excel — {errorCount} issues</Text>
+          <Text style={styles.errorsHint}>
+            Download or copy the full error list. Use the Row column to find each line in your spreadsheet.
+          </Text>
+          <Button
+            title={downloading ? 'Downloading…' : `Download all ${errorCount} errors (CSV)`}
+            onPress={handleDownloadErrors}
+            loading={downloading}
+            style={styles.downloadFull}
+          />
+          <Button
+            title="Copy errors to clipboard"
+            onPress={handleCopyErrors}
+            variant="outline"
+            style={styles.copyBtn}
+          />
+          <Text style={styles.terminalHint}>
+            Terminal: cd backend && npx tsx scripts/export-import-errors.ts
+          </Text>
+        </View>
+      ) : null}
+
       {result.importHints?.map((hint) => (
         <View key={hint} style={styles.hintCard}>
           <Text style={styles.hintText}>{hint}</Text>
         </View>
       ))}
+
+      {errorCount > 0 ? (
+        <>
+          <Text style={styles.sectionTitle}>All errors ({errorCount})</Text>
+          {result.errors.map((err, i) => (
+            <View key={`${err.row}-${err.field}-${i}`} style={styles.errorRow}>
+              <Text style={styles.errorRowText}>
+                Row {err.row}: {err.field} — {err.error}
+                {err.value ? ` [${err.value}]` : ''}
+                {err.suggestion ? ` (${err.suggestion})` : ''}
+              </Text>
+            </View>
+          ))}
+        </>
+      ) : null}
+
       {result.willImport > 0 ? (
         <View style={styles.successCard}>
           <Text style={styles.successTitle}>On import, each valid row creates:</Text>
@@ -103,23 +175,7 @@ export function CsvValidationScreen({ navigation, route }: Props) {
           <Text style={styles.successText}>• Project enrollments (if Project 1/2/3 filled)</Text>
         </View>
       ) : null}
-      {result.countryBreakdown && Object.keys(result.countryBreakdown).length > 0 ? (
-        <View style={styles.countryCard}>
-          <Text style={styles.sectionTitle}>
-            Country breakdown{result.detectedCountry ? ` (majority: ${result.detectedCountry})` : ''}
-          </Text>
-          {Object.entries(result.countryBreakdown).map(([country, count]) => (
-            <Text key={country} style={styles.countryRow}>
-              {country}: {count.toLocaleString()} farmers
-            </Text>
-          ))}
-          {result.errorsByCountry && Object.keys(result.errorsByCountry).length > 0 ? (
-            <Text style={styles.countryErrors}>
-              Errors: {Object.entries(result.errorsByCountry).map(([c, n]) => `${c} (${n})`).join(', ')}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
+
       <Text style={styles.sectionTitle}>Preview (first 10 rows)</Text>
       <View style={styles.table}>
         <View style={styles.tableHeader}>
@@ -137,19 +193,7 @@ export function CsvValidationScreen({ navigation, route }: Props) {
           </View>
         ))}
       </View>
-      {result.errors.length > 0 ? (
-        <>
-          <Text style={styles.sectionTitle}>Errors ({result.errors.length})</Text>
-          {result.errors.slice(0, 20).map((err, i) => (
-            <View key={i} style={styles.errorRow}>
-              <Text style={styles.errorRowText}>
-                Row {err.row}: {err.field} — {err.error}
-                {err.suggestion ? ` (${err.suggestion})` : ''}
-              </Text>
-            </View>
-          ))}
-        </>
-      ) : null}
+
       <View style={styles.actions}>
         <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
         <Button
@@ -165,6 +209,7 @@ export function CsvValidationScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  content: { padding: 16, paddingBottom: 48 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   loadingText: { marginTop: 16, color: COLORS.muted, fontSize: 16 },
   errorText: { color: COLORS.alert, fontSize: 16, marginBottom: 16, textAlign: 'center' },
@@ -191,6 +236,19 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
   importCount: { fontSize: 16, color: COLORS.text, marginBottom: 16, textAlign: 'center' },
   importNumber: { fontWeight: '700', color: COLORS.accent, fontSize: 20 },
+  errorsPanel: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+  },
+  errorsPanelTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 6 },
+  errorsHint: { fontSize: 13, color: COLORS.text, marginBottom: 12, lineHeight: 20 },
+  downloadFull: { marginBottom: 8 },
+  copyBtn: { marginBottom: 8 },
+  terminalHint: { fontSize: 11, color: COLORS.muted, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined },
   hintCard: {
     backgroundColor: '#FFEBEE',
     borderRadius: 8,
@@ -210,15 +268,7 @@ const styles = StyleSheet.create({
   },
   successTitle: { fontWeight: '600', color: COLORS.text, marginBottom: 6 },
   successText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
-  countryCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  countryRow: { fontSize: 14, color: COLORS.text, marginBottom: 4 },
-  countryErrors: { fontSize: 12, color: COLORS.alert, marginTop: 8 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: COLORS.primary, marginBottom: 8, marginTop: 8 },
   table: { borderRadius: 8, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },
   tableHeader: { flexDirection: 'row', backgroundColor: COLORS.primary, padding: 8 },
   headerCell: { color: '#fff', fontWeight: '600', fontSize: 12 },

@@ -211,7 +211,8 @@ export function validateCsvImport(
     invalidRows,
     duplicates,
     willImport: validRows,
-    errors: allErrors.slice(0, 100),
+    errors: allErrors,
+    totalErrors: allErrors.length,
     preview: fixedPreview,
     headersMatch,
     columnMapping: mapping,
@@ -221,6 +222,35 @@ export function validateCsvImport(
     detectedCountry,
     importHints,
   };
+}
+
+export function getImportValidationErrors(sessionId: string): Array<{
+  row: number;
+  field: string;
+  value: string;
+  error: string;
+  suggestion?: string;
+}> {
+  const session = db.prepare('SELECT errors FROM import_sessions WHERE id = ?').get(sessionId) as
+    | { errors: string }
+    | undefined;
+  if (!session?.errors) return [];
+  try {
+    return JSON.parse(session.errors);
+  } catch {
+    return [];
+  }
+}
+
+export function formatImportErrorsCsv(
+  errors: Array<{ row: number; field: string; value: string; error: string; suggestion?: string }>
+): string {
+  const escape = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = ['Row,Field,Value,Error,Suggestion'];
+  for (const e of errors) {
+    lines.push([e.row, e.field, escape(e.value), escape(e.error), escape(e.suggestion ?? '')].join(','));
+  }
+  return lines.join('\n');
 }
 
 export async function executeImport(
@@ -311,7 +341,14 @@ export function getImportProgress(importId: string, sessionId: string) {
 
   const total = session.valid_rows;
   const imported = session.imported_count;
-  const percent = total > 0 ? Math.round((imported / total) * 100) : 100;
+  const percent =
+    total > 0
+      ? imported >= total || session.status === 'complete'
+        ? 100
+        : Math.min(99, Math.round((imported / total) * 100))
+      : session.status === 'complete'
+        ? 100
+        : 0;
   const status = session.status === 'complete' ? 'complete' : 'in_progress';
 
   return {

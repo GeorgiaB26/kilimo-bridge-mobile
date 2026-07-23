@@ -10,14 +10,14 @@ import {
   getMembershipGroupNames,
   getExistingIdentifiers,
 } from '../services/farmerService';
-import { validateCsvImport, executeImport, getImportProgress, getImportComplete } from '../services/importService';
+import { validateCsvImport, executeImport, getImportProgress, getImportComplete, getImportValidationErrors, formatImportErrorsCsv } from '../services/importService';
 import { BINARY_IMPORT_PREFIX } from '../services/spreadsheetParser';
 import { MAX_CSV_SIZE_BYTES } from '../../../shared/src/constants';
 import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../shared/src/constants';
 import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
 import { AGGREGATION_CENTRES } from '../../../shared/src/locations/aggregationCentres';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
-import { replaceDatabaseFile, getDatabasePath, getFarmerCount as getDbFarmerCount } from '../db/database';
+import { replaceDatabaseFile, getDatabasePath, getFarmerCount as getDbFarmerCount, db } from '../db/database';
 import fs from 'fs';
 
 const router = Router();
@@ -204,6 +204,26 @@ router.post('/admin/farmers/import/confirm', authenticate, requirePermission('fa
       error: err instanceof Error ? err.message : 'Import failed',
     });
   }
+});
+
+router.get('/admin/farmers/import/:sessionId/errors', authenticate, requirePermission('farmers.import'), (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const errors = getImportValidationErrors(sessionId);
+  if (errors.length === 0) {
+    const session = db.prepare('SELECT id FROM import_sessions WHERE id = ?').get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Import session not found' });
+      return;
+    }
+  }
+  if (req.query.format === 'csv') {
+    const csv = formatImportErrorsCsv(errors);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="import-errors-${sessionId.slice(0, 8)}.csv"`);
+    res.send(csv);
+    return;
+  }
+  res.json({ sessionId, totalErrors: errors.length, errors });
 });
 
 router.get('/admin/farmers/import/:sessionId/progress', authenticate, requirePermission('farmers.import'), (req: Request, res: Response) => {
