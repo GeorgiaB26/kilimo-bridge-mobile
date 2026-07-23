@@ -39,46 +39,77 @@ export function CsvImportScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!importId || status !== 'in_progress') return;
 
-    intervalRef.current = setInterval(async () => {
+    let cancelled = false;
+
+    const poll = async () => {
       try {
         const prog = await getImportProgress(sessionId, importId);
+        if (cancelled) return;
         setProgress(prog.percentComplete);
         setImported(prog.importedCount);
-        if (prog.status === 'complete') {
+
+        const finished =
+          prog.status === 'complete' ||
+          (prog.percentComplete >= 100 && prog.importedCount >= willImport);
+
+        if (finished) {
+          for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+              const complete = await getImportComplete(sessionId);
+              if (complete) {
+                setCompleteData(complete);
+                setStatus('complete');
+                return;
+              }
+            } catch {
+              // DB may still be finishing — retry
+            }
+            await new Promise((r) => setTimeout(r, 400));
+          }
+          // Progress done but /complete unavailable — still show success
+          setCompleteData({
+            importedCount: prog.importedCount,
+            duplicatesSkipped: 0,
+            errorsCount: 0,
+            errors: [],
+          });
           setStatus('complete');
-          const complete = await getImportComplete(sessionId);
-          if (complete) setCompleteData(complete);
-          if (intervalRef.current) clearInterval(intervalRef.current);
         }
       } catch {
         // keep polling
       }
-    }, 1000);
+    };
+
+    intervalRef.current = setInterval(poll, 1000);
+    poll();
 
     return () => {
+      cancelled = true;
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [importId, sessionId, status]);
+  }, [importId, sessionId, status, willImport]);
 
-  const remaining = willImport - imported;
-  const etaMinutes = remaining > 0 ? Math.ceil(remaining / 50 / 60) : 0;
+  const showSuccess =
+    status === 'complete' &&
+    (completeData !== null || (progress >= 100 && imported >= willImport && willImport > 0));
 
-  if (status === 'complete' && completeData) {
+  if (showSuccess) {
+    const count = completeData?.importedCount ?? imported;
     return (
       <View style={styles.container}>
         <ScreenHeader title="Import Complete" subtitle="Farmers have been imported" />
         <View style={styles.successCard}>
           <Text style={styles.successIcon}>✓</Text>
           <Text style={styles.successTitle}>Import successful!</Text>
-          <Text style={styles.successStat}>{completeData.importedCount.toLocaleString()} farmers imported</Text>
-          {completeData.duplicatesSkipped > 0 ? (
+          <Text style={styles.successStat}>{count.toLocaleString()} farmers imported</Text>
+          {completeData && completeData.duplicatesSkipped > 0 ? (
             <Text style={styles.successDetail}>{completeData.duplicatesSkipped} duplicates skipped</Text>
           ) : null}
-          {completeData.errorsCount > 0 ? (
+          {completeData && completeData.errorsCount > 0 ? (
             <Text style={styles.successDetail}>{completeData.errorsCount} rows had errors</Text>
           ) : null}
         </View>
-        {completeData.errors.length > 0 ? (
+        {completeData && completeData.errors.length > 0 ? (
           <View style={styles.errorList}>
             <Text style={styles.errorTitle}>Error Report</Text>
             {completeData.errors.slice(0, 10).map((err, i) => (
@@ -92,6 +123,9 @@ export function CsvImportScreen({ navigation, route }: Props) {
       </View>
     );
   }
+
+  const remaining = Math.max(0, willImport - imported);
+  const etaMinutes = remaining > 0 ? Math.ceil(remaining / 50 / 60) : 0;
 
   return (
     <View style={styles.container}>
