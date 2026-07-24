@@ -64,12 +64,21 @@ export async function devQuickLogin(phone: string) {
 export async function checkBackendHealth(): Promise<boolean> {
   const base = API_BASE_URL.replace(/\/api$/, '');
   const timeoutMs = base.includes('onrender.com') ? 90000 : 8000;
-  try {
-    const { data } = await axios.get(`${base}/health`, { timeout: timeoutMs });
-    return data?.status === 'ok';
-  } catch {
-    return false;
+  const isHealthy = (data: { status?: string } | undefined) =>
+    data?.status === 'ok' || data?.status === 'starting';
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data } = await axios.get(`${base}/health`, { timeout: timeoutMs });
+      if (isHealthy(data)) return true;
+    } catch {
+      // retry — Render may still be booting
+    }
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
+  return false;
 }
 
 export async function loginWithPassword(phone: string, password: string) {

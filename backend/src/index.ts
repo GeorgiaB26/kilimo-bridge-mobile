@@ -26,6 +26,15 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 let appReady = false;
 
+function createCorsMiddleware() {
+  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
+  return cors(
+    corsOrigins?.length
+      ? { origin: corsOrigins, credentials: true }
+      : { origin: true, credentials: true }
+  );
+}
+
 // Render / Netlify proxies — required so rate limits apply per client IP, not one shared IP
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
@@ -54,6 +63,9 @@ function healthPayload() {
   };
 }
 
+// CORS on /health so Netlify login page can reach the API from the browser
+app.use('/health', createCorsMiddleware());
+
 // Health probe — must respond 200 before heavy bootstrap (Render deploy check)
 app.get('/health', (_req, res) => {
   res.status(200).json(healthPayload());
@@ -79,14 +91,7 @@ async function bootstrap(): Promise<void> {
   app.use(helmet({
     hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
   }));
-  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
-  app.use(
-    cors(
-      corsOrigins?.length
-        ? { origin: corsOrigins, credentials: true }
-        : { origin: true, credentials: true }
-    )
-  );
+  app.use(createCorsMiddleware());
   app.use(express.json({ limit: '10mb' }));
   app.use(apiRateLimiter);
 

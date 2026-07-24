@@ -17,6 +17,17 @@ fi
 
 echo "==> Building web export..."
 cd mobile
+if [ -n "${NETLIFY:-}" ] || [ -n "${CI:-}" ]; then
+  if [ -z "${EXPO_PUBLIC_API_URL:-}" ] || [[ "${EXPO_PUBLIC_API_URL}" == *localhost* ]]; then
+    echo ""
+    echo "ERROR: EXPO_PUBLIC_API_URL must be set to your Render API URL (ending in /api)."
+    echo "Netlify → Site settings → Environment variables → add:"
+    echo "  EXPO_PUBLIC_API_URL=https://your-service.onrender.com/api"
+    echo ""
+    exit 1
+  fi
+  echo "API URL: ${EXPO_PUBLIC_API_URL}"
+fi
 export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-http://localhost:3001/api}"
 npx expo export --platform web
 
