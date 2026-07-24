@@ -243,7 +243,8 @@ Open the URL `serve` prints.
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
 | **Too many login attempts** | Redeploy latest `main`. Ensure `PILOT_OTP=true`. Use Quick access buttons. |
-| **Deploy fails / env misconfigured** | `JWT_SECRET` and `ENCRYPTION_KEY` must be real random hex (run `bash scripts/generate-render-secrets.sh`). Remove `PORT` from env — let Render set it. |
+| Deploy fails / `better-sqlite3` / NODE_MODULE_VERSION | Render must use **Node 20** (set `NODE_VERSION=20` in env). Clear build cache: Render → Settings → **Clear build cache** → redeploy. |
+| **Deploy fails / env misconfigured** | `JWT_SECRET` and `ENCRYPTION_KEY` must be real random hex (run `openssl rand -hex 32` twice). Remove `PORT` from env — let Render set it. |
 | Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
 | API crashes: directory does not exist | Remove `DATABASE_PATH` from Render env vars, redeploy latest `main` |
 | Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start`. If Root Directory is blank, use Build `npm run build:render` and Start `npm run start:api` from repo root. |

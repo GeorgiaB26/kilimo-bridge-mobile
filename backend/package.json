@@ -2,12 +2,15 @@
   "name": "kilimo-bridge-backend",
   "version": "1.0.0",
   "main": "dist/backend/src/index.js",
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
     "predev": "node scripts/ensure-deps.js",
     "dev": "tsx watch src/index.ts",
     "dev:clean": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true; tsx watch src/index.ts",
     "build": "tsc",
-    "build:render": "node scripts/ensure-shared.js && npm install --include=dev && npm run build",
+    "build:render": "node scripts/ensure-shared.js && npm install --include=dev && npm rebuild better-sqlite3 && npm run build",
     "start": "node dist/backend/src/index.js",
     "seed": "tsx src/seed.ts",
     "seed:hierarchy": "tsx scripts/seed-hierarchy.ts"
