@@ -10,10 +10,10 @@ export {
   getLevel2Options,
   getLevel3Options,
   buildLocationPath,
-} from '../../../shared/src/regional';
+} from '../../shared/src/regional';
 
-export { generateFarmerId, normalizePhoneForCountry, isValidFarmerId } from '../../../shared/src/farmerId';
+export { generateFarmerId, normalizePhoneForCountry, isValidFarmerId } from '../../shared/src/farmerId';
 
-export { findAggregationCentre, getCentresForCountry } from '../../../shared/src/locations/aggregationCentres';
+export { findAggregationCentre, getCentresForCountry } from '../../shared/src/locations/aggregationCentres';
 
-export { PENDING_LOCATION_LABEL } from '../../../shared/src/constants';
+export { PENDING_LOCATION_LABEL } from '../../shared/src/constants';

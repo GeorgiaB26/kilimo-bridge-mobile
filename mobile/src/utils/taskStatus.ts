@@ -1,4 +1,4 @@
-import type { TaskStatus } from '../../../shared/src/hierarchy';
+import type { TaskStatus } from '../../shared/src/hierarchy';
 
 export function taskStatusLabel(status: TaskStatus | string): string {
   const map: Record<string, string> = {
