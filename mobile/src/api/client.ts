@@ -62,14 +62,20 @@ export async function devQuickLogin(phone: string) {
 }
 
 export async function checkBackendHealth(): Promise<boolean> {
-  const base = API_BASE_URL.replace(/\/api$/, '');
-  const timeoutMs = base.includes('onrender.com') ? 90000 : 8000;
-  try {
-    const { data } = await axios.get(`${base}/health`, { timeout: timeoutMs });
-    return data?.status === 'ok';
-  } catch {
-    return false;
+  const timeoutMs = API_BASE_URL.includes('onrender.com') ? 90000 : 8000;
+  // Use /reference not /health — /health lacks CORS headers for browser requests from Netlify
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data } = await axios.get(`${API_BASE_URL}/reference`, { timeout: timeoutMs });
+      if (Array.isArray(data?.districts)) return true;
+    } catch {
+      // API may still be booting on Render
+    }
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
+  return false;
 }
 
 export async function loginWithPassword(phone: string, password: string) {
