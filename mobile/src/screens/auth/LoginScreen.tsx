@@ -21,7 +21,7 @@ const DEMO_BANKING = '+254700000004';
 const BANKING_PASSWORD = 'Banking@2026';
 
 const BACKEND_OFFLINE_MSG = IS_HOSTED_API
-  ? 'API waking up — wait up to 60 seconds and refresh the page (Render free tier).'
+  ? 'Cannot reach API — wait 30 seconds, refresh, then try Open Admin Dashboard. Check Netlify EXPO_PUBLIC_API_URL matches your Render URL.'
   : 'Backend offline — run: npm run backend';
 
 export function LoginScreen({ navigation }: Props) {
