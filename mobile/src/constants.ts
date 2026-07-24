@@ -49,7 +49,16 @@ export const PROJECTS = [
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api';
 
+export const IS_LIVE_WEB =
+  typeof window !== 'undefined' &&
+  typeof window.location?.hostname === 'string' &&
+  !window.location.hostname.includes('localhost') &&
+  !window.location.hostname.includes('127.0.0.1');
+
+export const IS_API_MISCONFIGURED = IS_LIVE_WEB && API_BASE_URL.includes('localhost');
+
 export const IS_HOSTED_API =
   API_BASE_URL.includes('onrender.com') ||
   API_BASE_URL.includes('netlify.app') ||
+  IS_LIVE_WEB ||
   !API_BASE_URL.includes('localhost');

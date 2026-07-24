@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.8.5-rate-limit-fix';
+export const APP_BUILD = 'v2.8.8-connected-fix';

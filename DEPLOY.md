@@ -198,7 +198,7 @@ Or use phone OTP: any seeded account + code `123456`.
 4. **Environment variables** (Site settings → Environment variables):
 
 ```
-EXPO_PUBLIC_API_URL=https://kilimo-bridge-api.onrender.com/api
+EXPO_PUBLIC_API_URL=https://kilimo-bridge-mobile.onrender.com/api
 ```
 
 Replace with your real Render URL from Part 1.
