@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput, Button, Surface } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { KilimoLogo } from '../../components/KilimoLogo';
-import { COLORS, API_BASE_URL, IS_HOSTED_API } from '../../constants';
+import { COLORS, API_BASE_URL, IS_HOSTED_API, IS_API_MISCONFIGURED } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -20,9 +20,11 @@ const DEMO_AGENT = '+254700000003';
 const DEMO_BANKING = '+254700000004';
 const BANKING_PASSWORD = 'Banking@2026';
 
-const BACKEND_OFFLINE_MSG = IS_HOSTED_API
-  ? 'Cannot reach API — wait 30 seconds, refresh, then try Open Admin Dashboard. Check Netlify EXPO_PUBLIC_API_URL matches your Render URL.'
-  : 'Backend offline — run: npm run backend';
+const BACKEND_OFFLINE_MSG = IS_API_MISCONFIGURED
+  ? 'Netlify is not configured: set EXPO_PUBLIC_API_URL to your Render API (https://YOUR-API.onrender.com/api) in Netlify → Environment variables, then redeploy.'
+  : IS_HOSTED_API
+    ? 'Cannot reach API — wait 30 seconds, refresh, then try Open Admin Dashboard.'
+    : 'Backend offline — run: npm run backend';
 
 export function LoginScreen({ navigation }: Props) {
   const [phone, setPhone] = useState('');
