@@ -23,7 +23,7 @@ const BANKING_PASSWORD = 'Banking@2026';
 const BACKEND_OFFLINE_MSG = IS_API_MISCONFIGURED
   ? 'Netlify not configured: set EXPO_PUBLIC_API_URL to https://kilimo-bridge-mobile.onrender.com/api then redeploy.'
   : IS_HOSTED_API
-    ? `Cannot reach API at ${API_BASE_URL}. Wait 30s, refresh, or check Netlify env vars.`
+    ? `Cannot reach API at ${API_BASE_URL}. Try Quick access below, or wait 30s and refresh.`
     : 'Backend offline — run: npm run backend';
 
 export function LoginScreen({ navigation }: Props) {
@@ -45,17 +45,13 @@ export function LoginScreen({ navigation }: Props) {
     }
     setLoading(true);
     try {
-      const healthy = await checkBackendHealth();
-      setBackendOk(healthy);
-      if (!healthy) {
-        setError(BACKEND_OFFLINE_MSG);
-        return;
-      }
       const result = await requestOtp(phone);
+      setBackendOk(true);
       navigation.navigate('Otp', { phone, devCode: result.devCode });
     } catch (err: unknown) {
       const msg = extractApiError(err, 'Failed to send OTP');
       setError(msg);
+      setBackendOk(false);
       showMessage('Could not send OTP', msg);
     } finally {
       setLoading(false);
@@ -67,16 +63,14 @@ export function LoginScreen({ navigation }: Props) {
     setLoading(true);
     try {
       await clearAllSessionData();
-      if (!(await checkBackendHealth())) {
-        setError(BACKEND_OFFLINE_MSG);
-        return;
-      }
       const { token, user } = await devQuickLogin(demoPhone);
       setAuthToken(token);
       await setAuth(token, user);
+      setBackendOk(true);
     } catch (err: unknown) {
       const msg = extractApiError(err, `Could not open ${label}`);
       setError(msg);
+      setBackendOk(false);
       showMessage('Login failed', msg);
     } finally {
       setLoading(false);
@@ -133,7 +127,7 @@ export function LoginScreen({ navigation }: Props) {
         </Button>
       </Surface>
 
-      <Text style={styles.quickTitle}>Quick access</Text>
+      <Text style={styles.quickTitle}>Quick access — tap to log in</Text>
       <Button mode="contained" onPress={() => quickLogin(DEMO_FARMER, 'Farmer')} loading={loading} buttonColor={COLORS.primary} style={styles.quickBtn}>
         Open Farmer Platform
       </Button>
@@ -157,6 +151,7 @@ export function LoginScreen({ navigation }: Props) {
             const { data } = await api.post('/auth/login', { phone: DEMO_BANKING, password: BANKING_PASSWORD });
             setAuthToken(data.token);
             await setAuth(data.token, data.user);
+            setBackendOk(true);
           } catch (err: unknown) {
             showMessage('Login failed', extractApiError(err, 'Banking login failed'));
           } finally {

@@ -77,6 +77,7 @@ async function bootstrap(): Promise<void> {
   seedHierarchyIfEmpty();
 
   app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
     hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
   }));
   const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
