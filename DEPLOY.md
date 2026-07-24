@@ -56,14 +56,25 @@ Netlify alone cannot run the backend or your SQLite database.
 
 4. **Environment variables** (Render → Environment):
 
+Run on your Mac first:
+
+```bash
+bash scripts/generate-render-secrets.sh
 ```
-NODE_ENV=production
-PORT=10000
-PILOT_OTP=true
-JWT_SECRET=<run: openssl rand -hex 32>
-ENCRYPTION_KEY=<run: openssl rand -hex 16>
-CORS_ORIGINS=https://YOUR-NETLIFY-SITE.netlify.app
-```
+
+Copy the **output values** into Render (not the command text):
+
+| Key | Value |
+|-----|--------|
+| `NODE_ENV` | `production` |
+| `PILOT_OTP` | `true` |
+| `JWT_SECRET` | paste 64-char hex from script |
+| `ENCRYPTION_KEY` | paste 64-char hex from script |
+| `CORS_ORIGINS` | `https://YOUR-NETLIFY-SITE.netlify.app` |
+
+Do **not** set `PORT` manually — Render sets it automatically.
+
+Do **not** paste placeholder text like `<run: openssl rand -hex 32>` — that is an instruction, not a secret.
 
 Do **not** set `DATABASE_PATH` unless you know you need a custom location — the default `backend/data/kilimo.db` works on Render.
 
@@ -231,7 +242,9 @@ Open the URL `serve` prints.
 | Blank page on Netlify | Check Netlify deploy logs; build must finish without errors |
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
-| **Too many login attempts** | Redeploy latest backend (needs `trust proxy` for Render). Ensure `PILOT_OTP=true`. Tell clients to use **Quick access** buttons (Farmer / Admin / Agent) instead of typing OTP repeatedly. Wait 15 min if blocked. |
+| **Too many login attempts** | Redeploy latest `main`. Ensure `PILOT_OTP=true`. Use Quick access buttons. |
+| Deploy fails / `better-sqlite3` / NODE_MODULE_VERSION | Render must use **Node 20** (set `NODE_VERSION=20` in env). Clear build cache: Render → Settings → **Clear build cache** → redeploy. |
+| **Deploy fails / env misconfigured** | `JWT_SECRET` and `ENCRYPTION_KEY` must be real random hex (run `openssl rand -hex 32` twice). Remove `PORT` from env — let Render set it. |
 | Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
 | API crashes: directory does not exist | Remove `DATABASE_PATH` from Render env vars, redeploy latest `main` |
 | Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start`. If Root Directory is blank, use Build `npm run build:render` and Start `npm run start:api` from repo root. |

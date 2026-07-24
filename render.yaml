@@ -12,10 +12,10 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: DATABASE_PATH
         value: /var/data/kilimo.db
       - key: PILOT_OTP

@@ -6,6 +6,7 @@ import { seedDatabase } from './seed';
 import { seedHierarchyIfEmpty } from './seedHierarchy';
 import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFarmerPortal';
 import { maybeRestoreDatabaseOnStartup } from './startupRestore';
+import { validateProductionEnv } from './validateEnv';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
 import farmerRoutes from './routes/farmer';
@@ -20,44 +21,60 @@ import { getAdminStats } from './services/userService';
 import { getFarmerCount, db } from './db/database';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
+
+let appReady = false;
 
 // Render / Netlify proxies — required so rate limits apply per client IP, not one shared IP
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
+function healthPayload() {
+  let hierarchyProjects = 0;
+  let demoFarmerTasks = 0;
+  try {
+    hierarchyProjects = (db.prepare('SELECT COUNT(*) as c FROM program_projects').get() as { c: number }).c;
+    const demoFarmer = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get('+254712345678') as
+      | { farmer_id: string }
+      | undefined;
+    if (demoFarmer) {
+      demoFarmerTasks = (db.prepare('SELECT COUNT(*) as c FROM farmer_tasks WHERE farmer_id = ?').get(demoFarmer.farmer_id) as { c: number }).c;
+    }
+  } catch {
+    // optional until DB init completes
+  }
+  return {
+    status: appReady ? 'ok' : 'starting',
+    timestamp: new Date().toISOString(),
+    farmers: appReady ? getFarmerCount() : null,
+    hierarchy_projects: hierarchyProjects,
+    demo_farmer_tasks: demoFarmerTasks,
+  };
+}
+
+// Health probe — must respond 200 before heavy bootstrap (Render deploy check)
+app.get('/health', (_req, res) => {
+  res.status(200).json(healthPayload());
+});
+
+app.listen(PORT, HOST, () => {
+  console.log(`Kilimo Bridge API listening on ${HOST}:${PORT}`);
+  bootstrap().catch((err) => {
+    console.error('Failed to start:', err);
+    process.exit(1);
+  });
+});
+
 async function bootstrap(): Promise<void> {
+  validateProductionEnv();
   initDatabase();
   await maybeRestoreDatabaseOnStartup();
   seedDatabase();
   ensureDemoFarmerPortal();
   await ensureDemoAgentPassword();
   seedHierarchyIfEmpty();
-
-  // Health probe for Render — register before rate limits / HTTPS redirect
-  app.get('/health', (_req, res) => {
-    let hierarchyProjects = 0;
-    let demoFarmerTasks = 0;
-    try {
-      hierarchyProjects = (db.prepare('SELECT COUNT(*) as c FROM program_projects').get() as { c: number }).c;
-      const demoFarmer = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get('+254712345678') as
-        | { farmer_id: string }
-        | undefined;
-      if (demoFarmer) {
-        demoFarmerTasks = (db.prepare('SELECT COUNT(*) as c FROM farmer_tasks WHERE farmer_id = ?').get(demoFarmer.farmer_id) as { c: number }).c;
-      }
-    } catch {
-      // optional
-    }
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      farmers: getFarmerCount(),
-      hierarchy_projects: hierarchyProjects,
-      demo_farmer_tasks: demoFarmerTasks,
-    });
-  });
 
   app.use(helmet({
     hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -116,12 +133,6 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  app.listen(PORT, () => {
-    console.log(`Kilimo Bridge API running on http://localhost:${PORT}`);
-  });
+  appReady = true;
+  console.log('Kilimo Bridge API ready');
 }
-
-bootstrap().catch((err) => {
-  console.error('Failed to start:', err);
-  process.exit(1);
-});
