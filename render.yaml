@@ -32,3 +32,9 @@ services:
         sync: false
       - key: STARTUP_DB_TOKEN
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_SYNC_ON_STARTUP
+        value: "true"

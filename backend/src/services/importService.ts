@@ -21,6 +21,7 @@ function inferCountryFromDistrict(district?: string, country?: string): string {
   ).country ?? 'Kenya';
 }
 import { getMembershipGroupNames, getExistingIdentifiers, importFarmerFromCsv } from './farmerService';
+import { scheduleSupabaseSync } from './supabaseSync';
 import type { ImportValidationResponse } from '../../../shared/src/types';
 
 interface ParsedRow {
@@ -323,6 +324,7 @@ function runImport(
         WHERE id = ?
       `).run(JSON.stringify(importErrors), sessionId);
       activeImports.set(importId, { status: 'complete' });
+      scheduleSupabaseSync('import-complete');
     }
   }, 500);
 
