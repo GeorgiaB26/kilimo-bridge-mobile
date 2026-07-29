@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { extractApiError } from '../../utils/feedback';
 import { COLORS, API_BASE_URL } from '../../constants';
 import { getAdminDashboard } from '../../api/client';
+import { getDataSourceStatus, type DataSourceStatus } from '../../api/hybridData';
 import { useAuthStore } from '../../store/authStore';
 
 export function AdminDashboardScreen() {
@@ -21,12 +22,14 @@ export function AdminDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cloudStatus, setCloudStatus] = useState<DataSourceStatus | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await getAdminDashboard();
       setStats(data);
       setError(null);
+      setCloudStatus(await getDataSourceStatus());
     } catch (err: unknown) {
       const detail = extractApiError(err, '');
       const staleSession = detail.toLowerCase().includes('authentication') || detail.toLowerCase().includes('invalid or expired');
@@ -84,6 +87,27 @@ export function AdminDashboardScreen() {
         <StatCard label="Active Projects" value={stats?.activeProjects ?? 0} />
         <StatCard label="Pending KES" value={stats?.pendingPaymentsTotal ?? 0} accent />
       </View>
+
+      {cloudStatus?.supabaseConfigured ? (
+        <View style={styles.cloudCard}>
+          <Text style={styles.section}>Cloud mirror (Supabase)</Text>
+          <Text style={styles.cloudLine}>
+            API (SQLite): {cloudStatus.apiOnline ? 'online' : 'offline'}
+            {cloudStatus.localFarmerCount != null ? ` · ${cloudStatus.localFarmerCount.toLocaleString()} farmers` : ''}
+          </Text>
+          <Text style={styles.cloudLine}>
+            Supabase: {cloudStatus.supabaseOnline ? 'reachable' : 'offline'}
+            {cloudStatus.cloudFarmerCount != null ? ` · ${cloudStatus.cloudFarmerCount.toLocaleString()} farmers mirrored` : ''}
+          </Text>
+          {cloudStatus.cloudSyncMeta?.last_full_sync_at ? (
+            <Text style={styles.cloudMeta}>
+              Last sync: {new Date(cloudStatus.cloudSyncMeta.last_full_sync_at).toLocaleString()}
+            </Text>
+          ) : (
+            <Text style={styles.cloudMeta}>No sync yet — run sync from API or import farmers</Text>
+          )}
+        </View>
+      ) : null}
 
       {countryEntries.length > 0 ? (
         <>
@@ -166,4 +190,7 @@ const styles = StyleSheet.create({
   importStatus: { fontWeight: '600', color: COLORS.text, textTransform: 'capitalize' },
   importDetail: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   empty: { color: COLORS.muted, fontStyle: 'italic' },
+  cloudCard: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 12, marginBottom: 24 },
+  cloudLine: { fontSize: 13, color: COLORS.text, marginBottom: 4 },
+  cloudMeta: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
 });

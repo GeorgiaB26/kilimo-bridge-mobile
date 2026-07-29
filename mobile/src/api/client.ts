@@ -488,3 +488,21 @@ export async function approveCentreQuality(centreId: string | undefined, body: {
   const { data } = await api.post(`/aggregation/inventory/${body.inventory_id}/approve-quality`, payload);
   return data;
 }
+
+export async function getSupabaseSyncStatus() {
+  const { data } = await api.get('/admin/sync/supabase/status');
+  return data as {
+    configured: boolean;
+    local_farmers: number;
+    remote?: {
+      last_full_sync_at: string | null;
+      last_sync_status: string | null;
+      farmers_count: number | null;
+    };
+  };
+}
+
+export async function triggerSupabaseSync() {
+  const { data } = await api.post('/admin/sync/supabase/sync');
+  return data;
+}

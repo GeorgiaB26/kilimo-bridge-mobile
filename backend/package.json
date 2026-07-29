@@ -13,9 +13,13 @@
     "build:render": "node scripts/ensure-shared.js && npm install --include=dev && npm rebuild better-sqlite3 && npm run build",
     "start": "node dist/backend/src/index.js",
     "seed": "tsx src/seed.ts",
-    "seed:hierarchy": "tsx scripts/seed-hierarchy.ts"
+    "seed:hierarchy": "tsx scripts/seed-hierarchy.ts",
+    "sync:supabase": "tsx scripts/sync-to-supabase.ts",
+    "migrate:supabase": "tsx scripts/migrate-sqlite-to-supabase.ts",
+    "export:schema": "tsx scripts/export-schema.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.0.0",
     "cors": "^2.8.5",
