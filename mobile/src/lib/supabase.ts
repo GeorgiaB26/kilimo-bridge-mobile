@@ -9,15 +9,23 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(supabaseUrl && supabaseAnonKey);
 }
 
-/** Read-only Supabase client for cloud mirror tables (writes go through Express API → SQLite). */
-export function getSupabaseClient(): SupabaseClient | null {
+/** Read-only or JWT-authenticated Supabase client. */
+export function getSupabaseClient(accessToken?: string | null): SupabaseClient | null {
   if (!isSupabaseConfigured()) return null;
-  if (!client) {
-    client = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+
+  if (!accessToken) {
+    if (!client) {
+      client = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+    }
+    return client;
   }
-  return client;
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
 }
 
 export interface CloudSyncMeta {

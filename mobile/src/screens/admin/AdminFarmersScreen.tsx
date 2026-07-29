@@ -12,6 +12,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { getFarmers, searchFarmers } from '../../api/client';
+import { farmerRepository } from '../../repositories/FarmerRepository';
+import { useAuthStore } from '../../store/authStore';
 import { COUNTRY_LIST } from '../../constants/regional';
 import { PENDING_LOCATION_LABEL } from '../../constants/regional';
 import { KBSearchBar } from '../../components/KBSearchBar';
@@ -48,6 +50,7 @@ function farmerMatchesQuery(farmer: AdminFarmerSummary, query: string): boolean 
 
 export function AdminFarmersScreen() {
   const navigation = useNavigation<Nav>();
+  const token = useAuthStore((s) => s.token);
   const [farmers, setFarmers] = useState<AdminFarmerSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [countryFilter, setCountryFilter] = useState('All');
@@ -86,10 +89,18 @@ export function AdminFarmersScreen() {
       }
 
       const country = countryFilter === 'All' ? undefined : countryFilter;
-      const d = await getFarmers(PAGE_SIZE, 0, country);
+      let batch: AdminFarmerSummary[];
+      let nextTotal: number;
+      if (!country) {
+        const result = await farmerRepository.list(PAGE_SIZE, 0, token);
+        batch = result.farmers;
+        nextTotal = result.total;
+      } else {
+        const d = await getFarmers(PAGE_SIZE, 0, country);
+        batch = (d.farmers ?? []) as AdminFarmerSummary[];
+        nextTotal = d.total ?? 0;
+      }
       if (fetchId !== fetchIdRef.current) return;
-      const batch = (d.farmers ?? []) as AdminFarmerSummary[];
-      const nextTotal = d.total ?? 0;
       setFarmers(batch);
       setTotal(nextTotal);
       setHasMore(batch.length < nextTotal);

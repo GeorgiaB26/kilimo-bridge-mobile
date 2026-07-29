@@ -10,6 +10,8 @@ import { AdminPlatformNavigator } from './AdminPlatformNavigator';
 import { AgentNavigator } from './AgentNavigator';
 import { BankingNavigator } from './BankingNavigator';
 import { AccountSwitcherBar } from '../components/AccountSwitcherBar';
+import { SyncStatusBanner } from '../components/SyncStatusBanner';
+import { syncManager } from '../sync/SyncManager';
 import { SplashScreen } from '../screens/splash/SplashScreen';
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { COLORS } from '../constants';
@@ -25,6 +27,17 @@ export function RootNavigator() {
 
   useEffect(() => { loadStoredAuth(); }, [loadStoredAuth]);
   useEffect(() => { if (token) setAuthToken(token); }, [token]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !token) {
+      syncManager.setAccessToken(null);
+      syncManager.stop();
+      return;
+    }
+    syncManager.setAccessToken(token);
+    syncManager.start();
+    return () => syncManager.stop();
+  }, [isAuthenticated, token]);
 
   useEffect(() => {
     AsyncStorage.getItem(ONBOARDING_KEY).then((v) => setOnboardingDone(v === '1'));
@@ -71,6 +84,7 @@ export function RootNavigator() {
   return (
     <View style={styles.root}>
       <AccountSwitcherBar />
+      <SyncStatusBanner />
       {role === 'farmer' ? <FarmerNavigator />
         : isBankingRole(role) ? <BankingNavigator />
         : isAgentRole(role) ? <AgentNavigator />
