@@ -1,0 +1,3 @@
+id,farmer_id,farmer_project_id,project_name,amount,currency,payment_method,payment_status,mpesa_reference,created_at,paid_at,processed_by,verification_status
+8de033a6-66d0-4024-a2a1-38b7856c505e,f28e548a-b708-4bba-9725-b8479d27af72,f9f6fb3e-46fd-4565-a1a2-2dd2e1bc2a0d,"Coffee Training",15000,KES,M-Pesa,Pending,,"2026-07-29 16:51:14",,,unverified
+ade102aa-6069-42c1-97e4-940cdb9c0eaf,f28e548a-b708-4bba-9725-b8479d27af72,,"Soil Health",8000,KES,M-Pesa,Transferred,MPX123456,"2026-07-29 16:51:14","2026-06-29 16:51:14",,unverified

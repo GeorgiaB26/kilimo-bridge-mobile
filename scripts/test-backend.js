@@ -42,13 +42,12 @@ ok = check('npm dependencies installed', () => {
   require.resolve('bcryptjs');
 }) && ok;
 
-ok = check('better-sqlite3 (native module)', () => {
-  require('better-sqlite3');
+ok = check('pg (Postgres client)', () => {
+  require.resolve('pg');
 }) && ok;
 
-ok = check('database init', () => {
-  // Run via tsx since it's TypeScript
-  execSync('npx tsx -e "import { initDatabase } from \'./src/db/database\'; initDatabase();"', {
+ok = check('database connection', () => {
+  execSync('npx tsx -e "import { testConnection } from \'./src/db/database\'; testConnection().then(r => { console.log(\'farmers:\', r.farmerCount); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });"', {
     cwd: backendDir,
     stdio: 'pipe',
   });

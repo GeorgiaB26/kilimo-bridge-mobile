@@ -10,6 +10,9 @@ export interface FarmerProject {
   earnings_amount?: number;
   completed_at?: string;
   project_id?: string;
+  tasks_completed?: number;
+  tasks_total?: number;
+  progress_label?: string;
 }
 
 export const PROJECT_DESCRIPTIONS: Record<string, string> = {

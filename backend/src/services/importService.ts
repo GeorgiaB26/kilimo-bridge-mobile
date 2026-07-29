@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db/database';
+import { query, queryOne } from '../db/database';
 import { parseSpreadsheetContent } from './spreadsheetParser';
 import {
   validateFarmerRow,
@@ -11,6 +11,7 @@ import {
   PHONE_HEADER_PATTERN,
   rowHasPhoneValue,
   inferCooperativeNameFromFileName,
+  normalizeGender,
   type FarmerInput,
 } from '../../../shared/src/validation';
 
@@ -21,6 +22,13 @@ function inferCountryFromDistrict(district?: string, country?: string): string {
   ).country ?? 'Kenya';
 }
 import { getMembershipGroupNames, getExistingIdentifiers, importFarmerFromCsv } from './farmerService';
+import { hashIdNumber } from './encryptionService';
+import { normalizeIdNumber } from '../../../shared/src/validation';
+import {
+  findSimilarProgramProject,
+  formatSimilarProjectHint,
+  getProgramProjectCatalog,
+} from './farmerProgramService';
 import type { ImportValidationResponse } from '../../../shared/src/types';
 
 interface ParsedRow {
@@ -44,11 +52,11 @@ export function parseCsvContent(content: string | Buffer): { headers: string[]; 
   return { headers, rows };
 }
 
-export function validateCsvImport(
+export async function validateCsvImport(
   content: string | Buffer,
   columnMapping?: Record<string, string>,
   options?: { fileName?: string }
-): ImportValidationResponse {
+): Promise<ImportValidationResponse> {
   const sessionId = uuidv4();
   const { headers, rows, source, cooperativeHint } = parseSpreadsheetContent(content);
   const defaultMembershipGroup =
@@ -60,14 +68,19 @@ export function validateCsvImport(
   const parseRow = (rawRow: Record<string, string>) =>
     csvRowToFarmerInput(mapping ? applyColumnMapping(rawRow, mapping) : rawRow);
 
-  const membershipGroups = getMembershipGroupNames();
-  const existing = getExistingIdentifiers();
+  const membershipGroups = await getMembershipGroupNames();
+  const existing = await getExistingIdentifiers();
+  const programProjectCatalog = await getProgramProjectCatalog();
   const seenPhones = new Set<string>();
   const seenIdNumbers = new Set<string>();
   const seenKeys = new Set<string>();
+  const projectSimilarityHints = new Set<string>();
 
   const validationResults: ValidationRowResult[] = [];
   const allErrors: ImportValidationResponse['errors'] = [];
+  let genderNormalizedCount = 0;
+  let genderInvalidCount = 0;
+  const genderNormalizationExamples = new Set<string>();
 
   rows.forEach((rawRow, index) => {
     const rowNumber = index + 2;
@@ -75,13 +88,26 @@ export function validateCsvImport(
 
     const result = validateFarmerRow(farmerInput, {
       existingPhones: existing.phones,
-      existingIdNumbers: existing.idNumbers,
+      existingIdNumberHashes: existing.idNumberHashes,
+      hashIdNumber,
       existingKeys: existing.keys,
       membershipGroups,
       rowNumber,
       importMode: true,
       defaultMembershipGroup,
     });
+
+    const rawGender = farmerInput.gender?.trim() ?? '';
+    const normalizedGender = result.normalized.gender;
+    if (rawGender && normalizedGender && rawGender !== normalizedGender) {
+      genderNormalizedCount++;
+      genderNormalizationExamples.add(`${rawGender}→${normalizedGender}`);
+    }
+    if (result.errors.some((e) => e.field === 'gender')) {
+      genderInvalidCount++;
+    } else if (rawGender && !normalizeGender(rawGender)) {
+      genderInvalidCount++;
+    }
 
     let duplicate = false;
     const phone = result.normalized.phone;
@@ -94,12 +120,32 @@ export function validateCsvImport(
         result.errors.push({ field: 'phone', value: farmerInput.phone, error: 'Duplicate phone in file or system' });
       }
     }
-    if (idNum && (seenIdNumbers.has(idNum) || existing.idNumbers.has(idNum))) duplicate = true;
+    if (idNum) {
+      const idHash = hashIdNumber(normalizeIdNumber(idNum));
+      if (seenIdNumbers.has(idHash) || existing.idNumberHashes.has(idHash)) {
+        duplicate = true;
+        if (!result.errors.some((e) => e.field === 'idNumber')) {
+          result.errors.push({
+            field: 'idNumber',
+            value: farmerInput.idNumber,
+            error: 'Duplicate ID number in file or system',
+          });
+        }
+      }
+      seenIdNumbers.add(idHash);
+    }
     if (key && (seenKeys.has(key) || existing.keys.has(key))) duplicate = true;
 
     if (phone) seenPhones.add(phone);
-    if (idNum) seenIdNumbers.add(idNum);
     if (key) seenKeys.add(key);
+
+    for (const rawProject of [farmerInput.project1, farmerInput.project2, farmerInput.project3]) {
+      if (!rawProject?.trim()) continue;
+      const similar = findSimilarProgramProject(rawProject, programProjectCatalog);
+      if (similar) {
+        projectSimilarityHints.add(formatSimilarProjectHint(rowNumber, rawProject, similar));
+      }
+    }
 
     const valid = result.valid && !duplicate;
     validationResults.push({
@@ -190,18 +236,36 @@ export function validateCsvImport(
       `${locationMissingCount} rows have no District/Sub-County — they can still import; farmers will confirm location when they first log in.`
     );
   }
+  if (genderNormalizedCount > 0) {
+    const examples = [...genderNormalizationExamples].slice(0, 5).join(', ');
+    importHints.push(
+      `${genderNormalizedCount} row(s) had gender spellings normalized to Postgres enum values (M/F/Other) — e.g. ${examples}. Only exact enum values are stored in the database.`
+    );
+  }
+  if (genderInvalidCount > 0) {
+    importHints.push(
+      `${genderInvalidCount} row(s) have gender values that cannot be mapped to M, F, or Other (Postgres gender_type enum). Fix spellings like "Female"/"FEMALE" are auto-mapped; unknown values are rejected.`
+    );
+  }
+  for (const hint of projectSimilarityHints) {
+    importHints.push(hint);
+  }
+  importHints.push(
+    'National ID duplicates are checked via id_number_hash when importing.'
+  );
 
-  db.prepare(`
-    INSERT INTO import_sessions (id, status, total_rows, valid_rows, invalid_rows, duplicates, data, errors)
-    VALUES (?, 'validated', ?, ?, ?, ?, ?, ?)
-  `).run(
-    sessionId,
-    rows.length,
-    validRows,
-    invalidRows,
-    duplicates,
-    JSON.stringify(validationResults),
-    JSON.stringify(allErrors)
+  await query(
+    `INSERT INTO import_sessions (id, status, total_rows, valid_rows, invalid_rows, duplicates, data, errors)
+     VALUES ($1, 'validated', $2, $3, $4, $5, $6, $7)`,
+    [
+      sessionId,
+      rows.length,
+      validRows,
+      invalidRows,
+      duplicates,
+      JSON.stringify(validationResults),
+      JSON.stringify(allErrors),
+    ]
   );
 
   return {
@@ -224,16 +288,17 @@ export function validateCsvImport(
   };
 }
 
-export function getImportValidationErrors(sessionId: string): Array<{
+export async function getImportValidationErrors(sessionId: string): Promise<Array<{
   row: number;
   field: string;
   value: string;
   error: string;
   suggestion?: string;
-}> {
-  const session = db.prepare('SELECT errors FROM import_sessions WHERE id = ?').get(sessionId) as
-    | { errors: string }
-    | undefined;
+}>> {
+  const session = await queryOne<{ errors: string }>(
+    'SELECT errors FROM import_sessions WHERE id = $1',
+    [sessionId]
+  );
   if (!session?.errors) return [];
   try {
     return JSON.parse(session.errors);
@@ -258,24 +323,26 @@ export async function executeImport(
   skipDuplicates = true,
   registeredBy?: string
 ): Promise<{ importId: string; totalToImport: number; estimatedTimeSeconds: number }> {
-  const session = db.prepare('SELECT * FROM import_sessions WHERE id = ?').get(sessionId) as {
+  const session = await queryOne<{
     id: string;
     data: string;
     valid_rows: number;
-  } | undefined;
+  }>('SELECT * FROM import_sessions WHERE id = $1', [sessionId]);
 
   if (!session) throw new Error('Import session not found');
 
   const importId = uuidv4();
-  const validationResults: ValidationRowResult[] = JSON.parse(session.data);
+  const validationResults: ValidationRowResult[] =
+    typeof session.data === 'string' ? JSON.parse(session.data) : (session.data as ValidationRowResult[]);
   const toImport = validationResults.filter((r) => r.valid && (!skipDuplicates || !r.duplicate));
 
-  db.prepare('UPDATE import_sessions SET status = ? WHERE id = ?').run('importing', sessionId);
+  await query('UPDATE import_sessions SET status = $1 WHERE id = $2', ['importing', sessionId]);
 
   const estimatedTimeSeconds = Math.ceil(toImport.length / 50);
 
-  // Run import asynchronously
-  setTimeout(() => runImport(importId, sessionId, toImport, registeredBy), 100);
+  setTimeout(() => {
+    void runImport(importId, sessionId, toImport, registeredBy);
+  }, 100);
 
   return {
     importId,
@@ -284,12 +351,12 @@ export async function executeImport(
   };
 }
 
-function runImport(
+async function runImport(
   importId: string,
   sessionId: string,
   rows: ValidationRowResult[],
   registeredBy?: string
-): void {
+): Promise<void> {
   let imported = 0;
   const total = rows.length;
   const importErrors: Array<{ row: number; field: string; value: string; error: string }> = [];
@@ -297,45 +364,48 @@ function runImport(
   const batchSize = Math.max(1, Math.floor(total / 10));
 
   const interval = setInterval(() => {
-    const end = Math.min(imported + batchSize, total);
-    for (let i = imported; i < end; i++) {
-      const row = rows[i];
-      try {
-        const data = row.normalized as FarmerInput & { key: string; phone: string };
-        importFarmerFromCsv(data, registeredBy);
-      } catch (err) {
-        importErrors.push({
-          row: row.rowNumber,
-          field: 'general',
-          value: '',
-          error: err instanceof Error ? err.message : 'Import failed',
-        });
+    void (async () => {
+      const end = Math.min(imported + batchSize, total);
+      for (let i = imported; i < end; i++) {
+        const row = rows[i];
+        try {
+          const data = row.normalized as FarmerInput & { key: string; phone: string };
+          await importFarmerFromCsv(data, registeredBy);
+        } catch (err) {
+          importErrors.push({
+            row: row.rowNumber,
+            field: 'general',
+            value: '',
+            error: err instanceof Error ? err.message : 'Import failed',
+          });
+        }
       }
-    }
-    imported = end;
+      imported = end;
 
-    db.prepare('UPDATE import_sessions SET imported_count = ? WHERE id = ?').run(imported, sessionId);
+      await query('UPDATE import_sessions SET imported_count = $1 WHERE id = $2', [imported, sessionId]);
 
-    if (imported >= total) {
-      clearInterval(interval);
-      db.prepare(`
-        UPDATE import_sessions SET status = 'complete', completed_at = datetime('now'), errors = ?
-        WHERE id = ?
-      `).run(JSON.stringify(importErrors), sessionId);
-      activeImports.set(importId, { status: 'complete' });
-    }
+      if (imported >= total) {
+        clearInterval(interval);
+        await query(
+          `UPDATE import_sessions SET status = 'complete', completed_at = NOW(), errors = $1
+           WHERE id = $2`,
+          [JSON.stringify(importErrors), sessionId]
+        );
+        activeImports.set(importId, { status: 'complete' });
+      }
+    })();
   }, 500);
 
   activeImports.set(importId, { interval, status: 'in_progress' });
 }
 
-export function getImportProgress(importId: string, sessionId: string) {
-  const session = db.prepare('SELECT * FROM import_sessions WHERE id = ?').get(sessionId) as {
+export async function getImportProgress(importId: string, sessionId: string) {
+  const session = await queryOne<{
     imported_count: number;
     valid_rows: number;
     status: string;
     errors: string;
-  } | undefined;
+  }>('SELECT * FROM import_sessions WHERE id = $1', [sessionId]);
 
   if (!session) return null;
 
@@ -360,19 +430,22 @@ export function getImportProgress(importId: string, sessionId: string) {
   };
 }
 
-export function getImportComplete(sessionId: string) {
-  const session = db.prepare('SELECT * FROM import_sessions WHERE id = ?').get(sessionId) as {
+export async function getImportComplete(sessionId: string) {
+  const session = await queryOne<{
     id: string;
     imported_count: number;
     duplicates: number;
     errors: string;
     completed_at: string;
     status: string;
-  } | undefined;
+  }>('SELECT * FROM import_sessions WHERE id = $1', [sessionId]);
 
   if (!session || session.status !== 'complete') return null;
 
-  const errors = JSON.parse(session.errors || '[]');
+  const errors =
+    typeof session.errors === 'string'
+      ? JSON.parse(session.errors || '[]')
+      : (session.errors ?? []);
   return {
     status: 'import_complete' as const,
     importId: session.id,

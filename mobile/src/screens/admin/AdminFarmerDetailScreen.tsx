@@ -33,6 +33,9 @@ type FarmerDetail = {
     completion_percentage: number;
     payment_amount: number;
     payment_status?: string;
+    tasks_completed?: number;
+    tasks_total?: number;
+    progress_label?: string;
   }>;
 };
 
@@ -116,7 +119,10 @@ export function AdminFarmerDetailScreen({ route }: Props) {
             <View key={p.project_name} style={styles.projectRow}>
               <Text style={styles.projectName}>{p.project_name}</Text>
               <Text style={styles.projectMeta}>
-                {p.status} · {p.completion_percentage}% · {p.payment_status ?? 'No payment'}
+                {p.progress_label ?? `${p.completion_percentage}%`}
+                {' · '}
+                {p.status}
+                {p.payment_status ? ` · ${p.payment_status}` : ''}
               </Text>
             </View>
           ))}

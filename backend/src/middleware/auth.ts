@@ -11,19 +11,23 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const user = await verifyToken(header.slice(7));
+    if (!user) {
+      res.status(401).json({ error: 'Invalid or expired token' });
+      return;
+    }
+    req.user = { ...user, role: normalizeRole(user.role) as UserRole };
+    next();
+  } catch (err) {
+    next(err);
   }
-  const user = verifyToken(header.slice(7));
-  if (!user) {
-    res.status(401).json({ error: 'Invalid or expired token' });
-    return;
-  }
-  req.user = { ...user, role: normalizeRole(user.role) as UserRole };
-  next();
 }
 
 export function requireRole(...roles: UserRole[]) {
@@ -34,7 +38,7 @@ export function requireRole(...roles: UserRole[]) {
     }
     const userRole = normalizeRole(req.user.role);
     if (!roles.includes(userRole)) {
-      logAudit({
+      void logAudit({
         userId: req.user.userId,
         userRole: req.user.role,
         action: 'permission.denied',
@@ -57,7 +61,7 @@ export function requirePermission(permission: Permission) {
       return;
     }
     if (!hasPermission(req.user.role, permission)) {
-      logAudit({
+      void logAudit({
         userId: req.user.userId,
         userRole: req.user.role,
         action: 'permission.denied',
@@ -87,7 +91,7 @@ export function requireRegionAccess(getRegionFromResource: (req: Request) => str
     const resourceRegion = getRegionFromResource(req);
     const agentRegion = req.user.region || req.user.district;
     if (resourceRegion && agentRegion && resourceRegion !== agentRegion) {
-      logAudit({
+      void logAudit({
         userId: req.user.userId,
         userRole: req.user.role,
         action: 'permission.denied',
@@ -103,11 +107,15 @@ export function requireRegionAccess(getRegionFromResource: (req: Request) => str
   };
 }
 
-export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
-  if (header?.startsWith('Bearer ')) {
-    const user = verifyToken(header.slice(7));
-    if (user) req.user = { ...user, role: normalizeRole(user.role) as UserRole };
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  try {
+    const header = req.headers.authorization;
+    if (header?.startsWith('Bearer ')) {
+      const user = await verifyToken(header.slice(7));
+      if (user) req.user = { ...user, role: normalizeRole(user.role) as UserRole };
+    }
+    next();
+  } catch (err) {
+    next(err);
   }
-  next();
 }

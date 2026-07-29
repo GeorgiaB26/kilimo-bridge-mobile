@@ -2,7 +2,8 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
-import { useAuthStore, isAdminRole } from '../store/authStore';
+import { useAuthStore, canManageUsers } from '../store/authStore';
+import { hasPermission } from '../../shared/src/roles';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { AdminFarmersNavigator } from './AdminFarmersNavigator';
 import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
@@ -18,8 +19,8 @@ const Tab = createBottomTabNavigator<AdminTabParamList>();
 
 export function AdminPlatformNavigator() {
   const role = useAuthStore((s) => s.user?.role);
-  const canImport = role ? isAdminRole(role) || role === 'super_admin' : false;
-  const canManageUsers = role === 'super_admin' || role === 'admin';
+  const showImport = role ? hasPermission(role, 'farmers.import') : false;
+  const showManageUsers = role ? canManageUsers(role) : false;
 
   return (
     <Tab.Navigator
@@ -49,11 +50,11 @@ export function AdminPlatformNavigator() {
       <Tab.Screen name="Manage" component={AdminManageScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Manage' }} />
       <Tab.Screen name="Tasks" component={AdminTasksScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Tasks' }} />
       <Tab.Screen name="Centre" component={AdminCentreScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Centre' }} />
-      {canImport ? (
+      {showImport ? (
         <Tab.Screen name="Import" component={ImportNavigator} options={{ title: 'Import' }} />
       ) : null}
       <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register' }} />
-      {canManageUsers ? (
+      {showManageUsers ? (
         <Tab.Screen name="Users" component={AdminUsersScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Users' }} />
       ) : null}
       <Tab.Screen name="Profile" component={AdminProfileScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Settings' }} />

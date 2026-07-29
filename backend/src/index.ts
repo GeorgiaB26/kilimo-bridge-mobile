@@ -5,7 +5,8 @@ import { initDatabase } from './db/database';
 import { seedDatabase } from './seed';
 import { seedHierarchyIfEmpty } from './seedHierarchy';
 import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFarmerPortal';
-import { maybeRestoreDatabaseOnStartup } from './startupRestore';
+import { seedAggregationCentres } from './services/aggregationCentreService';
+import { backfillLegacyIdNumberHashes } from './services/farmerService';
 import { validateProductionEnv } from './validateEnv';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
@@ -18,13 +19,14 @@ import hierarchyAdminRoutes from './routes/hierarchyAdmin';
 import aggregationRoutes from './routes/aggregation';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
-import { getFarmerCount, db } from './db/database';
+import { getFarmerCount } from './db/database';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
 let appReady = false;
+let cachedFarmerCount: number | null = null;
 
 // Render / Netlify proxies — required so rate limits apply per client IP, not one shared IP
 if (process.env.NODE_ENV === 'production') {
@@ -32,25 +34,12 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 function healthPayload() {
-  let hierarchyProjects = 0;
-  let demoFarmerTasks = 0;
-  try {
-    hierarchyProjects = (db.prepare('SELECT COUNT(*) as c FROM program_projects').get() as { c: number }).c;
-    const demoFarmer = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get('+254712345678') as
-      | { farmer_id: string }
-      | undefined;
-    if (demoFarmer) {
-      demoFarmerTasks = (db.prepare('SELECT COUNT(*) as c FROM farmer_tasks WHERE farmer_id = ?').get(demoFarmer.farmer_id) as { c: number }).c;
-    }
-  } catch {
-    // optional until DB init completes
-  }
   return {
     status: appReady ? 'ok' : 'starting',
     timestamp: new Date().toISOString(),
-    farmers: appReady ? getFarmerCount() : null,
-    hierarchy_projects: hierarchyProjects,
-    demo_farmer_tasks: demoFarmerTasks,
+    farmers: appReady ? cachedFarmerCount : null,
+    hierarchy_projects: null,
+    demo_farmer_tasks: null,
   };
 }
 
@@ -70,11 +59,22 @@ app.listen(PORT, HOST, () => {
 async function bootstrap(): Promise<void> {
   validateProductionEnv();
   initDatabase();
-  await maybeRestoreDatabaseOnStartup();
-  seedDatabase();
-  ensureDemoFarmerPortal();
+  cachedFarmerCount = await getFarmerCount();
+  console.log(`Database ready: ${cachedFarmerCount} farmers`);
+
+  const backfilled = await backfillLegacyIdNumberHashes();
+  if (backfilled > 0) {
+    console.log(`Backfilled id_number_hash for ${backfilled} legacy farmer(s)`);
+  }
+
+  await seedAggregationCentres();
+  if (cachedFarmerCount <= 10) {
+    await seedDatabase();
+  }
+  await ensureDemoFarmerPortal();
   await ensureDemoAgentPassword();
-  seedHierarchyIfEmpty();
+  await seedHierarchyIfEmpty();
+  cachedFarmerCount = await getFarmerCount();
 
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -112,14 +112,14 @@ async function bootstrap(): Promise<void> {
   app.use('/api/webhooks', equityWebhookRouter);
   app.use('/api', apiRoutes);
 
-  app.get('/api/metrics/live', (req, res) => {
+  app.get('/api/metrics/live', async (req, res) => {
     const trackerKey = process.env.TRACKER_API_KEY;
     const provided = req.headers['x-tracker-key'] as string | undefined;
     if (trackerKey && provided !== trackerKey) {
       res.status(401).json({ error: 'Invalid tracker API key' });
       return;
     }
-    const stats = getAdminStats();
+    const stats = await getAdminStats();
     res.json({
       updatedAt: new Date().toISOString(),
       totalFarmers: stats.totalFarmers,

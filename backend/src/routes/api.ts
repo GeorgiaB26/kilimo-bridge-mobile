@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import express from 'express';
 import multer from 'multer';
 import { validateFarmerRow } from '../../../shared/src/validation';
+import { hashIdNumber } from '../services/encryptionService';
 import {
   createFarmer,
   generateFarmerKey,
@@ -17,24 +18,26 @@ import { DISTRICTS, SUB_COUNTIES, PROJECTS, MEMBERSHIP_TYPES } from '../../../sh
 import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
 import { AGGREGATION_CENTRES } from '../../../shared/src/locations/aggregationCentres';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
-import { replaceDatabaseFile, getDatabasePath, getFarmerCount as getDbFarmerCount, db } from '../db/database';
-import fs from 'fs';
+import { queryOne } from '../db/database';
 
 const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_CSV_SIZE_BYTES },
 });
-const dbUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 },
-});
+function asyncHandler(
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    fn(req, res, next).catch(next);
+  };
+}
 
-router.get('/reference', (_req: Request, res: Response) => {
+router.get('/reference', asyncHandler(async (_req, res) => {
   res.json({
     districts: DISTRICTS,
     subCounties: SUB_COUNTIES,
-    membershipGroups: getMembershipGroupNames(),
+    membershipGroups: await getMembershipGroupNames(),
     projects: PROJECTS,
     membershipTypes: MEMBERSHIP_TYPES,
     countries: COUNTRY_LIST.map((c) => ({
@@ -51,22 +54,22 @@ router.get('/reference', (_req: Request, res: Response) => {
       locationLevel1: c.locationLevel1,
     })),
   });
-});
+}));
 
-router.get('/farmers', authenticate, requirePermission('farmers.read'), (req: Request, res: Response) => {
+router.get('/farmers', authenticate, requirePermission('farmers.read'), asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 100;
   const offset = parseInt(req.query.offset as string) || 0;
-  const farmers = getAllFarmers(limit, offset);
-  res.json({ farmers, total: getFarmerCount() });
-});
+  const farmers = await getAllFarmers(limit, offset);
+  res.json({ farmers, total: await getFarmerCount() });
+}));
 
-router.post('/farmers/register', authenticate, requirePermission('farmers.write'), (req: Request, res: Response) => {
+router.post('/farmers/register', authenticate, requirePermission('farmers.write'), asyncHandler(async (req, res) => {
   const input = req.body;
-  const existing = getExistingIdentifiers();
-  const membershipGroups = getMembershipGroupNames();
+  const existing = await getExistingIdentifiers();
+  const membershipGroups = await getMembershipGroupNames();
 
   const farmerInput = {
-    key: input.key || generateFarmerKey(),
+    key: input.key || (await generateFarmerKey()),
     name: input.name,
     gender: input.gender,
     idNumber: input.idNumber,
@@ -89,7 +92,8 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
 
   const result = validateFarmerRow(farmerInput, {
     existingPhones: existing.phones,
-    existingIdNumbers: existing.idNumbers,
+    existingIdNumberHashes: existing.idNumberHashes,
+    hashIdNumber,
     existingKeys: existing.keys,
     membershipGroups,
   });
@@ -100,7 +104,7 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
   }
 
   try {
-    const farmerId = createFarmer({
+    const farmerId = await createFarmer({
       ...farmerInput,
       ...result.normalized,
       key: result.normalized.key ?? farmerInput.key,
@@ -127,9 +131,9 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
       error: err instanceof Error ? err.message : 'Registration failed',
     });
   }
-});
+}));
 
-router.post('/admin/farmers/import/validate', authenticate, requirePermission('farmers.import'), upload.single('file'), (req: Request, res: Response) => {
+router.post('/admin/farmers/import/validate', authenticate, requirePermission('farmers.import'), upload.single('file'), asyncHandler(async (req, res) => {
   let content: string | Buffer | undefined;
   let columnMapping: Record<string, string> | undefined;
 
@@ -159,16 +163,16 @@ router.post('/admin/farmers/import/validate', authenticate, requirePermission('f
 
   try {
     const fileName = (req.file?.originalname || req.body?.fileName || req.headers['x-import-file-name']) as string | undefined;
-    const result = validateCsvImport(content, columnMapping, { fileName });
+    const result = await validateCsvImport(content, columnMapping, { fileName });
     res.json(result);
   } catch (err) {
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Validation failed',
     });
   }
-});
+}));
 
-router.post('/admin/farmers/import/validate-text', authenticate, requirePermission('farmers.import'), express.text({ type: '*/*', limit: '50mb' }), (req: Request, res: Response) => {
+router.post('/admin/farmers/import/validate-text', authenticate, requirePermission('farmers.import'), express.text({ type: '*/*', limit: '50mb' }), asyncHandler(async (req, res) => {
   const content = req.body as string;
   if (!content) {
     res.status(400).json({ error: 'No CSV content provided' });
@@ -176,14 +180,14 @@ router.post('/admin/farmers/import/validate-text', authenticate, requirePermissi
   }
   try {
     const fileName = req.headers['x-import-file-name'] as string | undefined;
-    const result = validateCsvImport(content, undefined, { fileName });
+    const result = await validateCsvImport(content, undefined, { fileName });
     res.json(result);
   } catch (err) {
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Validation failed',
     });
   }
-});
+}));
 
 router.post('/admin/farmers/import/confirm', authenticate, requirePermission('farmers.import'), async (req: Request, res: Response) => {
   const { sessionId, skipDuplicates = true } = req.body;
@@ -206,11 +210,11 @@ router.post('/admin/farmers/import/confirm', authenticate, requirePermission('fa
   }
 });
 
-router.get('/admin/farmers/import/:sessionId/errors', authenticate, requirePermission('farmers.import'), (req: Request, res: Response) => {
+router.get('/admin/farmers/import/:sessionId/errors', authenticate, requirePermission('farmers.import'), asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
-  const errors = getImportValidationErrors(sessionId);
+  const errors = await getImportValidationErrors(sessionId);
   if (errors.length === 0) {
-    const session = db.prepare('SELECT id FROM import_sessions WHERE id = ?').get(sessionId);
+    const session = await queryOne('SELECT id FROM import_sessions WHERE id = $1', [sessionId]);
     if (!session) {
       res.status(404).json({ error: 'Import session not found' });
       return;
@@ -224,73 +228,27 @@ router.get('/admin/farmers/import/:sessionId/errors', authenticate, requirePermi
     return;
   }
   res.json({ sessionId, totalErrors: errors.length, errors });
-});
+}));
 
-router.get('/admin/farmers/import/:sessionId/progress', authenticate, requirePermission('farmers.import'), (req: Request, res: Response) => {
+router.get('/admin/farmers/import/:sessionId/progress', authenticate, requirePermission('farmers.import'), asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
   const importId = req.query.importId as string;
-  const progress = getImportProgress(importId, sessionId);
+  const progress = await getImportProgress(importId, sessionId);
   if (!progress) {
     res.status(404).json({ error: 'Import not found' });
     return;
   }
   res.json(progress);
-});
+}));
 
-router.get('/admin/farmers/import/:sessionId/complete', authenticate, requirePermission('farmers.import'), (req: Request, res: Response) => {
+router.get('/admin/farmers/import/:sessionId/complete', authenticate, requirePermission('farmers.import'), asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
-  const result = getImportComplete(sessionId);
+  const result = await getImportComplete(sessionId);
   if (!result) {
     res.status(404).json({ error: 'Import not complete or not found' });
     return;
   }
   res.json(result);
-});
-
-/** Check hosted database status (pilot only). */
-router.get('/setup/database/status', (req: Request, res: Response) => {
-  const secret = req.headers['x-restore-secret'] as string | undefined;
-  if (!process.env.RESTORE_DB_SECRET || secret !== process.env.RESTORE_DB_SECRET) {
-    res.status(401).json({ error: 'Invalid restore secret' });
-    return;
-  }
-  try {
-    const path = getDatabasePath();
-    const fileSizeBytes = fs.existsSync(path) ? fs.statSync(path).size : 0;
-    res.json({
-      totalFarmers: getDbFarmerCount(),
-      dbPath: path,
-      fileSizeBytes,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Status failed' });
-  }
-});
-
-/** Upload local kilimo.db to hosted preview (pilot only). Hot-reloads DB without server restart. */
-router.post('/setup/database/restore', dbUpload.single('database'), (req: Request, res: Response) => {
-  const secret = req.headers['x-restore-secret'] as string | undefined;
-  if (!process.env.RESTORE_DB_SECRET || secret !== process.env.RESTORE_DB_SECRET) {
-    res.status(401).json({ error: 'Invalid restore secret' });
-    return;
-  }
-  if (!req.file?.buffer?.length) {
-    res.status(400).json({ error: 'Upload kilimo.db as form field "database"' });
-    return;
-  }
-
-  try {
-    const farmerCount = replaceDatabaseFile(req.file.buffer);
-    res.json({
-      success: true,
-      message: 'Database restored and live immediately.',
-      totalFarmers: farmerCount,
-    });
-  } catch (err) {
-    res.status(500).json({
-      error: err instanceof Error ? err.message : 'Restore failed',
-    });
-  }
-});
+}));
 
 export default router;

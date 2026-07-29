@@ -1,0 +1,6 @@
+id,program_project_id,name,description,task_order,payment_value_kes,assigned_agronomist_id,due_date,created_at,updated_at
+92242d65-0e81-403d-9381-4efb4f77037b,58ef287f-6f6e-41b9-9e6a-a14b32b12be6,"Farmer Training","Complete Farmer Training",1,4000,,2026-08-05,"2026-07-29 16:51:14","2026-07-29 16:51:14"
+498baee7-d1ba-4a22-8e10-a1d3b9c3b52f,58ef287f-6f6e-41b9-9e6a-a14b32b12be6,"Obtain Seedlings","Complete Obtain Seedlings",2,4000,,2026-08-12,"2026-07-29 16:51:14","2026-07-29 16:51:14"
+a8d17125-5fae-4d01-aa26-57b361c59cb1,58ef287f-6f6e-41b9-9e6a-a14b32b12be6,"Site Preparation","Complete Site Preparation",3,4000,,2026-08-19,"2026-07-29 16:51:14","2026-07-29 16:51:14"
+06c606b7-c02f-42dd-94e3-482499e7304d,58ef287f-6f6e-41b9-9e6a-a14b32b12be6,"Plant Trees","Complete Plant Trees",4,4000,,2026-08-26,"2026-07-29 16:51:14","2026-07-29 16:51:14"
+055cd778-9c0e-4166-86ad-65f8989c6348,58ef287f-6f6e-41b9-9e6a-a14b32b12be6,"Inspection & Sign-off","Complete Inspection & Sign-off",5,4000,,2026-09-02,"2026-07-29 16:51:14","2026-07-29 16:51:14"

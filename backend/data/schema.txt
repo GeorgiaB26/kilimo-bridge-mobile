@@ -1,0 +1,749 @@
+Kilimo Bridge SQLite Database Schema
+Database: backend/data/kilimo.db
+Generated: 2026-07-29 16:52:04 UTC
+Tables: 22
+
+================================================================================
+TABLE RELATIONSHIPS (Foreign Keys)
+================================================================================
+
+From Table               From Column          To Table             To Column
+-----------------------  -------------------  -------------------  ---------
+agents                   user_id              users                user_id  
+bank_transactions        farmer_id            farmers              farmer_id
+bank_transactions        payment_id           payments             id       
+centre_inventory         task_id              tasks                id       
+centre_inventory         farmer_id            farmers              farmer_id
+centre_inventory         centre_id            aggregation_centres  centre_id
+farmer_projects          project_id           projects             id       
+farmer_projects          farmer_id            farmers              farmer_id
+farmer_tasks             program_project_id   program_projects     id       
+farmer_tasks             farmer_id            farmers              farmer_id
+farmer_tasks             task_id              tasks                id       
+farmers                  membership_group_id  membership_groups    id       
+notifications            user_id              users                user_id  
+payment_verifications    agent_user_id        users                user_id  
+payment_verifications    payment_id           payments             id       
+payments                 farmer_id            farmers              farmer_id
+program_project_farmers  farmer_id            farmers              farmer_id
+program_project_farmers  program_project_id   program_projects     id       
+program_projects         country_manager_id   users                user_id  
+program_projects         program_id           programs             id       
+programs                 sector_id            sectors              id       
+tasks                    program_project_id   program_projects     id       
+users                    farmer_id            farmers              farmer_id
+
+================================================================================
+ENTITY RELATIONSHIP SUMMARY
+================================================================================
+
+Core farmer domain:
+  membership_groups (1) ──< farmers (N)
+  farmers (1) ──< users (0..1, role=farmer)
+  farmers (1) ──< farmer_projects (N) >── projects (1)
+  farmers (1) ──< payments (N)
+
+Auth & staff:
+  users (1) ──< agents (0..1)
+  users (1) ──< notifications (N)
+  users (1) ──< payment_verifications (N, as agent)
+
+Banking:
+  payments (1) ──< bank_transactions (N)
+  payments (1) ──< payment_verifications (N)
+
+Phase 2 program hierarchy:
+  sectors (1) ──< programs (N) ──< program_projects (N) >── users (country_manager)
+  program_projects (1) ──< tasks (N)
+  program_projects (N) >──< farmers (N)  via program_project_farmers
+  tasks + farmers + program_projects ──< farmer_tasks (N)
+
+Aggregation & inventory:
+  aggregation_centres (1) ──< centre_inventory (N) >── farmers, tasks
+
+Standalone / import:
+  import_sessions, otp_codes, audit_logs, locations (no FK constraints)
+
+================================================================================
+INDEXES
+================================================================================
+
+CREATE INDEX idx_agents_region ON agents(region);
+CREATE INDEX idx_agg_centres_country ON aggregation_centres(country, location_level_1);
+CREATE INDEX idx_audit_category ON audit_logs(category);
+CREATE INDEX idx_audit_created ON audit_logs(created_at);
+CREATE INDEX idx_audit_user ON audit_logs(user_id);
+CREATE INDEX idx_bank_tx_status ON bank_transactions(status);
+CREATE INDEX idx_centre_inventory_centre ON centre_inventory(centre_id);
+CREATE INDEX idx_farmer_projects_farmer ON farmer_projects(farmer_id);
+CREATE INDEX idx_farmer_tasks_farmer ON farmer_tasks(farmer_id);
+CREATE INDEX idx_farmer_tasks_status ON farmer_tasks(status);
+CREATE INDEX idx_farmers_country ON farmers(country, location_level_1);
+CREATE INDEX idx_farmers_district ON farmers(district);
+CREATE INDEX idx_farmers_id_number ON farmers(id_number);
+CREATE UNIQUE INDEX idx_farmers_kb_id ON farmers(kb_farmer_id);
+CREATE INDEX idx_farmers_key ON farmers(key);
+CREATE INDEX idx_farmers_phone ON farmers(phone_number);
+CREATE INDEX idx_locations_country ON locations(country, level_1, level_2);
+CREATE INDEX idx_payments_farmer ON payments(farmer_id);
+CREATE INDEX idx_program_projects_program ON program_projects(program_id);
+CREATE INDEX idx_programs_sector ON programs(sector_id);
+CREATE INDEX idx_tasks_project ON tasks(program_project_id);
+CREATE INDEX idx_users_phone ON users(phone_number);
+CREATE INDEX idx_users_role ON users(role);
+
+================================================================================
+TABLE DEFINITIONS (DDL)
+================================================================================
+
+CREATE TABLE membership_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+CREATE TABLE projects (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+CREATE TABLE farmers (
+      farmer_id TEXT PRIMARY KEY,
+      key TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      gender TEXT NOT NULL,
+      id_number TEXT UNIQUE NOT NULL,
+      membership_group_id TEXT NOT NULL,
+      aggregation_center TEXT,
+      phone_number TEXT UNIQUE NOT NULL,
+      country TEXT DEFAULT 'Kenya',
+      district TEXT NOT NULL,
+      sub_county TEXT NOT NULL,
+      parish TEXT,
+      village TEXT,
+      membership_type TEXT DEFAULT 'Active',
+      occupation TEXT,
+      size_of_land REAL,
+      picture_url TEXT,
+      project_1 TEXT,
+      project_2 TEXT,
+      project_3 TEXT,
+      status TEXT DEFAULT 'Active',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')), id_number_encrypted TEXT, bank_account_encrypted TEXT, registered_by_agent_id TEXT, kb_farmer_id TEXT, location_path TEXT, location_level_1 TEXT, location_level_2 TEXT, location_level_3 TEXT, location_level_4 TEXT, phone_country_prefix TEXT,
+      FOREIGN KEY (membership_group_id) REFERENCES membership_groups(id)
+    );
+CREATE TABLE import_sessions (
+      id TEXT PRIMARY KEY,
+      status TEXT DEFAULT 'pending',
+      total_rows INTEGER DEFAULT 0,
+      valid_rows INTEGER DEFAULT 0,
+      invalid_rows INTEGER DEFAULT 0,
+      duplicates INTEGER DEFAULT 0,
+      imported_count INTEGER DEFAULT 0,
+      data TEXT,
+      errors TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      completed_at TEXT
+    );
+CREATE INDEX idx_farmers_phone ON farmers(phone_number);
+CREATE INDEX idx_farmers_district ON farmers(district);
+CREATE INDEX idx_farmers_key ON farmers(key);
+CREATE INDEX idx_farmers_id_number ON farmers(id_number);
+CREATE TABLE users (
+      user_id TEXT PRIMARY KEY,
+      phone_number TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      farmer_id TEXT,
+      district TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')), password_hash TEXT, region TEXT, aggregation_center TEXT,
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+    );
+CREATE TABLE otp_codes (
+      id TEXT PRIMARY KEY,
+      phone_number TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+CREATE TABLE farmer_projects (
+      id TEXT PRIMARY KEY,
+      farmer_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      project_name TEXT NOT NULL,
+      payment_amount INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'Assigned',
+      completion_percentage INTEGER DEFAULT 0,
+      earnings_amount INTEGER DEFAULT 0,
+      payment_status TEXT DEFAULT 'Pending',
+      start_date TEXT,
+      due_date TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id),
+      FOREIGN KEY (project_id) REFERENCES projects(id)
+    );
+CREATE TABLE payments (
+      id TEXT PRIMARY KEY,
+      farmer_id TEXT NOT NULL,
+      farmer_project_id TEXT,
+      project_name TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      currency TEXT DEFAULT 'KES',
+      payment_method TEXT DEFAULT 'M-Pesa',
+      payment_status TEXT DEFAULT 'Pending',
+      mpesa_reference TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      paid_at TEXT, processed_by TEXT, verification_status TEXT DEFAULT 'unverified',
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+    );
+CREATE TABLE notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT DEFAULT 'info',
+      read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    );
+CREATE INDEX idx_users_phone ON users(phone_number);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_farmer_projects_farmer ON farmer_projects(farmer_id);
+CREATE INDEX idx_payments_farmer ON payments(farmer_id);
+CREATE TABLE audit_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      user_role TEXT,
+      action TEXT NOT NULL,
+      category TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      success INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+CREATE TABLE agents (
+      agent_id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
+      government_id_encrypted TEXT NOT NULL,
+      aggregation_center TEXT NOT NULL,
+      region TEXT NOT NULL,
+      district TEXT NOT NULL,
+      status TEXT DEFAULT 'pending_verification',
+      verified_by TEXT,
+      verified_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    );
+CREATE TABLE bank_transactions (
+      id TEXT PRIMARY KEY,
+      payment_id TEXT,
+      farmer_id TEXT,
+      amount INTEGER NOT NULL,
+      currency TEXT DEFAULT 'KES',
+      recipient_phone TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      equity_reference TEXT,
+      equity_response TEXT,
+      error_message TEXT,
+      initiated_by TEXT,
+      webhook_received_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      completed_at TEXT,
+      FOREIGN KEY (payment_id) REFERENCES payments(id),
+      FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+    );
+CREATE TABLE payment_verifications (
+      id TEXT PRIMARY KEY,
+      payment_id TEXT NOT NULL,
+      agent_user_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      notes TEXT,
+      verified_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (payment_id) REFERENCES payments(id),
+      FOREIGN KEY (agent_user_id) REFERENCES users(user_id)
+    );
+CREATE INDEX idx_audit_user ON audit_logs(user_id);
+CREATE INDEX idx_audit_category ON audit_logs(category);
+CREATE INDEX idx_audit_created ON audit_logs(created_at);
+CREATE INDEX idx_agents_region ON agents(region);
+CREATE INDEX idx_bank_tx_status ON bank_transactions(status);
+CREATE UNIQUE INDEX idx_farmers_kb_id ON farmers(kb_farmer_id);
+CREATE INDEX idx_farmers_country ON farmers(country, location_level_1);
+CREATE TABLE locations (
+        location_id TEXT PRIMARY KEY,
+        country TEXT NOT NULL,
+        level_1 TEXT,
+        level_2 TEXT,
+        level_3 TEXT,
+        level_4 TEXT,
+        location_path TEXT,
+        aggregation_centers_count INTEGER DEFAULT 0
+      );
+CREATE INDEX idx_locations_country ON locations(country, level_1, level_2);
+CREATE TABLE aggregation_centres (
+        centre_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        country TEXT NOT NULL,
+        location_level_1 TEXT NOT NULL,
+        location_level_2 TEXT,
+        region TEXT,
+        status TEXT DEFAULT 'Active',
+        created_at TEXT DEFAULT (datetime('now'))
+      , manager_name TEXT, manager_phone TEXT);
+CREATE INDEX idx_agg_centres_country ON aggregation_centres(country, location_level_1);
+CREATE TABLE sectors (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        country TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+CREATE TABLE programs (
+        id TEXT PRIMARY KEY,
+        sector_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')), budget_kes INTEGER,
+        FOREIGN KEY (sector_id) REFERENCES sectors(id)
+      );
+CREATE INDEX idx_programs_sector ON programs(sector_id);
+CREATE TABLE program_projects (
+        id TEXT PRIMARY KEY,
+        program_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        region TEXT,
+        budget_kes INTEGER,
+        start_date TEXT,
+        end_date TEXT,
+        status TEXT DEFAULT 'active',
+        country_manager_id TEXT,
+        total_tasks INTEGER DEFAULT 0,
+        completed_tasks INTEGER DEFAULT 0,
+        is_test INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (program_id) REFERENCES programs(id),
+        FOREIGN KEY (country_manager_id) REFERENCES users(user_id)
+      );
+CREATE INDEX idx_program_projects_program ON program_projects(program_id);
+CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        program_project_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        task_order INTEGER NOT NULL,
+        payment_value_kes INTEGER DEFAULT 0,
+        assigned_agronomist_id TEXT,
+        due_date TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (program_project_id) REFERENCES program_projects(id)
+      );
+CREATE INDEX idx_tasks_project ON tasks(program_project_id);
+CREATE TABLE program_project_farmers (
+        id TEXT PRIMARY KEY,
+        program_project_id TEXT NOT NULL,
+        farmer_id TEXT NOT NULL,
+        status TEXT DEFAULT 'assigned',
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(program_project_id, farmer_id),
+        FOREIGN KEY (program_project_id) REFERENCES program_projects(id),
+        FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id)
+      );
+CREATE TABLE farmer_tasks (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        farmer_id TEXT NOT NULL,
+        program_project_id TEXT NOT NULL,
+        status TEXT DEFAULT 'not-started',
+        submitted_date TEXT,
+        approved_date TEXT,
+        completed_date TEXT,
+        photo_evidence_url TEXT,
+        notes TEXT,
+        rejection_reason TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(task_id, farmer_id),
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id),
+        FOREIGN KEY (program_project_id) REFERENCES program_projects(id)
+      );
+CREATE INDEX idx_farmer_tasks_farmer ON farmer_tasks(farmer_id);
+CREATE INDEX idx_farmer_tasks_status ON farmer_tasks(status);
+CREATE TABLE centre_inventory (
+        id TEXT PRIMARY KEY,
+        centre_id TEXT NOT NULL,
+        farmer_id TEXT NOT NULL,
+        task_id TEXT,
+        product_name TEXT NOT NULL,
+        quantity_received REAL NOT NULL,
+        unit TEXT DEFAULT 'kg',
+        quality_status TEXT DEFAULT 'pending',
+        quality_notes TEXT,
+        received_date TEXT DEFAULT (datetime('now')),
+        scanned_by_user_id TEXT,
+        is_marketplace_ready INTEGER DEFAULT 0,
+        marketplace_price_per_unit REAL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (centre_id) REFERENCES aggregation_centres(centre_id),
+        FOREIGN KEY (farmer_id) REFERENCES farmers(farmer_id),
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+CREATE INDEX idx_centre_inventory_centre ON centre_inventory(centre_id);
+
+================================================================================
+TABLE COLUMNS (detailed)
+================================================================================
+
+--- agents ---
+cid  name                     type  notnull  dflt_value              pk
+---  -----------------------  ----  -------  ----------------------  --
+0    agent_id                 TEXT  0                                1 
+1    user_id                  TEXT  1                                0 
+2    government_id_encrypted  TEXT  1                                0 
+3    aggregation_center       TEXT  1                                0 
+4    region                   TEXT  1                                0 
+5    district                 TEXT  1                                0 
+6    status                   TEXT  0        'pending_verification'  0 
+7    verified_by              TEXT  0                                0 
+8    verified_at              TEXT  0                                0 
+9    created_at               TEXT  0        datetime('now')         0 
+Row count: 1
+
+--- aggregation_centres ---
+cid  name              type  notnull  dflt_value       pk
+---  ----------------  ----  -------  ---------------  --
+0    centre_id         TEXT  0                         1 
+1    name              TEXT  1                         0 
+2    country           TEXT  1                         0 
+3    location_level_1  TEXT  1                         0 
+4    location_level_2  TEXT  0                         0 
+5    region            TEXT  0                         0 
+6    status            TEXT  0        'Active'         0 
+7    created_at        TEXT  0        datetime('now')  0 
+8    manager_name      TEXT  0                         0 
+9    manager_phone     TEXT  0                         0 
+Row count: 39
+
+--- audit_logs ---
+cid  name           type     notnull  dflt_value       pk
+---  -------------  -------  -------  ---------------  --
+0    id             TEXT     0                         1 
+1    user_id        TEXT     0                         0 
+2    user_role      TEXT     0                         0 
+3    action         TEXT     1                         0 
+4    category       TEXT     1                         0 
+5    resource_type  TEXT     0                         0 
+6    resource_id    TEXT     0                         0 
+7    details        TEXT     0                         0 
+8    ip_address     TEXT     0                         0 
+9    success        INTEGER  0        1                0 
+10   created_at     TEXT     0        datetime('now')  0 
+Row count: 1
+
+--- bank_transactions ---
+cid  name                 type     notnull  dflt_value       pk
+---  -------------------  -------  -------  ---------------  --
+0    id                   TEXT     0                         1 
+1    payment_id           TEXT     0                         0 
+2    farmer_id            TEXT     0                         0 
+3    amount               INTEGER  1                         0 
+4    currency             TEXT     0        'KES'            0 
+5    recipient_phone      TEXT     1                         0 
+6    status               TEXT     0        'pending'        0 
+7    equity_reference     TEXT     0                         0 
+8    equity_response      TEXT     0                         0 
+9    error_message        TEXT     0                         0 
+10   initiated_by         TEXT     0                         0 
+11   webhook_received_at  TEXT     0                         0 
+12   created_at           TEXT     0        datetime('now')  0 
+13   completed_at         TEXT     0                         0 
+Row count: 0
+
+--- centre_inventory ---
+cid  name                        type     notnull  dflt_value       pk
+---  --------------------------  -------  -------  ---------------  --
+0    id                          TEXT     0                         1 
+1    centre_id                   TEXT     1                         0 
+2    farmer_id                   TEXT     1                         0 
+3    task_id                     TEXT     0                         0 
+4    product_name                TEXT     1                         0 
+5    quantity_received           REAL     1                         0 
+6    unit                        TEXT     0        'kg'             0 
+7    quality_status              TEXT     0        'pending'        0 
+8    quality_notes               TEXT     0                         0 
+9    received_date               TEXT     0        datetime('now')  0 
+10   scanned_by_user_id          TEXT     0                         0 
+11   is_marketplace_ready        INTEGER  0        0                0 
+12   marketplace_price_per_unit  REAL     0                         0 
+13   created_at                  TEXT     0        datetime('now')  0 
+Row count: 0
+
+--- farmer_projects ---
+cid  name                   type     notnull  dflt_value       pk
+---  ---------------------  -------  -------  ---------------  --
+0    id                     TEXT     0                         1 
+1    farmer_id              TEXT     1                         0 
+2    project_id             TEXT     1                         0 
+3    project_name           TEXT     1                         0 
+4    payment_amount         INTEGER  0        0                0 
+5    status                 TEXT     0        'Assigned'       0 
+6    completion_percentage  INTEGER  0        0                0 
+7    earnings_amount        INTEGER  0        0                0 
+8    payment_status         TEXT     0        'Pending'        0 
+9    start_date             TEXT     0                         0 
+10   due_date               TEXT     0                         0 
+11   completed_at           TEXT     0                         0 
+12   created_at             TEXT     0        datetime('now')  0 
+Row count: 2
+
+--- farmer_tasks ---
+cid  name                type  notnull  dflt_value       pk
+---  ------------------  ----  -------  ---------------  --
+0    id                  TEXT  0                         1 
+1    task_id             TEXT  1                         0 
+2    farmer_id           TEXT  1                         0 
+3    program_project_id  TEXT  1                         0 
+4    status              TEXT  0        'not-started'    0 
+5    submitted_date      TEXT  0                         0 
+6    approved_date       TEXT  0                         0 
+7    completed_date      TEXT  0                         0 
+8    photo_evidence_url  TEXT  0                         0 
+9    notes               TEXT  0                         0 
+10   rejection_reason    TEXT  0                         0 
+11   created_at          TEXT  0        datetime('now')  0 
+12   updated_at          TEXT  0        datetime('now')  0 
+Row count: 5
+
+--- farmers ---
+cid  name                    type  notnull  dflt_value       pk
+---  ----------------------  ----  -------  ---------------  --
+0    farmer_id               TEXT  0                         1 
+1    key                     TEXT  1                         0 
+2    name                    TEXT  1                         0 
+3    gender                  TEXT  1                         0 
+4    id_number               TEXT  1                         0 
+5    membership_group_id     TEXT  1                         0 
+6    aggregation_center      TEXT  0                         0 
+7    phone_number            TEXT  1                         0 
+8    country                 TEXT  0        'Kenya'          0 
+9    district                TEXT  1                         0 
+10   sub_county              TEXT  1                         0 
+11   parish                  TEXT  0                         0 
+12   village                 TEXT  0                         0 
+13   membership_type         TEXT  0        'Active'         0 
+14   occupation              TEXT  0                         0 
+15   size_of_land            REAL  0                         0 
+16   picture_url             TEXT  0                         0 
+17   project_1               TEXT  0                         0 
+18   project_2               TEXT  0                         0 
+19   project_3               TEXT  0                         0 
+20   status                  TEXT  0        'Active'         0 
+21   created_at              TEXT  0        datetime('now')  0 
+22   updated_at              TEXT  0        datetime('now')  0 
+23   id_number_encrypted     TEXT  0                         0 
+24   bank_account_encrypted  TEXT  0                         0 
+25   registered_by_agent_id  TEXT  0                         0 
+26   kb_farmer_id            TEXT  0                         0 
+27   location_path           TEXT  0                         0 
+28   location_level_1        TEXT  0                         0 
+29   location_level_2        TEXT  0                         0 
+30   location_level_3        TEXT  0                         0 
+31   location_level_4        TEXT  0                         0 
+32   phone_country_prefix    TEXT  0                         0 
+Row count: 1
+
+--- import_sessions ---
+cid  name            type     notnull  dflt_value       pk
+---  --------------  -------  -------  ---------------  --
+0    id              TEXT     0                         1 
+1    status          TEXT     0        'pending'        0 
+2    total_rows      INTEGER  0        0                0 
+3    valid_rows      INTEGER  0        0                0 
+4    invalid_rows    INTEGER  0        0                0 
+5    duplicates      INTEGER  0        0                0 
+6    imported_count  INTEGER  0        0                0 
+7    data            TEXT     0                         0 
+8    errors          TEXT     0                         0 
+9    created_at      TEXT     0        datetime('now')  0 
+10   completed_at    TEXT     0                         0 
+Row count: 0
+
+--- locations ---
+cid  name                       type     notnull  dflt_value  pk
+---  -------------------------  -------  -------  ----------  --
+0    location_id                TEXT     0                    1 
+1    country                    TEXT     1                    0 
+2    level_1                    TEXT     0                    0 
+3    level_2                    TEXT     0                    0 
+4    level_3                    TEXT     0                    0 
+5    level_4                    TEXT     0                    0 
+6    location_path              TEXT     0                    0 
+7    aggregation_centers_count  INTEGER  0        0           0 
+Row count: 0
+
+--- membership_groups ---
+cid  name        type  notnull  dflt_value       pk
+---  ----------  ----  -------  ---------------  --
+0    id          TEXT  0                         1 
+1    name        TEXT  1                         0 
+2    created_at  TEXT  0        datetime('now')  0 
+Row count: 4
+
+--- notifications ---
+cid  name        type     notnull  dflt_value       pk
+---  ----------  -------  -------  ---------------  --
+0    id          TEXT     0                         1 
+1    user_id     TEXT     1                         0 
+2    title       TEXT     1                         0 
+3    message     TEXT     1                         0 
+4    type        TEXT     0        'info'           0 
+5    read        INTEGER  0        0                0 
+6    created_at  TEXT     0        datetime('now')  0 
+Row count: 2
+
+--- otp_codes ---
+cid  name          type     notnull  dflt_value       pk
+---  ------------  -------  -------  ---------------  --
+0    id            TEXT     0                         1 
+1    phone_number  TEXT     1                         0 
+2    code          TEXT     1                         0 
+3    expires_at    TEXT     1                         0 
+4    used          INTEGER  0        0                0 
+5    created_at    TEXT     0        datetime('now')  0 
+Row count: 0
+
+--- payment_verifications ---
+cid  name           type  notnull  dflt_value       pk
+---  -------------  ----  -------  ---------------  --
+0    id             TEXT  0                         1 
+1    payment_id     TEXT  1                         0 
+2    agent_user_id  TEXT  1                         0 
+3    status         TEXT  0        'pending'        0 
+4    notes          TEXT  0                         0 
+5    verified_at    TEXT  0                         0 
+6    created_at     TEXT  0        datetime('now')  0 
+Row count: 0
+
+--- payments ---
+cid  name                 type     notnull  dflt_value       pk
+---  -------------------  -------  -------  ---------------  --
+0    id                   TEXT     0                         1 
+1    farmer_id            TEXT     1                         0 
+2    farmer_project_id    TEXT     0                         0 
+3    project_name         TEXT     1                         0 
+4    amount               INTEGER  1                         0 
+5    currency             TEXT     0        'KES'            0 
+6    payment_method       TEXT     0        'M-Pesa'         0 
+7    payment_status       TEXT     0        'Pending'        0 
+8    mpesa_reference      TEXT     0                         0 
+9    created_at           TEXT     0        datetime('now')  0 
+10   paid_at              TEXT     0                         0 
+11   processed_by         TEXT     0                         0 
+12   verification_status  TEXT     0        'unverified'     0 
+Row count: 2
+
+--- program_project_farmers ---
+cid  name                type  notnull  dflt_value       pk
+---  ------------------  ----  -------  ---------------  --
+0    id                  TEXT  0                         1 
+1    program_project_id  TEXT  1                         0 
+2    farmer_id           TEXT  1                         0 
+3    status              TEXT  0        'assigned'       0 
+4    created_at          TEXT  0        datetime('now')  0 
+Row count: 1
+
+--- program_projects ---
+cid  name                type     notnull  dflt_value       pk
+---  ------------------  -------  -------  ---------------  --
+0    id                  TEXT     0                         1 
+1    program_id          TEXT     1                         0 
+2    name                TEXT     1                         0 
+3    region              TEXT     0                         0 
+4    budget_kes          INTEGER  0                         0 
+5    start_date          TEXT     0                         0 
+6    end_date            TEXT     0                         0 
+7    status              TEXT     0        'active'         0 
+8    country_manager_id  TEXT     0                         0 
+9    total_tasks         INTEGER  0        0                0 
+10   completed_tasks     INTEGER  0        0                0 
+11   is_test             INTEGER  0        0                0 
+12   created_at          TEXT     0        datetime('now')  0 
+13   updated_at          TEXT     0        datetime('now')  0 
+Row count: 1
+
+--- programs ---
+cid  name         type     notnull  dflt_value       pk
+---  -----------  -------  -------  ---------------  --
+0    id           TEXT     0                         1 
+1    sector_id    TEXT     1                         0 
+2    name         TEXT     1                         0 
+3    description  TEXT     0                         0 
+4    status       TEXT     0        'active'         0 
+5    created_at   TEXT     0        datetime('now')  0 
+6    updated_at   TEXT     0        datetime('now')  0 
+7    budget_kes   INTEGER  0                         0 
+Row count: 1
+
+--- projects ---
+cid  name        type  notnull  dflt_value       pk
+---  ----------  ----  -------  ---------------  --
+0    id          TEXT  0                         1 
+1    name        TEXT  1                         0 
+2    created_at  TEXT  0        datetime('now')  0 
+Row count: 5
+
+--- sectors ---
+cid  name         type  notnull  dflt_value       pk
+---  -----------  ----  -------  ---------------  --
+0    id           TEXT  0                         1 
+1    name         TEXT  1                         0 
+2    description  TEXT  0                         0 
+3    country      TEXT  0                         0 
+4    created_at   TEXT  0        datetime('now')  0 
+5    updated_at   TEXT  0        datetime('now')  0 
+Row count: 1
+
+--- tasks ---
+cid  name                    type     notnull  dflt_value       pk
+---  ----------------------  -------  -------  ---------------  --
+0    id                      TEXT     0                         1 
+1    program_project_id      TEXT     1                         0 
+2    name                    TEXT     1                         0 
+3    description             TEXT     0                         0 
+4    task_order              INTEGER  1                         0 
+5    payment_value_kes       INTEGER  0        0                0 
+6    assigned_agronomist_id  TEXT     0                         0 
+7    due_date                TEXT     0                         0 
+8    created_at              TEXT     0        datetime('now')  0 
+9    updated_at              TEXT     0        datetime('now')  0 
+Row count: 5
+
+--- users ---
+cid  name                type  notnull  dflt_value       pk
+---  ------------------  ----  -------  ---------------  --
+0    user_id             TEXT  0                         1 
+1    phone_number        TEXT  1                         0 
+2    name                TEXT  1                         0 
+3    role                TEXT  1                         0 
+4    farmer_id           TEXT  0                         0 
+5    district            TEXT  0                         0 
+6    status              TEXT  0        'active'         0 
+7    created_at          TEXT  0        datetime('now')  0 
+8    updated_at          TEXT  0        datetime('now')  0 
+9    password_hash       TEXT  0                         0 
+10   region              TEXT  0                         0 
+11   aggregation_center  TEXT  0                         0 
+Row count: 5
+

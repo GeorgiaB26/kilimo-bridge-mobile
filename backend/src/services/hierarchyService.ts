@@ -1,114 +1,148 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db/database';
+import { query, queryOne } from '../db/database';
 
-function refreshProjectTaskCounts(programProjectId: string): void {
-  const total = db.prepare('SELECT COUNT(*) as c FROM tasks WHERE program_project_id = ?').get(programProjectId) as { c: number };
-  const completed = db.prepare(`
-    SELECT COUNT(DISTINCT ft.task_id) as c FROM farmer_tasks ft
+export function toDbTaskStatus(status: string): string {
+  return status === 'submitted-for-approval' ? 'submitted' : status;
+}
+
+export function fromDbTaskStatus(status: string): string {
+  return status === 'submitted' ? 'submitted-for-approval' : status;
+}
+
+function mapFarmerTaskRow<T extends { status?: string }>(row: T): T {
+  if (row.status === undefined) return row;
+  return { ...row, status: fromDbTaskStatus(row.status) };
+}
+
+function mapFarmerTaskRows<T extends { status?: string }>(rows: T[]): T[] {
+  return rows.map(mapFarmerTaskRow);
+}
+
+async function refreshProjectTaskCounts(programProjectId: string): Promise<void> {
+  const total = await queryOne<{ c: number }>(
+    'SELECT COUNT(*)::int AS c FROM tasks WHERE program_project_id = $1',
+    [programProjectId]
+  );
+  const completed = await queryOne<{ c: number }>(`
+    SELECT COUNT(DISTINCT ft.task_id)::int AS c FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
-    WHERE t.program_project_id = ? AND ft.status IN ('approved', 'completed')
-  `).get(programProjectId) as { c: number };
-  db.prepare(`
-    UPDATE program_projects SET total_tasks = ?, completed_tasks = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(total.c, completed.c, programProjectId);
+    WHERE t.program_project_id = $1 AND ft.status IN ('approved', 'completed')
+  `, [programProjectId]);
+  await query(`
+    UPDATE program_projects SET total_tasks = $1, completed_tasks = $2, updated_at = NOW()
+    WHERE id = $3
+  `, [total?.c ?? 0, completed?.c ?? 0, programProjectId]);
 }
 
-export function listSectors() {
-  return db.prepare('SELECT * FROM sectors ORDER BY name').all();
+export async function listSectors() {
+  return query('SELECT * FROM sectors ORDER BY name');
 }
 
-export function createSector(data: { name: string; description?: string; country?: string }) {
+export async function createSector(data: { name: string; description?: string; country?: string }) {
   const id = uuidv4();
-  db.prepare('INSERT INTO sectors (id, name, description, country) VALUES (?, ?, ?, ?)').run(
-    id, data.name, data.description ?? null, data.country ?? null
+  await query(
+    'INSERT INTO sectors (id, name, description, country) VALUES ($1, $2, $3, $4)',
+    [id, data.name, data.description ?? null, data.country ?? null]
   );
-  return db.prepare('SELECT * FROM sectors WHERE id = ?').get(id);
+  return queryOne('SELECT * FROM sectors WHERE id = $1', [id]);
 }
 
-export function updateSector(id: string, data: { name?: string; description?: string; country?: string }) {
-  db.prepare(`
+export async function updateSector(id: string, data: { name?: string; description?: string; country?: string }) {
+  await query(`
     UPDATE sectors SET
-      name = COALESCE(?, name),
-      description = COALESCE(?, description),
-      country = COALESCE(?, country),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).run(data.name ?? null, data.description ?? null, data.country ?? null, id);
-  return db.prepare('SELECT * FROM sectors WHERE id = ?').get(id);
+      name = COALESCE($1, name),
+      description = COALESCE($2, description),
+      country = COALESCE($3, country),
+      updated_at = NOW()
+    WHERE id = $4
+  `, [data.name ?? null, data.description ?? null, data.country ?? null, id]);
+  return queryOne('SELECT * FROM sectors WHERE id = $1', [id]);
 }
 
-export function deleteSector(id: string): boolean {
-  const programs = db.prepare('SELECT COUNT(*) as c FROM programs WHERE sector_id = ?').get(id) as { c: number };
-  if (programs.c > 0) throw new Error('Sector has programs — delete programs first');
-  const result = db.prepare('DELETE FROM sectors WHERE id = ?').run(id);
-  return result.changes > 0;
+export async function deleteSector(id: string): Promise<boolean> {
+  const programs = await queryOne<{ c: number }>(
+    'SELECT COUNT(*)::int AS c FROM programs WHERE sector_id = $1',
+    [id]
+  );
+  if ((programs?.c ?? 0) > 0) throw new Error('Sector has programs — delete programs first');
+  const deleted = await queryOne<{ id: string }>(
+    'DELETE FROM sectors WHERE id = $1 RETURNING id',
+    [id]
+  );
+  return deleted !== null;
 }
 
-export function listPrograms(sectorId?: string) {
+export async function listPrograms(sectorId?: string) {
   if (sectorId) {
-    return db.prepare(`
-      SELECT p.*, s.name as sector_name FROM programs p
+    return query(`
+      SELECT p.*, s.name AS sector_name FROM programs p
       JOIN sectors s ON s.id = p.sector_id
-      WHERE p.sector_id = ? ORDER BY p.name
-    `).all(sectorId);
+      WHERE p.sector_id = $1 ORDER BY p.name
+    `, [sectorId]);
   }
-  return db.prepare(`
-    SELECT p.*, s.name as sector_name FROM programs p
+  return query(`
+    SELECT p.*, s.name AS sector_name FROM programs p
     JOIN sectors s ON s.id = p.sector_id ORDER BY s.name, p.name
-  `).all();
+  `);
 }
 
-export function createProgram(data: { name: string; sector_id: string; description?: string; budget_kes?: number }) {
+export async function createProgram(data: { name: string; sector_id: string; description?: string; budget_kes?: number }) {
   const id = uuidv4();
-  db.prepare('INSERT INTO programs (id, sector_id, name, description, budget_kes) VALUES (?, ?, ?, ?, ?)').run(
-    id, data.sector_id, data.name, data.description ?? null, data.budget_kes ?? null
+  await query(
+    'INSERT INTO programs (id, sector_id, name, description, budget_kes) VALUES ($1, $2, $3, $4, $5)',
+    [id, data.sector_id, data.name, data.description ?? null, data.budget_kes ?? null]
   );
   return getProgram(id);
 }
 
-export function updateProgram(id: string, data: { name?: string; sector_id?: string; description?: string; budget_kes?: number }) {
-  db.prepare(`
+export async function updateProgram(id: string, data: { name?: string; sector_id?: string; description?: string; budget_kes?: number }) {
+  await query(`
     UPDATE programs SET
-      name = COALESCE(?, name),
-      sector_id = COALESCE(?, sector_id),
-      description = COALESCE(?, description),
-      budget_kes = COALESCE(?, budget_kes),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).run(data.name ?? null, data.sector_id ?? null, data.description ?? null, data.budget_kes ?? null, id);
+      name = COALESCE($1, name),
+      sector_id = COALESCE($2, sector_id),
+      description = COALESCE($3, description),
+      budget_kes = COALESCE($4, budget_kes),
+      updated_at = NOW()
+    WHERE id = $5
+  `, [data.name ?? null, data.sector_id ?? null, data.description ?? null, data.budget_kes ?? null, id]);
   return getProgram(id);
 }
 
-export function deleteProgram(id: string): boolean {
-  const projects = db.prepare('SELECT COUNT(*) as c FROM program_projects WHERE program_id = ?').get(id) as { c: number };
-  if (projects.c > 0) throw new Error('Program has projects — delete projects first');
-  const result = db.prepare('DELETE FROM programs WHERE id = ?').run(id);
-  return result.changes > 0;
+export async function deleteProgram(id: string): Promise<boolean> {
+  const projects = await queryOne<{ c: number }>(
+    'SELECT COUNT(*)::int AS c FROM program_projects WHERE program_id = $1',
+    [id]
+  );
+  if ((projects?.c ?? 0) > 0) throw new Error('Program has projects — delete projects first');
+  const deleted = await queryOne<{ id: string }>(
+    'DELETE FROM programs WHERE id = $1 RETURNING id',
+    [id]
+  );
+  return deleted !== null;
 }
 
-export function getProgram(id: string) {
-  return db.prepare(`
-    SELECT p.*, s.name as sector_name FROM programs p
-    JOIN sectors s ON s.id = p.sector_id WHERE p.id = ?
-  `).get(id);
+export async function getProgram(id: string) {
+  return queryOne(`
+    SELECT p.*, s.name AS sector_name FROM programs p
+    JOIN sectors s ON s.id = p.sector_id WHERE p.id = $1
+  `, [id]);
 }
 
-export function listProgramProjects(programId?: string) {
+export async function listProgramProjects(programId?: string) {
   const sql = `
-    SELECT pp.*, p.name as program_name, s.name as sector_name,
-      (SELECT COUNT(*) FROM program_project_farmers pf WHERE pf.program_project_id = pp.id) as farmers_count,
-      CASE WHEN pp.total_tasks > 0 THEN ROUND(100.0 * pp.completed_tasks / pp.total_tasks) ELSE 0 END as progress_percent
+    SELECT pp.*, p.name AS program_name, s.name AS sector_name,
+      (SELECT COUNT(*)::int FROM program_project_farmers pf WHERE pf.program_project_id = pp.id) AS farmers_count,
+      CASE WHEN pp.total_tasks > 0 THEN ROUND(100.0 * pp.completed_tasks / pp.total_tasks) ELSE 0 END AS progress_percent
     FROM program_projects pp
     JOIN programs p ON p.id = pp.program_id
     JOIN sectors s ON s.id = p.sector_id
-    ${programId ? 'WHERE pp.program_id = ?' : ''}
+    ${programId ? 'WHERE pp.program_id = $1' : ''}
     ORDER BY pp.created_at DESC
   `;
-  return programId ? db.prepare(sql).all(programId) : db.prepare(sql).all();
+  return programId ? query(sql, [programId]) : query(sql);
 }
 
-export function createProgramProject(data: {
+export async function createProgramProject(data: {
   name: string;
   program_id: string;
   region?: string;
@@ -118,17 +152,17 @@ export function createProgramProject(data: {
   country_manager_id?: string;
 }) {
   const id = uuidv4();
-  db.prepare(`
+  await query(`
     INSERT INTO program_projects (id, program_id, name, region, budget_kes, start_date, end_date, country_manager_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  `, [
     id, data.program_id, data.name, data.region ?? null, data.budget_kes ?? null,
-    data.start_date ?? null, data.end_date ?? null, data.country_manager_id ?? null
-  );
+    data.start_date ?? null, data.end_date ?? null, data.country_manager_id ?? null,
+  ]);
   return getProgramProject(id);
 }
 
-export function updateProgramProject(id: string, data: {
+export async function updateProgramProject(id: string, data: {
   name?: string;
   program_id?: string;
   region?: string;
@@ -137,88 +171,91 @@ export function updateProgramProject(id: string, data: {
   end_date?: string;
   status?: string;
 }) {
-  db.prepare(`
+  await query(`
     UPDATE program_projects SET
-      name = COALESCE(?, name),
-      program_id = COALESCE(?, program_id),
-      region = COALESCE(?, region),
-      budget_kes = COALESCE(?, budget_kes),
-      start_date = COALESCE(?, start_date),
-      end_date = COALESCE(?, end_date),
-      status = COALESCE(?, status),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).run(
+      name = COALESCE($1, name),
+      program_id = COALESCE($2, program_id),
+      region = COALESCE($3, region),
+      budget_kes = COALESCE($4, budget_kes),
+      start_date = COALESCE($5, start_date),
+      end_date = COALESCE($6, end_date),
+      status = COALESCE($7, status),
+      updated_at = NOW()
+    WHERE id = $8
+  `, [
     data.name ?? null, data.program_id ?? null, data.region ?? null, data.budget_kes ?? null,
-    data.start_date ?? null, data.end_date ?? null, data.status ?? null, id
-  );
+    data.start_date ?? null, data.end_date ?? null, data.status ?? null, id,
+  ]);
   return getProgramProject(id);
 }
 
-export function deleteProgramProject(id: string): boolean {
-  db.prepare('DELETE FROM farmer_tasks WHERE program_project_id = ?').run(id);
-  db.prepare('DELETE FROM program_project_farmers WHERE program_project_id = ?').run(id);
-  db.prepare('DELETE FROM tasks WHERE program_project_id = ?').run(id);
-  const result = db.prepare('DELETE FROM program_projects WHERE id = ?').run(id);
-  return result.changes > 0;
+export async function deleteProgramProject(id: string): Promise<boolean> {
+  await query('DELETE FROM farmer_tasks WHERE program_project_id = $1', [id]);
+  await query('DELETE FROM program_project_farmers WHERE program_project_id = $1', [id]);
+  await query('DELETE FROM tasks WHERE program_project_id = $1', [id]);
+  const deleted = await queryOne<{ id: string }>(
+    'DELETE FROM program_projects WHERE id = $1 RETURNING id',
+    [id]
+  );
+  return deleted !== null;
 }
 
-export function getProgramProject(id: string) {
-  const project = db.prepare(`
-    SELECT pp.*, p.name as program_name, s.name as sector_name,
-      (SELECT COUNT(*) FROM program_project_farmers pf WHERE pf.program_project_id = pp.id) as farmers_count,
-      CASE WHEN pp.total_tasks > 0 THEN ROUND(100.0 * pp.completed_tasks / pp.total_tasks) ELSE 0 END as progress_percent
+export async function getProgramProject(id: string) {
+  const project = await queryOne(`
+    SELECT pp.*, p.name AS program_name, s.name AS sector_name,
+      (SELECT COUNT(*)::int FROM program_project_farmers pf WHERE pf.program_project_id = pp.id) AS farmers_count,
+      CASE WHEN pp.total_tasks > 0 THEN ROUND(100.0 * pp.completed_tasks / pp.total_tasks) ELSE 0 END AS progress_percent
     FROM program_projects pp
     JOIN programs p ON p.id = pp.program_id
     JOIN sectors s ON s.id = p.sector_id
-    WHERE pp.id = ?
-  `).get(id);
+    WHERE pp.id = $1
+  `, [id]);
   if (!project) return null;
 
-  const tasks = listTasks(id);
-  const farmers = db.prepare(`
+  const tasks = await listTasks(id);
+  const farmers = await query(`
     SELECT f.farmer_id, f.name, f.phone_number, f.district, pf.status
     FROM program_project_farmers pf
     JOIN farmers f ON f.farmer_id = pf.farmer_id
-    WHERE pf.program_project_id = ?
-  `).all(id);
+    WHERE pf.program_project_id = $1
+  `, [id]);
 
   return { ...project, tasks, farmers };
 }
 
-export function listTasks(programProjectId: string, filters?: { status?: string; farmer_id?: string }) {
+export async function listTasks(programProjectId: string, filters?: { status?: string; farmer_id?: string }) {
   if (filters?.farmer_id) {
     if (filters.status) {
-      return db.prepare(`
+      return query(`
         SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
-          f.name as farmer_name
+          f.name AS farmer_name
         FROM farmer_tasks ft
         JOIN tasks t ON t.id = ft.task_id
         JOIN farmers f ON f.farmer_id = ft.farmer_id
-        WHERE ft.program_project_id = ? AND ft.farmer_id = ? AND ft.status = ?
+        WHERE ft.program_project_id = $1 AND ft.farmer_id = $2 AND ft.status = $3
         ORDER BY t.task_order
-      `).all(programProjectId, filters.farmer_id, filters.status);
+      `, [programProjectId, filters.farmer_id, filters.status]);
     }
-    return db.prepare(`
+    return query(`
       SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
-        f.name as farmer_name
+        f.name AS farmer_name
       FROM farmer_tasks ft
       JOIN tasks t ON t.id = ft.task_id
       JOIN farmers f ON f.farmer_id = ft.farmer_id
-      WHERE ft.program_project_id = ? AND ft.farmer_id = ?
+      WHERE ft.program_project_id = $1 AND ft.farmer_id = $2
       ORDER BY t.task_order
-    `).all(programProjectId, filters.farmer_id);
+    `, [programProjectId, filters.farmer_id]);
   }
 
-  return db.prepare(`
+  return query(`
     SELECT t.*, (
-      SELECT COUNT(*) FROM farmer_tasks ft WHERE ft.task_id = t.id AND ft.status IN ('approved','completed')
-    ) as completed_count
-    FROM tasks t WHERE t.program_project_id = ? ORDER BY t.task_order
-  `).all(programProjectId);
+      SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.task_id = t.id AND ft.status IN ('approved','completed')
+    ) AS completed_count
+    FROM tasks t WHERE t.program_project_id = $1 ORDER BY t.task_order
+  `, [programProjectId]);
 }
 
-export function createTask(data: {
+export async function createTask(data: {
   program_project_id: string;
   name: string;
   description?: string;
@@ -228,242 +265,263 @@ export function createTask(data: {
   assigned_agronomist_id?: string;
 }) {
   const id = uuidv4();
-  db.prepare(`
+  await query(`
     INSERT INTO tasks (id, program_project_id, name, description, task_order, payment_value_kes, due_date, assigned_agronomist_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  `, [
     id, data.program_project_id, data.name, data.description ?? null, data.task_order,
-    data.payment_value_kes ?? 0, data.due_date ?? null, data.assigned_agronomist_id ?? null
-  );
-  refreshProjectTaskCounts(data.program_project_id);
-  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    data.payment_value_kes ?? 0, data.due_date ?? null, data.assigned_agronomist_id ?? null,
+  ]);
+  await refreshProjectTaskCounts(data.program_project_id);
+  return queryOne('SELECT * FROM tasks WHERE id = $1', [id]);
 }
 
-export function updateTask(id: string, data: {
+export async function updateTask(id: string, data: {
   name?: string;
   description?: string;
   task_order?: number;
   payment_value_kes?: number;
   due_date?: string;
 }) {
-  const row = db.prepare('SELECT program_project_id FROM tasks WHERE id = ?').get(id) as
-    | { program_project_id: string }
-    | undefined;
-  if (!row) return null;
-  db.prepare(`
-    UPDATE tasks SET
-      name = COALESCE(?, name),
-      description = COALESCE(?, description),
-      task_order = COALESCE(?, task_order),
-      payment_value_kes = COALESCE(?, payment_value_kes),
-      due_date = COALESCE(?, due_date),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).run(
-    data.name ?? null, data.description ?? null, data.task_order ?? null,
-    data.payment_value_kes ?? null, data.due_date ?? null, id
+  const row = await queryOne<{ program_project_id: string }>(
+    'SELECT program_project_id FROM tasks WHERE id = $1',
+    [id]
   );
-  refreshProjectTaskCounts(row.program_project_id);
-  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!row) return null;
+  await query(`
+    UPDATE tasks SET
+      name = COALESCE($1, name),
+      description = COALESCE($2, description),
+      task_order = COALESCE($3, task_order),
+      payment_value_kes = COALESCE($4, payment_value_kes),
+      due_date = COALESCE($5, due_date),
+      updated_at = NOW()
+    WHERE id = $6
+  `, [
+    data.name ?? null, data.description ?? null, data.task_order ?? null,
+    data.payment_value_kes ?? null, data.due_date ?? null, id,
+  ]);
+  await refreshProjectTaskCounts(row.program_project_id);
+  return queryOne('SELECT * FROM tasks WHERE id = $1', [id]);
 }
 
-export function deleteTask(id: string): boolean {
-  const row = db.prepare('SELECT program_project_id FROM tasks WHERE id = ?').get(id) as
-    | { program_project_id: string }
-    | undefined;
+export async function deleteTask(id: string): Promise<boolean> {
+  const row = await queryOne<{ program_project_id: string }>(
+    'SELECT program_project_id FROM tasks WHERE id = $1',
+    [id]
+  );
   if (!row) return false;
-  db.prepare('DELETE FROM farmer_tasks WHERE task_id = ?').run(id);
-  const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
-  refreshProjectTaskCounts(row.program_project_id);
-  return result.changes > 0;
+  await query('DELETE FROM farmer_tasks WHERE task_id = $1', [id]);
+  const deleted = await queryOne<{ id: string }>(
+    'DELETE FROM tasks WHERE id = $1 RETURNING id',
+    [id]
+  );
+  await refreshProjectTaskCounts(row.program_project_id);
+  return deleted !== null;
 }
 
-export function reorderTask(id: string, direction: 'up' | 'down') {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as {
+export async function reorderTask(id: string, direction: 'up' | 'down') {
+  const task = await queryOne<{
     id: string;
     program_project_id: string;
     task_order: number;
-  } | undefined;
+  }>('SELECT * FROM tasks WHERE id = $1', [id]);
   if (!task) return null;
-  const neighbor = db.prepare(`
-    SELECT * FROM tasks WHERE program_project_id = ?
-      AND task_order ${direction === 'up' ? '<' : '>'} ?
+  const neighbor = await queryOne<{ id: string; task_order: number }>(`
+    SELECT * FROM tasks WHERE program_project_id = $1
+      AND task_order ${direction === 'up' ? '<' : '>'} $2
     ORDER BY task_order ${direction === 'up' ? 'DESC' : 'ASC'}
     LIMIT 1
-  `).get(task.program_project_id, task.task_order) as { id: string; task_order: number } | undefined;
-  if (!neighbor) return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  db.prepare('UPDATE tasks SET task_order = ?, updated_at = datetime(\'now\') WHERE id = ?')
-    .run(neighbor.task_order, task.id);
-  db.prepare('UPDATE tasks SET task_order = ?, updated_at = datetime(\'now\') WHERE id = ?')
-    .run(task.task_order, neighbor.id);
+  `, [task.program_project_id, task.task_order]);
+  if (!neighbor) return queryOne('SELECT * FROM tasks WHERE id = $1', [id]);
+  await query('UPDATE tasks SET task_order = $1, updated_at = NOW() WHERE id = $2', [neighbor.task_order, task.id]);
+  await query('UPDATE tasks SET task_order = $1, updated_at = NOW() WHERE id = $2', [task.task_order, neighbor.id]);
   return listTasks(task.program_project_id);
 }
 
-export function listProjectFarmers(programProjectId: string) {
-  return db.prepare(`
-    SELECT f.farmer_id, f.name, f.phone_number, pf.status, pf.created_at as assigned_date,
-      (SELECT GROUP_CONCAT(t.name, ' · ') FROM farmer_tasks ft
+export async function listProjectFarmers(programProjectId: string) {
+  return query(`
+    SELECT f.farmer_id, f.name, f.phone_number, pf.status, pf.created_at AS assigned_date,
+      (SELECT STRING_AGG(t.name, ' · ' ORDER BY t.task_order) FROM farmer_tasks ft
         JOIN tasks t ON t.id = ft.task_id
-        WHERE ft.farmer_id = f.farmer_id AND ft.program_project_id = pf.program_project_id
-        ORDER BY t.task_order) as assigned_tasks
+        WHERE ft.farmer_id = f.farmer_id AND ft.program_project_id = pf.program_project_id) AS assigned_tasks
     FROM program_project_farmers pf
     JOIN farmers f ON f.farmer_id = pf.farmer_id
-    WHERE pf.program_project_id = ?
+    WHERE pf.program_project_id = $1
     ORDER BY pf.created_at DESC
-  `).all(programProjectId);
+  `, [programProjectId]);
 }
 
-export function removeFarmerFromProject(programProjectId: string, farmerId: string): boolean {
-  db.prepare('DELETE FROM farmer_tasks WHERE program_project_id = ? AND farmer_id = ?').run(programProjectId, farmerId);
-  const result = db.prepare('DELETE FROM program_project_farmers WHERE program_project_id = ? AND farmer_id = ?')
-    .run(programProjectId, farmerId);
-  return result.changes > 0;
+export async function removeFarmerFromProject(programProjectId: string, farmerId: string): Promise<boolean> {
+  await query(
+    'DELETE FROM farmer_tasks WHERE program_project_id = $1 AND farmer_id = $2',
+    [programProjectId, farmerId]
+  );
+  const deleted = await queryOne<{ id: string }>(`
+    DELETE FROM program_project_farmers WHERE program_project_id = $1 AND farmer_id = $2 RETURNING id
+  `, [programProjectId, farmerId]);
+  return deleted !== null;
 }
 
-export function assignFarmersToProject(programProjectId: string, farmerIds: string[], taskIds?: string[]) {
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO program_project_farmers (id, program_project_id, farmer_id) VALUES (?, ?, ?)
-  `);
+export async function assignFarmersToProject(programProjectId: string, farmerIds: string[], taskIds?: string[]) {
   let taskRows: { id: string }[];
   if (taskIds && taskIds.length > 0) {
-    const placeholders = taskIds.map(() => '?').join(',');
-    taskRows = db.prepare(
-      `SELECT id FROM tasks WHERE program_project_id = ? AND id IN (${placeholders})`
-    ).all(programProjectId, ...taskIds) as { id: string }[];
+    const placeholders = taskIds.map((_, i) => `$${i + 2}`).join(',');
+    taskRows = await query<{ id: string }>(
+      `SELECT id FROM tasks WHERE program_project_id = $1 AND id IN (${placeholders})`,
+      [programProjectId, ...taskIds]
+    );
   } else {
-    taskRows = db.prepare('SELECT id FROM tasks WHERE program_project_id = ?').all(programProjectId) as { id: string }[];
+    taskRows = await query<{ id: string }>(
+      'SELECT id FROM tasks WHERE program_project_id = $1',
+      [programProjectId]
+    );
   }
-  const insertFarmerTask = db.prepare(`
-    INSERT OR IGNORE INTO farmer_tasks (id, task_id, farmer_id, program_project_id) VALUES (?, ?, ?, ?)
-  `);
 
   let assigned = 0;
   for (const farmerId of farmerIds) {
-    insert.run(uuidv4(), programProjectId, farmerId);
+    await query(`
+      INSERT INTO program_project_farmers (id, program_project_id, farmer_id)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (program_project_id, farmer_id) DO NOTHING
+    `, [uuidv4(), programProjectId, farmerId]);
     for (const t of taskRows) {
-      insertFarmerTask.run(uuidv4(), t.id, farmerId, programProjectId);
+      await query(`
+        INSERT INTO farmer_tasks (id, task_id, farmer_id, program_project_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (task_id, farmer_id) DO NOTHING
+      `, [uuidv4(), t.id, farmerId, programProjectId]);
     }
     assigned++;
   }
   return { assigned, farmer_ids: farmerIds, task_ids: taskRows.map((t) => t.id) };
 }
 
-export function getFarmerTask(farmerTaskId: string) {
-  return db.prepare(`
+export async function getFarmerTask(farmerTaskId: string) {
+  const row = await queryOne(`
     SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
-      pp.name as program_project_name, f.name as farmer_name, f.phone_number as farmer_phone
+      pp.name AS program_project_name, f.name AS farmer_name, f.phone_number AS farmer_phone
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id
-    WHERE ft.id = ?
-  `).get(farmerTaskId);
+    WHERE ft.id = $1
+  `, [farmerTaskId]);
+  if (!row) return null;
+  return mapFarmerTaskRow(row as { status?: string });
 }
 
-export function listFarmerTasks(farmerId: string, filters?: { status?: string; program_project_id?: string }) {
+export async function listFarmerTasks(farmerId: string, filters?: { status?: string; program_project_id?: string }) {
   let sql = `
     SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
-      pp.name as program_project_name
+      pp.name AS program_project_name
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
-    WHERE ft.farmer_id = ?
+    WHERE ft.farmer_id = $1
   `;
-  const params: string[] = [farmerId];
+  const params: unknown[] = [farmerId];
   if (filters?.program_project_id) {
-    sql += ' AND ft.program_project_id = ?';
     params.push(filters.program_project_id);
+    sql += ` AND ft.program_project_id = $${params.length}`;
   }
   if (filters?.status) {
-    sql += ' AND ft.status = ?';
-    params.push(filters.status);
+    params.push(toDbTaskStatus(filters.status));
+    sql += ` AND ft.status = $${params.length}`;
   }
   sql += ' ORDER BY pp.name, t.task_order';
-  return db.prepare(sql).all(...params);
+  const rows = await query<{ status?: string }>(sql, params);
+  return mapFarmerTaskRows(rows);
 }
 
-export function listFarmerProgramProjects(farmerId: string) {
-  return db.prepare(`
-    SELECT pp.*, p.name as program_name,
-      (SELECT COUNT(*) FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = ?) as task_count,
-      (SELECT COUNT(*) FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = ? AND ft.status IN ('approved','completed')) as completed_task_count
+export async function listFarmerProgramProjects(farmerId: string) {
+  return query(`
+    SELECT pp.*, p.name AS program_name,
+      (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1) AS task_count,
+      (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1 AND ft.status IN ('approved','completed')) AS completed_task_count
     FROM program_project_farmers pf
     JOIN program_projects pp ON pp.id = pf.program_project_id
     JOIN programs p ON p.id = pp.program_id
-    WHERE pf.farmer_id = ?
+    WHERE pf.farmer_id = $1
     ORDER BY pp.name
-  `).all(farmerId, farmerId, farmerId);
+  `, [farmerId]);
 }
 
-export function submitFarmerTask(farmerTaskId: string, data: { photo_url?: string; notes?: string }) {
-  db.prepare(`
-    UPDATE farmer_tasks SET status = 'submitted-for-approval', submitted_date = datetime('now'),
-      photo_evidence_url = ?, notes = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(data.photo_url ?? null, data.notes ?? null, farmerTaskId);
+export async function submitFarmerTask(farmerTaskId: string, data: { photo_url?: string; notes?: string }) {
+  await query(`
+    UPDATE farmer_tasks SET status = 'submitted', submitted_date = NOW(),
+      photo_evidence_url = $1, notes = $2, updated_at = NOW()
+    WHERE id = $3
+  `, [data.photo_url ?? null, data.notes ?? null, farmerTaskId]);
   return getFarmerTask(farmerTaskId);
 }
 
-export function approveFarmerTask(farmerTaskId: string, notes?: string) {
-  const row = db.prepare('SELECT program_project_id FROM farmer_tasks WHERE id = ?').get(farmerTaskId) as
-    | { program_project_id: string } | undefined;
-  db.prepare(`
-    UPDATE farmer_tasks SET status = 'approved', approved_date = datetime('now'),
-      notes = COALESCE(?, notes), updated_at = datetime('now')
-    WHERE id = ?
-  `).run(notes ?? null, farmerTaskId);
-  if (row) refreshProjectTaskCounts(row.program_project_id);
+export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
+  const row = await queryOne<{ program_project_id: string }>(
+    'SELECT program_project_id FROM farmer_tasks WHERE id = $1',
+    [farmerTaskId]
+  );
+  await query(`
+    UPDATE farmer_tasks SET status = 'approved', approved_date = NOW(),
+      notes = COALESCE($1, notes), updated_at = NOW()
+    WHERE id = $2
+  `, [notes ?? null, farmerTaskId]);
+  if (row) await refreshProjectTaskCounts(row.program_project_id);
   return getFarmerTask(farmerTaskId);
 }
 
-export function rejectFarmerTask(farmerTaskId: string, rejection_reason: string) {
-  db.prepare(`
-    UPDATE farmer_tasks SET status = 'rejected', rejection_reason = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(rejection_reason, farmerTaskId);
+export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: string) {
+  await query(`
+    UPDATE farmer_tasks SET status = 'rejected', rejection_reason = $1, updated_at = NOW()
+    WHERE id = $2
+  `, [rejection_reason, farmerTaskId]);
   return getFarmerTask(farmerTaskId);
 }
 
-export function getHierarchyDashboardStats() {
-  const projects = db.prepare('SELECT COUNT(*) as c FROM program_projects').get() as { c: number };
-  const activeProjects = db.prepare("SELECT COUNT(*) as c FROM program_projects WHERE status = 'active'").get() as { c: number };
-  const totalTasks = db.prepare('SELECT COUNT(*) as c FROM farmer_tasks').get() as { c: number };
-  const completedTasks = db.prepare("SELECT COUNT(*) as c FROM farmer_tasks WHERE status IN ('approved','completed')").get() as { c: number };
-  const pendingPayment = db.prepare(`
-    SELECT COALESCE(SUM(t.payment_value_kes), 0) as total
+export async function getHierarchyDashboardStats() {
+  const projects = await queryOne<{ c: number }>('SELECT COUNT(*)::int AS c FROM program_projects');
+  const activeProjects = await queryOne<{ c: number }>(
+    "SELECT COUNT(*)::int AS c FROM program_projects WHERE status = 'active'"
+  );
+  const totalTasks = await queryOne<{ c: number }>('SELECT COUNT(*)::int AS c FROM farmer_tasks');
+  const completedTasks = await queryOne<{ c: number }>(
+    "SELECT COUNT(*)::int AS c FROM farmer_tasks WHERE status IN ('approved','completed')"
+  );
+  const pendingPayment = await queryOne<{ total: number }>(`
+    SELECT COALESCE(SUM(t.payment_value_kes), 0)::float AS total
     FROM farmer_tasks ft JOIN tasks t ON t.id = ft.task_id
     WHERE ft.status = 'approved'
-  `).get() as { total: number };
-  const centres = db.prepare('SELECT COUNT(*) as c FROM aggregation_centres').get() as { c: number };
-  const farmers = db.prepare('SELECT COUNT(*) as c FROM farmers').get() as { c: number };
+  `);
+  const centres = await queryOne<{ c: number }>('SELECT COUNT(*)::int AS c FROM aggregation_centres');
+  const farmers = await queryOne<{ c: number }>('SELECT COUNT(*)::int AS c FROM farmers');
 
   return {
-    total_projects: projects.c,
-    active_projects: activeProjects.c,
-    total_farmers: farmers.c,
-    total_tasks: totalTasks.c,
-    completed_tasks: completedTasks.c,
-    pending_payment_kes: pendingPayment.total,
-    aggregation_centres: centres.c,
+    total_projects: projects?.c ?? 0,
+    active_projects: activeProjects?.c ?? 0,
+    total_farmers: farmers?.c ?? 0,
+    total_tasks: totalTasks?.c ?? 0,
+    completed_tasks: completedTasks?.c ?? 0,
+    pending_payment_kes: pendingPayment?.total ?? 0,
+    aggregation_centres: centres?.c ?? 0,
   };
 }
 
-export function listCentreInventory(centreId: string, status?: string) {
+export async function listCentreInventory(centreId: string, status?: string) {
   let sql = `
-    SELECT ci.*, f.name as farmer_name FROM centre_inventory ci
+    SELECT ci.*, f.name AS farmer_name FROM centre_inventory ci
     JOIN farmers f ON f.farmer_id = ci.farmer_id
-    WHERE ci.centre_id = ?
+    WHERE ci.centre_id = $1
   `;
   if (status === 'awaiting_qc') {
     sql += " AND ci.quality_status = 'pending'";
   } else if (status === 'ready_for_marketplace') {
-    sql += ' AND ci.is_marketplace_ready = 1';
+    sql += ' AND ci.is_marketplace_ready = true';
   }
   sql += ' ORDER BY ci.received_date DESC';
-  return db.prepare(sql).all(centreId);
+  return query(sql, [centreId]);
 }
 
-export function receiveDelivery(data: {
+export async function receiveDelivery(data: {
   centre_id: string;
   farmer_id: string;
   task_id?: string;
@@ -474,128 +532,135 @@ export function receiveDelivery(data: {
   scanned_by_user_id?: string;
 }) {
   const id = uuidv4();
-  db.prepare(`
+  await query(`
     INSERT INTO centre_inventory (id, centre_id, farmer_id, task_id, product_name, quantity_received, unit, quality_notes, scanned_by_user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  `, [
     id, data.centre_id, data.farmer_id, data.task_id ?? null, data.product_name,
-    data.quantity_received, data.unit ?? 'kg', data.notes ?? null, data.scanned_by_user_id ?? null
-  );
-  return db.prepare('SELECT * FROM centre_inventory WHERE id = ?').get(id);
+    data.quantity_received, data.unit ?? 'kg', data.notes ?? null, data.scanned_by_user_id ?? null,
+  ]);
+  return queryOne('SELECT * FROM centre_inventory WHERE id = $1', [id]);
 }
 
-export function approveInventoryQuality(inventoryId: string, data: {
+export async function approveInventoryQuality(inventoryId: string, data: {
   quality_status: 'approved' | 'rejected';
   quality_notes?: string;
   marketplace_price_per_unit?: number;
 }) {
-  const marketplaceReady = data.quality_status === 'approved' ? 1 : 0;
-  db.prepare(`
-    UPDATE centre_inventory SET quality_status = ?, quality_notes = ?,
-      marketplace_price_per_unit = ?, is_marketplace_ready = ?
-    WHERE id = ?
-  `).run(
-    data.quality_status, data.quality_notes ?? null,
-    data.marketplace_price_per_unit ?? null, marketplaceReady, inventoryId
-  );
-  return db.prepare('SELECT * FROM centre_inventory WHERE id = ?').get(inventoryId);
+  const dbQualityStatus = data.quality_status === 'approved' ? 'passed' : 'failed';
+  const marketplaceReady = data.quality_status === 'approved';
+  await query(`
+    UPDATE centre_inventory SET quality_status = $1, quality_notes = $2,
+      marketplace_price_per_unit = $3, is_marketplace_ready = $4
+    WHERE id = $5
+  `, [
+    dbQualityStatus, data.quality_notes ?? null,
+    data.marketplace_price_per_unit ?? null, marketplaceReady, inventoryId,
+  ]);
+  return queryOne('SELECT * FROM centre_inventory WHERE id = $1', [inventoryId]);
 }
 
-export function getCentreDashboard(centreId: string) {
-  const total = db.prepare(`
-    SELECT COALESCE(SUM(quantity_received), 0) as total FROM centre_inventory WHERE centre_id = ?
-  `).get(centreId) as { total: number };
-  const awaiting = db.prepare(`
-    SELECT COALESCE(SUM(quantity_received), 0) as total FROM centre_inventory
-    WHERE centre_id = ? AND quality_status = 'pending'
-  `).get(centreId) as { total: number };
-  const ready = db.prepare(`
-    SELECT COALESCE(SUM(quantity_received), 0) as total FROM centre_inventory
-    WHERE centre_id = ? AND is_marketplace_ready = 1
-  `).get(centreId) as { total: number };
-  const farmers = db.prepare(`
-    SELECT COUNT(DISTINCT farmer_id) as c FROM centre_inventory WHERE centre_id = ?
-  `).get(centreId) as { c: number };
+export async function getCentreDashboard(centreId: string) {
+  const total = await queryOne<{ total: number }>(`
+    SELECT COALESCE(SUM(quantity_received), 0)::float AS total FROM centre_inventory WHERE centre_id = $1
+  `, [centreId]);
+  const awaiting = await queryOne<{ total: number }>(`
+    SELECT COALESCE(SUM(quantity_received), 0)::float AS total FROM centre_inventory
+    WHERE centre_id = $1 AND quality_status = 'pending'
+  `, [centreId]);
+  const ready = await queryOne<{ total: number }>(`
+    SELECT COALESCE(SUM(quantity_received), 0)::float AS total FROM centre_inventory
+    WHERE centre_id = $1 AND is_marketplace_ready = true
+  `, [centreId]);
+  const farmers = await queryOne<{ c: number }>(`
+    SELECT COUNT(DISTINCT farmer_id)::int AS c FROM centre_inventory WHERE centre_id = $1
+  `, [centreId]);
 
   return {
-    total_inventory: total.total,
-    awaiting_quality_check: awaiting.total,
-    ready_for_marketplace: ready.total,
-    farmers_served: farmers.c,
+    total_inventory: total?.total ?? 0,
+    awaiting_quality_check: awaiting?.total ?? 0,
+    ready_for_marketplace: ready?.total ?? 0,
+    farmers_served: farmers?.c ?? 0,
   };
 }
 
-export function findCentreByName(name: string) {
-  return db.prepare('SELECT * FROM aggregation_centres WHERE name = ?').get(name);
+export async function findCentreByName(name: string) {
+  return queryOne('SELECT * FROM aggregation_centres WHERE name = $1', [name]);
 }
 
-export function getFarmerPhone(farmerId: string): string | null {
-  const row = db.prepare('SELECT phone_number FROM farmers WHERE farmer_id = ?').get(farmerId) as
-    | { phone_number?: string }
-    | undefined;
+export async function getFarmerPhone(farmerId: string): Promise<string | null> {
+  const row = await queryOne<{ phone_number?: string }>(
+    'SELECT phone_number FROM farmers WHERE farmer_id = $1',
+    [farmerId]
+  );
   return row?.phone_number ?? null;
 }
 
-export function getCentreName(centreId: string): string | null {
-  const row = db.prepare('SELECT name FROM aggregation_centres WHERE centre_id = ?').get(centreId) as
-    | { name?: string }
-    | undefined;
+export async function getCentreName(centreId: string): Promise<string | null> {
+  const row = await queryOne<{ name?: string }>(
+    'SELECT name FROM aggregation_centres WHERE centre_id = $1',
+    [centreId]
+  );
   return row?.name ?? null;
 }
 
-export function listPendingFarmerTasks(programProjectId?: string) {
+export async function listPendingFarmerTasks(programProjectId?: string) {
   const sql = `
-    SELECT ft.*, t.name, t.task_order, t.payment_value_kes, f.name as farmer_name, pp.name as program_project_name
+    SELECT ft.*, t.name, t.task_order, t.payment_value_kes, f.name AS farmer_name, pp.name AS program_project_name
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
-    WHERE ft.status = 'submitted-for-approval'
-    ${programProjectId ? 'AND ft.program_project_id = ?' : ''}
+    WHERE ft.status = 'submitted'
+    ${programProjectId ? 'AND ft.program_project_id = $1' : ''}
     ORDER BY ft.submitted_date DESC
   `;
-  return programProjectId ? db.prepare(sql).all(programProjectId) : db.prepare(sql).all();
+  const rows = programProjectId
+    ? await query<{ status?: string }>(sql, [programProjectId])
+    : await query<{ status?: string }>(sql);
+  return mapFarmerTaskRows(rows);
 }
 
-export function listAllFarmerTasks(filters?: {
+export async function listAllFarmerTasks(filters?: {
   program_project_id?: string;
   status?: string;
   farmer_id?: string;
 }) {
   let sql = `
     SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
-      f.name as farmer_name, f.phone_number as farmer_phone,
-      pp.name as program_project_name
+      f.name AS farmer_name, f.phone_number AS farmer_phone,
+      pp.name AS program_project_name
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
     WHERE 1=1
   `;
-  const params: string[] = [];
+  const params: unknown[] = [];
   if (filters?.program_project_id) {
-    sql += ' AND ft.program_project_id = ?';
     params.push(filters.program_project_id);
+    sql += ` AND ft.program_project_id = $${params.length}`;
   }
   if (filters?.status) {
-    sql += ' AND ft.status = ?';
-    params.push(filters.status);
+    params.push(toDbTaskStatus(filters.status));
+    sql += ` AND ft.status = $${params.length}`;
   }
   if (filters?.farmer_id) {
-    sql += ' AND ft.farmer_id = ?';
     params.push(filters.farmer_id);
+    sql += ` AND ft.farmer_id = $${params.length}`;
   }
   sql += ' ORDER BY pp.name, t.task_order, f.name';
-  return db.prepare(sql).all(...params);
+  const rows = await query<{ status?: string }>(sql, params);
+  return mapFarmerTaskRows(rows);
 }
 
-export function listPendingDeliveries(centreId?: string) {
-  const centreName = centreId ? getCentreName(centreId) : null;
+export async function listPendingDeliveries(centreId?: string) {
+  const centreName = centreId ? await getCentreName(centreId) : null;
   let sql = `
-    SELECT ft.id as farmer_task_id, ft.farmer_id, ft.task_id, t.name as task_name,
-      f.name as farmer_name, f.phone_number as farmer_phone,
-      pp.name as program_project_name, ft.approved_date as submitted_date,
-      ft.submitted_date as task_submitted_date
+    SELECT ft.id AS farmer_task_id, ft.farmer_id, ft.task_id, t.name AS task_name,
+      f.name AS farmer_name, f.phone_number AS farmer_phone,
+      pp.name AS program_project_name, ft.approved_date AS submitted_date,
+      ft.submitted_date AS task_submitted_date
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id
@@ -606,11 +671,11 @@ export function listPendingDeliveries(centreId?: string) {
         WHERE ci.task_id = ft.task_id AND ci.farmer_id = ft.farmer_id
       )
   `;
-  const params: string[] = [];
+  const params: unknown[] = [];
   if (centreName) {
-    sql += ' AND f.aggregation_center = ?';
     params.push(centreName);
+    sql += ` AND f.aggregation_center = $${params.length}`;
   }
   sql += ' ORDER BY ft.approved_date DESC';
-  return params.length ? db.prepare(sql).all(...params) : db.prepare(sql).all();
+  return query(sql, params);
 }

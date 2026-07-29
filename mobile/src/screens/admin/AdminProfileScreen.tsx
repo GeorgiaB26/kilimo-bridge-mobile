@@ -41,14 +41,18 @@ function Row({ label, value }: { label: string; value?: string }) {
 
 function getPermissions(role?: string): string[] {
   switch (role) {
+    case 'platform_admin':
+      return ['Full platform access', 'Manage all users including super admins', 'CSV import', 'View all farmers', 'Banking oversight', 'Audit logs'];
     case 'super_admin':
-      return ['Full platform access', 'Manage users', 'CSV import', 'View all farmers', 'Banking H2H', 'Audit logs'];
+      return ['Create sectors, programs, projects & tasks', 'Approve farmer registrations', 'Assign field agents', 'View all regional data', 'Generate reports', 'Manage staff users'];
     case 'admin':
-      return ['CSV import', 'View all farmers', 'View users', 'Reports', 'Audit logs'];
+      return ['Regional farmer approval & assignment', 'Task tracking in assigned region', 'CSV import (regional)', 'View regional farmers', 'Manage regional users'];
     case 'agent':
       return ['Register farmers', 'View regional farmers', 'Payment verification', 'Activity audit log'];
-    case 'banking':
-      return ['View payment transactions', 'Process M-Pesa via Equity H2H', 'Financial audit trail'];
+    case 'banking_admin':
+      return ['View payment processing status', 'Manage banking agent accounts', 'Financial audit trail'];
+    case 'banking_agent':
+      return ['View assigned payment transactions', 'Process M-Pesa via Equity H2H', 'Financial audit trail'];
     case 'farmer':
       return ['View own profile', 'View own projects', 'View own payments'];
     default:

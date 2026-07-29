@@ -1,82 +1,88 @@
-import { db } from '../db/database';
+import { query, queryOne } from '../db/database';
 import { logAudit } from './auditService';
 import { processPaymentViaBanking } from './bankingService';
 import { isLocationPending } from './farmerService';
+import {
+  getFarmerActiveProjectSummaries,
+  getFarmerProjectSummaries,
+} from './farmerProgramService';
 
-export function getFarmerDashboard(farmerId: string) {
-  const farmer = db.prepare(`
-    SELECT f.*, mg.name as membership_group_name
-    FROM farmers f
-    JOIN membership_groups mg ON f.membership_group_id = mg.id
-    WHERE f.farmer_id = ?
-  `).get(farmerId);
+export async function getFarmerDashboard(farmerId: string) {
+  const farmer = await queryOne(
+    `SELECT f.*, mg.name as membership_group_name
+     FROM farmers f
+     JOIN membership_groups mg ON f.membership_group_id = mg.id
+     WHERE f.farmer_id = $1`,
+    [farmerId]
+  );
 
   if (!farmer) return null;
 
-  const projects = db.prepare(`
-    SELECT * FROM farmer_projects WHERE farmer_id = ? ORDER BY created_at DESC
-  `).all(farmerId);
-
-  const pendingPayments = db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) as total FROM payments
-    WHERE farmer_id = ? AND payment_status = 'Pending'
-  `).get(farmerId) as { total: number };
-
-  const totalEarnings = db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) as total FROM payments
-    WHERE farmer_id = ? AND payment_status = 'Transferred'
-  `).get(farmerId) as { total: number };
-
-  const activeProjects = (projects as { status: string }[]).filter(
-    (p) => p.status === 'In Progress' || p.status === 'Assigned'
+  const pendingPayments = await queryOne<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments
+     WHERE farmer_id = $1 AND payment_status = 'pending'`,
+    [farmerId]
   );
+
+  const totalEarnings = await queryOne<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments
+     WHERE farmer_id = $1 AND payment_status = 'transferred'`,
+    [farmerId]
+  );
+
+  const activeProjects = await getFarmerActiveProjectSummaries(farmerId);
+  const sortedActive = [...activeProjects].sort((a, b) => {
+    if (!a.due_date && !b.due_date) return 0;
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
+    return a.due_date.localeCompare(b.due_date);
+  });
 
   return {
     farmer: {
       ...(farmer as Record<string, unknown>),
       profileLocationPending: isLocationPending(farmer as { district: string; sub_county: string }),
     },
-    pendingAmount: pendingPayments.total,
-    totalEarnings: totalEarnings.total,
-    activeProjects,
-    nextProject: activeProjects[0] ?? null,
+    pendingAmount: pendingPayments?.total ?? 0,
+    totalEarnings: totalEarnings?.total ?? 0,
+    activeProjects: sortedActive,
+    nextProject: sortedActive[0] ?? null,
   };
 }
 
-export function getFarmerProjects(farmerId: string) {
-  return db.prepare(`
-    SELECT * FROM farmer_projects WHERE farmer_id = ? ORDER BY created_at DESC
-  `).all(farmerId);
+export async function getFarmerProjects(farmerId: string) {
+  return getFarmerProjectSummaries(farmerId);
 }
 
-export function getFarmerPayments(farmerId: string) {
-  return db.prepare(`
-    SELECT * FROM payments WHERE farmer_id = ? ORDER BY created_at DESC
-  `).all(farmerId);
+export async function getFarmerPayments(farmerId: string) {
+  return query(
+    `SELECT * FROM payments WHERE farmer_id = $1 ORDER BY created_at DESC`,
+    [farmerId]
+  );
 }
 
-export function getFarmerNotifications(userId: string) {
-  return db.prepare(`
-    SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50
-  `).all(userId);
+export async function getFarmerNotifications(userId: string) {
+  return query(
+    `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    [userId]
+  );
 }
 
 export async function claimPayment(farmerId: string, paymentId: string, initiatedBy?: string) {
-  const payment = db.prepare(`
-    SELECT * FROM payments WHERE id = ? AND farmer_id = ? AND payment_status = 'Pending'
-  `).get(paymentId, farmerId) as { id: string; amount: number; verification_status: string } | undefined;
+  const payment = await queryOne<{ id: string; amount: number; verification_status: string }>(
+    `SELECT * FROM payments WHERE id = $1 AND farmer_id = $2 AND payment_status = 'pending'`,
+    [paymentId, farmerId]
+  );
 
   if (!payment) return { success: false, error: 'Payment not found or already claimed' };
 
-  // Require agent verification before farmer can claim (if verification workflow enabled)
   if (payment.verification_status === 'unverified' && process.env.REQUIRE_PAYMENT_VERIFICATION === 'true') {
     return { success: false, error: 'Payment pending agent verification' };
   }
 
-  // Route through Equity H2H when banking integration is active
   if (process.env.USE_EQUITY_H2H === 'true' && initiatedBy) {
     const result = await processPaymentViaBanking(paymentId, initiatedBy);
-    logAudit({
+    await logAudit({
       userId: initiatedBy,
       action: 'payment.claim',
       category: 'financial',
@@ -89,12 +95,13 @@ export async function claimPayment(farmerId: string, paymentId: string, initiate
   }
 
   const ref = `MPX${Date.now()}`;
-  db.prepare(`
-    UPDATE payments SET payment_status = 'Transferred', mpesa_reference = ?, paid_at = datetime('now')
-    WHERE id = ?
-  `).run(ref, paymentId);
+  await query(
+    `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
+     WHERE id = $2`,
+    [ref, paymentId]
+  );
 
-  logAudit({
+  await logAudit({
     userId: farmerId,
     action: 'payment.claim',
     category: 'financial',

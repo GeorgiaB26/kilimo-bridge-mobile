@@ -3,14 +3,18 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-nativ
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants';
 import { getUsers } from '../../api/client';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore, canManageUsers } from '../../store/authStore';
 import { KBSearchBar } from '../../components/KBSearchBar';
 
 const ROLE_COLORS: Record<string, string> = {
+  platform_admin: COLORS.alert,
   super_admin: COLORS.alert,
   admin: COLORS.primary,
-  field_officer: COLORS.info,
+  agent: COLORS.info,
+  banking_agent: COLORS.warning,
+  banking_admin: COLORS.warning,
   farmer: COLORS.success,
+  field_officer: COLORS.info,
 };
 
 const SEARCH_MIN = 1;
@@ -36,7 +40,7 @@ export function AdminUsersScreen() {
   const activeSearch = debouncedSearch.length >= SEARCH_MIN ? debouncedSearch : undefined;
 
   const load = useCallback(async () => {
-    if (user?.role !== 'super_admin' && user?.role !== 'admin') return;
+    if (!user?.role || !canManageUsers(user.role)) return;
     setLoading(true);
     try {
       const d = await getUsers(activeSearch);
@@ -54,7 +58,7 @@ export function AdminUsersScreen() {
     }, [load])
   );
 
-  if (user?.role !== 'super_admin' && user?.role !== 'admin') {
+  if (!user?.role || !canManageUsers(user.role)) {
     return (
       <View style={styles.denied}>
         <Text style={styles.deniedText}>You don't have permission to view users.</Text>
@@ -91,7 +95,7 @@ export function AdminUsersScreen() {
           <View style={styles.row}>
             <Text style={styles.name}>{item.name}</Text>
             <Text style={[styles.role, { color: ROLE_COLORS[item.role] ?? COLORS.muted }]}>
-              {item.role.replace('_', ' ')}
+              {item.role.replace(/_/g, ' ')}
             </Text>
           </View>
           <Text style={styles.phone}>{item.phone_number}</Text>

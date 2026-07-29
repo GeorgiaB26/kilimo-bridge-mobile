@@ -1,0 +1,11 @@
+centre_id,name,country,location_level_1,location_level_2,region,status,created_at,manager_name,manager_phone
+ke-kiambu-01,"Kiambu Town Hall",Kenya,Kiambu,,Central,Active,"2026-07-29 16:51:14",,
+ke-kiambu-02,"Thika Aggregation Hub",Kenya,Kiambu,Thika,Central,Active,"2026-07-29 16:51:14",,
+ke-nyeri-01,"Nyeri Town Centre",Kenya,Nyeri,,Central,Active,"2026-07-29 16:51:14",,
+ke-nairobi-01,"Nairobi Westlands Hub",Kenya,Nairobi,,Nairobi,Active,"2026-07-29 16:51:14",,
+ke-nairobi-02,"Embakasi Collection Point",Kenya,Nairobi,Embakasi,Nairobi,Active,"2026-07-29 16:51:14",,
+ke-nakuru-01,"Nakuru Farmers Centre",Kenya,Nakuru,,"Rift Valley",Active,"2026-07-29 16:51:14",,
+ke-kisumu-01,"Kisumu Lake Hub",Kenya,Kisumu,,Nyanza,Active,"2026-07-29 16:51:14",,
+ke-mombasa-01,"Mombasa Port Centre",Kenya,Mombasa,,Coast,Active,"2026-07-29 16:51:14",,
+ke-eldoret-01,"Eldoret Grain Centre",Kenya,"Uasin Gishu",,"Rift Valley",Active,"2026-07-29 16:51:14",,
+ke-kilifi-01,"Kilifi Coastal Hub",Kenya,Kilifi,,Coast,Active,"2026-07-29 16:51:14",,

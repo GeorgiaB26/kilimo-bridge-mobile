@@ -3,6 +3,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearAllSessionData } from '../utils/session';
 
 import type { UserRole } from '../constants/roles';
+import {
+  isAdminRole as sharedIsAdminRole,
+  isAgentRole as sharedIsAgentRole,
+  isBankingRole as sharedIsBankingRole,
+  isPlatformAdminRole,
+  isSuperAdminRole,
+  isRegionalAdminRole,
+  isBankingAdminRole,
+  isBankingAgentRole,
+} from '../../shared/src/roles';
 
 export type { UserRole };
 
@@ -79,14 +89,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }));
 
-export function isAdminRole(role: UserRole): boolean {
-  return role === 'super_admin' || role === 'admin';
+export const isAdminRole = sharedIsAdminRole;
+export const isAgentRole = sharedIsAgentRole;
+export const isBankingRole = sharedIsBankingRole;
+export { isPlatformAdminRole, isSuperAdminRole, isRegionalAdminRole, isBankingAdminRole, isBankingAgentRole };
+
+export function canManageUsers(role: UserRole): boolean {
+  return isPlatformAdminRole(role) || isSuperAdminRole(role) || isRegionalAdminRole(role);
 }
 
-export function isAgentRole(role: UserRole): boolean {
-  return role === 'agent';
-}
-
-export function isBankingRole(role: UserRole): boolean {
-  return role === 'banking';
+export function canManageElevatedUsers(role: UserRole): boolean {
+  return isPlatformAdminRole(role);
 }

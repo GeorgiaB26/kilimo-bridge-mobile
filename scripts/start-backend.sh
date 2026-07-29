@@ -21,23 +21,13 @@ echo "1. Installing dependencies..."
 npm install
 
 echo ""
-echo "2. Checking native modules..."
-if ! node -e "require('better-sqlite3'); console.log('   ✓ better-sqlite3 OK')"; then
-  echo ""
-  echo "   ✗ better-sqlite3 failed to load."
-  echo "   Try:  npm rebuild better-sqlite3"
-  echo "   Or install Node 20 LTS from https://nodejs.org (recommended)"
-  exit 1
-fi
-
-echo ""
-echo "3. Checking database..."
+echo "2. Checking database connection..."
 if ! npx tsx -e "
-  import { initDatabase } from './src/db/database';
-  initDatabase();
-  console.log('   ✓ Database OK');
+  import { testConnection } from './src/db/database';
+  const { farmerCount } = await testConnection();
+  console.log('   ✓ Postgres OK (' + farmerCount + ' farmers)');
 "; then
-  echo "   ✗ Database failed — see error above"
+  echo "   ✗ Database connection failed — check DATABASE_URL in backend/.env"
   exit 1
 fi
 
@@ -51,7 +41,7 @@ if curl -sf http://localhost:3001/health >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "4. Starting server..."
+echo "3. Starting server..."
 echo "   Leave this window OPEN. You should see:"
 echo "   Kilimo Bridge API running on http://localhost:3001"
 echo ""
