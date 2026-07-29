@@ -113,9 +113,29 @@ export async function seedHierarchyIfEmpty(): Promise<void> {
 
   await assignFarmersToProject(projectId, [demoFarmerId]);
 
+  const taskCount = await getDemoFarmerTaskCount();
+  console.log(`Hierarchy ready: project ${projectId}, demo farmer tasks: ${taskCount}`);
+}
+
+export async function getProgramProjectCount(): Promise<number> {
+  const row = await queryOne<{ c: number }>('SELECT COUNT(*)::int AS c FROM program_projects');
+  return row?.c ?? 0;
+}
+
+/** Task rows for demo farmer John Doe on the Tree Planting demo project. */
+export async function getDemoFarmerTaskCount(): Promise<number> {
+  const projectId = await findDemoProjectId();
+  if (!projectId) return 0;
+
+  const farmer = await queryOne<{ farmer_id: string }>(
+    'SELECT farmer_id FROM farmers WHERE phone_number = $1',
+    [DEMO_FARMER_PHONE]
+  );
+  if (!farmer) return 0;
+
   const taskCount = await queryOne<{ c: number }>(
     `SELECT COUNT(*)::int AS c FROM farmer_tasks WHERE program_project_id = $1 AND farmer_id = $2`,
-    [projectId, demoFarmerId]
+    [projectId, farmer.farmer_id]
   );
-  console.log(`Hierarchy ready: project ${projectId}, demo farmer tasks: ${taskCount?.c ?? 0}`);
+  return taskCount?.c ?? 0;
 }

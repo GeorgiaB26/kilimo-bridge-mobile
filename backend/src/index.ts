@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { initDatabase } from './db/database';
 import { seedDatabase } from './seed';
-import { seedHierarchyIfEmpty } from './seedHierarchy';
+import { seedHierarchyIfEmpty, getProgramProjectCount, getDemoFarmerTaskCount } from './seedHierarchy';
 import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFarmerPortal';
 import { seedAggregationCentres } from './services/aggregationCentreService';
 import { backfillLegacyIdNumberHashes } from './services/farmerService';
@@ -27,6 +27,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 let appReady = false;
 let cachedFarmerCount: number | null = null;
+let cachedHierarchyProjects: number | null = null;
+let cachedDemoFarmerTasks: number | null = null;
 
 // Render / Netlify proxies — required so rate limits apply per client IP, not one shared IP
 if (process.env.NODE_ENV === 'production') {
@@ -38,9 +40,15 @@ function healthPayload() {
     status: appReady ? 'ok' : 'starting',
     timestamp: new Date().toISOString(),
     farmers: appReady ? cachedFarmerCount : null,
-    hierarchy_projects: null,
-    demo_farmer_tasks: null,
+    hierarchy_projects: appReady ? cachedHierarchyProjects : null,
+    demo_farmer_tasks: appReady ? cachedDemoFarmerTasks : null,
   };
+}
+
+async function refreshHealthCounts(): Promise<void> {
+  cachedFarmerCount = await getFarmerCount();
+  cachedHierarchyProjects = await getProgramProjectCount();
+  cachedDemoFarmerTasks = await getDemoFarmerTaskCount();
 }
 
 // Health probe — must respond 200 before heavy bootstrap (Render deploy check)
@@ -59,7 +67,7 @@ app.listen(PORT, HOST, () => {
 async function bootstrap(): Promise<void> {
   validateProductionEnv();
   initDatabase();
-  cachedFarmerCount = await getFarmerCount();
+  await refreshHealthCounts();
   console.log(`Database ready: ${cachedFarmerCount} farmers`);
 
   const backfilled = await backfillLegacyIdNumberHashes();
@@ -74,7 +82,7 @@ async function bootstrap(): Promise<void> {
   await ensureDemoFarmerPortal();
   await ensureDemoAgentPassword();
   await seedHierarchyIfEmpty();
-  cachedFarmerCount = await getFarmerCount();
+  await refreshHealthCounts();
 
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
