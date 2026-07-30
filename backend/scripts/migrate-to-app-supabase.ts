@@ -2,6 +2,7 @@
  * Migrate server SQLite → NEW App Supabase (NOT admin Supabase).
  * Usage: cd backend && npx tsx scripts/migrate-to-app-supabase.ts
  */
+import 'dotenv/config';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';

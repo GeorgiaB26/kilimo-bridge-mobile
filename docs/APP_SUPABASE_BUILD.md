@@ -27,7 +27,7 @@
 
 ```bash
 EXPO_PUBLIC_API_URL=https://kilimo-bridge-mobile.onrender.com/api
-EXPO_PUBLIC_APP_SUPABASE_URL=https://YOUR_APP_PROJECT.supabase.co
+EXPO_PUBLIC_APP_SUPABASE_URL=https://tzaipijebibisgkwrdnz.supabase.co
 EXPO_PUBLIC_APP_SUPABASE_ANON_KEY=eyJ...
 EXPO_PUBLIC_SYNC_MODE=hybrid
 ```
@@ -35,7 +35,7 @@ EXPO_PUBLIC_SYNC_MODE=hybrid
 ### Backend migration only (service role — never in mobile)
 
 ```bash
-APP_SUPABASE_URL=https://YOUR_APP_PROJECT.supabase.co
+APP_SUPABASE_URL=https://tzaipijebibisgkwrdnz.supabase.co
 APP_SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ```
 

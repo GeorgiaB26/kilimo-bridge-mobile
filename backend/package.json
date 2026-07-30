@@ -16,6 +16,7 @@
     "seed:hierarchy": "tsx scripts/seed-hierarchy.ts",
     "sync:supabase": "tsx scripts/sync-to-supabase.ts",
     "migrate:app-supabase": "tsx scripts/migrate-to-app-supabase.ts",
+    "check:app-supabase": "tsx scripts/check-app-supabase.ts",
     "export:schema": "tsx scripts/export-schema.ts"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.0.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "express": "^4.19.0",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",

@@ -21,6 +21,7 @@
     "push:db": "bash scripts/push-db-to-render.sh",
     "publish:db": "bash scripts/publish-db-backup.sh",
     "seed": "cd backend && npm run seed",
+    "check:app-supabase": "cd backend && npm run check:app-supabase",
     "test:import": "cd backend && npx tsx src/test-import.ts",
     "test:sync": "cd mobile && npx tsx src/sync/__tests__/syncLogic.test.ts",
     "export:import-errors": "cd backend && npx tsx scripts/export-import-errors.ts",
