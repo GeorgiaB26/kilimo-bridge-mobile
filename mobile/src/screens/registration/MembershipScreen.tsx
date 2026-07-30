@@ -16,7 +16,7 @@ type Props = NativeStackScreenProps<RegistrationStackParamList, 'Membership'>;
 export function MembershipScreen({ navigation }: Props) {
   const { formData, updateForm } = useRegistrationStore();
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [groups, setGroups] = useState<string[]>([]);
+  const [cooperatives, setCooperatives] = useState<string[]>([]);
 
   const suggestedCentre = findAggregationCentre(
     formData.country,
@@ -26,9 +26,9 @@ export function MembershipScreen({ navigation }: Props) {
 
   useEffect(() => {
     fetchReferenceData()
-      .then((data) => setGroups(data.membershipGroups))
+      .then((data) => setCooperatives(data.membershipGroups))
       .catch(() =>
-        setGroups(['Gulu Women Economic Dev', 'Kiambu Cooperative', 'Nairobi Women Coop', 'Test Coop'])
+        setCooperatives(['Gulu Women Economic Dev', 'Kiambu Cooperative', 'Nairobi Women Coop', 'LEOART'])
       );
   }, []);
 
@@ -40,49 +40,58 @@ export function MembershipScreen({ navigation }: Props) {
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!formData.membershipGroup) e.membershipGroup = 'Membership group is required';
+    if (!formData.membershipGroup) e.membershipGroup = 'Cooperative is required';
+    if (!formData.membershipType) e.membershipType = 'Membership type is required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  const onNext = () => {
+    if (!validate()) return;
+    navigation.navigate('Details');
+  };
+
   return (
     <View style={styles.container}>
-      <ScreenHeader title="Membership" subtitle="Your cooperative details" />
+      <ScreenHeader
+        title="Cooperative"
+        subtitle="Cooperative affiliation (verified by cooperative records)"
+      />
+      <Text style={styles.note}>
+        Membership type and role are assigned by your program manager after approval.
+      </Text>
       <PickerField
-        label="Membership Group"
+        label="Cooperative"
         value={formData.membershipGroup}
-        options={groups}
+        options={cooperatives.map((g) => ({ label: g, value: g }))}
         onSelect={(membershipGroup) => updateForm({ membershipGroup })}
-        required
+        placeholder="Select cooperative"
         error={errors.membershipGroup}
       />
-      {suggestedCentre ? (
-        <View style={styles.suggestedCard}>
-          <Text style={styles.suggestedLabel}>Assigned aggregation centre</Text>
-          <Text style={styles.suggestedValue}>{formData.aggregationCenter || suggestedCentre.name}</Text>
-          <Text style={styles.suggestedHint}>Auto-assigned based on your location</Text>
-        </View>
-      ) : (
-        <FormField
-          label="Aggregation Center"
-          value={formData.aggregationCenter ?? ''}
-          onChangeText={(aggregationCenter) => updateForm({ aggregationCenter })}
-          placeholder="Optional"
-        />
-      )}
       <PickerField
         label="Membership Type"
         value={formData.membershipType ?? 'Active'}
-        options={MEMBERSHIP_TYPES}
+        options={MEMBERSHIP_TYPES.map((t) => ({ label: t, value: t }))}
         onSelect={(membershipType) => updateForm({ membershipType })}
+        error={errors.membershipType}
+      />
+      <FormField
+        label="Role (assigned by PM)"
+        value={formData.farmerRole ?? 'farmer'}
+        onChangeText={() => {}}
+        editable={false}
+        placeholder="farmer"
+      />
+      <Text style={styles.readOnly}>Read-only — PM assigns role after approval</Text>
+      <FormField
+        label="Aggregation Centre"
+        value={formData.aggregationCenter ?? suggestedCentre?.name ?? ''}
+        onChangeText={(aggregationCenter) => updateForm({ aggregationCenter })}
+        placeholder="Auto-suggested from location"
       />
       <View style={styles.row}>
         <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
-        <Button
-          title="Next"
-          onPress={() => validate() && navigation.navigate('Details')}
-          style={styles.half}
-        />
+        <Button title="Next" onPress={onNext} style={styles.half} />
       </View>
     </View>
   );
@@ -90,17 +99,8 @@ export function MembershipScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  suggestedCard: {
-    backgroundColor: '#E8F5F0',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
-  },
-  suggestedLabel: { fontSize: 12, color: COLORS.muted, marginBottom: 4 },
-  suggestedValue: { fontSize: 16, fontWeight: '600', color: COLORS.primary },
-  suggestedHint: { fontSize: 11, color: COLORS.muted, marginTop: 4 },
+  note: { fontSize: 13, color: COLORS.muted, marginBottom: 12, lineHeight: 18 },
+  readOnly: { fontSize: 11, color: COLORS.muted, marginBottom: 12, marginTop: -8 },
   row: { flexDirection: 'row', gap: 12, marginTop: 8 },
   half: { flex: 1 },
 });

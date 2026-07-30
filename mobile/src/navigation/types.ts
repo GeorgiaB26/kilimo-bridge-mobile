@@ -66,6 +66,7 @@ export type RegistrationStackParamList = {
   Projects: undefined;
   Photo: undefined;
   Confirm: undefined;
+  Success: { farmerId: string; farmerName: string; phone: string };
 };
 
 export type ImportStackParamList = {

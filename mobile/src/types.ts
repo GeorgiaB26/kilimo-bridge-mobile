@@ -12,7 +12,9 @@ export interface RegistrationFormData {
   membershipGroup: string;
   aggregationCenter?: string;
   membershipType?: string;
+  farmerRole?: string;
   occupation?: string;
+  yearsOfExperience?: string;
   sizeOfLand?: string;
   project1?: string;
   project2?: string;

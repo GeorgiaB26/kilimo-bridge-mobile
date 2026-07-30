@@ -9,6 +9,7 @@ import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { clearAllSessionData } from '../../utils/session';
+import { QuickRoleCard } from '../../components/QuickRoleCard';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import type { AuthStackParamList } from '../../navigation/types';
 
@@ -127,23 +128,29 @@ export function LoginScreen({ navigation }: Props) {
         </Button>
       </Surface>
 
-      <Text style={styles.quickTitle}>Quick access — tap to log in</Text>
-      <Button mode="contained" onPress={() => quickLogin(DEMO_FARMER, 'Farmer')} loading={loading} buttonColor={COLORS.primary} style={styles.quickBtn}>
-        Open Farmer Platform
-      </Button>
-      <Button mode="contained-tonal" onPress={() => quickLogin(DEMO_ADMIN, 'Admin')} loading={loading} style={styles.quickBtn}>
-        Open Admin Dashboard
-      </Button>
-      <Button mode="outlined" onPress={() => quickLogin(DEMO_AGENT, 'Agent')} loading={loading} style={styles.quickBtn}>
-        Open Agent Platform
-      </Button>
-      <Button mode="outlined" onPress={() => navigation.navigate('AggregationLogin')} style={styles.quickBtn}>
-        Aggregation Centre Login
-      </Button>
-      <Button
-        mode="outlined"
+      <Text style={styles.quickTitle}>Quick access</Text>
+      <QuickRoleCard
+        label="Farmer"
+        description="Projects, tasks, payments & profile"
+        icon="leaf"
+        color="#2E7D5E"
         loading={loading}
-        style={styles.quickBtn}
+        onPress={() => quickLogin(DEMO_FARMER, 'Farmer')}
+      />
+      <QuickRoleCard
+        label="Field Agent"
+        description="Register farmers, verify & approve tasks"
+        icon="people"
+        color={COLORS.primary}
+        loading={loading}
+        onPress={() => quickLogin(DEMO_AGENT, 'Agent')}
+      />
+      <QuickRoleCard
+        label="Banking"
+        description="Process M-Pesa payment queue"
+        icon="card"
+        color="#1976D2"
+        loading={loading}
         onPress={async () => {
           setLoading(true);
           try {
@@ -158,8 +165,9 @@ export function LoginScreen({ navigation }: Props) {
             setLoading(false);
           }
         }}
-      >
-        Open Banking Platform
+      />
+      <Button mode="text" onPress={() => navigation.navigate('AggregationLogin')} textColor={COLORS.muted}>
+        Aggregation centre login
       </Button>
 
       <Button mode="text" onPress={() => clearAllSessionData().then(() => showMessage('Done', 'Session cleared'))} textColor={COLORS.muted}>
