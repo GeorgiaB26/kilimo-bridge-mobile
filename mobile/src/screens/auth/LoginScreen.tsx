@@ -18,7 +18,6 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 const DEMO_FARMER = '+254712345678';
 const DEMO_AGENT = '+254700000003';
 const DEMO_BANKING = '+254700000004';
-const DEMO_ADMIN = '+254700000002';
 const BANKING_PASSWORD = 'Banking@2026';
 
 const BACKEND_OFFLINE_MSG = IS_API_MISCONFIGURED
@@ -166,16 +165,15 @@ export function LoginScreen({ navigation }: Props) {
           }
         }}
       />
-      <QuickRoleCard
-        label="Admin / staff"
-        description="Dashboard, farmers, import & platform logins"
-        icon="shield-checkmark"
-        color="#5D4E37"
-        loading={loading}
-        onPress={() => quickLogin(DEMO_ADMIN, 'Admin')}
-      />
-      <Button mode="text" onPress={() => navigation.navigate('AggregationLogin')} textColor={COLORS.muted}>
-        Aggregation centre login
+      <Button
+        mode="contained"
+        onPress={() => navigation.navigate('PlatformRegister')}
+        buttonColor={COLORS.accent}
+        style={styles.registerBtn}
+        contentStyle={styles.btnContent}
+        textColor={COLORS.primary}
+      >
+        Create platform account
       </Button>
 
       <Button mode="text" onPress={() => clearAllSessionData().then(() => showMessage('Done', 'Session cleared'))} textColor={COLORS.muted}>
@@ -220,6 +218,7 @@ const styles = StyleSheet.create({
   primaryBtn: { borderRadius: 12 },
   btnContent: { minHeight: 48 },
   quickTitle: { fontSize: 14, fontWeight: '600', color: COLORS.muted, marginBottom: 12 },
+  registerBtn: { borderRadius: 12, marginTop: 8, marginBottom: 8 },
   quickBtn: { marginBottom: 10, borderRadius: 12 },
   buildHint: { textAlign: 'center', fontSize: 11, color: COLORS.muted, marginTop: 8 },
 });

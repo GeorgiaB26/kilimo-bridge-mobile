@@ -46,6 +46,19 @@ export interface ReferenceData {
   membershipTypes: string[];
 }
 
+export async function registerPlatformUser(body: {
+  name: string;
+  phone: string;
+  role: string;
+  district?: string;
+  region?: string;
+  aggregationCenter?: string;
+  password?: string;
+}) {
+  const { data } = await api.post('/auth/register', body);
+  return data;
+}
+
 export async function requestOtp(phone: string) {
   const { data } = await api.post('/auth/request-otp', { phone });
   return data;
