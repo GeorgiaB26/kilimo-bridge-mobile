@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { useAuthStore } from '../../store/authStore';
-import { SyncStatusBanner } from '../SyncStatusBanner';
+import { SyncStatusBanner } from '../../components/SyncStatusBanner';
 
 export function RoleProfileScreen() {
   const user = useAuthStore((s) => s.user);
