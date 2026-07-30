@@ -15,7 +15,7 @@
     "seed": "tsx src/seed.ts",
     "seed:hierarchy": "tsx scripts/seed-hierarchy.ts",
     "sync:supabase": "tsx scripts/sync-to-supabase.ts",
-    "migrate:supabase": "tsx scripts/migrate-sqlite-to-supabase.ts",
+    "migrate:app-supabase": "tsx scripts/migrate-to-app-supabase.ts",
     "export:schema": "tsx scripts/export-schema.ts"
   },
   "dependencies": {

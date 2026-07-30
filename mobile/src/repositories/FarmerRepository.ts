@@ -1,6 +1,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { api } from '../api/client';
 import { getLocalDb, isNativeOfflineCapable } from '../db/localDb';
+import { getAppSupabaseClient, isAppSupabaseConfigured } from '../lib/appSupabase';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { syncManager } from '../sync/SyncManager';
 import { shouldQueueOffline } from '../sync/syncLogic';
@@ -33,22 +34,58 @@ export class FarmerRepository {
     const net = await NetInfo.fetch();
     const online = Boolean(net.isConnected && net.isInternetReachable);
 
-    if (SYNC_MODE !== 'api' && online && isSupabaseConfigured() && accessToken) {
-      const supabase = getSupabaseClient(accessToken);
-      if (supabase) {
-        try {
-          const { data, error, count } = await supabase
-            .from('farmers')
-            .select('farmer_id, name, phone_number, country, district, sub_county, aggregation_center, membership_group_name, status, kb_farmer_id', { count: 'exact' })
-            .eq('is_deleted', false)
-            .order('name')
-            .range(offset, offset + limit - 1);
-          if (!error && data) {
-            await this.cacheFarmersLocally(data);
-            return { farmers: data.map((r) => mapRow(r as Record<string, unknown>)), total: count ?? data.length, source: 'supabase' };
+    if (SYNC_MODE !== 'api' && online && accessToken) {
+      if (isAppSupabaseConfigured()) {
+        const supabase = getAppSupabaseClient(accessToken);
+        if (supabase) {
+          try {
+            const { data, error, count } = await supabase
+              .from('farmers')
+              .select('id, name, phone, country, district, sub_county, village, membership_type, status, legacy_farmer_id', { count: 'exact' })
+              .eq('is_deleted', false)
+              .order('name')
+              .range(offset, offset + limit - 1);
+            if (!error && data) {
+              const farmers = data.map((r) => mapRow({
+                farmer_id: r.id,
+                name: r.name,
+                phone_number: r.phone,
+                country: r.country,
+                district: r.district,
+                sub_county: r.sub_county,
+                membership_group_name: r.membership_type,
+                status: r.status,
+                kb_farmer_id: r.legacy_farmer_id,
+              } as Record<string, unknown>));
+              await this.cacheFarmersLocally(data as Record<string, unknown>[]);
+              return { farmers, total: count ?? data.length, source: 'supabase' };
+            }
+          } catch {
+            // fall through
           }
-        } catch {
-          // fall through
+        }
+      }
+      if (isSupabaseConfigured()) {
+        const supabase = getSupabaseClient(accessToken);
+        if (supabase) {
+          try {
+            const { data, error, count } = await supabase
+              .from('farmers')
+              .select('farmer_id, name, phone_number, country, district, sub_county, aggregation_center, membership_group_name, status, kb_farmer_id', { count: 'exact' })
+              .eq('is_deleted', false)
+              .order('name')
+              .range(offset, offset + limit - 1);
+            if (!error && data) {
+              await this.cacheFarmersLocally(data as Record<string, unknown>[]);
+              return {
+                farmers: data.map((r) => mapRow(r as Record<string, unknown>)),
+                total: count ?? data.length,
+                source: 'supabase',
+              };
+            }
+          } catch {
+            // fall through
+          }
         }
       }
     }
@@ -83,10 +120,10 @@ export class FarmerRepository {
           aggregation_center, membership_group_name, status, kb_farmer_id, updated_at, pending_sync, is_deleted
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
         [
-          r.farmer_id,
-          r.key ?? '',
+          r.farmer_id ?? r.id,
+          r.key ?? r.id ?? '',
           r.name,
-          r.phone_number,
+          r.phone_number ?? r.phone,
           r.country ?? '',
           r.district ?? '',
           r.sub_county ?? '',
@@ -125,6 +162,17 @@ export class FarmerRepository {
       await this.writeLocalFarmer(payload, true);
       await syncManager.queueUpsert('farmers', farmerId, { ...payload, updated_at: new Date().toISOString() });
       return;
+    }
+
+    if (isAppSupabaseConfigured() && accessToken) {
+      const supabase = getAppSupabaseClient(accessToken);
+      if (supabase) {
+        const { error } = await supabase.from('farmers').upsert({ ...payload, updated_at: new Date().toISOString() });
+        if (!error) {
+          await this.writeLocalFarmer(payload, false);
+          return;
+        }
+      }
     }
 
     if (isSupabaseConfigured() && accessToken) {

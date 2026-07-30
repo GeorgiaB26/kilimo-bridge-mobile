@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getLocalDb, isNativeOfflineCapable } from '../db/localDb';
+import { getAppSupabaseClient, isAppSupabaseConfigured } from '../lib/appSupabase';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { pickWinner, type ConflictResolution } from './syncLogic';
 import type { SyncState } from '../db/localSchema';
@@ -72,7 +73,7 @@ export class SyncManager {
 
   async runSync(reason: string): Promise<void> {
     if (SYNC_MODE === 'api') return;
-    if (!isSupabaseConfigured() || !this.accessToken) return;
+    if ((!isSupabaseConfigured() && !isAppSupabaseConfigured()) || !this.accessToken) return;
     if (this.syncing) return;
 
     this.syncing = true;
@@ -124,7 +125,9 @@ export class SyncManager {
   private async pushQueue(): Promise<void> {
     if (!isNativeOfflineCapable) return;
     const db = await getLocalDb();
-    const supabase = getSupabaseClient(this.accessToken);
+    const supabase = isAppSupabaseConfigured()
+      ? getAppSupabaseClient(this.accessToken)
+      : getSupabaseClient(this.accessToken);
     if (!db || !supabase) return;
 
     const rows = await db.getAllAsync<{
@@ -152,14 +155,19 @@ export class SyncManager {
   private async pullFarmers(): Promise<void> {
     if (!isNativeOfflineCapable) return;
     const db = await getLocalDb();
-    const supabase = getSupabaseClient(this.accessToken);
+    const supabase = isAppSupabaseConfigured()
+      ? getAppSupabaseClient(this.accessToken)
+      : getSupabaseClient(this.accessToken);
     if (!db || !supabase) return;
+
+    const isApp = isAppSupabaseConfigured();
+    const selectFields = isApp
+      ? 'id, name, phone, country, district, sub_county, village, membership_type, status, profile_photo_url, updated_at, is_deleted, activated, verified_by_name, verified_at'
+      : 'farmer_id, key, name, phone_number, country, district, sub_county, aggregation_center, membership_group_name, status, kb_farmer_id, updated_at, is_deleted';
 
     const { data, error } = await supabase
       .from('farmers')
-      .select(
-        'farmer_id, key, name, phone_number, country, district, sub_county, aggregation_center, membership_group_name, status, kb_farmer_id, updated_at, is_deleted'
-      )
+      .select(selectFields)
       .eq('is_deleted', false)
       .order('name')
       .limit(500);
@@ -168,9 +176,10 @@ export class SyncManager {
     if (!data?.length) return;
 
     for (const remote of data) {
+      const farmerId = isApp ? (remote.id as string) : (remote.farmer_id as string);
       const local = await db.getFirstAsync<{ updated_at: string; pending_sync: number }>(
         'SELECT updated_at, pending_sync FROM farmers WHERE farmer_id = ?',
-        [remote.farmer_id]
+        [farmerId]
       );
 
       if (local?.pending_sync) {
@@ -185,17 +194,17 @@ export class SyncManager {
           updated_at, pending_sync, is_deleted
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
         [
-          remote.farmer_id,
-          remote.key ?? '',
+          farmerId,
+          isApp ? farmerId : (remote.key ?? ''),
           remote.name,
-          remote.phone_number,
+          isApp ? remote.phone : remote.phone_number,
           remote.country ?? '',
           remote.district ?? '',
-          remote.sub_county ?? '',
-          remote.aggregation_center,
-          remote.membership_group_name,
+          isApp ? remote.sub_county ?? '' : remote.sub_county ?? '',
+          isApp ? null : remote.aggregation_center,
+          isApp ? remote.membership_type ?? '' : remote.membership_group_name,
           remote.status ?? 'Active',
-          remote.kb_farmer_id,
+          isApp ? null : remote.kb_farmer_id,
           remote.updated_at ?? new Date().toISOString(),
         ]
       );
