@@ -9,6 +9,7 @@ import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { ProfileVerifiedBadge } from '../../components/ProfileVerifiedBadge';
 import { getLocalizedGreeting } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
 
@@ -67,6 +68,7 @@ export function FarmerProfileScreen() {
           <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
           <Text style={styles.chipText}>Verified Farmer</Text>
         </View>
+        <ProfileVerifiedBadge readOnly activated={farmer?.status === 'Active'} />
         <Text style={styles.currencyBadge}>{currencyInfo.name} ({currency})</Text>
       </View>
 

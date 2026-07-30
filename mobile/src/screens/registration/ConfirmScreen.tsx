@@ -44,19 +44,26 @@ export function ConfirmScreen({ navigation }: Props) {
   );
 
   const handleSubmit = async () => {
+    if (!formData.pictureUri) {
+      Alert.alert('Photo required', 'Go back and add a verification photo.');
+      return;
+    }
     setLoading(true);
     try {
       const result = await registerFarmer(formData);
-      Alert.alert(
-        'Registration Successful',
-        `Farmer ID: ${result.kbFarmerId ?? kbFarmerId}\nKey: ${result.key}`,
-        [{ text: 'OK', onPress: () => { resetForm(); } }]
-      );
+      const id = result.kbFarmerId ?? kbFarmerId;
+      resetForm();
+      navigation.replace('Success', {
+        farmerId: id,
+        farmerName: formData.name,
+        phone: formData.phone,
+      });
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { errors?: { error: string }[] } } }).response?.data?.errors?.[0]?.error
-        : 'Registration failed. Please try again.';
-      Alert.alert('Registration Failed', message ?? 'Please check your details and try again.');
+      const ax = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; errors?: { error: string }[] } } }).response?.data
+        : undefined;
+      const message = ax?.error ?? ax?.errors?.[0]?.error ?? 'Registration failed. Check phone format and cooperative.';
+      Alert.alert('Registration Failed', message);
     } finally {
       setLoading(false);
     }
@@ -84,12 +91,16 @@ export function ConfirmScreen({ navigation }: Props) {
         {formData.village ? (
           <SummaryRow label={labels[3]} value={formData.village} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
         ) : null}
-        <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+        <SummaryRow label="Cooperative" value={formData.membershipGroup} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+        <SummaryRow label="Membership Type" value={formData.membershipType ?? 'Active'} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+        <SummaryRow label="Role" value={formData.farmerRole ?? 'farmer'} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
         {formData.aggregationCenter ? (
           <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
         ) : null}
-        {formData.occupation ? (
-          <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+        <SummaryRow label="Occupation" value={formData.occupation ?? '—'} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+        <SummaryRow label="Years of Experience" value={formData.yearsOfExperience ?? '—'} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+        {formData.sizeOfLand ? (
+          <SummaryRow label="Land (acres)" value={formData.sizeOfLand} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
         ) : null}
         {formData.project1 ? (
           <SummaryRow label="Project 1" value={formData.project1} onEdit={() => navigation.navigate(STEP_SCREENS[5])} />

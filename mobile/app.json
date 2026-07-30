@@ -1,15 +1,19 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
-    "version": "2.1.0",
+    "name": "Kilimo Bridge",
+    "slug": "kilimo-bridge",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.kilimobridge.app",
+      "buildNumber": "1",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.kilimobridge.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -20,6 +24,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sqlite"
+    ]
   }
 }

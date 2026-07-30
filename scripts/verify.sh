@@ -51,5 +51,18 @@ else
 fi
 
 echo ""
+echo "5. App Supabase (optional cloud sync)"
+if [ -f "backend/.env" ] && grep -q "tzaipijebibisgkwrdnz" backend/.env 2>/dev/null; then
+  echo "   ✓ APP_SUPABASE_URL set (tzaipijebibisgkwrdnz)"
+  if grep -q "APP_SUPABASE_SERVICE_ROLE_KEY=$" backend/.env 2>/dev/null || grep -q "APP_SUPABASE_SERVICE_ROLE_KEY=\s*$" backend/.env 2>/dev/null; then
+    echo "   ⚠ Add service_role key → Supabase → Settings → API"
+  else
+    echo "   → Verify: npm run check:app-supabase"
+  fi
+else
+  echo "   → Copy backend/.env.example to backend/.env and set APP_SUPABASE_* keys"
+fi
+
+echo ""
 echo "=== Done ==="
 echo ""

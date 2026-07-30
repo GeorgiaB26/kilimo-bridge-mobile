@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -16,9 +17,11 @@ import agentRoutes from './routes/agents';
 import auditRoutes from './routes/audit';
 import hierarchyAdminRoutes from './routes/hierarchyAdmin';
 import aggregationRoutes from './routes/aggregation';
+import syncRoutes from './routes/sync';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
 import { getFarmerCount, db } from './db/database';
+import { isSupabaseConfigured, scheduleSupabaseSync } from './services/supabaseSync';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -109,8 +112,13 @@ async function bootstrap(): Promise<void> {
   app.use('/api/banking', bankingRoutes);
   app.use('/api/agents', agentRoutes);
   app.use('/api/audit', auditRoutes);
+  app.use('/api/admin/sync', syncRoutes);
   app.use('/api/webhooks', equityWebhookRouter);
   app.use('/api', apiRoutes);
+
+  if (isSupabaseConfigured() && process.env.SUPABASE_SYNC_ON_STARTUP === 'true') {
+    scheduleSupabaseSync('startup');
+  }
 
   app.get('/api/metrics/live', (req, res) => {
     const trackerKey = process.env.TRACKER_API_KEY;

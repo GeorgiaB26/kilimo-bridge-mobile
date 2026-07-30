@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requestOtp, verifyOtp, loginWithPassword, devQuickLogin } from '../services/authService';
+import { registerPlatformUser } from '../services/platformSignupService';
 import { authenticate } from '../middleware/auth';
 import { loginLimiter, otpRequestLimiter, otpVerifyLimiter } from '../middleware/security';
 import { logAudit } from '../services/auditService';
@@ -18,6 +19,20 @@ router.post('/request-otp', otpRequestLimiter, (req: Request, res: Response) => 
     return;
   }
   res.json(result);
+});
+
+/** Self-service platform account (farmer / agent / banking — not admin). */
+router.post('/register', loginLimiter, async (req: Request, res: Response) => {
+  const { phone, name, role, district, region, aggregationCenter, password } = req.body;
+  const result = await registerPlatformUser(
+    { phone, name, role, district, region, aggregationCenter, password },
+    req.ip
+  );
+  if (!result.success) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.status(201).json({ success: true, phone: result.phone, message: 'Account created. Sign in to continue.' });
 });
 
 router.post('/verify-otp', otpVerifyLimiter, (req: Request, res: Response) => {

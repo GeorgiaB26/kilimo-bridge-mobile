@@ -23,6 +23,7 @@ export function AdminUsersScreen() {
     role: string;
     district?: string;
     status: string;
+    created_at?: string;
   }>>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -64,7 +65,12 @@ export function AdminUsersScreen() {
 
   const listHeader = (
     <View>
-      <Text style={styles.title}>Platform Users ({users.length.toLocaleString()})</Text>
+      <Text style={styles.title}>Platform logins</Text>
+      <Text style={styles.scopeNote}>
+        Kilimo Bridge accounts (phone OTP or password). These control who can sign in as farmer, agent,
+        banking, or admin here — not Loveable admin portal users.
+      </Text>
+      <Text style={styles.countLine}>{users.length.toLocaleString()} accounts</Text>
       <KBSearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
@@ -95,7 +101,12 @@ export function AdminUsersScreen() {
             </Text>
           </View>
           <Text style={styles.phone}>{item.phone_number}</Text>
-          {item.district ? <Text style={styles.district}>District: {item.district}</Text> : null}
+          <View style={styles.metaRow}>
+            <Text style={[styles.status, item.status === 'active' ? styles.statusActive : styles.statusOff]}>
+              {item.status}
+            </Text>
+            {item.district ? <Text style={styles.district}>District: {item.district}</Text> : null}
+          </View>
         </View>
       )}
       ListEmptyComponent={
@@ -114,7 +125,9 @@ export function AdminUsersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   listContent: { padding: 16, paddingBottom: 32 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
+  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 6 },
+  scopeNote: { fontSize: 13, color: COLORS.muted, lineHeight: 18, marginBottom: 8 },
+  countLine: { fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 12 },
   searchHint: { fontSize: 12, color: COLORS.muted, marginTop: -8, marginBottom: 8 },
   subtitle: { fontSize: 13, color: COLORS.muted, marginBottom: 12 },
   card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 8 },
@@ -122,7 +135,11 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: '600', color: COLORS.text, flex: 1 },
   role: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
   phone: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  district: { fontSize: 12, color: COLORS.info, marginTop: 2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' },
+  status: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  statusActive: { backgroundColor: '#E8F5E9', color: COLORS.success },
+  statusOff: { backgroundColor: '#FFEBEE', color: COLORS.alert },
+  district: { fontSize: 12, color: COLORS.info },
   denied: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   deniedText: { color: COLORS.muted, fontSize: 16, textAlign: 'center' },
   loader: { marginTop: 24 },

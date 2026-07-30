@@ -12,11 +12,12 @@ import { DetailsScreen } from '../screens/registration/DetailsScreen';
 import { ProjectsScreen } from '../screens/registration/ProjectsScreen';
 import { PhotoScreen } from '../screens/registration/PhotoScreen';
 import { ConfirmScreen } from '../screens/registration/ConfirmScreen';
+import { RegistrationSuccessScreen } from '../screens/registration/RegistrationSuccessScreen';
 import type { RegistrationStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RegistrationStackParamList>();
 
-const STEP_LABELS = ['Country', 'Basic Info', 'Location', 'Membership', 'Details', 'Projects', 'Photo', 'Confirm'];
+const STEP_LABELS = ['Country', 'Basic Info', 'Location', 'Cooperative', 'Experience', 'Projects', 'Photo', 'Confirm'];
 
 const STEP_MAP: Record<keyof RegistrationStackParamList, number> = {
   Country: 0,
@@ -64,6 +65,11 @@ export function RegistrationNavigator() {
       <Stack.Screen name="Projects" component={withLayout(ProjectsScreen, 'Projects')} />
       <Stack.Screen name="Photo" component={withLayout(PhotoScreen, 'Photo')} />
       <Stack.Screen name="Confirm" component={withLayout(ConfirmScreen, 'Confirm')} />
+      <Stack.Screen
+        name="Success"
+        component={RegistrationSuccessScreen}
+        options={{ title: 'Success', headerBackVisible: false }}
+      />
     </Stack.Navigator>
   );
 }

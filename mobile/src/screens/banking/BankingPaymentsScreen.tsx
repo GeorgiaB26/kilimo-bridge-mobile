@@ -1,64 +1,139 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Alert } from 'react-native';
-import { Button } from '../../components/Button';
+import React, { useState, useCallback } from 'react';
+import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Button } from 'react-native-paper';
 import { COLORS } from '../../constants';
 import { api } from '../../api/client';
-
+import { RoleHeroHeader } from '../../components/RoleHeroHeader';
+import { KBCard } from '../../components/ui/KBCard';
+import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { showMessage } from '../../utils/feedback';
 import { useCurrency } from '../../context/CurrencyContext';
+
+type PaymentRow = {
+  id: string;
+  farmer_name: string;
+  amount: number;
+  payment_status: string;
+  phone_number?: string;
+  project_name?: string;
+};
 
 export function BankingPaymentsScreen() {
   const { formatAmount, formatPayment } = useCurrency();
-  const [payments, setPayments] = useState<Array<{ id: string; farmer_name: string; amount: number; payment_status: string }>>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  React.useEffect(() => {
-    api.get('/banking/payments').then((r) => setPayments(
-      (r.data.payments ?? []).filter((p: { payment_status: string }) => p.payment_status === 'Pending')
-    )).catch(() => {});
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/banking/payments');
+      setPayments(
+        (data.payments ?? []).filter((p: PaymentRow) => p.payment_status === 'Pending')
+      );
+    } catch {
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  React.useEffect(() => { load(); }, [load]);
 
   const processPayment = async (paymentId: string) => {
     setProcessing(paymentId);
     try {
       const { data } = await api.post(`/banking/payments/${paymentId}/process`);
-      Alert.alert('Payment Processed', `Reference: ${data.reference ?? 'Pending'}`);
+      showMessage('Payment processed', `Reference: ${data.reference ?? 'Pending'}`);
       setPayments((prev) => prev.filter((p) => p.id !== paymentId));
     } catch {
-      Alert.alert('Error', 'Payment processing failed');
+      showMessage('Failed', 'Payment could not be processed. Try again.');
     } finally {
       setProcessing(null);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <FlatList
       style={styles.container}
       data={payments}
       keyExtractor={(item) => item.id}
-      ListHeaderComponent={<Text style={styles.title}>Process M-Pesa Payments</Text>}
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <Text style={styles.name}>{item.farmer_name}</Text>
-          <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
-          <Button
-            title={`Process ${formatPayment(item.amount)}`}
-            onPress={() => processPayment(item.id)}
-            loading={processing === item.id}
-            style={styles.btn}
-          />
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
+          tintColor={COLORS.primary}
+        />
+      }
+      ListHeaderComponent={
+        <RoleHeroHeader
+          title="Payment queue"
+          subtitle="Process M-Pesa payouts to farmers"
+          icon="send"
+          accent={COLORS.accent}
+        >
+          <Text style={styles.queueCount}>{payments.length} pending</Text>
+        </RoleHeroHeader>
+      }
+      contentContainerStyle={styles.list}
+      renderItem={({ item }) => {
+        const busy = processing === item.id;
+        const done = processing !== null && !busy && processing !== item.id;
+        return (
+          <KBCard>
+            <View style={styles.cardTop}>
+              <View>
+                <Text style={styles.name}>{item.farmer_name}</Text>
+                <Text style={styles.meta}>{item.phone_number ?? '—'}</Text>
+                {item.project_name ? <Text style={styles.project}>{item.project_name}</Text> : null}
+              </View>
+              <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
+            </View>
+            <KBStatusChip label="Pending" variant="pending" />
+            <Button
+              mode="contained"
+              onPress={() => processPayment(item.id)}
+              loading={busy}
+              disabled={busy || done}
+              buttonColor={busy ? COLORS.muted : COLORS.primary}
+              style={styles.processBtn}
+              icon="cash"
+            >
+              {busy ? 'Processing…' : `Process ${formatPayment(item.amount)}`}
+            </Button>
+          </KBCard>
+        );
+      }}
+      ListEmptyComponent={
+        <View style={styles.emptyWrap}>
+          <Ionicons name="checkmark-done-circle" size={48} color={COLORS.success} />
+          <Text style={styles.empty}>Queue empty — all payments processed</Text>
         </View>
-      )}
-      ListEmptyComponent={<Text style={styles.empty}>No pending payments</Text>}
+      }
     />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 16 },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 10 },
-  name: { fontSize: 16, fontWeight: '600' },
-  amount: { fontSize: 18, color: COLORS.accent, fontWeight: '700', marginVertical: 8 },
-  btn: { marginTop: 4 },
-  empty: { textAlign: 'center', color: COLORS.muted, marginTop: 32 },
+  container: { flex: 1, backgroundColor: COLORS.surface },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  list: { paddingHorizontal: 16, paddingBottom: 24 },
+  queueCount: { color: COLORS.accent, fontSize: 15, fontWeight: '700', marginTop: 8 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  name: { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  meta: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
+  project: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  amount: { fontSize: 20, fontWeight: '800', color: COLORS.accent },
+  processBtn: { marginTop: 12, borderRadius: 10 },
+  emptyWrap: { alignItems: 'center', marginTop: 48, gap: 12 },
+  empty: { color: COLORS.muted, fontSize: 15 },
 });

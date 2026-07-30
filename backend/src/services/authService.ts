@@ -97,7 +97,14 @@ export function verifyOtp(phone: string, code: string, ipAddress?: string): {
 
   const user = rowToUser(row);
   const token = jwt.sign(
-    { userId: user.userId, role: user.role, farmerId: user.farmerId },
+    {
+      userId: user.userId,
+      role: user.role,
+      farmerId: user.farmerId,
+      phoneNumber: user.phoneNumber,
+      district: user.district,
+      region: user.region,
+    },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -127,7 +134,18 @@ export async function loginWithPassword(phone: string, password: string, ipAddre
   }
 
   const user = rowToUser(row);
-  const token = jwt.sign({ userId: user.userId, role: user.role }, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign(
+    {
+      userId: user.userId,
+      role: user.role,
+      farmerId: user.farmerId,
+      phoneNumber: user.phoneNumber,
+      district: user.district,
+      region: user.region,
+    },
+    JWT_SECRET,
+    { expiresIn: '8h' }
+  );
   logAudit({ userId: user.userId, userRole: user.role, action: 'auth.login', category: 'auth', details: { method: 'password' }, ipAddress, success: true });
   return { success: true, token, user };
 }
@@ -167,7 +185,14 @@ export function devQuickLogin(phone: string, ipAddress?: string): {
 
   const user = rowToUser(row);
   const token = jwt.sign(
-    { userId: user.userId, role: user.role, farmerId: user.farmerId },
+    {
+      userId: user.userId,
+      role: user.role,
+      farmerId: user.farmerId,
+      phoneNumber: user.phoneNumber,
+      district: user.district,
+      region: user.region,
+    },
     JWT_SECRET,
     { expiresIn: '7d' }
   );

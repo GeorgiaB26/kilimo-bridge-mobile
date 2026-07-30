@@ -26,6 +26,16 @@ export const GENDER_OPTIONS = [
   { label: 'Other', value: 'Other' },
 ];
 
+export const OCCUPATION_OPTIONS = [
+  'Farmer',
+  'Teacher',
+  'Trader',
+  'Civil Servant',
+  'Self-employed',
+  'Student',
+  'Other',
+];
+
 export const MEMBERSHIP_TYPES = ['Active', 'Inactive', 'Suspended'];
 
 export const DISTRICTS = [
