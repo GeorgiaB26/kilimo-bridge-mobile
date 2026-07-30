@@ -16,7 +16,6 @@ import type { AuthStackParamList } from '../../navigation/types';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 const DEMO_FARMER = '+254712345678';
-const DEMO_ADMIN = '+254700000002';
 const DEMO_AGENT = '+254700000003';
 const DEMO_BANKING = '+254700000004';
 const BANKING_PASSWORD = 'Banking@2026';
