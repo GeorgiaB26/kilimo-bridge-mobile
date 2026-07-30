@@ -18,6 +18,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 const DEMO_FARMER = '+254712345678';
 const DEMO_AGENT = '+254700000003';
 const DEMO_BANKING = '+254700000004';
+const DEMO_ADMIN = '+254700000002';
 const BANKING_PASSWORD = 'Banking@2026';
 
 const BACKEND_OFFLINE_MSG = IS_API_MISCONFIGURED
@@ -164,6 +165,14 @@ export function LoginScreen({ navigation }: Props) {
             setLoading(false);
           }
         }}
+      />
+      <QuickRoleCard
+        label="Admin / staff"
+        description="Dashboard, farmers, import & platform logins"
+        icon="shield-checkmark"
+        color="#5D4E37"
+        loading={loading}
+        onPress={() => quickLogin(DEMO_ADMIN, 'Admin')}
       />
       <Button mode="text" onPress={() => navigation.navigate('AggregationLogin')} textColor={COLORS.muted}>
         Aggregation centre login

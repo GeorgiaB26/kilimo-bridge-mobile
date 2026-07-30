@@ -54,7 +54,16 @@ export function AdminPlatformNavigator() {
       ) : null}
       <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register' }} />
       {canManageUsers ? (
-        <Tab.Screen name="Users" component={AdminUsersScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Users' }} />
+        <Tab.Screen
+          name="Users"
+          component={AdminUsersScreen}
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: COLORS.primary },
+            headerTintColor: '#fff',
+            title: 'Platform logins',
+          }}
+        />
       ) : null}
       <Tab.Screen name="Profile" component={AdminProfileScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Settings' }} />
     </Tab.Navigator>
