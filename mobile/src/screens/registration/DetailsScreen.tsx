@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
-import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { useRegistrationStore } from '../../store/registrationStore';
 import type { RegistrationStackParamList } from '../../navigation/types';
@@ -13,7 +14,7 @@ export function DetailsScreen({ navigation }: Props) {
   const { formData, updateForm } = useRegistrationStore();
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1">
       <ScreenHeader title="Details" subtitle="Additional information" />
       <FormField
         label="Occupation"
@@ -28,16 +29,14 @@ export function DetailsScreen({ navigation }: Props) {
         placeholder="2.5"
         keyboardType="decimal-pad"
       />
-      <View style={styles.row}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
-        <Button title="Next" onPress={() => navigation.navigate('Projects')} style={styles.half} />
+      <View className="mt-2 flex-row gap-3">
+        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
+          <Text>Back</Text>
+        </Button>
+        <Button className="h-12 flex-1 bg-[#1A4D3E]" onPress={() => navigation.navigate('Projects')}>
+          <Text className="text-white">Next</Text>
+        </Button>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  half: { flex: 1 },
-});

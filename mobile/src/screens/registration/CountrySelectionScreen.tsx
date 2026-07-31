@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Pressable, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { Button } from '../../components/Button';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { KilimoLogo } from '../../components/KilimoLogo';
-import { COLORS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { useCurrency } from '../../context/CurrencyContext';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
@@ -44,82 +45,52 @@ export function CountrySelectionScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
-      <KilimoLogo width={200} height={54} style={styles.logo} />
+    <View className="flex-1">
+      <KilimoLogo width={200} height={54} style={{ marginBottom: 8 }} />
       <ScreenHeader title="Select Your Country" subtitle="Choose where you farm" />
       {selectedCurrency ? (
-        <View style={styles.currencyBanner}>
-          <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
-          <Text style={styles.currencyText}>
-            Currency: <Text style={styles.currencyCode}>{selectedCurrency.code}</Text>
+        <View className="mb-3 flex-row items-center gap-2 rounded-lg bg-[#E8F5F0] p-3">
+          <Ionicons name="cash-outline" size={18} color="#1A4D3E" />
+          <Text className="flex-1 text-sm text-[#333333]">
+            Currency: <Text className="font-bold text-[#1A4D3E]">{selectedCurrency.code}</Text>
             {' · '}{selectedCurrency.name}
           </Text>
         </View>
       ) : null}
-      <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+      <ScrollView className="mb-2 flex-1" showsVerticalScrollIndicator={false}>
         {COUNTRY_LIST.map((country) => {
           const selected = formData.country === country.name;
           const currency = getCurrencyForCountry(country.name);
           return (
             <Pressable
               key={country.code}
-              style={[styles.option, selected && styles.optionSelected]}
+              className={cn(
+                'mb-2 flex-row items-center rounded-[10px] border bg-white p-3.5',
+                selected ? 'border-[#1A4D3E] bg-[#E8F5F0]' : 'border-[#E0E0E0]'
+              )}
               onPress={() => handleSelectCountry(country.name)}
             >
-              <View style={styles.optionContent}>
-                <Text style={[styles.optionName, selected && styles.optionNameSelected]}>{country.name}</Text>
-                <Text style={styles.optionHint}>
+              <View className="flex-1">
+                <Text className={cn('text-base font-semibold text-[#333333]', selected && 'text-[#1A4D3E]')}>
+                  {country.name}
+                </Text>
+                <Text className="mt-0.5 text-xs text-[#757575]">
                   {country.levelLabels[0]} → {country.levelLabels[3]} · {currency.code}
                 </Text>
               </View>
               {selected ? (
-                <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                <Ionicons name="checkmark-circle" size={24} color="#1A4D3E" />
               ) : (
-                <Ionicons name="ellipse-outline" size={24} color={COLORS.border} />
+                <Ionicons name="ellipse-outline" size={24} color="#E0E0E0" />
               )}
             </Pressable>
           );
         })}
       </ScrollView>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button title="Next" onPress={handleNext} style={styles.button} />
+      {error ? <Text className="mb-2 text-sm text-[#D32F2F]">{error}</Text> : null}
+      <Button className="mt-1 h-12 bg-[#1A4D3E]" onPress={handleNext}>
+        <Text className="text-white">Next</Text>
+      </Button>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  logo: { marginBottom: 8 },
-  currencyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#E8F5F0',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-  },
-  currencyText: { fontSize: 14, color: COLORS.text, flex: 1 },
-  currencyCode: { fontWeight: '700', color: COLORS.primary },
-  list: { flex: 1, marginBottom: 8 },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 8,
-    backgroundColor: COLORS.background,
-  },
-  optionSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#E8F5F0',
-  },
-  optionContent: { flex: 1 },
-  optionName: { fontSize: 16, fontWeight: '600', color: COLORS.text },
-  optionNameSelected: { color: COLORS.primary },
-  optionHint: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
-  error: { color: COLORS.alert, marginBottom: 8, fontSize: 14 },
-  button: { marginTop: 4 },
-});

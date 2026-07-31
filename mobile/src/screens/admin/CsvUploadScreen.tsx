@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from '../../components/Button';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { COLORS, CSV_COLUMNS } from '../../constants';
+import { CSV_COLUMNS } from '../../constants';
 import { pickCsvFile } from '../../utils/pickCsvFile';
 import type { ImportStackParamList } from '../../navigation/types';
 
@@ -43,77 +44,55 @@ export function CsvUploadScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1">
       <ScreenHeader
         title="Import Farmers"
         subtitle="Upload a CSV — profiles, login accounts, and projects are created automatically"
       />
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Expected CSV columns:</Text>
-        <Text style={styles.columns}>{CSV_COLUMNS.join(' | ')}</Text>
-        <Text style={styles.hint}>
+      <View className="mb-5 rounded-lg bg-[#F9F9F9] p-3.5">
+        <Text className="mb-1.5 text-[13px] font-semibold text-[#1A4D3E]">Expected CSV columns:</Text>
+        <Text className="text-[11px] leading-[18px] text-[#757575]">{CSV_COLUMNS.join(' | ')}</Text>
+        <Text className="mt-2.5 text-xs leading-[18px] text-[#1976D2]">
           Cooperative files (e.g. GWED-G) with preamble rows, Memebrship Group typo, or S/N columns are supported. Phone is required so each farmer can sign in.
         </Text>
-        <Text style={styles.macHint}>
+        <Text className="mt-2 text-xs leading-[18px] text-[#FF9800]">
           Excel (.xlsx) and CSV are supported. On Mac, if CSV files look greyed out, pick them anyway or export from Excel as CSV (Comma delimited).
         </Text>
       </View>
-      <View style={styles.uploadArea}>
+      <View className="mb-5 items-center rounded-xl border-2 border-dashed border-[#E0E0E0] p-8">
         {fileName ? (
           <>
-            <Text style={styles.fileIcon}>📄</Text>
-            <Text style={styles.fileName}>{fileName}</Text>
-            <Text style={styles.fileHint}>{isExcel ? 'Excel workbook ready to validate' : 'Ready to validate'}</Text>
+            <Text className="mb-2 text-[40px]">📄</Text>
+            <Text className="text-base font-semibold text-[#333333]">{fileName}</Text>
+            <Text className="mt-1 text-[13px] text-[#2E7D5E]">{isExcel ? 'Excel workbook ready to validate' : 'Ready to validate'}</Text>
           </>
         ) : (
           <>
-            <Text style={styles.fileIcon}>📁</Text>
-            <Text style={styles.uploadText}>Select a CSV file</Text>
-            <Text style={styles.uploadHint}>Max size: 50MB · .csv, .txt, or .xlsx</Text>
+            <Text className="mb-2 text-[40px]">📁</Text>
+            <Text className="text-base font-medium text-[#333333]">Select a CSV file</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">Max size: 50MB · .csv, .txt, or .xlsx</Text>
           </>
         )}
       </View>
       <Button
-        title={fileName ? 'Change File' : 'Choose CSV File'}
-        onPress={pickFile}
         variant="outline"
-        loading={loading}
-      />
+        className="h-12"
+        onPress={pickFile}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#1A4D3E" />
+        ) : (
+          <Text>{fileName ? 'Change File' : 'Choose CSV File'}</Text>
+        )}
+      </Button>
       <Button
-        title="Validate & Preview"
+        className="mt-3 h-12 bg-[#1A4D3E]"
         onPress={handleValidate}
         disabled={!fileContent}
-        style={styles.validateBtn}
-      />
+      >
+        <Text className="text-white">Validate & Preview</Text>
+      </Button>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  infoCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 20,
-  },
-  infoTitle: { fontSize: 13, fontWeight: '600', color: COLORS.primary, marginBottom: 6 },
-  columns: { fontSize: 11, color: COLORS.muted, lineHeight: 18 },
-  hint: { fontSize: 12, color: COLORS.info, marginTop: 10, lineHeight: 18 },
-  macHint: { fontSize: 12, color: COLORS.warning, marginTop: 8, lineHeight: 18 },
-  uploadArea: {
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  fileIcon: { fontSize: 40, marginBottom: 8 },
-  fileName: { fontSize: 16, fontWeight: '600', color: COLORS.text },
-  fileHint: { fontSize: 13, color: COLORS.success, marginTop: 4 },
-  uploadText: { fontSize: 16, color: COLORS.text, fontWeight: '500' },
-  uploadHint: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  validateBtn: { marginTop: 12 },
-});

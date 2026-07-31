@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
-import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { MEMBERSHIP_TYPES, COLORS } from '../../constants';
+import { MEMBERSHIP_TYPES } from '../../constants';
 import { fetchReferenceData } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { findAggregationCentre } from '../../constants/regional';
@@ -46,7 +47,7 @@ export function MembershipScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1">
       <ScreenHeader title="Membership" subtitle="Your cooperative details" />
       <PickerField
         label="Membership Group"
@@ -57,10 +58,10 @@ export function MembershipScreen({ navigation }: Props) {
         error={errors.membershipGroup}
       />
       {suggestedCentre ? (
-        <View style={styles.suggestedCard}>
-          <Text style={styles.suggestedLabel}>Assigned aggregation centre</Text>
-          <Text style={styles.suggestedValue}>{formData.aggregationCenter || suggestedCentre.name}</Text>
-          <Text style={styles.suggestedHint}>Auto-assigned based on your location</Text>
+        <View className="mb-4 rounded-lg border-l-4 border-[#1A4D3E] bg-[#E8F5F0] p-3.5">
+          <Text className="mb-1 text-xs text-[#757575]">Assigned aggregation centre</Text>
+          <Text className="text-base font-semibold text-[#1A4D3E]">{formData.aggregationCenter || suggestedCentre.name}</Text>
+          <Text className="mt-1 text-[11px] text-[#757575]">Auto-assigned based on your location</Text>
         </View>
       ) : (
         <FormField
@@ -76,31 +77,17 @@ export function MembershipScreen({ navigation }: Props) {
         options={MEMBERSHIP_TYPES}
         onSelect={(membershipType) => updateForm({ membershipType })}
       />
-      <View style={styles.row}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
+      <View className="mt-2 flex-row gap-3">
+        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
+          <Text>Back</Text>
+        </Button>
         <Button
-          title="Next"
+          className="h-12 flex-1 bg-[#1A4D3E]"
           onPress={() => validate() && navigation.navigate('Details')}
-          style={styles.half}
-        />
+        >
+          <Text className="text-white">Next</Text>
+        </Button>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  suggestedCard: {
-    backgroundColor: '#E8F5F0',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
-  },
-  suggestedLabel: { fontSize: 12, color: COLORS.muted, marginBottom: 4 },
-  suggestedValue: { fontSize: 16, fontWeight: '600', color: COLORS.primary },
-  suggestedHint: { fontSize: 11, color: COLORS.muted, marginTop: 4 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  half: { flex: 1 },
-});

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
-import { Surface } from 'react-native-paper';
+import { View, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../constants';
+import { Text } from '@/components/ui/text';
 import { getFarmerPayments } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
@@ -39,80 +38,48 @@ export function FarmerPaymentsScreen() {
 
   return (
     <FlatList
-      style={styles.container}
+      className="flex-1 bg-[#F5F5F5]"
       data={payments}
       keyExtractor={(_, i) => String(i)}
       ListHeaderComponent={
         <>
           {error ? <FarmerOfflineBanner message={error} /> : null}
-          <Surface style={styles.summary} elevation={2}>
-          <Text style={styles.summaryLabel}>Total Earned</Text>
-          <Text style={styles.summaryAmount}>{formatAmount(total)}</Text>
-          <Text style={styles.summarySub}>Lifetime earnings via M-Pesa</Text>
-        </Surface>
+          <View className="mb-5 items-center rounded-2xl bg-[#1A4D3E] p-7">
+            <Text className="text-sm text-white/85">Total Earned</Text>
+            <Text className="my-2 text-[40px] font-extrabold text-[#D4AF6A]">{formatAmount(total)}</Text>
+            <Text className="text-[13px] text-white/70">Lifetime earnings via M-Pesa</Text>
+          </View>
         </>
       }
-      contentContainerStyle={styles.list}
+      contentContainerClassName="p-4 pb-8"
       renderItem={({ item }) => (
         <KBCard>
-          <View style={styles.row}>
-            <View style={styles.iconWrap}>
+          <View className="flex-row items-center">
+            <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-[#F5F5F5]">
               <Ionicons
                 name={item.payment_method === 'M-Pesa' ? 'phone-portrait' : 'card'}
                 size={20}
-                color={COLORS.primary}
+                color="#1A4D3E"
               />
             </View>
-            <View style={styles.flex}>
-              <Text style={styles.name}>{item.project_name}</Text>
-              <Text style={styles.date}>{item.created_at?.slice(0, 10)}</Text>
+            <View className="flex-1">
+              <Text className="text-base font-semibold text-[#333333]">{item.project_name}</Text>
+              <Text className="mt-0.5 text-xs text-[#757575]">{item.created_at?.slice(0, 10)}</Text>
             </View>
-            <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
+            <Text className="text-lg font-bold text-[#D4AF6A]">{formatAmount(item.amount)}</Text>
           </View>
-          <View style={styles.badgeRow}>
+          <View className="mt-3 flex-row items-center justify-between">
             <KBStatusChip
               label={item.payment_status}
               variant={item.payment_status === 'Transferred' ? 'success' : 'pending'}
             />
             {item.mpesa_reference ? (
-              <Text style={styles.ref}>Ref: {item.mpesa_reference}</Text>
+              <Text className="text-[11px] text-[#757575]">Ref: {item.mpesa_reference}</Text>
             ) : null}
           </View>
         </KBCard>
       )}
-      ListEmptyComponent={<Text style={styles.empty}>No payments yet</Text>}
+      ListEmptyComponent={<Text className="mt-10 text-center text-[#757575]">No payments yet</Text>}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  list: { padding: 16, paddingBottom: 32 },
-  summary: {
-    padding: 28,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 20,
-    backgroundColor: COLORS.primary,
-  },
-  summaryLabel: { fontSize: 14, color: 'rgba(255,255,255,0.85)' },
-  summaryAmount: { fontSize: 40, fontWeight: '800', color: COLORS.accent, marginVertical: 8 },
-  summarySub: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  flex: { flex: 1 },
-  name: { fontSize: 16, fontWeight: '600', color: COLORS.text },
-  date: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
-  amount: { fontSize: 18, fontWeight: '700', color: COLORS.accent },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
-  ref: { fontSize: 11, color: COLORS.muted },
-  empty: { textAlign: 'center', color: COLORS.muted, marginTop: 40 },
-});

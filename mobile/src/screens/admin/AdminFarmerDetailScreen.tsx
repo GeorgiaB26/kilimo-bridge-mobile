@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, ScrollView, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { COLORS } from '../../constants';
+import { Text } from '@/components/ui/text';
 import { getFarmerById } from '../../api/client';
 import { PENDING_LOCATION_LABEL } from '../../constants/regional';
 import type { AdminFarmersStackParamList } from '../../navigation/types';
@@ -42,9 +42,9 @@ type FarmerDetail = {
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
-    <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
+    <View className="mb-2.5">
+      <Text className="mb-0.5 text-xs text-[#757575]">{label}</Text>
+      <Text className="text-[15px] font-medium text-[#333333]">{value}</Text>
     </View>
   );
 }
@@ -66,16 +66,16 @@ export function AdminFarmerDetailScreen({ route }: Props) {
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
+      <View className="flex-1 items-center justify-center p-6">
+        <Text className="text-center text-base text-[#D32F2F]">{error}</Text>
       </View>
     );
   }
 
   if (!farmer) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View className="flex-1 items-center justify-center p-6">
+        <ActivityIndicator size="large" color="#1A4D3E" />
       </View>
     );
   }
@@ -83,15 +83,17 @@ export function AdminFarmerDetailScreen({ route }: Props) {
   const projectNames = [farmer.project_1, farmer.project_2, farmer.project_3].filter(Boolean) as string[];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.hero}>
-        <Text style={styles.name}>{farmer.name}</Text>
-        <Text style={styles.heroMeta}>{farmer.phone_number}</Text>
-        {farmer.kb_farmer_id ? <Text style={styles.heroId}>ID: {farmer.kb_farmer_id}</Text> : null}
+    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-8">
+      <View className="mb-4 rounded-xl bg-[#1A4D3E] p-5">
+        <Text className="text-2xl font-bold text-white">{farmer.name}</Text>
+        <Text className="mt-1.5 text-base text-[#E8F5F0]">{farmer.phone_number}</Text>
+        {farmer.kb_farmer_id ? (
+          <Text className="mt-1 text-[13px] text-[#C8E6D9]">ID: {farmer.kb_farmer_id}</Text>
+        ) : null}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.section}>Profile</Text>
+      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
+        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Profile</Text>
         <DetailRow label="Gender" value={farmer.gender} />
         <DetailRow label="Status" value={farmer.status} />
         <DetailRow label="Cooperative" value={farmer.membership_group_name} />
@@ -102,8 +104,8 @@ export function AdminFarmerDetailScreen({ route }: Props) {
         ) : null}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.section}>Location</Text>
+      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
+        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Location</Text>
         <DetailRow label="Country" value={farmer.country} />
         <DetailRow label="District" value={formatLocation(farmer.district)} />
         <DetailRow label="Sub-County" value={formatLocation(farmer.sub_county)} />
@@ -113,12 +115,12 @@ export function AdminFarmerDetailScreen({ route }: Props) {
       </View>
 
       {(farmer.projects?.length ?? 0) > 0 || projectNames.length > 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.section}>Projects</Text>
+        <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
+          <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Projects</Text>
           {farmer.projects?.map((p) => (
-            <View key={p.project_name} style={styles.projectRow}>
-              <Text style={styles.projectName}>{p.project_name}</Text>
-              <Text style={styles.projectMeta}>
+            <View key={p.project_name} className="mb-2.5">
+              <Text className="text-[15px] font-semibold text-[#333333]">{p.project_name}</Text>
+              <Text className="mt-0.5 text-[13px] text-[#757575]">
                 {p.progress_label ?? `${p.completion_percentage}%`}
                 {' · '}
                 {p.status}
@@ -127,7 +129,7 @@ export function AdminFarmerDetailScreen({ route }: Props) {
             </View>
           ))}
           {projectNames.map((name) => (
-            <Text key={name} style={styles.projectName}>
+            <Text key={name} className="text-[15px] font-semibold text-[#333333]">
               {name}
             </Text>
           ))}
@@ -136,32 +138,3 @@ export function AdminFarmerDetailScreen({ route }: Props) {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { padding: 16, paddingBottom: 32 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  errorText: { color: COLORS.alert, fontSize: 16, textAlign: 'center' },
-  hero: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-  },
-  name: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
-  heroMeta: { fontSize: 16, color: '#E8F5F0', marginTop: 6 },
-  heroId: { fontSize: 13, color: '#C8E6D9', marginTop: 4 },
-  card: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 12,
-  },
-  section: { fontSize: 14, fontWeight: '700', color: COLORS.primary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 },
-  row: { marginBottom: 10 },
-  label: { fontSize: 12, color: COLORS.muted, marginBottom: 2 },
-  value: { fontSize: 15, color: COLORS.text, fontWeight: '500' },
-  projectRow: { marginBottom: 10 },
-  projectName: { fontSize: 15, fontWeight: '600', color: COLORS.text },
-  projectMeta: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
-});

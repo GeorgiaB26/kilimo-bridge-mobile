@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, Image, StyleSheet, Alert } from 'react-native';
+import { View, Image, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { Button } from '../../components/Button';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { COLORS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
@@ -46,44 +46,49 @@ export function PhotoScreen({ navigation }: Props) {
     .toUpperCase();
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1">
       <ScreenHeader title="Photo" subtitle="Add a verification photo (optional)" />
-      <View style={styles.preview}>
+      <View className="my-6 items-center">
         {formData.pictureUri ? (
-          <Image source={{ uri: formData.pictureUri }} style={styles.image} />
+          <Image source={{ uri: formData.pictureUri }} className="h-40 w-40 rounded-full" />
         ) : (
-          <View style={styles.avatar}>
-            <Text style={styles.initials}>{initials || '?'}</Text>
+          <View className="h-40 w-40 items-center justify-center rounded-full bg-[#1A4D3E]">
+            <Text className="text-5xl font-bold text-[#D4AF6A]">{initials || '?'}</Text>
           </View>
         )}
       </View>
-      <Button title="Take Photo" onPress={() => pickImage(true)} loading={loading} style={styles.btn} />
-      <Button title="Choose from Gallery" onPress={() => pickImage(false)} variant="outline" loading={loading} style={styles.btn} />
+      <Button
+        className="mb-2 h-12 bg-[#1A4D3E]"
+        onPress={() => pickImage(true)}
+        disabled={loading}
+      >
+        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Take Photo</Text>}
+      </Button>
+      <Button
+        variant="outline"
+        className="mb-2 h-12"
+        onPress={() => pickImage(false)}
+        disabled={loading}
+      >
+        {loading ? <ActivityIndicator color="#1A4D3E" /> : <Text>Choose from Gallery</Text>}
+      </Button>
       {formData.pictureUri ? (
-        <Button title="Retake" onPress={() => updateForm({ pictureUri: undefined })} variant="outline" style={styles.btn} />
+        <Button
+          variant="outline"
+          className="mb-2 h-12"
+          onPress={() => updateForm({ pictureUri: undefined })}
+        >
+          <Text>Retake</Text>
+        </Button>
       ) : null}
-      <View style={styles.row}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
-        <Button title="Next" onPress={() => navigation.navigate('Confirm')} style={styles.half} />
+      <View className="mt-2 flex-row gap-3">
+        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
+          <Text>Back</Text>
+        </Button>
+        <Button className="h-12 flex-1 bg-[#1A4D3E]" onPress={() => navigation.navigate('Confirm')}>
+          <Text className="text-white">Next</Text>
+        </Button>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  preview: { alignItems: 'center', marginVertical: 24 },
-  image: { width: 160, height: 160, borderRadius: 80 },
-  avatar: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initials: { fontSize: 48, color: COLORS.accent, fontWeight: '700' },
-  btn: { marginBottom: 8 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  half: { flex: 1 },
-});

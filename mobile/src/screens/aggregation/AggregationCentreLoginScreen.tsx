@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { ScrollView, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { TextInput, Button, Menu } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { TextInput, Menu, Button as PaperButton } from 'react-native-paper';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { aggregationCentreLogin, getAggregationCentres, setAuthToken } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { extractApiError } from '../../utils/feedback';
@@ -58,44 +59,42 @@ export function AggregationCentreLoginScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Aggregation Centre</Text>
-      <Text style={styles.subtitle}>Staff login for delivery intake and quality checks</Text>
+    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-6">
+      <Text className="text-[26px] font-bold text-[#1A4D3E]">Aggregation Centre</Text>
+      <Text className="mb-6 mt-1.5 text-sm text-[#757575]">Staff login for delivery intake and quality checks</Text>
 
-      <Text style={styles.label}>Centre</Text>
-      <Menu visible={menuOpen} onDismiss={() => setMenuOpen(false)} anchor={
-        <Button mode="outlined" onPress={() => setMenuOpen(true)} style={styles.input}>{centreName}</Button>
-      }>
+      <Text className="mb-1.5 text-[13px] font-semibold text-[#757575]">Centre</Text>
+      <Menu
+        visible={menuOpen}
+        onDismiss={() => setMenuOpen(false)}
+        anchor={
+          <PaperButton mode="outlined" onPress={() => setMenuOpen(true)} style={{ marginBottom: 14 }}>
+            {centreName}
+          </PaperButton>
+        }
+      >
         {centres.map((c) => (
           <Menu.Item key={c.centre_id} title={c.name} onPress={() => { setCentreId(c.centre_id); setMenuOpen(false); }} />
         ))}
       </Menu>
 
-      <Text style={styles.label}>Phone number</Text>
-      <TextInput mode="outlined" value={phone} onChangeText={setPhone} keyboardType="phone-pad" style={styles.input} />
+      <Text className="mb-1.5 text-[13px] font-semibold text-[#757575]">Phone number</Text>
+      <TextInput mode="outlined" value={phone} onChangeText={setPhone} keyboardType="phone-pad" style={{ marginBottom: 14 }} />
 
-      <Text style={styles.label}>Password</Text>
-      <TextInput mode="outlined" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} />
+      <Text className="mb-1.5 text-[13px] font-semibold text-[#757575]">Password</Text>
+      <TextInput mode="outlined" value={password} onChangeText={setPassword} secureTextEntry style={{ marginBottom: 14 }} />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text className="mb-3 text-[#D32F2F]">{error}</Text> : null}
 
-      <Button mode="contained" onPress={login} loading={loading} buttonColor={COLORS.primary} style={styles.btn}>
-        Login
+      <Button className="mb-3 mt-2 h-12 bg-[#1A4D3E]" onPress={login} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Login</Text>}
       </Button>
-      <Button mode="text" onPress={() => navigation.navigate('Login')}>Back to main login</Button>
-      <Text style={styles.hint}>Demo: Kiambu Town Hall · {DEMO_AGENT_PHONE} · password {DEMO_PASSWORD}</Text>
+      <Button variant="ghost" onPress={() => navigation.navigate('Login')}>
+        <Text className="text-[#1A4D3E]">Back to main login</Text>
+      </Button>
+      <Text className="mt-4 text-xs leading-[18px] text-[#757575]">
+        Demo: Kiambu Town Hall · {DEMO_AGENT_PHONE} · password {DEMO_PASSWORD}
+      </Text>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { padding: 24 },
-  title: { fontSize: 26, fontWeight: '700', color: COLORS.primary },
-  subtitle: { fontSize: 14, color: COLORS.muted, marginTop: 6, marginBottom: 24 },
-  label: { fontSize: 13, fontWeight: '600', color: COLORS.muted, marginBottom: 6 },
-  input: { marginBottom: 14 },
-  error: { color: COLORS.alert, marginBottom: 12 },
-  btn: { marginTop: 8, marginBottom: 12 },
-  hint: { fontSize: 12, color: COLORS.muted, marginTop: 16, lineHeight: 18 },
-});
