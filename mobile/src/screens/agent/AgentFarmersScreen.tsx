@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
-import { COLORS } from '../../constants';
+import { View, FlatList } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 
@@ -14,30 +14,27 @@ export function AgentFarmersScreen() {
 
   return (
     <FlatList
-      style={styles.container}
+      className="flex-1 p-4"
       data={farmers}
       keyExtractor={(_, i) => String(i)}
       ListHeaderComponent={
         <View>
-          <Text style={styles.title}>Farmers in {user?.district ?? 'your region'}</Text>
-          <Text style={styles.subtitle}>Aggregation centre: {user?.aggregationCenter ?? '—'}</Text>
+          <Text className="text-[22px] font-bold text-[#1A4D3E]">
+            Farmers in {user?.district ?? 'your region'}
+          </Text>
+          <Text className="mb-4 text-sm text-[#757575]">
+            Aggregation centre: {user?.aggregationCenter ?? '—'}
+          </Text>
         </View>
       }
       renderItem={({ item }) => (
-        <View style={styles.card}>
-          <Text style={styles.name}>{item.name}</Text>
-          <Text style={styles.detail}>{item.phone_number} · {item.district}</Text>
+        <View className="mb-2 rounded-lg bg-[#F9F9F9] p-3.5">
+          <Text className="text-base font-semibold text-[#333333]">{item.name}</Text>
+          <Text className="mt-0.5 text-[13px] text-[#757575]">
+            {item.phone_number} · {item.district}
+          </Text>
         </View>
       )}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
-  subtitle: { fontSize: 14, color: COLORS.muted, marginBottom: 16 },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 8 },
-  name: { fontSize: 16, fontWeight: '600' },
-  detail: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
-});
