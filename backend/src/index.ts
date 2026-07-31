@@ -45,10 +45,12 @@ function healthPayload() {
   };
 }
 
-async function refreshHealthCounts(): Promise<void> {
-  cachedFarmerCount = await getFarmerCount();
+async function refreshHealthCounts(): Promise<number> {
+  const farmerCount = await getFarmerCount();
+  cachedFarmerCount = farmerCount;
   cachedHierarchyProjects = await getProgramProjectCount();
   cachedDemoFarmerTasks = await getDemoFarmerTaskCount();
+  return farmerCount;
 }
 
 // Health probe — must respond 200 before heavy bootstrap (Render deploy check)
@@ -67,8 +69,8 @@ app.listen(PORT, HOST, () => {
 async function bootstrap(): Promise<void> {
   validateProductionEnv();
   initDatabase();
-  await refreshHealthCounts();
-  console.log(`Database ready: ${cachedFarmerCount} farmers`);
+  const farmerCount = await refreshHealthCounts();
+  console.log(`Database ready: ${farmerCount} farmers`);
 
   const backfilled = await backfillLegacyIdNumberHashes();
   if (backfilled > 0) {
@@ -76,7 +78,7 @@ async function bootstrap(): Promise<void> {
   }
 
   await seedAggregationCentres();
-  if (cachedFarmerCount <= 10) {
+  if (farmerCount <= 10) {
     await seedDatabase();
   }
   await ensureDemoFarmerPortal();
