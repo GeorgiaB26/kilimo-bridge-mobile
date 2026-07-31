@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Button } from 'react-native-paper';
+import { View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { KilimoLogo } from '../../components/KilimoLogo';
-import { COLORS } from '../../constants';
 
 const SLIDES = [
   {
@@ -45,48 +46,47 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View className="flex-1 bg-white">
+      <View className="items-center pb-2 pt-12">
         <KilimoLogo width={180} height={50} />
       </View>
-      <View style={styles.slide}>
-        <View style={styles.iconWrap}>
-          <Ionicons name={slide.icon} size={64} color={COLORS.primary} />
+      <View className="flex-1 items-center justify-center p-8">
+        <View className="mb-8 h-[120px] w-[120px] items-center justify-center rounded-full bg-[#F5F5F5]">
+          <Ionicons name={slide.icon} size={64} color="#1A4D3E" />
         </View>
-        <Text style={styles.title}>{slide.title}</Text>
-        <Text style={styles.subtitle}>{slide.subtitle}</Text>
+        <Text className="mb-3 text-center text-[28px] font-bold text-[#1A4D3E]">{slide.title}</Text>
+        <Text className="max-w-[300px] text-center text-base leading-6 text-[#757575]">{slide.subtitle}</Text>
       </View>
 
-      <View style={styles.footer}>
-        <View style={styles.dots}>
+      <View className="p-6 pb-10">
+        <View className="mb-5 flex-row justify-center gap-2">
           {SLIDES.map((_, i) => (
             <Pressable key={i} onPress={() => setIndex(i)}>
-              <View style={[styles.dot, i === index && styles.dotActive]} />
+              <View
+                className={cn(
+                  'h-2 rounded-full bg-[#E0E0E0]',
+                  i === index ? 'w-6 bg-[#1A4D3E]' : 'w-2'
+                )}
+              />
             </Pressable>
           ))}
         </View>
 
-        <Button
-          mode="contained"
-          onPress={next}
-          style={styles.btn}
-          buttonColor={COLORS.primary}
-          contentStyle={styles.btnContent}
-        >
-          {isLast ? 'Get Started' : 'Next'}
+        <Button className="mb-2 h-12 rounded-xl bg-[#1A4D3E]" onPress={next}>
+          <Text className="text-white">{isLast ? 'Get Started' : 'Next'}</Text>
         </Button>
 
-        <View style={styles.secondaryRow}>
+        <View className="flex-row justify-between">
           {index > 0 ? (
-            <Button mode="text" onPress={back} textColor={COLORS.muted}>
-              Back
+            <Button variant="ghost" onPress={back}>
+              <Text className="text-[#757575]">Back</Text>
             </Button>
           ) : (
             <View />
           )}
           {!isLast ? (
-            <Button mode="text" onPress={onComplete} textColor={COLORS.muted}>
-              Skip
+            <Button variant="ghost" onPress={onComplete}>
+              <Text className="text-[#757575]">Skip</Text>
             </Button>
           ) : (
             <View />
@@ -96,27 +96,3 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: { alignItems: 'center', paddingTop: 48, paddingBottom: 8 },
-  slide: { flex: 1, padding: 32, justifyContent: 'center', alignItems: 'center' },
-  iconWrap: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
-  },
-  title: { fontSize: 28, fontWeight: '700', color: COLORS.primary, textAlign: 'center', marginBottom: 12 },
-  subtitle: { fontSize: 16, color: COLORS.muted, textAlign: 'center', lineHeight: 24, maxWidth: 300 },
-  footer: { padding: 24, paddingBottom: 40 },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 20 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.border },
-  dotActive: { backgroundColor: COLORS.primary, width: 24 },
-  btn: { borderRadius: 12, marginBottom: 8 },
-  btnContent: { minHeight: 48 },
-  secondaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
-});

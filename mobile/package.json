@@ -26,12 +26,14 @@
     "react-dom": "19.2.3",
     "react-hook-form": "^7.81.0",
     "react-native": "0.86.0",
+    "react-native-css-interop": "^0.1.22",
     "react-native-paper": "^5.15.3",
     "react-native-reanimated": "^4.5.3",
     "react-native-safe-area-context": "^5.8.0",
     "react-native-screens": "^4.25.2",
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.21.2",
+    "react-native-worklets": "^0.10.3",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^4.4.3",
@@ -39,6 +41,9 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "babel-preset-expo": "~57.0.0",
+    "prettier-plugin-tailwindcss": "^0.5.11",
+    "tailwindcss": "^3.4.17",
     "typescript": "~6.0.3"
   },
   "scripts": {
