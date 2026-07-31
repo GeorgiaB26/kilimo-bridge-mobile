@@ -1,4 +1,5 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const { withNativeWind } = require('nativewind/metro');
 const path = require('path');
 
 const projectRoot = __dirname;
@@ -17,4 +18,7 @@ config.resolver.extraNodeModules = {
   '@kilimo-bridge/shared': sharedRoot,
 };
 
-module.exports = config;
+module.exports = withNativeWind(config, {
+  input: './global.css',
+  inlineRem: 16,
+});
