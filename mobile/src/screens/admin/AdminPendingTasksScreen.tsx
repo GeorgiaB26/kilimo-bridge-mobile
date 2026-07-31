@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, FlatList, RefreshControl, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Button } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { approveFarmerTask, getPendingFarmerTasks, rejectFarmerTask } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
@@ -80,52 +80,63 @@ export function AdminPendingTasksScreen() {
 
   if (loading && tasks.length === 0) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color="#1A4D3E" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Pending task approvals</Text>
+    <View className="flex-1 bg-[#F5F5F5] p-4">
+      <Text className="mb-3 text-[22px] font-bold text-[#1A4D3E]">Pending task approvals</Text>
       <FlatList
         data={tasks}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={styles.list}
+        contentContainerClassName="pb-8"
         renderItem={({ item }) => {
           const expanded = expandedId === item.id;
           return (
             <KBCard onPress={() => setExpandedId(expanded ? null : item.id)}>
-              <View style={styles.row}>
-                <Text style={styles.name}>{item.name}</Text>
+              <View className="flex-row items-start justify-between gap-2">
+                <Text className="flex-1 text-base font-bold text-[#333333]">{item.name}</Text>
                 <KBStatusChip label="Submitted" variant="pending" />
               </View>
-              <Text style={styles.meta}>{item.farmer_name} · {item.program_project_name}</Text>
-              <Text style={styles.meta}>KES {(item.payment_value_kes ?? 0).toLocaleString()}</Text>
+              <Text className="mt-1 text-[13px] text-[#757575]">{item.farmer_name} · {item.program_project_name}</Text>
+              <Text className="mt-1 text-[13px] text-[#757575]">KES {(item.payment_value_kes ?? 0).toLocaleString()}</Text>
               {expanded ? (
-                <View style={styles.detail}>
-                  {item.notes ? <Text style={styles.notes}>Notes: {item.notes}</Text> : null}
-                  {item.photo_evidence_url ? <Text style={styles.notes}>Photo: {item.photo_evidence_url}</Text> : null}
-                  <View style={styles.actions}>
+                <View className="mt-3 gap-2">
+                  {item.notes ? <Text className="text-sm leading-5 text-[#333333]">Notes: {item.notes}</Text> : null}
+                  {item.photo_evidence_url ? <Text className="text-sm leading-5 text-[#333333]">Photo: {item.photo_evidence_url}</Text> : null}
+                  <View className="mt-2 gap-2">
                     <Button
-                      mode="contained"
+                      className="mb-1 h-11 bg-[#2E7D5E]"
                       onPress={() => approve(item.id)}
-                      loading={acting === item.id}
-                      buttonColor={COLORS.success}
-                      style={styles.actionBtn}
+                      disabled={acting === item.id}
                     >
-                      Approve
+                      {acting === item.id ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text className="text-white">Approve</Text>
+                      )}
                     </Button>
                     <TextInput
-                      style={styles.input}
+                      className="rounded-lg border border-[#E0E0E0] bg-white p-2.5"
                       placeholder="Rejection reason"
                       value={rejectReason}
                       onChangeText={setRejectReason}
                     />
-                    <Button mode="outlined" onPress={() => reject(item.id)} loading={acting === item.id} textColor={COLORS.alert}>
-                      Reject
+                    <Button
+                      variant="outline"
+                      className="h-11"
+                      onPress={() => reject(item.id)}
+                      disabled={acting === item.id}
+                    >
+                      {acting === item.id ? (
+                        <ActivityIndicator color="#D32F2F" />
+                      ) : (
+                        <Text className="text-[#D32F2F]">Reject</Text>
+                      )}
                     </Button>
                   </View>
                 </View>
@@ -133,24 +144,8 @@ export function AdminPendingTasksScreen() {
             </KBCard>
           );
         }}
-        ListEmptyComponent={<Text style={styles.empty}>No tasks awaiting approval.</Text>}
+        ListEmptyComponent={<Text className="p-6 text-center text-[#757575]">No tasks awaiting approval.</Text>}
       />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface, padding: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
-  list: { paddingBottom: 32 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  name: { fontSize: 16, fontWeight: '700', color: COLORS.text, flex: 1 },
-  meta: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  detail: { marginTop: 12, gap: 8 },
-  notes: { fontSize: 14, color: COLORS.text, lineHeight: 20 },
-  actions: { gap: 8, marginTop: 8 },
-  actionBtn: { marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, backgroundColor: COLORS.background },
-  empty: { textAlign: 'center', color: COLORS.muted, padding: 24 },
-});

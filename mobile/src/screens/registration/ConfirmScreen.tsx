@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from '../../components/Button';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { COLORS, GENDER_OPTIONS } from '../../constants';
+import { GENDER_OPTIONS } from '../../constants';
 import { registerFarmer } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCountryConfig, generateFarmerId } from '../../constants/regional';
@@ -18,12 +19,12 @@ const STEP_SCREENS: (keyof RegistrationStackParamList)[] = [
 
 function SummaryRow({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.rowContent}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowValue}>{value || '—'}</Text>
+    <View className="flex-row items-center justify-between border-b border-[#E0E0E0] py-2.5">
+      <View className="flex-1">
+        <Text className="mb-0.5 text-xs text-[#757575]">{label}</Text>
+        <Text className="text-base font-medium text-[#333333]">{value || '—'}</Text>
       </View>
-      <Text style={styles.editBtn} onPress={onEdit}>Edit</Text>
+      <Text className="ml-2 text-sm font-semibold text-[#1976D2]" onPress={onEdit}>Edit</Text>
     </View>
   );
 }
@@ -63,13 +64,13 @@ export function ConfirmScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView className="flex-1">
       <ScreenHeader title="Confirm" subtitle="Review your information" />
-      <View style={styles.idCard}>
-        <Text style={styles.idLabel}>Your Kilimo Bridge ID</Text>
-        <Text style={styles.idValue}>{kbFarmerId}</Text>
+      <View className="mb-4 items-center rounded-[10px] bg-[#1A4D3E] p-4">
+        <Text className="mb-1 text-[13px] text-white/85">Your Kilimo Bridge ID</Text>
+        <Text className="text-[22px] font-bold tracking-wide text-[#D4AF6A]">{kbFarmerId}</Text>
       </View>
-      <View style={styles.card}>
+      <View className="mb-4 rounded-lg bg-[#F9F9F9] p-4">
         <SummaryRow label="Country" value={formData.country} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
         <SummaryRow label="Currency" value={`${currencyInfo.code} — ${currencyInfo.name}`} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
         <SummaryRow label="Name" value={formData.name} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
@@ -96,43 +97,14 @@ export function ConfirmScreen({ navigation }: Props) {
         ) : null}
         <SummaryRow label="Photo" value={formData.pictureUri ? 'Uploaded' : 'Initials avatar'} onEdit={() => navigation.navigate(STEP_SCREENS[6])} />
       </View>
-      <View style={styles.actions}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
-        <Button title="Submit Registration" onPress={handleSubmit} loading={loading} style={styles.half} />
+      <View className="mb-8 flex-row gap-3">
+        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
+          <Text>Back</Text>
+        </Button>
+        <Button className="h-12 flex-1 bg-[#1A4D3E]" disabled={loading} onPress={handleSubmit}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Submit Registration</Text>}
+        </Button>
       </View>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  idCard: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  idLabel: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 4 },
-  idValue: { fontSize: 22, fontWeight: '700', color: COLORS.accent, letterSpacing: 1 },
-  card: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  rowContent: { flex: 1 },
-  rowLabel: { fontSize: 12, color: COLORS.muted, marginBottom: 2 },
-  rowValue: { fontSize: 16, color: COLORS.text, fontWeight: '500' },
-  editBtn: { color: COLORS.info, fontSize: 14, fontWeight: '600', marginLeft: 8 },
-  actions: { flexDirection: 'row', gap: 12, marginBottom: 32 },
-  half: { flex: 1 },
-});

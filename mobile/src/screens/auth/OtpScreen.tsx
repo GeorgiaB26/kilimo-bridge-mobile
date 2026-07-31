@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput as RNTextInput } from 'react-native';
+import { View, TextInput as RNTextInput, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Surface } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { verifyOtp, requestOtp, setAuthToken } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { extractApiError, showMessage } from '../../utils/feedback';
@@ -77,20 +78,25 @@ export function OtpScreen({ route }: Props) {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Verify your number</Text>
-      <Text style={styles.subtitle}>Enter the 6-digit code sent to{'\n'}{phone}</Text>
+    <View className="flex-1 bg-white p-6">
+      <Text className="mt-6 text-center text-[26px] font-bold text-[#1A4D3E]">Verify your number</Text>
+      <Text className="mt-2 text-center text-[15px] leading-[22px] text-[#757575]">
+        Enter the 6-digit code sent to{'\n'}{phone}
+      </Text>
 
-      <Surface style={styles.devBanner} elevation={0}>
-        <Text style={styles.devText}>Dev code: 123456</Text>
-      </Surface>
+      <View className="mb-2 mt-5 rounded-lg bg-[#FFF8E1] p-3">
+        <Text className="text-center font-medium text-[#333333]">Dev code: 123456</Text>
+      </View>
 
-      <View style={styles.otpRow}>
+      <View className="my-6 flex-row justify-center gap-2.5">
         {digits.map((d, i) => (
           <RNTextInput
             key={i}
             ref={(r) => { inputs.current[i] = r; }}
-            style={[styles.otpBox, d ? styles.otpBoxFilled : null]}
+            className={cn(
+              'h-14 w-12 rounded-xl border-2 border-[#E0E0E0] bg-[#F5F5F5] text-center text-2xl font-bold text-[#1A4D3E]',
+              d && 'border-[#1A4D3E] bg-[#E8F5E9]'
+            )}
             value={d}
             onChangeText={(t) => handleDigit(t, i)}
             keyboardType="number-pad"
@@ -100,46 +106,17 @@ export function OtpScreen({ route }: Props) {
         ))}
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text className="mb-3 text-center text-[#D32F2F]">{error}</Text> : null}
 
-      <Button
-        mode="contained"
-        onPress={handleVerify}
-        loading={loading}
-        buttonColor={COLORS.primary}
-        style={styles.verifyBtn}
-        contentStyle={{ minHeight: 48 }}
-      >
-        Verify & Sign In
+      <Button className="mb-3 h-12 rounded-xl bg-[#1A4D3E]" disabled={loading} onPress={handleVerify}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Verify & Sign In</Text>}
       </Button>
 
-      <Button mode="text" onPress={handleResend} disabled={resendIn > 0} textColor={COLORS.primary}>
-        {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend via SMS'}
+      <Button variant="ghost" disabled={resendIn > 0} onPress={handleResend}>
+        <Text className="text-[#1A4D3E]">
+          {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend via SMS'}
+        </Text>
       </Button>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, backgroundColor: COLORS.background },
-  title: { fontSize: 26, fontWeight: '700', color: COLORS.primary, textAlign: 'center', marginTop: 24 },
-  subtitle: { fontSize: 15, color: COLORS.muted, textAlign: 'center', marginTop: 8, lineHeight: 22 },
-  devBanner: { backgroundColor: '#FFF8E1', padding: 12, borderRadius: 8, marginTop: 20, marginBottom: 8 },
-  devText: { textAlign: 'center', color: COLORS.text, fontWeight: '500' },
-  otpRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginVertical: 24 },
-  otpBox: {
-    width: 48,
-    height: 56,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: COLORS.primary,
-    backgroundColor: COLORS.surface,
-  },
-  otpBoxFilled: { borderColor: COLORS.primary, backgroundColor: '#E8F5E9' },
-  error: { color: COLORS.alert, textAlign: 'center', marginBottom: 12 },
-  verifyBtn: { borderRadius: 12, marginBottom: 12 },
-});

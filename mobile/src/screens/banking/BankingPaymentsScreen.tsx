@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Alert } from 'react-native';
-import { Button } from '../../components/Button';
-import { COLORS } from '../../constants';
+import { View, FlatList, Alert, ActivityIndicator } from 'react-native';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { api } from '../../api/client';
-
 import { useCurrency } from '../../context/CurrencyContext';
 
 export function BankingPaymentsScreen() {
@@ -32,33 +31,32 @@ export function BankingPaymentsScreen() {
 
   return (
     <FlatList
-      style={styles.container}
+      className="flex-1 p-4"
       data={payments}
       keyExtractor={(item) => item.id}
-      ListHeaderComponent={<Text style={styles.title}>Process M-Pesa Payments</Text>}
+      ListHeaderComponent={
+        <Text className="mb-4 text-[22px] font-bold text-[#1A4D3E]">Process M-Pesa Payments</Text>
+      }
       renderItem={({ item }) => (
-        <View style={styles.card}>
-          <Text style={styles.name}>{item.farmer_name}</Text>
-          <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
+        <View className="mb-2.5 rounded-lg bg-[#F9F9F9] p-3.5">
+          <Text className="text-base font-semibold text-[#333333]">{item.farmer_name}</Text>
+          <Text className="my-2 text-lg font-bold text-[#D4AF6A]">{formatAmount(item.amount)}</Text>
           <Button
-            title={`Process ${formatPayment(item.amount)}`}
+            className="mt-1 h-12 bg-[#1A4D3E]"
+            disabled={processing === item.id}
             onPress={() => processPayment(item.id)}
-            loading={processing === item.id}
-            style={styles.btn}
-          />
+          >
+            {processing === item.id ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-white">Process {formatPayment(item.amount)}</Text>
+            )}
+          </Button>
         </View>
       )}
-      ListEmptyComponent={<Text style={styles.empty}>No pending payments</Text>}
+      ListEmptyComponent={
+        <Text className="mt-8 text-center text-[#757575]">No pending payments</Text>
+      }
     />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 16 },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 10 },
-  name: { fontSize: 16, fontWeight: '600' },
-  amount: { fontSize: 18, color: COLORS.accent, fontWeight: '700', marginVertical: 8 },
-  btn: { marginTop: 4 },
-  empty: { textAlign: 'center', color: COLORS.muted, marginTop: 32 },
-});

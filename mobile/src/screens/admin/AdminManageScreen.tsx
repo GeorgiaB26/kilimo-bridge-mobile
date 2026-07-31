@@ -1,10 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, Alert, Pressable, TextInput, Modal,
+  View, ScrollView, RefreshControl, Alert, Pressable, TextInput, Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Button, Menu } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { Menu, Button as PaperButton } from 'react-native-paper';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { AdminFormModal } from '../../components/admin/AdminFormModal';
 import { KBCard } from '../../components/ui/KBCard';
 import { extractApiError } from '../../utils/feedback';
@@ -90,16 +92,20 @@ export function AdminManageScreen() {
 
   const renderSectors = () => (
     <>
-      <Button mode="contained" buttonColor={COLORS.primary} onPress={() => setModal({ type: 'sectors' })} style={styles.newBtn}>
-        + New Sector
+      <Button className="mb-4 h-11 bg-[#1A4D3E]" onPress={() => setModal({ type: 'sectors' })}>
+        <Text className="text-white">+ New Sector</Text>
       </Button>
       {sectors.map((s) => (
         <KBCard key={s.id} elevated={false}>
-          <Text style={styles.rowTitle}>{s.name}</Text>
-          <Text style={styles.meta}>{s.created_at?.slice(0, 10) ?? '—'}</Text>
-          <View style={styles.actions}>
-            <Button compact onPress={() => setModal({ type: 'sectors', item: s })}>Edit</Button>
-            <Button compact textColor={COLORS.alert} onPress={() => confirmDelete(s.name, () => deleteAdminSector(s.id))}>Delete</Button>
+          <Text className="text-base font-bold text-[#333333]">{s.name}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{s.created_at?.slice(0, 10) ?? '—'}</Text>
+          <View className="mt-2 flex-row flex-wrap gap-1">
+            <Button variant="ghost" size="sm" onPress={() => setModal({ type: 'sectors', item: s })}>
+              <Text>Edit</Text>
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => confirmDelete(s.name, () => deleteAdminSector(s.id))}>
+              <Text className="text-[#D32F2F]">Delete</Text>
+            </Button>
           </View>
         </KBCard>
       ))}
@@ -108,16 +114,20 @@ export function AdminManageScreen() {
 
   const renderPrograms = () => (
     <>
-      <Button mode="contained" buttonColor={COLORS.primary} onPress={() => setModal({ type: 'programs' })} style={styles.newBtn}>
-        + New Program
+      <Button className="mb-4 h-11 bg-[#1A4D3E]" onPress={() => setModal({ type: 'programs' })}>
+        <Text className="text-white">+ New Program</Text>
       </Button>
       {programs.map((p) => (
         <KBCard key={p.id} elevated={false}>
-          <Text style={styles.rowTitle}>{p.name}</Text>
-          <Text style={styles.meta}>{p.sector_name} · KES {(p.budget_kes ?? 0).toLocaleString()}</Text>
-          <View style={styles.actions}>
-            <Button compact onPress={() => setModal({ type: 'programs', item: p })}>Edit</Button>
-            <Button compact textColor={COLORS.alert} onPress={() => confirmDelete(p.name, () => deleteAdminProgram(p.id))}>Delete</Button>
+          <Text className="text-base font-bold text-[#333333]">{p.name}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{p.sector_name} · KES {(p.budget_kes ?? 0).toLocaleString()}</Text>
+          <View className="mt-2 flex-row flex-wrap gap-1">
+            <Button variant="ghost" size="sm" onPress={() => setModal({ type: 'programs', item: p })}>
+              <Text>Edit</Text>
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => confirmDelete(p.name, () => deleteAdminProgram(p.id))}>
+              <Text className="text-[#D32F2F]">Delete</Text>
+            </Button>
           </View>
         </KBCard>
       ))}
@@ -126,17 +136,21 @@ export function AdminManageScreen() {
 
   const renderProjects = () => (
     <>
-      <Button mode="contained" buttonColor={COLORS.primary} onPress={() => setModal({ type: 'projects' })} style={styles.newBtn}>
-        + New Project
+      <Button className="mb-4 h-11 bg-[#1A4D3E]" onPress={() => setModal({ type: 'projects' })}>
+        <Text className="text-white">+ New Project</Text>
       </Button>
       {projects.map((p) => (
         <KBCard key={p.id} elevated={false}>
-          <Text style={styles.rowTitle}>{p.name}</Text>
-          <Text style={styles.meta}>{p.program_name}</Text>
-          <Text style={styles.meta}>KES {(p.budget_kes ?? 0).toLocaleString()} · {p.start_date ?? '—'} → {p.end_date ?? '—'}</Text>
-          <View style={styles.actions}>
-            <Button compact onPress={() => setModal({ type: 'projects', item: p })}>Edit</Button>
-            <Button compact textColor={COLORS.alert} onPress={() => confirmDelete(p.name, () => deleteAdminProject(p.id))}>Delete</Button>
+          <Text className="text-base font-bold text-[#333333]">{p.name}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{p.program_name}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">KES {(p.budget_kes ?? 0).toLocaleString()} · {p.start_date ?? '—'} → {p.end_date ?? '—'}</Text>
+          <View className="mt-2 flex-row flex-wrap gap-1">
+            <Button variant="ghost" size="sm" onPress={() => setModal({ type: 'projects', item: p })}>
+              <Text>Edit</Text>
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => confirmDelete(p.name, () => deleteAdminProject(p.id))}>
+              <Text className="text-[#D32F2F]">Delete</Text>
+            </Button>
           </View>
         </KBCard>
       ))}
@@ -147,7 +161,7 @@ export function AdminManageScreen() {
 
   const renderProjectFilter = () => (
     <Menu visible={projectMenuOpen} onDismiss={() => setProjectMenuOpen(false)} anchor={
-      <Button mode="outlined" onPress={() => setProjectMenuOpen(true)} style={styles.filterBtn}>{projectName}</Button>
+      <PaperButton mode="outlined" onPress={() => setProjectMenuOpen(true)} style={{ marginBottom: 12, alignSelf: 'flex-start' }}>{projectName}</PaperButton>
     }>
       {projects.map((p) => (
         <Menu.Item key={p.id} title={p.name} onPress={() => { setSelectedProjectId(p.id); setProjectMenuOpen(false); }} />
@@ -158,20 +172,32 @@ export function AdminManageScreen() {
   const renderTasks = () => (
     <>
       {renderProjectFilter()}
-      <Button mode="contained" buttonColor={COLORS.primary} onPress={() => setModal({ type: 'tasks' })} style={styles.newBtn} disabled={!selectedProjectId}>
-        + New Task
+      <Button
+        className="mb-4 h-11 bg-[#1A4D3E]"
+        onPress={() => setModal({ type: 'tasks' })}
+        disabled={!selectedProjectId}
+      >
+        <Text className="text-white">+ New Task</Text>
       </Button>
       {tasks.map((t) => (
         <KBCard key={t.id} elevated={false}>
-          <Text style={styles.orderBadge}>Order {t.task_order}</Text>
-          <Text style={styles.preview}>Task {t.task_order}: {t.name} — {t.payment_value_kes?.toLocaleString()} KES</Text>
-          {t.description ? <Text style={styles.meta}>{t.description}</Text> : null}
-          <Text style={styles.meta}>Due {t.due_date ?? '—'}</Text>
-          <View style={styles.actions}>
-            <Button compact onPress={() => setModal({ type: 'tasks', item: t })}>Edit</Button>
-            <Button compact onPress={() => reorderAdminProjectTask(t.id, 'up').then(load)}>↑ Move up</Button>
-            <Button compact onPress={() => reorderAdminProjectTask(t.id, 'down').then(load)}>↓ Move down</Button>
-            <Button compact textColor={COLORS.alert} onPress={() => confirmDelete(t.name, () => deleteAdminProjectTask(t.id))}>Delete</Button>
+          <Text className="mb-1 text-xs font-bold text-[#1A4D3E]">Order {t.task_order}</Text>
+          <Text className="text-[15px] font-semibold text-[#333333]">Task {t.task_order}: {t.name} — {t.payment_value_kes?.toLocaleString()} KES</Text>
+          {t.description ? <Text className="mt-1 text-[13px] text-[#757575]">{t.description}</Text> : null}
+          <Text className="mt-1 text-[13px] text-[#757575]">Due {t.due_date ?? '—'}</Text>
+          <View className="mt-2 flex-row flex-wrap gap-1">
+            <Button variant="ghost" size="sm" onPress={() => setModal({ type: 'tasks', item: t })}>
+              <Text>Edit</Text>
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => reorderAdminProjectTask(t.id, 'up').then(load)}>
+              <Text>↑ Move up</Text>
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => reorderAdminProjectTask(t.id, 'down').then(load)}>
+              <Text>↓ Move down</Text>
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => confirmDelete(t.name, () => deleteAdminProjectTask(t.id))}>
+              <Text className="text-[#D32F2F]">Delete</Text>
+            </Button>
           </View>
         </KBCard>
       ))}
@@ -199,29 +225,36 @@ export function AdminManageScreen() {
 
   const renderAssign = () => (
     <>
-      <Text style={styles.sectionLabel}>Search farmer by name or phone</Text>
-      <View style={styles.searchRow}>
-        <TextInput style={styles.searchInput} value={farmerSearch} onChangeText={setFarmerSearch} placeholder="Name or phone" />
-        <Button mode="outlined" onPress={doFarmerSearch}>Search</Button>
+      <Text className="mb-2 mt-2 text-[13px] font-bold text-[#757575]">Search farmer by name or phone</Text>
+      <View className="mb-3 flex-row items-center gap-2">
+        <TextInput
+          className="flex-1 rounded-lg border border-[#E0E0E0] bg-white p-2.5"
+          value={farmerSearch}
+          onChangeText={setFarmerSearch}
+          placeholder="Name or phone"
+        />
+        <Button variant="outline" onPress={doFarmerSearch}>
+          <Text>Search</Text>
+        </Button>
       </View>
       {searchResults.map((f) => (
         <KBCard key={f.farmer_id} elevated={false}>
-          <Text style={styles.rowTitle}>{f.name}</Text>
-          <Text style={styles.meta}>{f.phone_number}</Text>
-          <Button mode="contained" buttonColor={COLORS.primary} style={styles.newBtn} onPress={() => openAssignModal(f)}>
-            Assign to Project
+          <Text className="text-base font-bold text-[#333333]">{f.name}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{f.phone_number}</Text>
+          <Button className="mb-0 mt-3 h-10 bg-[#1A4D3E]" onPress={() => openAssignModal(f)}>
+            <Text className="text-white">Assign to Project</Text>
           </Button>
         </KBCard>
       ))}
-      <Text style={styles.sectionLabel}>Assigned farmers</Text>
+      <Text className="mb-2 mt-2 text-[13px] font-bold text-[#757575]">Assigned farmers</Text>
       {renderProjectFilter()}
       {farmers.map((f) => (
         <KBCard key={f.farmer_id} elevated={false}>
-          <Text style={styles.rowTitle}>{f.name}</Text>
-          <Text style={styles.meta}>{f.phone_number} · {f.assigned_date?.slice(0, 10) ?? '—'}</Text>
-          {f.assigned_tasks ? <Text style={styles.meta}>Tasks: {f.assigned_tasks}</Text> : null}
-          <Button compact textColor={COLORS.alert} onPress={() => confirmDelete(f.name, () => removeAdminProjectFarmer(selectedProjectId, f.farmer_id))}>
-            Remove
+          <Text className="text-base font-bold text-[#333333]">{f.name}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{f.phone_number} · {f.assigned_date?.slice(0, 10) ?? '—'}</Text>
+          {f.assigned_tasks ? <Text className="mt-1 text-[13px] text-[#757575]">Tasks: {f.assigned_tasks}</Text> : null}
+          <Button variant="ghost" size="sm" onPress={() => confirmDelete(f.name, () => removeAdminProjectFarmer(selectedProjectId, f.farmer_id))}>
+            <Text className="text-[#D32F2F]">Remove</Text>
           </Button>
         </KBCard>
       ))}
@@ -335,18 +368,37 @@ export function AdminManageScreen() {
         : undefined;
 
   return (
-    <View style={styles.root}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
+    <View className="flex-1 bg-[#F5F5F5]">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        className="max-h-12 border-b border-[#E0E0E0] bg-white"
+        contentContainerClassName="items-center px-2"
+      >
         {TABS.map((t) => (
-          <Pressable key={t.key} onPress={() => setTab(t.key)} style={[styles.tab, tab === t.key && styles.tabActive]}>
-            <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text>
+          <Pressable
+            key={t.key}
+            onPress={() => setTab(t.key)}
+            className={cn(
+              'mx-0.5 px-3.5 py-3',
+              tab === t.key && 'border-b-2 border-[#1A4D3E]'
+            )}
+          >
+            <Text
+              className={cn(
+                'text-sm font-semibold',
+                tab === t.key ? 'text-[#1A4D3E]' : 'text-[#757575]'
+              )}
+            >
+              {t.label}
+            </Text>
           </Pressable>
         ))}
       </ScrollView>
       <ScrollView
-        style={styles.content}
+        className="flex-1"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={styles.contentPad}
+        contentContainerClassName="p-4 pb-10"
       >
         {tab === 'sectors' && renderSectors()}
         {tab === 'programs' && renderPrograms()}
@@ -367,13 +419,13 @@ export function AdminManageScreen() {
       ) : null}
 
       <Modal visible={assignModalOpen} transparent animationType="slide">
-        <View style={styles.assignOverlay}>
-          <View style={styles.assignCard}>
-            <Text style={styles.assignTitle}>Assign {selectedFarmer?.name}</Text>
+        <View className="flex-1 justify-center bg-black/45 p-4">
+          <View className="max-h-[85%] rounded-xl bg-white p-5">
+            <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Assign {selectedFarmer?.name}</Text>
             <Menu visible={assignProjectMenuOpen} onDismiss={() => setAssignProjectMenuOpen(false)} anchor={
-              <Button mode="outlined" onPress={() => setAssignProjectMenuOpen(true)} style={styles.filterBtn}>
+              <PaperButton mode="outlined" onPress={() => setAssignProjectMenuOpen(true)} style={{ marginBottom: 12, alignSelf: 'flex-start' }}>
                 {projects.find((p) => p.id === assignProjectId)?.name ?? 'Select project'}
-              </Button>
+              </PaperButton>
             }>
               {projects.map((p) => (
                 <Menu.Item
@@ -390,7 +442,7 @@ export function AdminManageScreen() {
                 />
               ))}
             </Menu>
-            <Text style={styles.sectionLabel}>Select tasks to assign</Text>
+            <Text className="mb-2 mt-2 text-[13px] font-bold text-[#757575]">Select tasks to assign</Text>
             {assignProjectTasks.map((t) => {
               const checked = assignTaskIds.includes(t.id);
               return (
@@ -398,15 +450,14 @@ export function AdminManageScreen() {
                   key={t.id}
                   onPress={() => setAssignTaskIds((ids) => checked ? ids.filter((id) => id !== t.id) : [...ids, t.id])}
                 >
-                  <KBCard elevated={false} style={checked ? styles.selected : undefined}>
-                    <Text style={styles.rowTitle}>{t.task_order}. {t.name}</Text>
+                  <KBCard elevated={false} style={checked ? { borderWidth: 2, borderColor: '#1A4D3E' } : undefined}>
+                    <Text className="text-base font-bold text-[#333333]">{t.task_order}. {t.name}</Text>
                   </KBCard>
                 </Pressable>
               );
             })}
             <Button
-              mode="contained"
-              buttonColor={COLORS.primary}
+              className="mt-2 h-11 bg-[#1A4D3E]"
               disabled={!selectedFarmer || !assignProjectId || assignTaskIds.length === 0}
               onPress={async () => {
                 if (!selectedFarmer || !assignProjectId) return;
@@ -418,45 +469,14 @@ export function AdminManageScreen() {
                 Alert.alert('Assigned', `${selectedFarmer.name} assigned to ${assignTaskIds.length} task(s).`);
               }}
             >
-              Confirm
+              <Text className="text-white">Confirm</Text>
             </Button>
-            <Button mode="text" onPress={() => setAssignModalOpen(false)}>Cancel</Button>
+            <Button variant="ghost" className="mt-1" onPress={() => setAssignModalOpen(false)}>
+              <Text>Cancel</Text>
+            </Button>
           </View>
         </View>
       </Modal>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.surface },
-  tabBar: { maxHeight: 48, backgroundColor: COLORS.background, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  tabBarContent: { paddingHorizontal: 8, alignItems: 'center' },
-  tab: { paddingHorizontal: 14, paddingVertical: 12, marginHorizontal: 2 },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: COLORS.primary },
-  tabText: { fontSize: 14, color: COLORS.muted, fontWeight: '600' },
-  tabTextActive: { color: COLORS.primary },
-  content: { flex: 1 },
-  contentPad: { padding: 16, paddingBottom: 40 },
-  newBtn: { marginBottom: 16 },
-  filterBtn: { marginBottom: 12, alignSelf: 'flex-start' },
-  rowTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  preview: { fontSize: 15, fontWeight: '600', color: COLORS.text },
-  meta: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: COLORS.muted, marginBottom: 8, marginTop: 8 },
-  searchRow: { flexDirection: 'row', gap: 8, marginBottom: 12, alignItems: 'center' },
-  searchInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: 10,
-    backgroundColor: COLORS.background,
-  },
-  selected: { borderWidth: 2, borderColor: COLORS.primary },
-  orderBadge: { fontSize: 12, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
-  assignOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 },
-  assignCard: { backgroundColor: COLORS.background, borderRadius: 12, padding: 20, maxHeight: '85%' },
-  assignTitle: { fontSize: 20, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
-});

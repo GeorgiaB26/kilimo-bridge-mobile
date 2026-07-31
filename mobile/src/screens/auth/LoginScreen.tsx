@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, ScrollView, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { TextInput, Button, Surface } from 'react-native-paper';
+import { TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { KilimoLogo } from '../../components/KilimoLogo';
-import { COLORS, API_BASE_URL, IS_HOSTED_API, IS_API_MISCONFIGURED } from '../../constants';
+import { API_BASE_URL, IS_HOSTED_API, IS_API_MISCONFIGURED } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -78,31 +80,33 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.logoWrap}>
+    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-5 pb-10">
+      <View className="mb-6 mt-4 items-center">
         <KilimoLogo width={240} height={66} />
-        <Text style={styles.platformName}>Kilimo Bridge Platform</Text>
+        <Text className="mt-3 text-lg font-bold text-[#1A4D3E]">Kilimo Bridge Platform</Text>
       </View>
 
       {backendOk === false ? (
-        <Surface style={styles.bannerError} elevation={0}>
-          <Ionicons name="cloud-offline-outline" size={20} color={COLORS.alert} />
-          <Text style={styles.bannerErrorText}>{BACKEND_OFFLINE_MSG}</Text>
-          {IS_HOSTED_API ? (
-            <Text style={styles.bannerApiHint}>API: {API_BASE_URL}</Text>
-          ) : null}
-        </Surface>
+        <View className="mb-3 flex-row items-center gap-2 rounded-lg bg-[#FFEBEE] p-3">
+          <Ionicons name="cloud-offline-outline" size={20} color="#D32F2F" />
+          <View className="flex-1">
+            <Text className="text-[13px] text-[#D32F2F]">{BACKEND_OFFLINE_MSG}</Text>
+            {IS_HOSTED_API ? (
+              <Text className="mt-1.5 text-[11px] text-[#757575]">API: {API_BASE_URL}</Text>
+            ) : null}
+          </View>
+        </View>
       ) : backendOk ? (
-        <Surface style={styles.bannerOk} elevation={0}>
-          <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-          <Text style={styles.bannerOkText}>Connected</Text>
-        </Surface>
+        <View className="mb-3 flex-row items-center gap-1.5 self-center rounded-lg bg-[#E8F5E9] p-2.5">
+          <Ionicons name="checkmark-circle" size={18} color="#2E7D5E" />
+          <Text className="text-[13px] font-semibold text-[#2E7D5E]">Connected</Text>
+        </View>
       ) : null}
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {error ? <Text className="mb-3 text-sm text-[#D32F2F]">{error}</Text> : null}
 
-      <Surface style={styles.card} elevation={1}>
-        <Text style={styles.cardTitle}>Sign in with phone</Text>
+      <View className="mb-6 rounded-2xl bg-white p-5">
+        <Text className="mb-4 text-base font-semibold text-[#333333]">Sign in with phone</Text>
         <TextInput
           label="Phone number"
           value={phone}
@@ -110,40 +114,32 @@ export function LoginScreen({ navigation }: Props) {
           placeholder="+254712345678"
           keyboardType="phone-pad"
           mode="outlined"
-          style={styles.input}
-          outlineColor={COLORS.border}
-          activeOutlineColor={COLORS.primary}
+          style={{ marginBottom: 16, backgroundColor: '#FFFFFF' }}
+          outlineColor="#E0E0E0"
+          activeOutlineColor="#1A4D3E"
         />
-        <Button
-          mode="contained"
-          onPress={handleSendOtp}
-          loading={loading}
-          disabled={loading}
-          buttonColor={COLORS.primary}
-          style={styles.primaryBtn}
-          contentStyle={styles.btnContent}
-        >
-          Send OTP
+        <Button className="h-12 rounded-xl bg-[#1A4D3E]" disabled={loading} onPress={handleSendOtp}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Send OTP</Text>}
         </Button>
-      </Surface>
+      </View>
 
-      <Text style={styles.quickTitle}>Quick access — tap to log in</Text>
-      <Button mode="contained" onPress={() => quickLogin(DEMO_FARMER, 'Farmer')} loading={loading} buttonColor={COLORS.primary} style={styles.quickBtn}>
-        Open Farmer Platform
+      <Text className="mb-3 text-sm font-semibold text-[#757575]">Quick access — tap to log in</Text>
+      <Button className="mb-2.5 h-12 rounded-xl bg-[#1A4D3E]" disabled={loading} onPress={() => quickLogin(DEMO_FARMER, 'Farmer')}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Open Farmer Platform</Text>}
       </Button>
-      <Button mode="contained-tonal" onPress={() => quickLogin(DEMO_ADMIN, 'Admin')} loading={loading} style={styles.quickBtn}>
-        Open Admin Dashboard
+      <Button className="mb-2.5 h-12 rounded-xl bg-[#E8F5E9]" disabled={loading} onPress={() => quickLogin(DEMO_ADMIN, 'Admin')}>
+        <Text className="text-[#1A4D3E]">Open Admin Dashboard</Text>
       </Button>
-      <Button mode="outlined" onPress={() => quickLogin(DEMO_AGENT, 'Agent')} loading={loading} style={styles.quickBtn}>
-        Open Agent Platform
+      <Button variant="outline" className="mb-2.5 h-12 rounded-xl" disabled={loading} onPress={() => quickLogin(DEMO_AGENT, 'Agent')}>
+        <Text>Open Agent Platform</Text>
       </Button>
-      <Button mode="outlined" onPress={() => navigation.navigate('AggregationLogin')} style={styles.quickBtn}>
-        Aggregation Centre Login
+      <Button variant="outline" className="mb-2.5 h-12 rounded-xl" onPress={() => navigation.navigate('AggregationLogin')}>
+        <Text>Aggregation Centre Login</Text>
       </Button>
       <Button
-        mode="outlined"
-        loading={loading}
-        style={styles.quickBtn}
+        variant="outline"
+        className="mb-2.5 h-12 rounded-xl"
+        disabled={loading}
         onPress={async () => {
           setLoading(true);
           try {
@@ -159,51 +155,16 @@ export function LoginScreen({ navigation }: Props) {
           }
         }}
       >
-        Open Banking Platform
+        {loading ? <ActivityIndicator color="#1A4D3E" /> : <Text>Open Banking Platform</Text>}
       </Button>
 
-      <Button mode="text" onPress={() => clearAllSessionData().then(() => showMessage('Done', 'Session cleared'))} textColor={COLORS.muted}>
-        Clear saved login
+      <Button
+        variant="ghost"
+        onPress={() => clearAllSessionData().then(() => showMessage('Done', 'Session cleared'))}
+      >
+        <Text className="text-[#757575]">Clear saved login</Text>
       </Button>
-      <Text style={styles.buildHint}>Build {APP_BUILD}</Text>
+      <Text className="mt-2 text-center text-[11px] text-[#757575]">Build {APP_BUILD}</Text>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { padding: 20, paddingBottom: 40 },
-  logoWrap: { alignItems: 'center', marginBottom: 24, marginTop: 16 },
-  platformName: { fontSize: 18, fontWeight: '700', color: COLORS.primary, marginTop: 12 },
-  bannerError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#FFEBEE',
-    marginBottom: 12,
-  },
-  bannerErrorText: { flex: 1, color: COLORS.alert, fontSize: 13 },
-  bannerApiHint: { fontSize: 11, color: COLORS.muted, marginTop: 6 },
-  bannerOk: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#E8F5E9',
-    marginBottom: 12,
-    alignSelf: 'center',
-  },
-  bannerOkText: { color: COLORS.success, fontWeight: '600', fontSize: 13 },
-  errorText: { color: COLORS.alert, marginBottom: 12, fontSize: 14 },
-  card: { padding: 20, borderRadius: 16, backgroundColor: COLORS.background, marginBottom: 24 },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginBottom: 16 },
-  input: { marginBottom: 16, backgroundColor: COLORS.background },
-  primaryBtn: { borderRadius: 12 },
-  btnContent: { minHeight: 48 },
-  quickTitle: { fontSize: 14, fontWeight: '600', color: COLORS.muted, marginBottom: 12 },
-  quickBtn: { marginBottom: 10, borderRadius: 12 },
-  buildHint: { textAlign: 'center', fontSize: 11, color: COLORS.muted, marginTop: 8 },
-});

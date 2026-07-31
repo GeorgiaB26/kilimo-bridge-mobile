@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { View, ScrollView, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
-import { Button } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { assignFarmersToProgramProject, getFarmers, getProgramProject } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
@@ -66,42 +66,42 @@ export function AdminProgramProjectDetailScreen() {
 
   if (loading && !project) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color="#1A4D3E" />
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      className="flex-1 bg-[#F5F5F5] p-4"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <Text style={styles.title}>{project?.name}</Text>
-      <Text style={styles.meta}>{project?.program_name} · {project?.region ?? '—'}</Text>
-      <Text style={styles.meta}>{project?.farmers_count ?? 0} farmers enrolled</Text>
+      <Text className="text-[22px] font-bold text-[#1A4D3E]">{project?.name}</Text>
+      <Text className="mt-1 text-sm text-[#757575]">{project?.program_name} · {project?.region ?? '—'}</Text>
+      <Text className="mt-1 text-sm text-[#757575]">{project?.farmers_count ?? 0} farmers enrolled</Text>
 
-      <Button mode="contained" onPress={assignDemoFarmers} loading={assigning} style={styles.btn} buttonColor={COLORS.primary}>
-        Assign first 10 farmers
+      <Button className="my-4 h-11 bg-[#1A4D3E]" onPress={assignDemoFarmers} disabled={assigning}>
+        {assigning ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Assign first 10 farmers</Text>}
       </Button>
 
-      <Text style={styles.section}>Tasks (sequence)</Text>
+      <Text className="mb-2 mt-4 text-base font-bold text-[#333333]">Tasks (sequence)</Text>
       {(project?.tasks ?? []).map((t) => (
         <KBCard key={t.id} elevated={false}>
-          <Text style={styles.taskOrder}>Step {t.task_order}</Text>
-          <Text style={styles.taskName}>{t.name}</Text>
-          <Text style={styles.taskPay}>KES {t.payment_value_kes?.toLocaleString()}</Text>
+          <Text className="text-xs font-semibold text-[#757575]">Step {t.task_order}</Text>
+          <Text className="mt-0.5 text-base font-semibold text-[#333333]">{t.name}</Text>
+          <Text className="mt-1 text-sm font-bold text-[#D4AF6A]">KES {t.payment_value_kes?.toLocaleString()}</Text>
         </KBCard>
       ))}
 
-      <Text style={styles.section}>Enrolled farmers</Text>
+      <Text className="mb-2 mt-4 text-base font-bold text-[#333333]">Enrolled farmers</Text>
       {(project?.farmers ?? []).length === 0 ? (
-        <Text style={styles.empty}>No farmers assigned yet.</Text>
+        <Text className="mb-6 text-[#757575]">No farmers assigned yet.</Text>
       ) : (
         (project?.farmers ?? []).map((f) => (
           <KBCard key={f.farmer_id} elevated={false}>
-            <View style={styles.row}>
-              <Text style={styles.farmerName}>{f.name}</Text>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-[15px] font-semibold text-[#333333]">{f.name}</Text>
               <KBStatusChip label={f.status} variant="info" />
             </View>
           </KBCard>
@@ -110,18 +110,3 @@ export function AdminProgramProjectDetailScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface, padding: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
-  meta: { fontSize: 14, color: COLORS.muted, marginTop: 4 },
-  btn: { marginVertical: 16 },
-  section: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginTop: 16, marginBottom: 8 },
-  taskOrder: { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
-  taskName: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginTop: 2 },
-  taskPay: { fontSize: 14, color: COLORS.accent, marginTop: 4, fontWeight: '700' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  farmerName: { fontSize: 15, fontWeight: '600', color: COLORS.text },
-  empty: { color: COLORS.muted, marginBottom: 24 },
-});

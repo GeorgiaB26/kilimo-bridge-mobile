@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator,
+  View, FlatList, RefreshControl, ActivityIndicator,
   Modal, TextInput, Pressable, ScrollView, Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Button, Menu } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { Menu, Button as PaperButton } from 'react-native-paper';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import {
   approveFarmerTask,
   getAdminFarmerTasks,
@@ -125,20 +126,20 @@ export function AdminTasksScreen() {
 
   if (loading && tasks.length === 0) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color="#1A4D3E" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Tasks</Text>
-      <View style={styles.filters}>
+    <View className="flex-1 bg-[#F5F5F5] p-4">
+      <Text className="mb-3 text-[26px] font-bold text-[#1A4D3E]">Tasks</Text>
+      <View className="mb-3 flex-row flex-wrap gap-2">
         <Menu visible={projectMenuOpen} onDismiss={() => setProjectMenuOpen(false)} anchor={
-          <Button mode="outlined" onPress={() => setProjectMenuOpen(true)} style={styles.filterBtn}>
+          <PaperButton mode="outlined" onPress={() => setProjectMenuOpen(true)} style={{ flex: 1, minWidth: 140 }}>
             {projectLabel}
-          </Button>
+          </PaperButton>
         }>
           <Menu.Item onPress={() => { setProjectFilter(''); setProjectMenuOpen(false); }} title="All projects" />
           {projects.map((p) => (
@@ -146,9 +147,9 @@ export function AdminTasksScreen() {
           ))}
         </Menu>
         <Menu visible={statusMenuOpen} onDismiss={() => setStatusMenuOpen(false)} anchor={
-          <Button mode="outlined" onPress={() => setStatusMenuOpen(true)} style={styles.filterBtn}>
+          <PaperButton mode="outlined" onPress={() => setStatusMenuOpen(true)} style={{ flex: 1, minWidth: 140 }}>
             {statusLabel}
-          </Button>
+          </PaperButton>
         }>
           {STATUS_OPTIONS.map((s) => (
             <Menu.Item key={s.value || 'all'} onPress={() => { setStatusFilter(s.value); setStatusMenuOpen(false); }} title={s.label} />
@@ -160,50 +161,64 @@ export function AdminTasksScreen() {
         data={tasks}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={styles.list}
+        contentContainerClassName="pb-8"
         renderItem={({ item }) => (
           <KBCard onPress={() => setSelected(item)}>
-            <View style={styles.row}>
-              <Text style={styles.name}>{item.name}</Text>
+            <View className="flex-row items-start justify-between gap-2">
+              <Text className="flex-1 text-base font-bold text-[#333333]">{item.name}</Text>
               <KBStatusChip label={taskStatusLabel(item.status)} variant={taskStatusVariant(item.status)} />
             </View>
-            <Text style={styles.meta}>{item.farmer_name} · {item.program_project_name}</Text>
-            <Text style={styles.meta}>KES {(item.payment_value_kes ?? 0).toLocaleString()}{item.due_date ? ` · Due ${item.due_date}` : ''}</Text>
-            <Text style={styles.viewLink}>View details →</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">{item.farmer_name} · {item.program_project_name}</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">KES {(item.payment_value_kes ?? 0).toLocaleString()}{item.due_date ? ` · Due ${item.due_date}` : ''}</Text>
+            <Text className="mt-2 text-[13px] font-semibold text-[#1A4D3E]">View details →</Text>
           </KBCard>
         )}
         ListEmptyComponent={
-          <Text style={styles.empty}>
+          <Text className="p-6 text-center leading-[22px] text-[#757575]">
             No tasks yet. Restart the backend — demo hierarchy seeds automatically on first boot.
           </Text>
         }
       />
 
       <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
-        <View style={styles.modalOverlay}>
-          <ScrollView style={styles.modalCard} contentContainerStyle={styles.modalContent}>
-            <Pressable onPress={() => setSelected(null)} style={styles.close}>
-              <Text style={styles.closeText}>✕ Close</Text>
+        <View className="flex-1 justify-end bg-black/50">
+          <ScrollView className="max-h-[85%] rounded-t-2xl bg-white" contentContainerClassName="p-5 pb-10">
+            <Pressable onPress={() => setSelected(null)} className="mb-2 self-end">
+              <Text className="text-base text-[#757575]">✕ Close</Text>
             </Pressable>
             {selected ? (
               <>
-                <Text style={styles.modalTitle}>{selected.name}</Text>
+                <Text className="mb-2 text-[22px] font-bold text-[#1A4D3E]">{selected.name}</Text>
                 <KBStatusChip label={taskStatusLabel(selected.status)} variant={taskStatusVariant(selected.status)} />
-                <Text style={styles.modalMeta}>Farmer: {selected.farmer_name} ({selected.farmer_phone})</Text>
-                <Text style={styles.modalMeta}>Project: {selected.program_project_name}</Text>
-                <Text style={styles.modalPay}>KES {(selected.payment_value_kes ?? 0).toLocaleString()}</Text>
-                {selected.description ? <Text style={styles.modalBody}>{selected.description}</Text> : null}
-                {selected.notes ? <Text style={styles.modalBody}>Notes: {selected.notes}</Text> : null}
-                {selected.photo_evidence_url ? <Text style={styles.modalBody}>Photo: {selected.photo_evidence_url}</Text> : null}
-                {selected.submitted_date ? <Text style={styles.modalMeta}>Submitted: {selected.submitted_date}</Text> : null}
-                {selected.rejection_reason ? <Text style={styles.reject}>Rejected: {selected.rejection_reason}</Text> : null}
+                <Text className="mt-1.5 text-sm text-[#757575]">Farmer: {selected.farmer_name} ({selected.farmer_phone})</Text>
+                <Text className="mt-1.5 text-sm text-[#757575]">Project: {selected.program_project_name}</Text>
+                <Text className="my-3 text-xl font-bold text-[#D4AF6A]">KES {(selected.payment_value_kes ?? 0).toLocaleString()}</Text>
+                {selected.description ? <Text className="mt-2 text-[15px] leading-[22px] text-[#333333]">{selected.description}</Text> : null}
+                {selected.notes ? <Text className="mt-2 text-[15px] leading-[22px] text-[#333333]">Notes: {selected.notes}</Text> : null}
+                {selected.photo_evidence_url ? <Text className="mt-2 text-[15px] leading-[22px] text-[#333333]">Photo: {selected.photo_evidence_url}</Text> : null}
+                {selected.submitted_date ? <Text className="mt-1.5 text-sm text-[#757575]">Submitted: {selected.submitted_date}</Text> : null}
+                {selected.rejection_reason ? <Text className="mt-2 text-sm font-semibold text-[#D32F2F]">Rejected: {selected.rejection_reason}</Text> : null}
 
                 {selected.status === 'submitted-for-approval' ? (
-                  <View style={styles.actions}>
-                    <TextInput style={styles.input} placeholder="Approval notes (optional)" value={approvalNotes} onChangeText={setApprovalNotes} />
-                    <Button mode="contained" buttonColor={COLORS.success} onPress={approve} loading={acting}>Approve</Button>
-                    <TextInput style={styles.input} placeholder="Rejection reason" value={rejectReason} onChangeText={setRejectReason} />
-                    <Button mode="outlined" textColor={COLORS.alert} onPress={reject} loading={acting}>Reject</Button>
+                  <View className="mt-4 gap-2.5">
+                    <TextInput
+                      className="rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-3"
+                      placeholder="Approval notes (optional)"
+                      value={approvalNotes}
+                      onChangeText={setApprovalNotes}
+                    />
+                    <Button className="h-11 bg-[#2E7D5E]" onPress={approve} disabled={acting}>
+                      {acting ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Approve</Text>}
+                    </Button>
+                    <TextInput
+                      className="rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-3"
+                      placeholder="Rejection reason"
+                      value={rejectReason}
+                      onChangeText={setRejectReason}
+                    />
+                    <Button variant="outline" className="h-11" onPress={reject} disabled={acting}>
+                      {acting ? <ActivityIndicator color="#D32F2F" /> : <Text className="text-[#D32F2F]">Reject</Text>}
+                    </Button>
                   </View>
                 ) : null}
               </>
@@ -214,29 +229,3 @@ export function AdminTasksScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface, padding: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 26, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
-  filters: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
-  filterBtn: { flex: 1, minWidth: 140 },
-  list: { paddingBottom: 32 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  name: { fontSize: 16, fontWeight: '700', color: COLORS.text, flex: 1 },
-  meta: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  viewLink: { fontSize: 13, color: COLORS.primary, fontWeight: '600', marginTop: 8 },
-  empty: { textAlign: 'center', color: COLORS.muted, padding: 24, lineHeight: 22 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalCard: { maxHeight: '85%', backgroundColor: COLORS.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  modalContent: { padding: 20, paddingBottom: 40 },
-  close: { alignSelf: 'flex-end', marginBottom: 8 },
-  closeText: { color: COLORS.muted, fontSize: 16 },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 8 },
-  modalMeta: { fontSize: 14, color: COLORS.muted, marginTop: 6 },
-  modalPay: { fontSize: 20, fontWeight: '700', color: COLORS.accent, marginVertical: 12 },
-  modalBody: { fontSize: 15, color: COLORS.text, lineHeight: 22, marginTop: 8 },
-  reject: { fontSize: 14, color: COLORS.alert, marginTop: 8, fontWeight: '600' },
-  actions: { marginTop: 16, gap: 10 },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 12, backgroundColor: COLORS.surface },
-});

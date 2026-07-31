@@ -1,14 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
-import { Button, FAB } from 'react-native-paper';
+import { View, ScrollView, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
+import { FAB } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { KilimoLogo } from '../../components/KilimoLogo';
 import { FarmerLocationPrompt } from '../../components/FarmerLocationPrompt';
-import { COLORS } from '../../constants';
 import { getFarmerDashboard, claimPayment, getFarmerPayments, getFarmerHierarchyProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
@@ -114,63 +115,64 @@ export function FarmerDashboardScreen() {
   };
 
   return (
-    <View style={styles.root}>
+    <View className="flex-1 bg-[#F5F5F5]">
       <ScrollView
-        style={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />}
+        className="flex-1"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF6A" />}
       >
-        <View style={styles.hero}>
-          <View style={styles.logoBox}>
+        <View className="items-center rounded-b-3xl bg-[#1A4D3E] px-6 pb-8 pt-5">
+          <View className="mb-2.5 rounded-[10px] bg-white px-3.5 py-2.5">
             <KilimoLogo width={180} height={50} />
           </View>
-          <Text style={styles.platformName}>Kilimo Bridge Platform</Text>
-          <Text style={styles.greeting}>{greeting.primary}</Text>
-          <Text style={styles.greetingSub}>{greeting.secondary}</Text>
-          <Text style={styles.heroSub}>Here&apos;s your earnings overview</Text>
+          <Text className="mb-3.5 text-[15px] font-bold tracking-wide text-white/95">Kilimo Bridge Platform</Text>
+          <Text className="text-center text-[26px] font-bold text-white">{greeting.primary}</Text>
+          <Text className="mt-1 text-center text-[15px] text-white/90">{greeting.secondary}</Text>
+          <Text className="mt-1.5 text-center text-sm text-white/75">Here&apos;s your earnings overview</Text>
         </View>
 
         {error ? <FarmerOfflineBanner message={error} /> : null}
 
-        <View style={styles.pendingCard}>
+        <View className="-mt-6 mb-6 mx-4 items-center rounded-2xl bg-white p-6 shadow-sm elevation-4">
           <KBStatusChip label="Ready to Claim" variant="success" />
-          <Text style={styles.pendingLabel}>Pending payment</Text>
-          <Text style={styles.pendingAmount}>{formatAmount(pending)}</Text>
+          <Text className="mt-3 text-sm text-[#757575]">Pending payment</Text>
+          <Text className="my-2 text-4xl font-extrabold text-[#D4AF6A]">{formatAmount(pending)}</Text>
           <Button
-            mode="contained"
+            className="mt-2 h-12 w-full rounded-xl bg-[#D4AF6A]"
             onPress={handleClaim}
-            loading={claiming}
-            buttonColor={COLORS.accent}
-            textColor={COLORS.primary}
-            style={styles.claimBtn}
-            contentStyle={{ minHeight: 48 }}
-            icon="cash-fast"
+            disabled={claiming}
           >
-            {pending > 0 ? formatPayment(pending) : 'Claim Now'}
+            {claiming ? (
+              <ActivityIndicator color="#1A4D3E" />
+            ) : (
+              <Text className="font-semibold text-[#1A4D3E]">
+                {pending > 0 ? formatPayment(pending) : 'Claim Now'}
+              </Text>
+            )}
           </Button>
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Projects</Text>
+        <View className="mb-5 px-4">
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="text-lg font-bold text-[#1A4D3E]">Your Projects</Text>
             <Pressable onPress={onRefresh}>
-              <Ionicons name="refresh" size={22} color={COLORS.primary} />
+              <Ionicons name="refresh" size={22} color="#1A4D3E" />
             </Pressable>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hScroll}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
             {(data?.activeProjects ?? []).map((p, i) => (
               <Pressable
                 key={p.id ?? `${p.project_name}-${i}`}
                 onPress={() => openProjectDetail(p)}
-                style={styles.projectCard}
+                className="mr-3 min-h-[176px] w-[228px] rounded-xl bg-white p-4 pb-5 shadow-sm elevation-2"
                 accessibilityRole="button"
                 accessibilityLabel={`View ${p.project_name} details`}
               >
-                <View style={styles.projectCardHeader}>
-                  <Ionicons name="leaf" size={24} color={COLORS.primary} />
-                  <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
+                <View className="flex-row items-center justify-between">
+                  <Ionicons name="leaf" size={24} color="#1A4D3E" />
+                  <Ionicons name="chevron-forward" size={18} color="#757575" />
                 </View>
-                <Text style={styles.projectName} numberOfLines={2}>{p.project_name}</Text>
-                <Text style={styles.projectAmount}>{formatAmount(p.payment_amount)}</Text>
+                <Text className="mt-2 text-base font-semibold leading-[22px] text-[#333333]" numberOfLines={2}>{p.project_name}</Text>
+                <Text className="mb-0.5 mt-1 text-lg font-bold text-[#D4AF6A]">{formatAmount(p.payment_amount)}</Text>
                 <KBProgressBar
                   progress={p.completion_percentage}
                   label={`${p.completion_percentage}% done`}
@@ -180,35 +182,35 @@ export function FarmerDashboardScreen() {
               </Pressable>
             ))}
             {(data?.activeProjects ?? []).length === 0 ? (
-              <Text style={styles.empty}>No active projects yet</Text>
+              <Text className="p-4 text-[#757575]">No active projects yet</Text>
             ) : null}
           </ScrollView>
         </View>
 
         {data?.nextProject ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>What&apos;s Next?</Text>
+          <View className="mb-5 px-4">
+            <Text className="mb-3 text-lg font-bold text-[#1A4D3E]">What&apos;s Next?</Text>
             <Pressable onPress={() => openProjectDetail(data.nextProject!)} accessibilityRole="button">
               <KBCard>
-                <View style={styles.nextRow}>
-                  <View style={styles.nextText}>
-                    <Text style={styles.nextName}>{data.nextProject.project_name}</Text>
-                    <Text style={styles.nextDue}>
+                <View className="flex-row items-center justify-between gap-3">
+                  <View className="flex-1">
+                    <Text className="text-[17px] font-semibold text-[#333333]">{data.nextProject.project_name}</Text>
+                    <Text className="mt-1 text-[13px] text-[#757575]">
                       {data.nextProject.due_date
                         ? `Due: ${formatDueDate(data.nextProject.due_date)}`
                         : 'Tap for project details'}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={22} color={COLORS.muted} />
+                  <Ionicons name="chevron-forward" size={22} color="#757575" />
                 </View>
               </KBCard>
             </Pressable>
           </View>
         ) : null}
 
-        <View style={styles.earningsFooter}>
-          <Text style={styles.earningsLabel}>Total earned</Text>
-          <Text style={styles.earningsValue}>{formatAmount(data?.totalEarnings ?? 0)}</Text>
+        <View className="mx-4 mb-20 flex-row justify-between rounded-xl bg-white p-5">
+          <Text className="text-base text-[#333333]">Total earned</Text>
+          <Text className="text-xl font-bold text-[#D4AF6A]">{formatAmount(data?.totalEarnings ?? 0)}</Text>
         </View>
       </ScrollView>
 
@@ -216,8 +218,8 @@ export function FarmerDashboardScreen() {
         <FAB
           icon="cash"
           label="Claim"
-          style={styles.fab}
-          color={COLORS.primary}
+          style={{ position: 'absolute', right: 16, bottom: 16, backgroundColor: '#D4AF6A' }}
+          color="#1A4D3E"
           onPress={handleClaim}
           loading={claiming}
         />
@@ -230,93 +232,3 @@ export function FarmerDashboardScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.surface },
-  scroll: { flex: 1 },
-  hero: {
-    backgroundColor: COLORS.primary,
-    padding: 24,
-    paddingTop: 20,
-    paddingBottom: 32,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    alignItems: 'center',
-  },
-  logoBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 10,
-  },
-  platformName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.95)',
-    marginBottom: 14,
-    letterSpacing: 0.2,
-  },
-  greeting: { fontSize: 26, fontWeight: '700', color: '#FFFFFF', textAlign: 'center' },
-  greetingSub: { fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: 4, textAlign: 'center' },
-  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 6, textAlign: 'center' },
-  pendingCard: {
-    marginHorizontal: 16,
-    marginTop: -24,
-    backgroundColor: COLORS.background,
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-    marginBottom: 24,
-  },
-  pendingLabel: { fontSize: 14, color: COLORS.muted, marginTop: 12 },
-  pendingAmount: { fontSize: 36, fontWeight: '800', color: COLORS.accent, marginVertical: 8 },
-  claimBtn: { width: '100%', borderRadius: 12, marginTop: 8 },
-  section: { paddingHorizontal: 16, marginBottom: 20 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.primary },
-  hScroll: { marginHorizontal: -4 },
-  projectCard: {
-    width: 228,
-    minHeight: 176,
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
-    padding: 16,
-    paddingBottom: 20,
-    marginRight: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  projectCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  projectName: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginTop: 8, lineHeight: 22 },
-  projectAmount: { fontSize: 18, fontWeight: '700', color: COLORS.accent, marginTop: 4, marginBottom: 2 },
-  empty: { color: COLORS.muted, padding: 16 },
-  nextRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  nextText: { flex: 1 },
-  nextName: { fontSize: 17, fontWeight: '600', color: COLORS.text },
-  nextDue: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  earningsFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 20,
-    marginHorizontal: 16,
-    marginBottom: 80,
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
-  },
-  earningsLabel: { fontSize: 16, color: COLORS.text },
-  earningsValue: { fontSize: 20, fontWeight: '700', color: COLORS.accent },
-  fab: { position: 'absolute', right: 16, bottom: 16, backgroundColor: COLORS.accent },
-});

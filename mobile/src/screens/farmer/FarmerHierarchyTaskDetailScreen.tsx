@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TextInput, RefreshControl, Image, Platform } from 'react-native';
+import { View, ScrollView, Alert, TextInput, RefreshControl, Image, Platform, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
-import { Button } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../constants';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import {
   getFarmerHierarchyTask,
   getFarmerTaskApprovalStatus,
@@ -117,17 +117,17 @@ export function FarmerHierarchyTaskDetailScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      className="flex-1 bg-[#F5F5F5] p-4"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       {task ? (
         <>
-          <View style={styles.row}>
-            <Text style={styles.title}>{task.name}</Text>
+          <View className="flex-row items-start justify-between gap-2">
+            <Text className="flex-1 text-[22px] font-bold text-[#1A4D3E]">{task.name}</Text>
             {isApproved ? (
-              <View style={styles.approvedBadge}>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-                <Text style={styles.approvedText}>Approved</Text>
+              <View className="flex-row items-center gap-1 rounded-full bg-[#E8F5E9] px-2.5 py-1">
+                <Ionicons name="checkmark-circle" size={20} color="#2E7D5E" />
+                <Text className="text-xs font-bold text-[#2E7D5E]">Approved</Text>
               </View>
             ) : (
               <KBStatusChip
@@ -136,51 +136,50 @@ export function FarmerHierarchyTaskDetailScreen() {
               />
             )}
           </View>
-          <Text style={styles.meta}>{task.program_project_name}</Text>
-          <Text style={styles.pay}>Payment: KES {task.payment_value_kes?.toLocaleString()}</Text>
-          {task.description ? <Text style={styles.desc}>{task.description}</Text> : null}
-          {task.rejection_reason ? <Text style={styles.reject}>Rework needed: {task.rejection_reason}</Text> : null}
+          <Text className="mt-1 text-sm text-[#757575]">{task.program_project_name}</Text>
+          <Text className="mt-3 text-lg font-bold text-[#D4AF6A]">
+            Payment: KES {task.payment_value_kes?.toLocaleString()}
+          </Text>
+          {task.description ? (
+            <Text className="mt-3 text-[15px] leading-[22px] text-[#333333]">{task.description}</Text>
+          ) : null}
+          {task.rejection_reason ? (
+            <Text className="mt-3 text-sm font-semibold text-[#D32F2F]">Rework needed: {task.rejection_reason}</Text>
+          ) : null}
           {wasSubmitted && task.status === 'submitted-for-approval' ? (
-            <Text style={styles.pollHint}>Checking approval status every 30 seconds…</Text>
+            <Text className="mt-3 text-[13px] italic text-[#1976D2]">Checking approval status every 30 seconds…</Text>
           ) : null}
 
           {canSubmit ? (
-            <View style={styles.form}>
-              <Text style={styles.label}>Photo evidence</Text>
-              {photoUri ? <Image source={{ uri: photoUri }} style={styles.preview} /> : null}
-              <Button mode="outlined" onPress={() => pickImage(Platform.OS !== 'web')} style={styles.btn}>
-                {Platform.OS === 'web' ? 'Choose photo' : 'Camera / Gallery'}
+            <View className="mt-5 gap-2">
+              <Text className="mt-2 text-[13px] font-semibold text-[#757575]">Photo evidence</Text>
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} className="mb-2 h-[180px] w-full rounded-lg" />
+              ) : null}
+              <Button variant="outline" className="mt-2 h-12" onPress={() => pickImage(Platform.OS !== 'web')}>
+                <Text>{Platform.OS === 'web' ? 'Choose photo' : 'Camera / Gallery'}</Text>
               </Button>
-              <Text style={styles.label}>Notes</Text>
-              <TextInput style={styles.input} multiline value={notes} onChangeText={setNotes} placeholder="Describe your work..." />
-              <Button mode="contained" onPress={submit} loading={submitting} buttonColor={COLORS.primary} style={styles.btn}>
-                Submit for approval
+              <Text className="mt-2 text-[13px] font-semibold text-[#757575]">Notes</Text>
+              <TextInput
+                className="min-h-20 rounded-lg border border-[#E0E0E0] bg-white p-3"
+                multiline
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Describe your work..."
+              />
+              <Button className="mt-2 h-12 bg-[#1A4D3E]" disabled={submitting} onPress={submit}>
+                {submitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text className="text-white">Submit for approval</Text>
+                )}
               </Button>
             </View>
           ) : null}
         </>
       ) : (
-        <Text style={styles.empty}>Task not found.</Text>
+        <Text className="p-6 text-center text-[#757575]">Task not found.</Text>
       )}
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface, padding: 16 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, flex: 1 },
-  meta: { fontSize: 14, color: COLORS.muted, marginTop: 4 },
-  pay: { fontSize: 18, fontWeight: '700', color: COLORS.accent, marginTop: 12 },
-  desc: { fontSize: 15, color: COLORS.text, marginTop: 12, lineHeight: 22 },
-  reject: { fontSize: 14, color: COLORS.alert, marginTop: 12, fontWeight: '600' },
-  pollHint: { fontSize: 13, color: COLORS.info, marginTop: 12, fontStyle: 'italic' },
-  form: { marginTop: 20, gap: 8 },
-  label: { fontSize: 13, fontWeight: '600', color: COLORS.muted, marginTop: 8 },
-  preview: { width: '100%', height: 180, borderRadius: 8, marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 12, backgroundColor: COLORS.background, minHeight: 80 },
-  btn: { marginTop: 8 },
-  empty: { color: COLORS.muted, textAlign: 'center', padding: 24 },
-  approvedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  approvedText: { fontSize: 12, fontWeight: '700', color: COLORS.success },
-});
