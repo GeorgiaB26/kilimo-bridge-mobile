@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Button } from '../../components/Button';
-import { COLORS } from '../../constants';
+import { View } from 'react-native';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { useAuthStore } from '../../store/authStore';
 
 export function AdminProfileScreen() {
@@ -9,32 +9,36 @@ export function AdminProfileScreen() {
   const logout = useAuthStore((s) => s.logout);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.avatar}>
-        <Text style={styles.initials}>
+    <View className="flex-1 p-4">
+      <View className="mb-3 h-20 w-20 items-center justify-center self-center rounded-full bg-[#1A4D3E]">
+        <Text className="text-[28px] font-bold text-[#D4AF6A]">
           {user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
         </Text>
       </View>
-      <Text style={styles.name}>{user?.name}</Text>
-      <Text style={styles.role}>{user?.role?.replace('_', ' ')}</Text>
-      <View style={styles.card}>
+      <Text className="text-center text-[22px] font-bold text-[#333333]">{user?.name}</Text>
+      <Text className="mb-5 text-center text-sm capitalize text-[#757575]">
+        {user?.role?.replace('_', ' ')}
+      </Text>
+      <View className="mb-5 rounded-lg bg-[#F9F9F9] p-4">
         <Row label="Phone" value={user?.phoneNumber} />
         {user?.district ? <Row label="District" value={user.district} /> : null}
       </View>
-      <Text style={styles.permTitle}>Your permissions</Text>
+      <Text className="mb-2 text-base font-semibold text-[#1A4D3E]">Your permissions</Text>
       {getPermissions(user?.role).map((p) => (
-        <Text key={p} style={styles.perm}>✓ {p}</Text>
+        <Text key={p} className="mb-1 text-sm text-[#333333]">✓ {p}</Text>
       ))}
-      <Button title="Sign Out" onPress={logout} variant="outline" style={styles.logout} />
+      <Button variant="outline" className="mt-6" onPress={logout}>
+        <Text>Sign Out</Text>
+      </Button>
     </View>
   );
 }
 
 function Row({ label, value }: { label: string; value?: string }) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
+    <View className="flex-row items-center justify-between py-2">
+      <Text className="text-[#757575]">{label}</Text>
+      <Text className="font-medium text-[#333333]">{value}</Text>
     </View>
   );
 }
@@ -59,18 +63,3 @@ function getPermissions(role?: string): string[] {
       return [];
   }
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  initials: { fontSize: 28, color: COLORS.accent, fontWeight: '700' },
-  name: { fontSize: 22, fontWeight: '700', color: COLORS.text, textAlign: 'center' },
-  role: { fontSize: 14, color: COLORS.muted, textAlign: 'center', marginBottom: 20, textTransform: 'capitalize' },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 16, marginBottom: 20 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  rowLabel: { color: COLORS.muted },
-  rowValue: { fontWeight: '500', color: COLORS.text },
-  permTitle: { fontSize: 16, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
-  perm: { fontSize: 14, color: COLORS.text, marginBottom: 4 },
-  logout: { marginTop: 24 },
-});
