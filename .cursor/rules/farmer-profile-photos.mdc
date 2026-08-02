@@ -1,0 +1,42 @@
+---
+description: Farmer profile photos must be real images — never initials avatars
+globs:
+  - mobile/src/**/*.tsx
+  - mobile/src/**/*.ts
+  - backend/src/**/*.ts
+  - shared/src/**/*.ts
+alwaysApply: true
+---
+
+# Farmer profile photos (mandatory)
+
+## Policy
+
+Every registered farmer must have a **real verification photo** taken with the device camera or chosen from the gallery.
+
+**Never use or ship:**
+
+- Initials-based avatar placeholders (e.g. "JK" in a circle) as a substitute for a missing farmer photo
+- Optional photo with fallback to generated avatars on profile or list screens
+- `file://` or `content://` URIs stored in Postgres (device-only paths)
+
+**Always:**
+
+- Require photo capture on the registration **Photo** step before submit
+- Send photos as `data:image/jpeg;base64,...` (or PNG) or upload to object storage and store an `https://` URL in `farmers.picture_url`
+- Show a **"Photo required"** placeholder (camera icon + message) when `picture_url` is missing — not initials
+- Validate on the API with `validateFarmerPhotoRequired()` / `validateFarmerRow` (non-import mode)
+
+## Task evidence photos
+
+Task completion evidence (`farmer_tasks.photo_evidence_url`) follows the same rule: real camera/gallery images only, stored as data URL or HTTPS URL.
+
+## UI components
+
+- Use `FarmerProfilePhoto` for farmer/agent profile headers
+- Do not use `ProfileAvatar` initials fallback for farmers; that component must not render letter avatars when `pictureUrl` is absent
+
+## Backend
+
+- `farmers.picture_url` and `farmer_tasks.photo_evidence_url` must contain usable image data or HTTPS URLs
+- Reject registration without a valid photo in manual register (`POST /api/farmers/register`)

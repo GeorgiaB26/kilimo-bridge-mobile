@@ -5,6 +5,7 @@ export * from './roles';
 export * from './hierarchy';
 export * from './regional';
 export * from './farmerId';
+export * from './farmerPhoto';
 export * from './locations/aggregationCentres';
 export { KENYA_COUNTIES, KENYA_LOCATIONS } from './locations/kenya';
 export { UGANDA_DISTRICTS, UGANDA_LOCATIONS } from './locations/uganda';

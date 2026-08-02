@@ -14,6 +14,7 @@ import {
 } from './regional';
 import { normalizePhoneForCountry, generateFarmerId } from './farmerId';
 import { findAggregationCentre } from './locations/aggregationCentres';
+import { validateFarmerPhotoRequired } from './farmerPhoto';
 
 export interface FarmerInput {
   key: string;
@@ -460,7 +461,17 @@ export function validateFarmerRow(
   if (prepared.project1?.trim()) normalized.project1 = prepared.project1.trim();
   if (prepared.project2?.trim()) normalized.project2 = prepared.project2.trim();
   if (prepared.project3?.trim()) normalized.project3 = prepared.project3.trim();
-  if (prepared.picture?.trim()) normalized.picture = prepared.picture.trim();
+
+  if (!importMode) {
+    const photoError = validateFarmerPhotoRequired(prepared.picture);
+    if (photoError) {
+      errors.push({ field: 'picture', value: prepared.picture ?? '', error: photoError });
+    } else if (prepared.picture?.trim()) {
+      normalized.picture = prepared.picture.trim();
+    }
+  } else if (prepared.picture?.trim()) {
+    normalized.picture = prepared.picture.trim();
+  }
 
   return { valid: errors.length === 0, errors, normalized };
 }
