@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
-import { encryptField, decryptField, hashPassword } from './encryptionService';
+import { encryptField, decryptField, hashPassword, hashIdNumber } from './encryptionService';
 import { logAudit } from './auditService';
 
 const EQUITY_API_URL = process.env.EQUITY_H2H_URL || 'https://api.equitybank.co.ke/h2h/v1';
@@ -198,6 +198,40 @@ export async function getPaymentsWithFarmers(limit = 200) {
      ORDER BY p.created_at DESC LIMIT $1`,
     [limit]
   );
+}
+
+/** Banking MVP — verify national ID against id_number_hash (optionally scoped to farmer_id). */
+export async function verifyFarmerIdForBanking(
+  idNumber: string,
+  farmerId?: string
+): Promise<{
+  verified: boolean;
+  farmer_id?: string;
+  name?: string;
+  phone_number?: string;
+}> {
+  const hash = hashIdNumber(idNumber);
+  if (!hash) {
+    return { verified: false };
+  }
+  const row = farmerId
+    ? await queryOne<{ farmer_id: string; name: string; phone_number: string }>(
+        'SELECT farmer_id, name, phone_number FROM farmers WHERE farmer_id = $1 AND id_number_hash = $2',
+        [farmerId, hash]
+      )
+    : await queryOne<{ farmer_id: string; name: string; phone_number: string }>(
+        'SELECT farmer_id, name, phone_number FROM farmers WHERE id_number_hash = $1',
+        [hash]
+      );
+  if (!row) {
+    return { verified: false };
+  }
+  return {
+    verified: true,
+    farmer_id: row.farmer_id,
+    name: row.name,
+    phone_number: row.phone_number,
+  };
 }
 
 export async function processPaymentViaBanking(

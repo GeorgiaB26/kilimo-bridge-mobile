@@ -546,18 +546,72 @@ export async function approveInventoryQuality(inventoryId: string, data: {
   quality_status: 'approved' | 'rejected';
   quality_notes?: string;
   marketplace_price_per_unit?: number;
+  price_per_unit_applied?: number;
 }) {
   const dbQualityStatus = data.quality_status === 'approved' ? 'passed' : 'failed';
   const marketplaceReady = data.quality_status === 'approved';
+  const pricePerUnit = data.price_per_unit_applied ?? data.marketplace_price_per_unit ?? null;
   await query(`
     UPDATE centre_inventory SET quality_status = $1, quality_notes = $2,
       marketplace_price_per_unit = $3, is_marketplace_ready = $4
     WHERE id = $5
   `, [
     dbQualityStatus, data.quality_notes ?? null,
-    data.marketplace_price_per_unit ?? null, marketplaceReady, inventoryId,
+    pricePerUnit, marketplaceReady, inventoryId,
   ]);
+  if (data.quality_status === 'approved') {
+    await createPaymentOnQcApproval(inventoryId);
+  }
   return queryOne('SELECT * FROM centre_inventory WHERE id = $1', [inventoryId]);
+}
+
+/** Create pending payment when QC passes (replaces task-approval DB trigger). */
+export async function createPaymentOnQcApproval(inventoryId: string): Promise<string | null> {
+  const row = await queryOne<{
+    id: string;
+    farmer_id: string;
+    product_name: string;
+    quantity_received: number;
+    marketplace_price_per_unit: number | null;
+    task_id: string | null;
+    payment_value_kes: number | null;
+    quality_status: string;
+  }>(`
+    SELECT ci.id, ci.farmer_id, ci.product_name, ci.quantity_received, ci.marketplace_price_per_unit,
+           ci.task_id, ci.quality_status, t.payment_value_kes
+    FROM centre_inventory ci
+    LEFT JOIN tasks t ON t.id = ci.task_id
+    WHERE ci.id = $1
+  `, [inventoryId]);
+
+  if (!row || row.quality_status !== 'passed') return null;
+
+  const paymentDescription = `QC:${inventoryId}`;
+  const existing = await queryOne<{ id: string }>(
+    'SELECT id FROM payments WHERE description = $1',
+    [paymentDescription]
+  );
+  if (existing) return existing.id;
+
+  let amount = 0;
+  if (row.marketplace_price_per_unit != null && row.quantity_received > 0) {
+    amount = Math.round(row.marketplace_price_per_unit * row.quantity_received);
+  } else if (row.payment_value_kes != null) {
+    amount = Math.round(row.payment_value_kes);
+  }
+  if (amount <= 0) return null;
+
+  const paymentId = uuidv4();
+  await query(
+    `INSERT INTO payments (id, farmer_id, description, amount, payment_status, payment_method)
+     VALUES ($1, $2, $3, $4, 'pending', 'M-Pesa')`,
+    [paymentId, row.farmer_id, paymentDescription, amount]
+  );
+  return paymentId;
+}
+
+export async function listPendingQcDeliveries(centreId: string) {
+  return listCentreInventory(centreId, 'awaiting_qc');
 }
 
 export async function getCentreDashboard(centreId: string) {

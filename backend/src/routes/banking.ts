@@ -6,6 +6,7 @@ import {
   getPaymentsWithFarmers,
   processPaymentViaBanking,
   handleEquityWebhook,
+  verifyFarmerIdForBanking,
 } from '../services/bankingService';
 import { getFinancialAuditLogs } from '../services/auditService';
 import { createUser, getAllUsers } from '../services/userService';
@@ -48,6 +49,29 @@ router.get(
 );
 
 /** Process M-Pesa payment via Equity H2H — banking_agent & platform_admin */
+router.post(
+  '/verify-farmer-id',
+  requirePermission('payments.read'),
+  asyncHandler(async (req, res) => {
+    const { id_number, farmer_id } = req.body;
+    if (!id_number || typeof id_number !== 'string') {
+      res.status(400).json({ error: 'id_number is required' });
+      return;
+    }
+    const result = await verifyFarmerIdForBanking(id_number.trim(), farmer_id);
+    logAudit({
+      userId: req.user?.userId,
+      userRole: req.user?.role,
+      action: 'banking.verify_farmer_id',
+      category: 'financial',
+      details: { verified: result.verified, farmer_id: result.farmer_id ?? farmer_id },
+      ipAddress: req.ip,
+      success: result.verified,
+    });
+    res.json(result);
+  })
+);
+
 router.post(
   '/payments/:paymentId/process',
   requirePermission('payments.process'),

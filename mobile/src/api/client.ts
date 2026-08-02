@@ -436,10 +436,10 @@ export async function receiveCentreDelivery(centreId: string | 'self', body: {
   unit?: string;
   notes?: string;
 }) {
-  const path = centreId === 'self'
-    ? '/aggregation/centre/receive-delivery'
-    : `/aggregation/centre/${centreId}/receive-delivery`;
-  const { data } = await api.post(path, body);
+  const { data } = await api.post('/aggregation-centres/deliveries', {
+    ...body,
+    centre_id: centreId === 'self' ? undefined : centreId,
+  });
   return data;
 }
 
@@ -447,8 +447,19 @@ export async function approveInventoryQuality(inventoryId: string, body: {
   quality_status: 'approved' | 'rejected';
   quality_notes?: string;
   marketplace_price_per_unit?: number;
+  price_per_unit_applied?: number;
 }) {
-  const { data } = await api.post(`/aggregation/inventory/${inventoryId}/approve-quality`, body);
+  const { data } = await api.patch(`/aggregation-centres/deliveries/${inventoryId}/quality-check`, {
+    quality_status: body.quality_status,
+    quality_notes: body.quality_notes,
+    price_per_unit_applied: body.price_per_unit_applied ?? body.marketplace_price_per_unit,
+  });
+  return data;
+}
+
+/** Bank MVP — pending QC deliveries at a centre (centre_inventory with quality_status = pending). */
+export async function getPendingQcDeliveries(centreId: string) {
+  const { data } = await api.get(`/aggregation-centres/${centreId}/deliveries`);
   return data;
 }
 
@@ -470,21 +481,25 @@ export async function aggregationCentreLogin(body: { centre_id: string; phone_nu
   return data;
 }
 
-export async function approveCentreQuality(centreId: string | undefined, body: {
+export async function approveCentreQuality(_centreId: string | undefined, body: {
   inventory_id: string;
   quality_notes: string;
   marketplace_price_per_unit: number;
 }) {
-  const payload = {
-    inventory_id: body.inventory_id,
-    quality_status: 'approved' as const,
+  return approveInventoryQuality(body.inventory_id, {
+    quality_status: 'approved',
     quality_notes: body.quality_notes,
-    marketplace_price_per_unit: body.marketplace_price_per_unit,
+    price_per_unit_applied: body.marketplace_price_per_unit,
+  });
+}
+
+/** Bank MVP — verify national ID against farmers.id_number_hash. */
+export async function verifyFarmerId(id_number: string, farmer_id?: string) {
+  const { data } = await api.post('/banking/verify-farmer-id', { id_number, farmer_id });
+  return data as {
+    verified: boolean;
+    farmer_id?: string;
+    name?: string;
+    phone_number?: string;
   };
-  if (centreId) {
-    const { data } = await api.post(`/aggregation/centre/${centreId}/approve-quality`, payload);
-    return data;
-  }
-  const { data } = await api.post(`/aggregation/inventory/${body.inventory_id}/approve-quality`, payload);
-  return data;
 }
