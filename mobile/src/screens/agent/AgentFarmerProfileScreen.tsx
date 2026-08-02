@@ -7,7 +7,8 @@ import { Text } from '@/components/ui/text';
 import { getFarmerById, verifyFarmerField } from '../../api/client';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { VerifyFarmerModal } from '../../components/agent/VerifyFarmerModal';
-import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { FarmerProfilePhoto } from '../../components/FarmerProfilePhoto';
+import { isUsableFarmerPhotoUrl } from '../../../shared/src/farmerPhoto';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
@@ -149,7 +150,19 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
             </Pressable>
           </View>
           <View className="mt-2 items-center">
-            <ProfileAvatar name={farmer.name || routeName} pictureUrl={farmer.picture_url} size="hero" />
+            <FarmerProfilePhoto
+              name={farmer.name || routeName}
+              pictureUrl={farmer.picture_url}
+              size="hero"
+              label="Verification photo missing — re-register with camera photo"
+            />
+            {!isUsableFarmerPhotoUrl(farmer.picture_url) ? (
+              <View className="mt-3 rounded-lg border border-[#D32F2F] bg-[#FFEBEE] px-3 py-2">
+                <Text className="text-center text-xs text-[#D32F2F]">
+                  No valid verification photo on file. Farmers must have a real camera/gallery photo — not an avatar.
+                </Text>
+              </View>
+            ) : null}
             <Text className="mt-3 text-2xl font-bold text-white">{farmer.name || routeName}</Text>
             <View className="mt-3">
               <FarmerStatusChip status={farmer.status} />

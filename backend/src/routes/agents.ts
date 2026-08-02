@@ -12,6 +12,10 @@ import {
 import { verifyFarmerByFieldAgent } from '../services/farmerService';
 import { getAgentAuditLogs } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
+import {
+  listOpenHelpRequestsForAgent,
+  resolveFarmerHelpRequest,
+} from '../services/farmerHelpRequestService';
 
 const router = Router();
 
@@ -160,6 +164,37 @@ router.post(
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Approval failed' });
+    }
+  })
+);
+
+/** Open farmer help requests assigned to this agent — shown in Tasks tab */
+router.get(
+  '/help-requests',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const requests = await listOpenHelpRequestsForAgent(req.user!.userId);
+    res.json({ requests });
+  })
+);
+
+router.post(
+  '/help-requests/:requestId/resolve',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    try {
+      const result = await resolveFarmerHelpRequest(req.params.requestId, req.user!.userId);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not resolve request' });
     }
   })
 );

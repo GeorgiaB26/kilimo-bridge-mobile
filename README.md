@@ -51,7 +51,7 @@ React Native (Expo) mobile app with Node.js backend for farmer registration and 
 3. **Membership** — Cooperative group, aggregation center, membership type
 4. **Details** — Occupation, land size
 5. **Projects** — Optional project assignments (1–3)
-6. **Photo** — Camera/gallery upload or initials avatar
+6. **Photo** — Required camera/gallery verification photo (no initials avatars)
 7. **Confirm** — Review summary and submit
 
 ### Admin CSV Import

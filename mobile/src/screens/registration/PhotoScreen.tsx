@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Image, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -44,9 +45,13 @@ export function PhotoScreen({ navigation }: Props) {
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
+        if (!asset.base64) {
+          Alert.alert('Photo error', 'Could not read image. Please try again.');
+          return;
+        }
         updateForm({
           pictureUri: asset.uri,
-          pictureBase64: asset.base64 ?? undefined,
+          pictureBase64: asset.base64,
         });
       }
     } finally {
@@ -54,31 +59,33 @@ export function PhotoScreen({ navigation }: Props) {
     }
   };
 
-  const initials = formData.name
-    .split(' ')
-    .map((n: string) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
   const handleNext = () => {
-    if (!formData.pictureUri || !formData.pictureBase64) {
-      setError('A verification photo is required');
+    if (!formData.pictureBase64) {
+      setError('A real verification photo is required (camera or gallery). Initials avatars are not allowed.');
       return;
     }
     setError('');
     navigation.navigate('Confirm');
   };
 
+  const hasPhoto = !!formData.pictureBase64;
+
   return (
     <View className="flex-1">
-      <ScreenHeader title="Photo" subtitle="Add a verification photo (required)" />
-      <View className="my-6 items-center">
-        {formData.pictureUri ? (
+      <ScreenHeader
+        title="Verification photo"
+        subtitle="Required — take a clear photo of the farmer's face"
+      />
+      <Text className="mb-4 text-sm text-[#757575]">
+        This must be a real photo from your camera or gallery. Letter avatars are not accepted.
+      </Text>
+      <View className="my-4 items-center">
+        {hasPhoto && formData.pictureUri ? (
           <Image source={{ uri: formData.pictureUri }} className="h-40 w-40 rounded-full" />
         ) : (
-          <View className="h-40 w-40 items-center justify-center rounded-full bg-[#1A4D3E]">
-            <Text className="text-5xl font-bold text-[#D4AF6A]">{initials || '?'}</Text>
+          <View className="h-40 w-40 items-center justify-center rounded-full border-2 border-dashed border-[#D4AF6A] bg-[#1A4D3E]">
+            <Ionicons name="camera-outline" size={48} color="#D4AF6A" />
+            <Text className="mt-2 text-center text-xs font-semibold text-[#D4AF6A]">Photo required</Text>
           </View>
         )}
       </View>

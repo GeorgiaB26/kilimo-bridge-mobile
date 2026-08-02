@@ -1,17 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, ScrollView, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Divider, List, Switch } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { APP_BUILD } from '../../constants/build';
-import { getFarmerDashboard } from '../../api/client';
+import { getFarmerDashboard, submitFarmerHelpRequest } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
 import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { getLocalizedGreeting } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
+
+type SupportContacts = {
+  fieldAgent?: {
+    name: string;
+    phone: string;
+    aggregationCenter?: string | null;
+    district?: string | null;
+  } | null;
+  aggregationCentre?: {
+    centreId?: string;
+    name: string;
+    location?: string;
+    managerName?: string | null;
+    managerPhone?: string | null;
+  } | null;
+  bankingAgent?: {
+    name: string;
+    phone: string;
+  } | null;
+};
 
 export function FarmerProfileScreen() {
   const user = useAuthStore((s) => s.user);
@@ -28,23 +50,70 @@ export function FarmerProfileScreen() {
     kb_farmer_id: string | null;
     picture_url: string | null;
     status: string;
+    registered_agent_name?: string | null;
+    registered_agent_phone?: string | null;
+    centre_location?: string | null;
+    banking_agent_name?: string | null;
+    banking_agent_phone?: string | null;
   } | null>(null);
+  const [contacts, setContacts] = useState<SupportContacts | null>(null);
   const [notifications, setNotifications] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpLoading, setHelpLoading] = useState(false);
 
-  useEffect(() => {
-    getFarmerDashboard().then((d) => {
-      setFarmer(d.farmer);
-      if (d.farmer?.country) selectCountry(d.farmer.country);
-      setError(null);
-    }).catch((err: unknown) => {
-      setError(extractApiError(err, 'Could not load profile'));
-    });
+  const loadProfile = useCallback(() => {
+    getFarmerDashboard()
+      .then((d) => {
+        setFarmer(d.farmer);
+        setContacts(d.contacts ?? null);
+        if (d.farmer?.country) selectCountry(d.farmer.country);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        setError(extractApiError(err, 'Could not load profile'));
+      });
   }, [selectCountry]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [loadProfile])
+  );
+
+  const fieldAgentName =
+    contacts?.fieldAgent?.name ?? farmer?.registered_agent_name ?? null;
+  const fieldAgentPhone =
+    contacts?.fieldAgent?.phone ?? farmer?.registered_agent_phone ?? null;
+  const centreName =
+    farmer?.aggregation_center ?? contacts?.aggregationCentre?.name ?? null;
+  const centreLocation =
+    contacts?.aggregationCentre?.location ?? farmer?.centre_location ?? null;
+  const centreManager = contacts?.aggregationCentre?.managerName;
+  const centrePhone =
+    contacts?.aggregationCentre?.managerPhone ??
+    contacts?.fieldAgent?.phone ??
+    farmer?.registered_agent_phone;
+  const bankingName =
+    contacts?.bankingAgent?.name ?? farmer?.banking_agent_name ?? 'Payments desk';
+  const bankingPhone =
+    contacts?.bankingAgent?.phone ?? farmer?.banking_agent_phone ?? null;
 
   const displayName = farmer?.name ?? user?.name ?? 'Farmer';
   const country = farmer?.country ?? 'Kenya';
   const greeting = getLocalizedGreeting(country, displayName);
+
+  const handleHelpSubmit = async (message: string) => {
+    setHelpLoading(true);
+    try {
+      await submitFarmerHelpRequest(message);
+      Alert.alert('Message sent', 'Your field agent will contact you soon.');
+    } catch (err: unknown) {
+      throw new Error(extractApiError(err, 'Could not send message'));
+    } finally {
+      setHelpLoading(false);
+    }
+  };
 
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
@@ -80,21 +149,62 @@ export function FarmerProfileScreen() {
         </>
       ) : null}
 
+      <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Cooperative</Text>
+      <View className="mb-5 overflow-hidden rounded-xl bg-white">
+        <ProfileRow icon="business" label="Membership group" value={farmer?.membership_group_name} />
+      </View>
+
+      <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Your support team</Text>
+      <View className="mb-5 overflow-hidden rounded-xl bg-white">
+        <ProfileRow
+          icon="person"
+          label="Field agent"
+          value={fieldAgentName ?? 'Not assigned yet'}
+          subValue={fieldAgentPhone}
+        />
+        {(contacts?.fieldAgent?.aggregationCenter ?? fieldAgentName) ? (
+          <>
+            <Divider />
+            <ProfileRow
+              icon="storefront"
+              label="Agent centre"
+              value={contacts?.fieldAgent?.aggregationCenter ?? centreName ?? '—'}
+            />
+          </>
+        ) : null}
+        <Divider />
+        <ProfileRow icon="location" label="Aggregation centre" value={centreName ?? 'Not set'} />
+        {centreLocation ? (
+          <>
+            <Divider />
+            <ProfileRow icon="map" label="Centre location" value={centreLocation} />
+          </>
+        ) : null}
+        {centreManager || centrePhone ? (
+          <>
+            <Divider />
+            <ProfileRow
+              icon="call"
+              label="Centre contact"
+              value={centreManager ?? 'Centre manager'}
+              subValue={centrePhone}
+            />
+          </>
+        ) : null}
+        <Divider />
+        <ProfileRow
+          icon="card"
+          label="Banking / payments"
+          value={bankingName}
+          subValue={bankingPhone}
+          hint="Contact for M-Pesa payment queries"
+        />
+      </View>
+
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Contact</Text>
       <View className="mb-5 overflow-hidden rounded-xl bg-white">
         <ProfileRow icon="call" label="Phone" value={farmer?.phone_number ?? user?.phoneNumber} verified />
         <Divider />
-        <ProfileRow icon="business" label="Cooperative" value={farmer?.membership_group_name} />
-        {farmer?.aggregation_center ? (
-          <>
-            <Divider />
-            <ProfileRow icon="location" label="Aggregation centre" value={farmer.aggregation_center} />
-          </>
-        ) : null}
-      </View>
-
-      <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Payment</Text>
-      <View className="mb-5 overflow-hidden rounded-xl bg-white">
         <ProfileRow icon="phone-portrait" label="M-Pesa" value={farmer?.phone_number ?? user?.phoneNumber} verified />
         <Divider />
         <ProfileRow icon="shield-checkmark" label="National ID" value="Verified" verified />
@@ -111,10 +221,25 @@ export function FarmerProfileScreen() {
         />
       </View>
 
+      <Button className="mb-3 h-12 bg-[#D4AF6A]" onPress={() => setHelpOpen(true)}>
+        <View className="flex-row items-center gap-2">
+          <Ionicons name="help-buoy-outline" size={20} color="#1A4D3E" />
+          <Text className="font-semibold text-[#1A4D3E]">Need help? Contact field agent</Text>
+        </View>
+      </Button>
+
       <Button variant="outline" className="mt-2 border-[#D32F2F]" onPress={logout}>
         <Text className="text-[#D32F2F]">Sign Out</Text>
       </Button>
       <Text className="mt-4 text-center text-xs text-[#757575]">Kilimo Bridge {APP_BUILD}</Text>
+
+      <FarmerHelpModal
+        visible={helpOpen}
+        agentName={fieldAgentName ?? undefined}
+        loading={helpLoading}
+        onClose={() => setHelpOpen(false)}
+        onSubmit={handleHelpSubmit}
+      />
     </ScrollView>
   );
 }
@@ -123,21 +248,29 @@ function ProfileRow({
   icon,
   label,
   value,
+  subValue,
+  hint,
   verified,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value?: string;
+  subValue?: string | null;
+  hint?: string;
   verified?: boolean;
 }) {
   return (
-    <View className="flex-row items-center p-4">
-      <Ionicons name={icon} size={20} color="#1A4D3E" style={{ marginRight: 12 }} />
-      <View className="flex-1">
-        <Text className="text-xs text-[#757575]">{label}</Text>
-        <Text className="mt-0.5 text-[15px] font-medium text-[#333333]">{value ?? '—'}</Text>
+    <View className="p-4">
+      <View className="flex-row items-center">
+        <Ionicons name={icon} size={20} color="#1A4D3E" style={{ marginRight: 12 }} />
+        <View className="flex-1">
+          <Text className="text-xs text-[#757575]">{label}</Text>
+          <Text className="mt-0.5 text-[15px] font-medium text-[#333333]">{value ?? '—'}</Text>
+          {subValue ? <Text className="mt-0.5 text-sm text-[#1A4D3E]">{subValue}</Text> : null}
+          {hint ? <Text className="mt-1 text-[11px] text-[#757575]">{hint}</Text> : null}
+        </View>
+        {verified ? <Ionicons name="checkmark-circle" size={18} color="#2E7D5E" /> : null}
       </View>
-      {verified ? <Ionicons name="checkmark-circle" size={18} color="#2E7D5E" /> : null}
     </View>
   );
 }

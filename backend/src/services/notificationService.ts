@@ -1,4 +1,5 @@
 /** Pilot SMS stub — logs messages until Safaricom/Twilio is wired. */
+import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 
 export async function getAdminNotifyPhone(): Promise<string | null> {
@@ -16,6 +17,20 @@ export async function getUserNotifications(userId: string, limit = 50) {
     `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
     [userId, limit]
   );
+}
+
+export async function createNotification(input: {
+  userId: string;
+  title: string;
+  message: string;
+  type?: string;
+}): Promise<string> {
+  const id = uuidv4();
+  await query(
+    `INSERT INTO notifications (id, user_id, title, message, type) VALUES ($1, $2, $3, $4, $5)`,
+    [id, input.userId, input.title, input.message, input.type ?? 'info']
+  );
+  return id;
 }
 
 export function sendSms(phone: string, message: string): { sent: boolean; pilot: boolean } {

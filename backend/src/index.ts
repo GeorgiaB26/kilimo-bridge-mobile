@@ -6,6 +6,7 @@ import { seedDatabase } from './seed';
 import { seedHierarchyIfEmpty, getProgramProjectCount, getDemoFarmerTaskCount } from './seedHierarchy';
 import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFarmerPortal';
 import { seedAggregationCentres } from './services/aggregationCentreService';
+import { ensureFarmerHelpRequestsTable } from './services/farmerHelpRequestService';
 import { backfillLegacyIdNumberHashes } from './services/farmerService';
 import { validateProductionEnv } from './validateEnv';
 import apiRoutes from './routes/api';
@@ -70,6 +71,7 @@ app.listen(PORT, HOST, () => {
 async function bootstrap(): Promise<void> {
   validateProductionEnv();
   initDatabase();
+  await ensureFarmerHelpRequestsTable();
   const farmerCount = await refreshHealthCounts();
   console.log(`Database ready: ${farmerCount} farmers`);
 
