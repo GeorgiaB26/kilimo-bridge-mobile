@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.8.9-corp-fix';
+export const APP_BUILD = 'v2.9.0-farmer-contacts';

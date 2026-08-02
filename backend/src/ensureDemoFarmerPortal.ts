@@ -4,6 +4,7 @@ import { query, queryOne } from './db/database';
 import { createUser } from './services/userService';
 import { ensureMembershipGroup } from './services/farmerService';
 import { encryptField, hashIdNumber } from './services/encryptionService';
+import { backfillFarmerSupportLinks } from './services/farmerHelpRequestService';
 
 const DEMO_FARMER_PHONE = '+254712345678';
 const DEMO_AGENT_PHONE = '+254700000003';
@@ -44,6 +45,7 @@ export async function ensureDemoFarmerPortal(): Promise<void> {
   await ensureDemoBankingUser();
   await linkDemoFarmerToAgent();
   await ensureDemoCentreManagers();
+  await backfillFarmerSupportLinks();
   await ensureDemoFarmerPayments(farmerId);
   console.log(`Demo farmer portal ready: ${DEMO_FARMER.name} (${farmerId.slice(0, 8)}…)`);
 }

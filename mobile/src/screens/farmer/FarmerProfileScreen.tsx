@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, ScrollView, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Divider, List, Switch } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,11 @@ export function FarmerProfileScreen() {
     kb_farmer_id: string | null;
     picture_url: string | null;
     status: string;
+    registered_agent_name?: string | null;
+    registered_agent_phone?: string | null;
+    centre_location?: string | null;
+    banking_agent_name?: string | null;
+    banking_agent_phone?: string | null;
   } | null>(null);
   const [contacts, setContacts] = useState<SupportContacts | null>(null);
   const [notifications, setNotifications] = useState(true);
@@ -56,27 +62,46 @@ export function FarmerProfileScreen() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpLoading, setHelpLoading] = useState(false);
 
-  useEffect(() => {
-    getFarmerDashboard().then((d) => {
-      setFarmer(d.farmer);
-      setContacts(d.contacts ?? null);
-      if (d.farmer?.country) selectCountry(d.farmer.country);
-      setError(null);
-    }).catch((err: unknown) => {
-      setError(extractApiError(err, 'Could not load profile'));
-    });
+  const loadProfile = useCallback(() => {
+    getFarmerDashboard()
+      .then((d) => {
+        setFarmer(d.farmer);
+        setContacts(d.contacts ?? null);
+        if (d.farmer?.country) selectCountry(d.farmer.country);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        setError(extractApiError(err, 'Could not load profile'));
+      });
   }, [selectCountry]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [loadProfile])
+  );
+
+  const fieldAgentName =
+    contacts?.fieldAgent?.name ?? farmer?.registered_agent_name ?? null;
+  const fieldAgentPhone =
+    contacts?.fieldAgent?.phone ?? farmer?.registered_agent_phone ?? null;
+  const centreName =
+    farmer?.aggregation_center ?? contacts?.aggregationCentre?.name ?? null;
+  const centreLocation =
+    contacts?.aggregationCentre?.location ?? farmer?.centre_location ?? null;
+  const centreManager = contacts?.aggregationCentre?.managerName;
+  const centrePhone =
+    contacts?.aggregationCentre?.managerPhone ??
+    contacts?.fieldAgent?.phone ??
+    farmer?.registered_agent_phone;
+  const bankingName =
+    contacts?.bankingAgent?.name ?? farmer?.banking_agent_name ?? 'Payments desk';
+  const bankingPhone =
+    contacts?.bankingAgent?.phone ?? farmer?.banking_agent_phone ?? null;
 
   const displayName = farmer?.name ?? user?.name ?? 'Farmer';
   const country = farmer?.country ?? 'Kenya';
   const greeting = getLocalizedGreeting(country, displayName);
-
-  const centreName =
-    farmer?.aggregation_center ?? contacts?.aggregationCentre?.name ?? null;
-  const centreLocation = contacts?.aggregationCentre?.location;
-  const centreManager = contacts?.aggregationCentre?.managerName;
-  const centrePhone =
-    contacts?.aggregationCentre?.managerPhone ?? contacts?.fieldAgent?.phone;
 
   const handleHelpSubmit = async (message: string) => {
     setHelpLoading(true);
@@ -134,13 +159,17 @@ export function FarmerProfileScreen() {
         <ProfileRow
           icon="person"
           label="Field agent"
-          value={contacts?.fieldAgent?.name ?? 'Not assigned yet'}
-          subValue={contacts?.fieldAgent?.phone}
+          value={fieldAgentName ?? 'Not assigned yet'}
+          subValue={fieldAgentPhone}
         />
-        {contacts?.fieldAgent?.aggregationCenter ? (
+        {(contacts?.fieldAgent?.aggregationCenter ?? fieldAgentName) ? (
           <>
             <Divider />
-            <ProfileRow icon="storefront" label="Agent centre" value={contacts.fieldAgent.aggregationCenter} />
+            <ProfileRow
+              icon="storefront"
+              label="Agent centre"
+              value={contacts?.fieldAgent?.aggregationCenter ?? centreName ?? '—'}
+            />
           </>
         ) : null}
         <Divider />
@@ -166,8 +195,8 @@ export function FarmerProfileScreen() {
         <ProfileRow
           icon="card"
           label="Banking / payments"
-          value={contacts?.bankingAgent?.name ?? 'Payments desk'}
-          subValue={contacts?.bankingAgent?.phone}
+          value={bankingName}
+          subValue={bankingPhone}
           hint="Contact for M-Pesa payment queries"
         />
       </View>
@@ -206,7 +235,7 @@ export function FarmerProfileScreen() {
 
       <FarmerHelpModal
         visible={helpOpen}
-        agentName={contacts?.fieldAgent?.name}
+        agentName={fieldAgentName ?? undefined}
         loading={helpLoading}
         onClose={() => setHelpOpen(false)}
         onSubmit={handleHelpSubmit}
