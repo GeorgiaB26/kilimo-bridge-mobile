@@ -180,6 +180,21 @@ export async function getFarmerDashboard() {
   return data;
 }
 
+export async function submitFarmerHelpRequest(message: string) {
+  const { data } = await api.post('/farmer/help-requests', { message });
+  return data;
+}
+
+export async function getAgentHelpRequests() {
+  const { data } = await api.get('/agents/help-requests');
+  return data;
+}
+
+export async function resolveAgentHelpRequest(requestId: string) {
+  const { data } = await api.post(`/agents/help-requests/${requestId}/resolve`);
+  return data;
+}
+
 export async function updateFarmerLocation(body: {
   district: string;
   subCounty: string;

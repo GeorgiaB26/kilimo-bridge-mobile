@@ -6,6 +6,7 @@ import {
   getFarmerActiveProjectSummaries,
   getFarmerProjectSummaries,
 } from './farmerProgramService';
+import { getFarmerSupportContacts } from './farmerHelpRequestService';
 
 export async function getFarmerDashboard(farmerId: string) {
   const farmer = await queryOne(
@@ -38,11 +39,18 @@ export async function getFarmerDashboard(farmerId: string) {
     return a.due_date.localeCompare(b.due_date);
   });
 
+  const contacts = await getFarmerSupportContacts(farmerId);
+
   return {
     farmer: {
       ...(farmer as Record<string, unknown>),
       profileLocationPending: isLocationPending(farmer as { district: string; sub_county: string }),
+      aggregation_center:
+        (farmer as { aggregation_center?: string | null }).aggregation_center ??
+        contacts.aggregationCentre?.name ??
+        null,
     },
+    contacts,
     pendingAmount: pendingPayments?.total ?? 0,
     totalEarnings: totalEarnings?.total ?? 0,
     activeProjects: sortedActive,

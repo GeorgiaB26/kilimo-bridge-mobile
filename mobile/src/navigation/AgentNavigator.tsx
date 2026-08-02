@@ -34,7 +34,7 @@ export function AgentNavigator() {
         component={AgentFarmersStackNavigator}
         options={{ headerShown: false }}
       />
-      <Tab.Screen name="Tasks" component={AgentPendingTasksScreen} options={{ title: 'Task approvals' }} />
+      <Tab.Screen name="Tasks" component={AgentPendingTasksScreen} options={{ title: 'Tasks' }} />
       <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register' }} />
       <Tab.Screen name="Audit" component={AgentAuditScreen} options={{ title: 'Activity Log' }} />
       <Tab.Screen name="Settings" component={AdminProfileScreen} />

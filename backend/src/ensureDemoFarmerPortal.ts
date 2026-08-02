@@ -42,6 +42,8 @@ export async function ensureDemoFarmerPortal(): Promise<void> {
   await ensureDemoStaffUsers();
   await ensureDemoAgentRecord();
   await ensureDemoBankingUser();
+  await linkDemoFarmerToAgent();
+  await ensureDemoCentreManagers();
   await ensureDemoFarmerPayments(farmerId);
   console.log(`Demo farmer portal ready: ${DEMO_FARMER.name} (${farmerId.slice(0, 8)}…)`);
 }
@@ -216,6 +218,30 @@ async function ensureDemoBankingUser(): Promise<void> {
   await query(
     `UPDATE users SET name = 'Equity Banking Officer', role = 'banking_agent', password_hash = $1 WHERE phone_number = $2`,
     [passwordHash, DEMO_BANKING_PHONE]
+  );
+}
+
+async function linkDemoFarmerToAgent(): Promise<void> {
+  const agent = await queryOne<{ agent_id: string }>(
+  `SELECT a.agent_id FROM agents a
+   JOIN users u ON u.user_id = a.user_id
+   WHERE u.phone_number = $1`,
+    [DEMO_AGENT_PHONE]
+  );
+  if (!agent) return;
+  await query(
+    `UPDATE farmers SET registered_by_agent_id = $1 WHERE phone_number = $2`,
+    [agent.agent_id, DEMO_FARMER_PHONE]
+  );
+}
+
+async function ensureDemoCentreManagers(): Promise<void> {
+  await query(
+    `UPDATE aggregation_centres SET
+      manager_name = 'Kiambu Agent',
+      manager_phone = $1
+     WHERE centre_id = 'ke-kiambu-01'`,
+    [DEMO_AGENT_PHONE]
   );
 }
 

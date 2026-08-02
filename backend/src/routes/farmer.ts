@@ -9,6 +9,7 @@ import {
 import { getUserNotifications } from '../services/notificationService';
 import { updateFarmerLocation } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
+import { createFarmerHelpRequest } from '../services/farmerHelpRequestService';
 import hierarchyFarmerRoutes from './hierarchyFarmer';
 
 const router = Router();
@@ -131,6 +132,23 @@ router.patch(
       res.json(data);
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Could not update location' });
+    }
+  })
+);
+
+router.post(
+  '/help-requests',
+  asyncHandler(async (req, res) => {
+    if (!req.user?.farmerId) {
+      res.status(400).json({ error: 'No farmer profile' });
+      return;
+    }
+    const { message } = req.body as { message?: string };
+    try {
+      const result = await createFarmerHelpRequest(req.user.farmerId, message ?? '');
+      res.status(201).json(result);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not send message' });
     }
   })
 );
