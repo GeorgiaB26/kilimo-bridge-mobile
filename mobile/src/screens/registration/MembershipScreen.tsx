@@ -6,9 +6,10 @@ import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { MEMBERSHIP_TYPES } from '../../constants';
+import { MEMBERSHIP_TYPES, CURRENCY_OPTIONS } from '../../constants';
 import { fetchReferenceData } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
+import { getCurrencyForCountry } from '../../utils/currencyMap';
 import { findAggregationCentre } from '../../constants/regional';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
@@ -34,6 +35,12 @@ export function MembershipScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
+    if (!formData.currency && formData.country) {
+      updateForm({ currency: getCurrencyForCountry(formData.country).code });
+    }
+  }, [formData.country, formData.currency, updateForm]);
+
+  useEffect(() => {
     if (!formData.aggregationCenter && suggestedCentre) {
       updateForm({ aggregationCenter: suggestedCentre.name });
     }
@@ -42,6 +49,8 @@ export function MembershipScreen({ navigation }: Props) {
   const validate = () => {
     const e: Record<string, string> = {};
     if (!formData.membershipGroup) e.membershipGroup = 'Membership group is required';
+    if (!formData.membershipType) e.membershipType = 'Membership type is required';
+    if (!formData.currency) e.currency = 'Currency preference is required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -76,6 +85,16 @@ export function MembershipScreen({ navigation }: Props) {
         value={formData.membershipType ?? 'Active'}
         options={MEMBERSHIP_TYPES}
         onSelect={(membershipType) => updateForm({ membershipType })}
+        required
+        error={errors.membershipType}
+      />
+      <PickerField
+        label="Currency Preference"
+        value={formData.currency ?? ''}
+        options={CURRENCY_OPTIONS}
+        onSelect={(currency) => updateForm({ currency })}
+        required
+        error={errors.currency}
       />
       <View className="mt-2 flex-row gap-3">
         <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>

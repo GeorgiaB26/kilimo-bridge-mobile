@@ -12,8 +12,10 @@ export interface RegistrationFormData {
   membershipGroup: string;
   aggregationCenter?: string;
   membershipType?: string;
+  profession?: string;
   occupation?: string;
   sizeOfLand?: string;
+  pictureBase64?: string;
   project1?: string;
   project2?: string;
   project3?: string;

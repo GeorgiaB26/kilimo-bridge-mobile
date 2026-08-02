@@ -11,8 +11,9 @@ import { linkFarmerToUser } from './userService';
 import { PENDING_LOCATION_LABEL } from '../../../shared/src/constants';
 import { enrollFarmerInProgramProjects, getFarmerProjectSummaries } from './farmerProgramService';
 
-/** Postgres farmer_status enum — SQLite used 'Active' for registered farmers. */
-function mapFarmerStatus(_membershipType?: string): string {
+/** Postgres farmer_status enum — agent field registrations await PM review. */
+function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean): string {
+  if (registeredByAgent) return 'pending_review';
   return 'verified';
 }
 
@@ -170,7 +171,7 @@ export async function createFarmer(
 
   const bankAccountEncrypted = input.bankAccount ? encryptField(input.bankAccount) : null;
   const membershipType = input.membershipType ?? 'Active';
-  const farmerStatus = mapFarmerStatus(membershipType);
+  const farmerStatus = mapFarmerStatus(membershipType, !!registeredByAgentId);
   const registeredByAgentId = await resolveRegisteredByAgentId(registeredBy);
 
   await query(

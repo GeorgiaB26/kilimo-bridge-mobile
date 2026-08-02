@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 import { AggregationCentreDashboardScreen } from '../screens/aggregation/AggregationCentreDashboardScreen';
 import { AgentPendingTasksScreen } from '../screens/agent/AgentPendingTasksScreen';
-import { AgentFarmersScreen } from '../screens/agent/AgentFarmersScreen';
+import { AgentFarmersStackNavigator } from './AgentFarmersStackNavigator';
 import { AgentAuditScreen } from '../screens/agent/AgentAuditScreen';
 import { RegistrationNavigator } from './RegistrationNavigator';
 import { AdminProfileScreen } from '../screens/admin/AdminProfileScreen';
@@ -29,7 +29,11 @@ export function AgentNavigator() {
       })}
     >
       <Tab.Screen name="Centre" component={AggregationCentreDashboardScreen} options={{ title: 'Centre' }} />
-      <Tab.Screen name="Farmers" component={AgentFarmersScreen} />
+      <Tab.Screen
+        name="Farmers"
+        component={AgentFarmersStackNavigator}
+        options={{ headerShown: false }}
+      />
       <Tab.Screen name="Tasks" component={AgentPendingTasksScreen} options={{ title: 'Task approvals' }} />
       <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register' }} />
       <Tab.Screen name="Audit" component={AgentAuditScreen} options={{ title: 'Activity Log' }} />

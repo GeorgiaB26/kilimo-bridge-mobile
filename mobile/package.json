@@ -20,6 +20,7 @@
     "expo-document-picker": "^57.0.0",
     "expo-file-system": "^57.0.0",
     "expo-image-picker": "^57.0.2",
+    "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.0",
     "nativewind": "^4.1.23",
     "papaparse": "^5.5.4",

@@ -28,6 +28,8 @@ export const GENDER_OPTIONS = [
 
 export const MEMBERSHIP_TYPES = ['Active', 'Inactive', 'Suspended'];
 
+export const CURRENCY_OPTIONS = ['KES', 'USD', 'UGX', 'TZS', 'ETB', 'RWF', 'ZMW'];
+
 export const DISTRICTS = [
   'Kiambu', 'Nairobi', 'Kajiado', 'Gulu', 'Uasin Gishu', 'Nakuru', 'Mombasa', 'Kisumu',
 ];
