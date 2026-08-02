@@ -40,7 +40,10 @@ export function AgentFarmersStackNavigator() {
       <Stack.Screen
         name="FarmerProfile"
         component={AgentFarmerProfileScreen}
-        options={({ route }) => ({ title: route.params.name })}
+        options={({ route }) => ({
+          title: route.params.name,
+          headerBackTitle: 'Farmers',
+        })}
       />
     </Stack.Navigator>
   );

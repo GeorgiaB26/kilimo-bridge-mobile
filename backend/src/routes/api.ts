@@ -11,6 +11,8 @@ import {
   getMembershipGroupNames,
   getExistingIdentifiers,
   recordFarmerRegistrationFollowUp,
+  advanceFarmerForFieldVerification,
+  verifyFarmerByFieldAgent,
 } from '../services/farmerService';
 import { validateCsvImport, executeImport, getImportProgress, getImportComplete, getImportValidationErrors, formatImportErrorsCsv } from '../services/importService';
 import { BINARY_IMPORT_PREFIX } from '../services/spreadsheetParser';
@@ -63,6 +65,27 @@ router.get('/farmers', authenticate, requirePermission('farmers.read'), asyncHan
   const farmers = await getAllFarmers(limit, offset);
   res.json({ farmers, total: await getFarmerCount() });
 }));
+
+router.patch(
+  '/farmers/:farmerId/verify',
+  authenticate,
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    const { verification_status, verification_notes } = req.body;
+    const status = verification_status === 'rejected' ? 'rejected' : 'verified';
+    try {
+      const result = await verifyFarmerByFieldAgent(
+        req.params.farmerId,
+        req.user!.userId,
+        status,
+        verification_notes
+      );
+      res.json({ success: true, status: result.status });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Verification failed' });
+    }
+  })
+);
 
 router.post('/farmers/register', authenticate, requirePermission('farmers.write'), asyncHandler(async (req, res) => {
   const input = req.body;
@@ -127,6 +150,10 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
       result.normalized.membershipGroup ?? farmerInput.membershipGroup,
       'pending_review'
     );
+
+    if (process.env.PILOT_AUTO_FIELD_VERIFICATION === 'true') {
+      await advanceFarmerForFieldVerification(farmerId, req.user?.userId ?? 'system');
+    }
 
     res.status(201).json({
       success: true,

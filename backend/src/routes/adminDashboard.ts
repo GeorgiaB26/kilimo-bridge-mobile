@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
-import { getAllFarmers, getFarmerCount, getFarmerById } from '../services/farmerService';
+import { getAllFarmers, getFarmerCount, getFarmerById, advanceFarmerForFieldVerification } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
 import {
   isAgentRole,
@@ -191,6 +191,19 @@ router.get(
     });
 
     res.json({ farmer });
+  })
+);
+
+router.patch(
+  '/farmers/:farmerId/approve-field-verification',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await advanceFarmerForFieldVerification(req.params.farmerId, req.user!.userId);
+      res.json({ success: true, status: result.status });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Approval failed' });
+    }
   })
 );
 

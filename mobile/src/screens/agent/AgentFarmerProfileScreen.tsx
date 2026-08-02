@@ -1,13 +1,16 @@
 import React, { useCallback, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { getFarmerById, verifyFarmerField } from '../../api/client';
-import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
+import { VerifyFarmerModal } from '../../components/agent/VerifyFarmerModal';
+import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
 import { extractApiError } from '../../utils/feedback';
+import { useAuthStore } from '../../store/authStore';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<AgentFarmersStackParamList, 'FarmerProfile'>;
@@ -27,10 +30,16 @@ type FarmerDetail = {
   occupation?: string;
   size_of_land?: number | string;
   aggregation_center?: string;
+  aggregation_centre_contact?: string;
+  centre_location_level_1?: string;
+  centre_location_level_2?: string;
+  picture_url?: string | null;
   status: string;
   key?: string;
+  created_at?: string;
   registered_agent_name?: string;
   registered_agent_phone?: string;
+  registered_agent_user_id?: string;
   projects?: Array<{ project_name: string; status: string }>;
 };
 
@@ -44,11 +53,20 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function formatDate(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   const { farmerId, name: routeName } = route.params;
+  const currentUser = useAuthStore((s) => s.user);
   const [farmer, setFarmer] = useState<FarmerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,15 +83,33 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const statusInfo = formatFarmerStatus(farmer?.status);
-  const canVerify =
-    farmer?.status === 'pending_review' || farmer?.status === 'pending_field_verification';
+  const canVerify = farmer?.status === 'pending_field_verification';
+  const isOwnRegistration =
+    farmer?.registered_agent_user_id && currentUser?.userId === farmer.registered_agent_user_id;
 
-  const handleVerify = async () => {
+  const centreLocation = [
+    farmer?.centre_location_level_1 ?? farmer?.district,
+    farmer?.centre_location_level_2 ?? farmer?.sub_county,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  const handleVerifySubmit = async (
+    verificationStatus: 'verified' | 'rejected',
+    notes?: string
+  ) => {
     setVerifying(true);
     try {
-      await verifyFarmerField(farmerId, 'Verified in person at aggregation centre');
-      Alert.alert('Verified', 'Farmer verified successfully.');
+      await verifyFarmerField(farmerId, verificationStatus, notes);
+      setVerifyModalOpen(false);
+      Alert.alert(
+        verificationStatus === 'verified' ? 'Farmer verified' : 'Farmer rejected',
+        verificationStatus === 'verified'
+          ? '✅ Farmer verified successfully!'
+          : 'Farmer marked as rejected.'
+      );
       await load();
+      navigation.goBack();
     } catch (err) {
       Alert.alert('Error', extractApiError(err, 'Verification failed'));
     } finally {
@@ -98,73 +134,119 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   }
 
   return (
-    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-8">
-      <View className="mb-4 rounded-xl bg-[#1A4D3E] p-5">
-        <Text className="text-2xl font-bold text-white">{farmer.name || routeName}</Text>
-        <Text className="mt-1.5 text-base text-[#E8F5F0]">{farmer.phone_number}</Text>
-        <View className="mt-3">
-          <KBStatusChip label={statusInfo.label} variant={statusInfo.variant} />
+    <>
+      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="pb-8">
+        <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
+          <View className="w-full flex-row items-center justify-between">
+            <Pressable onPress={() => navigation.goBack()} className="py-2">
+              <Text className="text-lg text-white">← Back</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => Alert.alert('Edit profile', 'Profile editing will be available in a future update.')}
+              className="py-2"
+            >
+              <Text className="text-sm font-semibold text-[#D4AF6A]">Edit</Text>
+            </Pressable>
+          </View>
+          <View className="mt-2 items-center">
+            <ProfileAvatar name={farmer.name || routeName} pictureUrl={farmer.picture_url} size="hero" />
+            <Text className="mt-3 text-2xl font-bold text-white">{farmer.name || routeName}</Text>
+            <View className="mt-3">
+              <FarmerStatusChip status={farmer.status} />
+            </View>
+            <Text className="mt-2 text-center text-xs text-[#C8E6D9]">{statusInfo.description}</Text>
+          </View>
         </View>
-      </View>
 
-      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
-        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Basic information</Text>
-        <DetailRow label="Membership #" value={farmer.key} />
-        <DetailRow label="Gender" value={farmer.gender} />
-        <DetailRow label="Membership status" value={farmer.membership_type} />
-      </View>
+        <View className="p-4">
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Basic information</Text>
+            <DetailRow label="National ID" value="On file (encrypted)" />
+            <DetailRow label="Gender" value={farmer.gender} />
+            <DetailRow label="Phone" value={farmer.phone_number} />
+            <DetailRow label="Registered" value={formatDate(farmer.created_at)} />
+            <DetailRow label="Membership #" value={farmer.key} />
+          </View>
 
-      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
-        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Location</Text>
-        <DetailRow label="Country" value={farmer.country} />
-        <DetailRow label="County" value={farmer.district} />
-        <DetailRow label="Sub-County" value={farmer.sub_county} />
-        <DetailRow label="Ward" value={farmer.parish} />
-        <DetailRow label="Village" value={farmer.village} />
-      </View>
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Location</Text>
+            <DetailRow label="Country" value={farmer.country} />
+            <DetailRow label="County" value={farmer.district} />
+            <DetailRow label="Sub-County" value={farmer.sub_county} />
+            <DetailRow label="Ward" value={farmer.parish} />
+            <DetailRow label="Village" value={farmer.village} />
+          </View>
 
-      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
-        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Aggregation centre</Text>
-        <DetailRow label="Centre name" value={farmer.aggregation_center ?? 'Not assigned'} />
-      </View>
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Aggregation centre</Text>
+            <DetailRow label="Centre" value={farmer.aggregation_center ?? 'Not assigned'} />
+            <DetailRow label="Contact" value={farmer.aggregation_centre_contact} />
+            <DetailRow label="Location" value={centreLocation || undefined} />
+          </View>
 
-      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
-        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Membership</Text>
-        <DetailRow label="Cooperative" value={farmer.membership_group_name} />
-      </View>
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Membership</Text>
+            <DetailRow label="Cooperative" value={farmer.membership_group_name} />
+            <DetailRow label="Member since" value={formatDate(farmer.created_at)} />
+            <DetailRow label="Status" value={farmer.membership_type} />
+          </View>
 
-      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
-        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Field agent</Text>
-        <DetailRow label="Registered by" value={farmer.registered_agent_name ?? 'Not assigned'} />
-        <DetailRow label="Agent phone" value={farmer.registered_agent_phone} />
-        <DetailRow
-          label="Verification"
-          value={farmer.status === 'verified' ? 'Verified' : 'Not yet verified'}
-        />
-      </View>
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Field agent</Text>
+            <DetailRow
+              label="Assigned FA"
+              value={isOwnRegistration ? `You (${currentUser?.name ?? 'Agent'})` : farmer.registered_agent_name ?? 'Not assigned'}
+            />
+            <DetailRow label="Agent phone" value={farmer.registered_agent_phone} />
+            <DetailRow label="Assigned" value={formatDate(farmer.created_at)} />
+            <DetailRow
+              label="Verification"
+              value={farmer.status === 'verified' ? 'Verified' : 'Not yet verified'}
+            />
+          </View>
 
-      <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
-        <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Land information</Text>
-        <DetailRow label="Size of land" value={farmer.size_of_land ? `${farmer.size_of_land} acres` : undefined} />
-        <DetailRow label="Occupation" value={farmer.occupation} />
-      </View>
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Land information</Text>
+            <DetailRow label="Size of land" value={farmer.size_of_land ? `${farmer.size_of_land} acres` : undefined} />
+            <DetailRow label="Occupation" value={farmer.occupation} />
+          </View>
 
-      {(farmer.projects?.length ?? 0) > 0 ? (
-        <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
-          <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Projects</Text>
-          {farmer.projects?.map((p) => (
-            <Text key={p.project_name} className="mb-1 text-[15px] font-semibold text-[#333333]">
-              {p.project_name} · {p.status}
-            </Text>
-          ))}
+          {(farmer.projects?.length ?? 0) > 0 ? (
+            <View className="mb-3 rounded-lg bg-white p-3.5">
+              <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Projects</Text>
+              {farmer.projects?.map((p) => (
+                <Text key={p.project_name} className="mb-1 text-[15px] font-semibold text-[#333333]">
+                  {farmer.status === 'verified' ? '☑' : '☐'} {p.project_name} · {p.status}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+
+          {farmer.status === 'pending_review' ? (
+            <View className="mb-3 rounded-lg border border-[#FCD34D] bg-[#FFF8E1] p-3">
+              <Text className="text-sm text-[#757575]">
+                Awaiting PM review. Once approved, status becomes Pending Field Verification and you can verify in person.
+              </Text>
+            </View>
+          ) : null}
+
+          {canVerify ? (
+            <Button className="h-12 bg-[#1A4D3E]" onPress={() => setVerifyModalOpen(true)}>
+              <Text className="text-white">Verify Farmer</Text>
+            </Button>
+          ) : null}
         </View>
-      ) : null}
+      </ScrollView>
 
-      {canVerify ? (
-        <Button className="h-12 bg-[#1A4D3E]" disabled={verifying} onPress={handleVerify}>
-          {verifying ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Verify Farmer</Text>}
-        </Button>
-      ) : null}
-    </ScrollView>
+      <VerifyFarmerModal
+        visible={verifyModalOpen}
+        farmerName={farmer.name}
+        farmerPhone={farmer.phone_number}
+        locationLabel={centreLocation || `${farmer.district}, ${farmer.sub_county}`}
+        loading={verifying}
+        onClose={() => setVerifyModalOpen(false)}
+        onSubmit={handleVerifySubmit}
+      />
+    </>
   );
 }

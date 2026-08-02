@@ -12,9 +12,8 @@ import {
 } from '../../services/offlineRegistrationQueue';
 import { pushPendingRegistration, syncAllPendingRegistrations } from '../../services/submitFarmerRegistration';
 import { KBCard } from '../../components/ui/KBCard';
-import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { RegisterNewFarmerBanner } from '../../components/agent/RegisterNewFarmerButton';
-import { formatFarmerStatus } from '../../utils/farmerStatus';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
 
 type FarmerRow = {
@@ -142,23 +141,21 @@ export function AgentFarmersScreen() {
           <Text className="mb-2 text-[17px] font-bold text-[#333333]">Registered farmers</Text>
         </View>
       }
-      renderItem={({ item }) => {
-        const statusInfo = formatFarmerStatus(item.status);
-        return (
+      renderItem={({ item }) => (
           <Pressable
-            className="mb-2 rounded-lg bg-[#F9F9F9] p-3.5"
+            className="mb-2 rounded-xl border border-[#E8E8E8] bg-white p-4"
             onPress={() => navigation.navigate('FarmerProfile', { farmerId: item.farmer_id, name: item.name })}
           >
-            <Text className="text-base font-semibold text-[#333333]">{item.name}</Text>
+            <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
             <Text className="mt-0.5 text-[13px] text-[#757575]">
-              {item.phone_number} · {item.district}
+              🌾 Farmer · {item.phone_number}
             </Text>
             <View className="mt-2">
-              <KBStatusChip label={statusInfo.label} variant={statusInfo.variant} />
+              <FarmerStatusChip status={item.status} />
             </View>
+            <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view profile →</Text>
           </Pressable>
-        );
-      }}
+        )}
       ListEmptyComponent={
         <Text className="text-[#757575]">No farmers in your region yet. Tap REGISTER NEW FARMER above.</Text>
       }

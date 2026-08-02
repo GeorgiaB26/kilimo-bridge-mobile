@@ -147,6 +147,8 @@ export function ConfirmScreen({ navigation }: Props) {
       <RegistrationSuccessModal
         visible={!!success}
         farmerName={formData.name}
+        farmerPhone={formData.phone}
+        statusLabel="pending_review"
         farmerId={success?.farmerId}
         kbFarmerId={success?.kbFarmerId ?? kbFarmerId}
         offline={success?.offline}

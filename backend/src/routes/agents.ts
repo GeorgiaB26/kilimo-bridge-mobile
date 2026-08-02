@@ -90,17 +90,20 @@ router.get(
   })
 );
 
-/** Field agent verifies farmer in person (pending_review / pending_field_verification → verified). */
+/** Field agent verifies farmer in person (pending_field_verification → verified/rejected). */
 router.patch(
   '/farmers/:farmerId/verify-field',
   requirePermission('farmers.write'),
   asyncHandler(async (req, res) => {
-    const { verification_notes } = req.body;
+    const { verification_status, verification_notes } = req.body;
+    const raw = verification_status ?? (req.body.verified === false ? 'rejected' : 'verified');
+    const status = raw === 'rejected' ? 'rejected' : 'verified';
     try {
       const result = await verifyFarmerByFieldAgent(
         req.params.farmerId,
         req.user!.userId,
-        verification_notes
+        status,
+        verification_notes ?? req.body.notes
       );
       res.json({ success: true, status: result.status });
     } catch (err) {

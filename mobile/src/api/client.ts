@@ -494,8 +494,13 @@ export async function fetchAggregationCentresByLocation(params: {
   };
 }
 
-export async function verifyFarmerField(farmerId: string, verification_notes?: string) {
-  const { data } = await api.patch(`/agents/farmers/${farmerId}/verify-field`, {
+export async function verifyFarmerField(
+  farmerId: string,
+  verification_status: 'verified' | 'rejected',
+  verification_notes?: string
+) {
+  const { data } = await api.patch(`/farmers/${farmerId}/verify`, {
+    verification_status,
     verification_notes,
   });
   return data;
