@@ -13,6 +13,7 @@ import { FarmerLocationPrompt } from '../../components/FarmerLocationPrompt';
 import { getFarmerDashboard, claimPayment, getFarmerPayments, getFarmerHierarchyProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { useAuthStore } from '../../store/authStore';
 import { getLocalizedGreeting, formatDueDate } from '../../utils/greeting';
 import { KBCard } from '../../components/ui/KBCard';
@@ -33,7 +34,7 @@ export function FarmerDashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const { formatAmount, formatPayment } = useCurrency();
   const [data, setData] = useState<{
-    farmer?: { name: string; country?: string; profileLocationPending?: boolean };
+    farmer?: { name: string; country?: string; status?: string; profileLocationPending?: boolean };
     pendingAmount: number;
     totalEarnings: number;
     activeProjects: FarmerProject[];
@@ -85,6 +86,12 @@ export function FarmerDashboardScreen() {
   const greeting = getLocalizedGreeting(country, user?.name ?? 'Farmer');
   const pending = data?.pendingAmount ?? 0;
   const showLocationPrompt = Boolean(data?.farmer?.profileLocationPending);
+  const farmerStatus = data?.farmer?.status;
+  const showVerificationBanner =
+    farmerStatus &&
+    !['verified', 'inactive'].includes((farmerStatus ?? '').toLowerCase().replace(/\s+/g, '_'));
+
+  const marginTopPayment = showVerificationBanner ? 'mt-2' : '-mt-6';
 
   const openProjectDetail = async (project: FarmerProject) => {
     try {
@@ -132,7 +139,13 @@ export function FarmerDashboardScreen() {
 
         {error ? <FarmerOfflineBanner message={error} /> : null}
 
-        <View className="-mt-6 mb-6 mx-4 items-center rounded-2xl bg-white p-6 shadow-sm elevation-4">
+        {showVerificationBanner ? (
+          <View className="mx-4 mb-4 mt-2">
+            <FarmerVerificationStatusCard status={farmerStatus} compact />
+          </View>
+        ) : null}
+
+        <View className={`${marginTopPayment} mb-6 mx-4 items-center rounded-2xl bg-white p-6 shadow-sm elevation-4`}>
           <KBStatusChip label="Ready to Claim" variant="success" />
           <Text className="mt-3 text-sm text-[#757575]">Pending payment</Text>
           <Text className="my-2 text-4xl font-extrabold text-[#D4AF6A]">{formatAmount(pending)}</Text>
