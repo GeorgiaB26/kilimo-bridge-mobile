@@ -22,11 +22,7 @@ npm install
 
 echo ""
 echo "2. Checking database connection..."
-if ! npx tsx -e "
-  import { testConnection } from './src/db/database';
-  const { farmerCount } = await testConnection();
-  console.log('   ✓ Postgres OK (' + farmerCount + ' farmers)');
-"; then
+if ! npx tsx scripts/test-db-connection.ts; then
   echo "   ✗ Database connection failed — check DATABASE_URL in backend/.env"
   exit 1
 fi
