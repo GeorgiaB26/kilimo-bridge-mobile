@@ -13,6 +13,7 @@ import {
   findCentreByName,
 } from '../services/hierarchyService';
 import { sendSms } from '../services/notificationService';
+import { findAggregationCentresByLocation } from '../services/aggregationCentreService';
 
 const router = Router();
 
@@ -32,6 +33,33 @@ function normalizeQcStatus(raw: string | undefined): 'approved' | 'rejected' | n
 }
 
 router.use(authenticate);
+
+/** List aggregation centres filtered by location (registration dropdown). */
+router.get(
+  '/',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    const country = (req.query.country as string)?.trim();
+    const county = ((req.query.county ?? req.query.district) as string)?.trim();
+    const subcounty = ((req.query.subcounty ?? req.query.sub_county) as string)?.trim();
+    if (!country || !county) {
+      res.status(400).json({ error: 'country and county (district) are required' });
+      return;
+    }
+    const centres = await findAggregationCentresByLocation(country, county, subcounty || undefined);
+    res.json({
+      centres: centres.map((c) => ({
+        id: c.centre_id,
+        centre_id: c.centre_id,
+        name: c.name,
+        country: c.country,
+        county: c.location_level_1,
+        subcounty: c.location_level_2,
+        location: [c.location_level_1, c.location_level_2].filter(Boolean).join(', '),
+      })),
+    });
+  })
+);
 
 async function resolveCentreIdFromUser(req: Request): Promise<string | null> {
   const fromBody = req.body?.centre_id as string | undefined;

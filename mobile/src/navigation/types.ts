@@ -60,6 +60,7 @@ export type AdminFarmersStackParamList = {
 export type AgentFarmersStackParamList = {
   FarmerList: undefined;
   RegisterFarmer: undefined;
+  FarmerProfile: { farmerId: string; name: string };
 };
 
 export type RegistrationStackParamList = {

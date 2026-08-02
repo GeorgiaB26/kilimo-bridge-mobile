@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { View, FlatList, RefreshControl, ActivityIndicator, Alert } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { View, FlatList, RefreshControl, ActivityIndicator, Alert, Pressable } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { api } from '../../api/client';
@@ -11,10 +12,23 @@ import {
 } from '../../services/offlineRegistrationQueue';
 import { pushPendingRegistration, syncAllPendingRegistrations } from '../../services/submitFarmerRegistration';
 import { KBCard } from '../../components/ui/KBCard';
+import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { RegisterNewFarmerBanner } from '../../components/agent/RegisterNewFarmerButton';
+import { formatFarmerStatus } from '../../utils/farmerStatus';
+import type { AgentFarmersStackParamList } from '../../navigation/types';
+
+type FarmerRow = {
+  farmer_id: string;
+  name: string;
+  phone_number: string;
+  district: string;
+  status: string;
+};
 
 export function AgentFarmersScreen() {
   const user = useAuthStore((s) => s.user);
-  const [farmers, setFarmers] = useState<Array<{ name: string; phone_number: string; district: string; status: string }>>([]);
+  const navigation = useNavigation<NativeStackNavigationProp<AgentFarmersStackParamList>>();
+  const [farmers, setFarmers] = useState<FarmerRow[]>([]);
   const [pending, setPending] = useState<PendingRegistration[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -29,12 +43,12 @@ export function AgentFarmersScreen() {
       setFarmers(farmersRes.data.farmers ?? []);
       setPending(pendingRegs);
       if (pendingRegs.length > 0) {
-        const { synced, failed } = await syncAllPendingRegistrations();
+        const { synced } = await syncAllPendingRegistrations();
         if (synced > 0) {
           const refreshed = await api.get('/agents/farmers');
           setFarmers(refreshed.data.farmers ?? []);
           setPending(await listPendingRegistrations());
-        } else if (failed > 0 && synced === 0) {
+        } else {
           setPending(await listPendingRegistrations());
         }
       }
@@ -84,7 +98,7 @@ export function AgentFarmersScreen() {
     <FlatList
       className="flex-1 p-4"
       data={farmers}
-      keyExtractor={(item, i) => `${item.phone_number}-${i}`}
+      keyExtractor={(item) => item.farmer_id}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       ListHeaderComponent={
         <View>
@@ -94,6 +108,8 @@ export function AgentFarmersScreen() {
           <Text className="mb-3 text-sm text-[#757575]">
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
+
+          <RegisterNewFarmerBanner onPress={() => navigation.navigate('RegisterFarmer')} />
 
           {pending.length > 0 ? (
             <View className="mb-4">
@@ -126,16 +142,25 @@ export function AgentFarmersScreen() {
           <Text className="mb-2 text-[17px] font-bold text-[#333333]">Registered farmers</Text>
         </View>
       }
-      renderItem={({ item }) => (
-        <View className="mb-2 rounded-lg bg-[#F9F9F9] p-3.5">
-          <Text className="text-base font-semibold text-[#333333]">{item.name}</Text>
-          <Text className="mt-0.5 text-[13px] text-[#757575]">
-            {item.phone_number} · {item.district}
-          </Text>
-        </View>
-      )}
+      renderItem={({ item }) => {
+        const statusInfo = formatFarmerStatus(item.status);
+        return (
+          <Pressable
+            className="mb-2 rounded-lg bg-[#F9F9F9] p-3.5"
+            onPress={() => navigation.navigate('FarmerProfile', { farmerId: item.farmer_id, name: item.name })}
+          >
+            <Text className="text-base font-semibold text-[#333333]">{item.name}</Text>
+            <Text className="mt-0.5 text-[13px] text-[#757575]">
+              {item.phone_number} · {item.district}
+            </Text>
+            <View className="mt-2">
+              <KBStatusChip label={statusInfo.label} variant={statusInfo.variant} />
+            </View>
+          </Pressable>
+        );
+      }}
       ListEmptyComponent={
-        <Text className="text-[#757575]">No farmers in your region yet. Tap + to register.</Text>
+        <Text className="text-[#757575]">No farmers in your region yet. Tap REGISTER NEW FARMER above.</Text>
       }
     />
   );

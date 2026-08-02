@@ -11,6 +11,7 @@ export interface RegistrationFormData {
   village?: string;
   membershipGroup: string;
   aggregationCenter?: string;
+  aggregationCentreId?: string;
   membershipType?: string;
   profession?: string;
   occupation?: string;

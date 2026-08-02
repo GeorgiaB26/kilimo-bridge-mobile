@@ -10,6 +10,7 @@ import {
   getFarmerCount,
   getMembershipGroupNames,
   getExistingIdentifiers,
+  recordFarmerRegistrationFollowUp,
 } from '../services/farmerService';
 import { validateCsvImport, executeImport, getImportProgress, getImportComplete, getImportValidationErrors, formatImportErrorsCsv } from '../services/importService';
 import { BINARY_IMPORT_PREFIX } from '../services/spreadsheetParser';
@@ -118,6 +119,14 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
       kbFarmerId: result.normalized.kbFarmerId,
       locationPath: result.normalized.locationPath,
     } as Parameters<typeof createFarmer>[0], req.user?.userId);
+
+    await recordFarmerRegistrationFollowUp(
+      farmerId,
+      result.normalized.name ?? farmerInput.name,
+      req.user?.userId,
+      result.normalized.membershipGroup ?? farmerInput.membershipGroup,
+      'pending_review'
+    );
 
     res.status(201).json({
       success: true,

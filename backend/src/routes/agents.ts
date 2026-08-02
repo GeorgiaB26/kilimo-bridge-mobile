@@ -9,6 +9,7 @@ import {
   approvePaymentVerification,
   getAgentByUserId,
 } from '../services/agentService';
+import { verifyFarmerByFieldAgent } from '../services/farmerService';
 import { getAgentAuditLogs } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
 
@@ -86,6 +87,25 @@ router.get(
     }
     const farmers = await getFarmersInRegion(region, district);
     res.json({ farmers });
+  })
+);
+
+/** Field agent verifies farmer in person (pending_review / pending_field_verification → verified). */
+router.patch(
+  '/farmers/:farmerId/verify-field',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    const { verification_notes } = req.body;
+    try {
+      const result = await verifyFarmerByFieldAgent(
+        req.params.farmerId,
+        req.user!.userId,
+        verification_notes
+      );
+      res.json({ success: true, status: result.status });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Verification failed' });
+    }
   })
 );
 

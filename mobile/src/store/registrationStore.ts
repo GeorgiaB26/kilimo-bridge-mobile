@@ -22,6 +22,7 @@ const initialFormData: RegistrationFormData = {
   village: '',
   membershipGroup: '',
   aggregationCenter: '',
+  aggregationCentreId: '',
   membershipType: 'Active',
   profession: '',
   occupation: '',

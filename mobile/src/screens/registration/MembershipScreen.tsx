@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -7,24 +7,22 @@ import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { MEMBERSHIP_TYPES, CURRENCY_OPTIONS } from '../../constants';
-import { fetchReferenceData } from '../../api/client';
+import { fetchReferenceData, fetchAggregationCentresByLocation } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
-import { findAggregationCentre } from '../../constants/regional';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Membership'>;
+
+type CentreOption = { id: string; name: string };
 
 export function MembershipScreen({ navigation }: Props) {
   const { formData, updateForm } = useRegistrationStore();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [groups, setGroups] = useState<string[]>([]);
-
-  const suggestedCentre = findAggregationCentre(
-    formData.country,
-    formData.district,
-    formData.subCounty
-  );
+  const [centres, setCentres] = useState<CentreOption[]>([]);
+  const [loadingCentres, setLoadingCentres] = useState(false);
+  const [centreError, setCentreError] = useState('');
 
   useEffect(() => {
     fetchReferenceData()
@@ -41,23 +39,61 @@ export function MembershipScreen({ navigation }: Props) {
   }, [formData.country, formData.currency, updateForm]);
 
   useEffect(() => {
-    if (!formData.aggregationCenter && suggestedCentre) {
-      updateForm({ aggregationCenter: suggestedCentre.name });
+    if (!formData.country || !formData.district) {
+      setCentres([]);
+      return;
     }
-  }, [suggestedCentre?.name, formData.district, formData.subCounty]);
+    let cancelled = false;
+    setLoadingCentres(true);
+    setCentreError('');
+    fetchAggregationCentresByLocation({
+      country: formData.country,
+      county: formData.district,
+      subcounty: formData.subCounty,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        const list = (data.centres ?? []).map((c) => ({ id: c.centre_id ?? c.id, name: c.name }));
+        setCentres(list);
+        if (list.length === 0) {
+          setCentreError('No aggregation centres found for this location. Contact admin.');
+          updateForm({ aggregationCenter: '', aggregationCentreId: '' });
+        } else if (!formData.aggregationCenter || !list.some((c) => c.name === formData.aggregationCenter)) {
+          updateForm({
+            aggregationCenter: list[0].name,
+            aggregationCentreId: list[0].id,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCentreError('Could not load aggregation centres. Please try again.');
+          setCentres([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCentres(false);
+      });
+    return () => { cancelled = true; };
+  }, [formData.country, formData.district, formData.subCounty]);
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!formData.membershipGroup) e.membershipGroup = 'Membership group is required';
     if (!formData.membershipType) e.membershipType = 'Membership type is required';
     if (!formData.currency) e.currency = 'Currency preference is required';
+    if (!formData.aggregationCenter || centres.length === 0) {
+      e.aggregationCenter = 'Aggregation centre is required';
+    }
     setErrors(e);
-    return Object.keys(e).length === 0;
+    return Object.keys(e).length === 0 && centres.length > 0;
   };
+
+  const centreNames = centres.map((c) => c.name);
 
   return (
     <View className="flex-1">
-      <ScreenHeader title="Membership" subtitle="Your cooperative details" />
+      <ScreenHeader title="Membership" subtitle="Cooperative and aggregation centre" />
       <PickerField
         label="Membership Group"
         value={formData.membershipGroup}
@@ -66,19 +102,32 @@ export function MembershipScreen({ navigation }: Props) {
         required
         error={errors.membershipGroup}
       />
-      {suggestedCentre ? (
-        <View className="mb-4 rounded-lg border-l-4 border-[#1A4D3E] bg-[#E8F5F0] p-3.5">
-          <Text className="mb-1 text-xs text-[#757575]">Assigned aggregation centre</Text>
-          <Text className="text-base font-semibold text-[#1A4D3E]">{formData.aggregationCenter || suggestedCentre.name}</Text>
-          <Text className="mt-1 text-[11px] text-[#757575]">Auto-assigned based on your location</Text>
+      {loadingCentres ? (
+        <View className="mb-4 items-center py-3">
+          <ActivityIndicator color="#1A4D3E" />
+          <Text className="mt-2 text-sm text-[#757575]">Loading aggregation centres…</Text>
         </View>
-      ) : (
-        <FormField
-          label="Aggregation Center"
+      ) : centres.length > 0 ? (
+        <PickerField
+          label="Aggregation Centre"
           value={formData.aggregationCenter ?? ''}
-          onChangeText={(aggregationCenter) => updateForm({ aggregationCenter })}
-          placeholder="Optional"
+          options={centreNames}
+          onSelect={(name) => {
+            const match = centres.find((c) => c.name === name);
+            updateForm({
+              aggregationCenter: name,
+              aggregationCentreId: match?.id ?? '',
+            });
+          }}
+          required
+          error={errors.aggregationCenter}
         />
+      ) : (
+        <View className="mb-4 rounded-lg border border-[#FF9800] bg-[#FFF8E1] p-3">
+          <Text className="text-sm text-[#757575]">
+            {centreError || 'Select location on the previous step to load centres.'}
+          </Text>
+        </View>
       )}
       <PickerField
         label="Membership Type"

@@ -235,9 +235,13 @@ export async function getFarmerByPhone(phone: string) {
 
 export async function getFarmerById(farmerId: string) {
   const farmer = await queryOne<Record<string, unknown>>(
-    `SELECT f.*, mg.name as membership_group_name
+    `SELECT f.*, mg.name as membership_group_name,
+            u.name AS registered_agent_name, u.phone_number AS registered_agent_phone,
+            a.agent_id AS registered_agent_id
      FROM farmers f
      JOIN membership_groups mg ON f.membership_group_id = mg.id
+     LEFT JOIN agents a ON a.agent_id = f.registered_by_agent_id
+     LEFT JOIN users u ON u.user_id = a.user_id
      WHERE f.farmer_id = $1`,
     [farmerId]
   );
@@ -247,6 +251,69 @@ export async function getFarmerById(farmerId: string) {
   const projects = await getFarmerProjectSummaries(farmerId);
 
   return { ...farmer, projects };
+}
+
+/** Audit + PM review queue entry after agent registers a farmer. */
+export async function recordFarmerRegistrationFollowUp(
+  farmerId: string,
+  farmerName: string,
+  registeredByUserId?: string,
+  membershipGroup?: string,
+  status?: string
+): Promise<void> {
+  await logAudit({
+    userId: registeredByUserId,
+    action: 'farmer.registration_review',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: {
+      farmer_name: farmerName,
+      membership_group: membershipGroup,
+      farmer_status: status ?? 'pending_review',
+      message: `New farmer registration: ${farmerName}. Awaiting PM review.`,
+      assigned_to_role: 'project_manager',
+      task_type: 'farmer_registration_review',
+    },
+    success: true,
+  });
+}
+
+export async function verifyFarmerByFieldAgent(
+  farmerId: string,
+  agentUserId: string,
+  notes?: string
+): Promise<{ status: string }> {
+  const farmer = await queryOne<{ status: string; name: string }>(
+    'SELECT status, name FROM farmers WHERE farmer_id = $1',
+    [farmerId]
+  );
+  if (!farmer) throw new Error('Farmer not found');
+
+  const current = farmer.status;
+  if (current === 'verified') {
+    return { status: 'verified' };
+  }
+  if (current !== 'pending_field_verification' && current !== 'pending_review') {
+    throw new Error(`Cannot verify farmer with status: ${current}`);
+  }
+
+  await query(
+    `UPDATE farmers SET status = 'verified', updated_at = NOW() WHERE farmer_id = $1`,
+    [farmerId]
+  );
+
+  await logAudit({
+    userId: agentUserId,
+    action: 'farmer.field_verified',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: { farmer_name: farmer.name, notes, previous_status: current },
+    success: true,
+  });
+
+  return { status: 'verified' };
 }
 
 function farmerSearchClause(search?: string, startParam = 1): { sql: string; params: string[] } {

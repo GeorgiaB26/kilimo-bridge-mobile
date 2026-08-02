@@ -468,6 +468,39 @@ export async function getAggregationCentres() {
   return data;
 }
 
+/** Fetch aggregation centres for registration dropdown by farmer location. */
+export async function fetchAggregationCentresByLocation(params: {
+  country: string;
+  county: string;
+  subcounty?: string;
+}) {
+  const { data } = await api.get('/aggregation-centres', {
+    params: {
+      country: params.country,
+      county: params.county,
+      subcounty: params.subcounty,
+    },
+  });
+  return data as {
+    centres: Array<{
+      id: string;
+      centre_id: string;
+      name: string;
+      country: string;
+      county: string;
+      subcounty?: string;
+      location?: string;
+    }>;
+  };
+}
+
+export async function verifyFarmerField(farmerId: string, verification_notes?: string) {
+  const { data } = await api.patch(`/agents/farmers/${farmerId}/verify-field`, {
+    verification_notes,
+  });
+  return data;
+}
+
 export async function getPendingDeliveries(centreId?: string) {
   const path = centreId
     ? `/aggregation/centre/${centreId}/pending-deliveries`

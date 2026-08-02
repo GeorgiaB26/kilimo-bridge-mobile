@@ -67,6 +67,41 @@ export async function getAllAggregationCentres(country?: string): Promise<Aggreg
   );
 }
 
+/** Filter centres by country + county/district + optional sub-county for registration dropdown. */
+export async function findAggregationCentresByLocation(
+  country: string,
+  county: string,
+  subcounty?: string
+): Promise<AggregationCentreRow[]> {
+  const sub = subcounty?.trim() || null;
+  const rows = await query<AggregationCentreRow>(
+    `
+    SELECT * FROM aggregation_centres
+    WHERE country = $1 AND status = 'Active'
+      AND lower(location_level_1) = lower($2)
+      AND (
+        $3::text IS NULL
+        OR location_level_2 IS NULL
+        OR lower(location_level_2) = lower($3::text)
+      )
+    ORDER BY
+      CASE WHEN $3::text IS NOT NULL AND lower(location_level_2) = lower($3::text) THEN 0 ELSE 1 END,
+      name
+    `,
+    [country, county, sub]
+  );
+  if (rows.length > 0) return rows;
+
+  return query<AggregationCentreRow>(
+    `
+    SELECT * FROM aggregation_centres
+    WHERE country = $1 AND status = 'Active' AND lower(location_level_1) = lower($2)
+    ORDER BY name
+    `,
+    [country, county]
+  );
+}
+
 export async function getCentreCountByCountry(): Promise<Record<string, number>> {
   const rows = await query<{ country: string; count: number }>(
     `SELECT country, COUNT(*)::int AS count FROM aggregation_centres WHERE status = 'Active' GROUP BY country`

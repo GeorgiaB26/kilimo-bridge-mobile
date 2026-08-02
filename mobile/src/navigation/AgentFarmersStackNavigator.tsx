@@ -1,10 +1,11 @@
 import React from 'react';
 import { Pressable } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 import { AgentFarmersScreen } from '../screens/agent/AgentFarmersScreen';
+import { AgentFarmerProfileScreen } from '../screens/agent/AgentFarmerProfileScreen';
 import { RegistrationNavigator } from './RegistrationNavigator';
+import { RegisterNewFarmerButton } from '../components/agent/RegisterNewFarmerButton';
 import type { AgentFarmersStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<AgentFarmersStackParamList>();
@@ -24,13 +25,10 @@ export function AgentFarmersStackNavigator() {
         options={({ navigation }) => ({
           title: 'Farmers',
           headerRight: () => (
-            <Pressable
+            <RegisterNewFarmerButton
+              compact
               onPress={() => navigation.navigate('RegisterFarmer')}
-              accessibilityLabel="Register new farmer"
-              className="mr-1 p-1"
-            >
-              <Ionicons name="add" size={28} color="#fff" />
-            </Pressable>
+            />
           ),
         })}
       />
@@ -38,6 +36,11 @@ export function AgentFarmersStackNavigator() {
         name="RegisterFarmer"
         component={RegistrationNavigator}
         options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FarmerProfile"
+        component={AgentFarmerProfileScreen}
+        options={({ route }) => ({ title: route.params.name })}
       />
     </Stack.Navigator>
   );
