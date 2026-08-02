@@ -130,8 +130,8 @@ export function LoginScreen({ navigation }: Props) {
       <Button className="mb-2.5 h-12 rounded-xl bg-[#E8F5E9]" disabled={loading} onPress={() => quickLogin(DEMO_ADMIN, 'Admin')}>
         <Text className="text-[#1A4D3E]">Open Admin Dashboard</Text>
       </Button>
-      <Button variant="outline" className="mb-2.5 h-12 rounded-xl" disabled={loading} onPress={() => quickLogin(DEMO_AGENT, 'Agent')}>
-        <Text>Open Agent Platform</Text>
+      <Button variant="outline" className="mb-2.5 h-12 rounded-xl" disabled={loading} onPress={() => quickLogin(DEMO_AGENT, 'Field Agent')}>
+        <Text>Field Agent Login</Text>
       </Button>
       <Button variant="outline" className="mb-2.5 h-12 rounded-xl" onPress={() => navigation.navigate('AggregationLogin')}>
         <Text>Aggregation Centre Login</Text>

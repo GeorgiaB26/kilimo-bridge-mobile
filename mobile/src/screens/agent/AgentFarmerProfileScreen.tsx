@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { getFarmerById, verifyFarmerField } from '../../api/client';
+import { getFarmerById, verifyFarmerField, getAdminFarmerTasks } from '../../api/client';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { VerifyFarmerModal } from '../../components/agent/VerifyFarmerModal';
 import { FarmerProfilePhoto } from '../../components/FarmerProfilePhoto';
@@ -42,6 +42,8 @@ type FarmerDetail = {
   registered_agent_phone?: string;
   registered_agent_user_id?: string;
   projects?: Array<{ project_name: string; status: string }>;
+  tasks_completed?: number;
+  tasks_outstanding?: number;
 };
 
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
@@ -68,12 +70,29 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [taskCompleted, setTaskCompleted] = useState(0);
+  const [taskOutstanding, setTaskOutstanding] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getFarmerById(farmerId);
       setFarmer(data.farmer as FarmerDetail);
+      try {
+        const tasksData = await getAdminFarmerTasks({ farmer_id: farmerId });
+        const tasks = tasksData.tasks ?? [];
+        const completed = tasks.filter((t: { status?: string }) =>
+          ['approved', 'completed'].includes(t.status ?? '')
+        ).length;
+        const outstanding = tasks.filter((t: { status?: string }) =>
+          !['approved', 'completed'].includes(t.status ?? '')
+        ).length;
+        setTaskCompleted(completed);
+        setTaskOutstanding(outstanding);
+      } catch {
+        setTaskCompleted(0);
+        setTaskOutstanding(0);
+      }
     } catch {
       setFarmer(null);
     } finally {
@@ -226,7 +245,7 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
 
           {(farmer.projects?.length ?? 0) > 0 ? (
             <View className="mb-3 rounded-lg bg-white p-3.5">
-              <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Projects</Text>
+              <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Projects involved</Text>
               {farmer.projects?.map((p) => (
                 <Text key={p.project_name} className="mb-1 text-[15px] font-semibold text-[#333333]">
                   {farmer.status === 'verified' ? '☑' : '☐'} {p.project_name} · {p.status}
@@ -234,6 +253,24 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
               ))}
             </View>
           ) : null}
+
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Tasks completed</Text>
+            <Text className="text-[15px] font-semibold text-[#333333]">✅ {taskCompleted} task(s) completed</Text>
+          </View>
+
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Tasks outstanding</Text>
+            <Text className="text-[15px] font-semibold text-[#333333]">⏳ {taskOutstanding} task(s) pending completion</Text>
+          </View>
+
+          <View className="mb-3 rounded-lg bg-white p-3.5">
+            <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Activity record</Text>
+            <Text className="text-sm text-[#333333]">• Registered: {formatDate(farmer.created_at) ?? '—'}</Text>
+            <Text className="text-sm text-[#333333]">
+              • Verification: {farmer.status === 'verified' ? 'Verified' : formatFarmerStatus(farmer.status).label}
+            </Text>
+          </View>
 
           {farmer.status === 'pending_review' ? (
             <View className="mb-3 rounded-lg border border-[#FCD34D] bg-[#FFF8E1] p-3">

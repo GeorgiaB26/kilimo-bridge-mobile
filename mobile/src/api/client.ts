@@ -195,6 +195,33 @@ export async function resolveAgentHelpRequest(requestId: string) {
   return data;
 }
 
+export async function getAgentDashboard() {
+  const { data } = await api.get('/agents/dashboard');
+  return data;
+}
+
+export async function getAgentTasks() {
+  const { data } = await api.get('/agents/tasks');
+  return data;
+}
+
+export async function createAgentPersonalTask(body: {
+  name: string;
+  description?: string;
+  due_date: string;
+  priority?: string;
+  assigned_farmers?: string[];
+  reminder_type?: string;
+}) {
+  const { data } = await api.post('/agents/tasks', body);
+  return data;
+}
+
+export async function setAgentTaskReminder(taskId: string, reminder_type: string) {
+  const { data } = await api.post(`/agents/tasks/${taskId}/reminder`, { reminder_type });
+  return data;
+}
+
 export async function updateFarmerLocation(body: {
   district: string;
   subCounty: string;

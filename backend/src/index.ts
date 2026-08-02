@@ -7,6 +7,7 @@ import { seedHierarchyIfEmpty, getProgramProjectCount, getDemoFarmerTaskCount } 
 import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFarmerPortal';
 import { seedAggregationCentres } from './services/aggregationCentreService';
 import { ensureFarmerHelpRequestsTable } from './services/farmerHelpRequestService';
+import { ensureAgentTasksTable } from './services/agentDashboardService';
 import { backfillLegacyIdNumberHashes } from './services/farmerService';
 import { validateProductionEnv } from './validateEnv';
 import apiRoutes from './routes/api';
@@ -72,6 +73,7 @@ async function bootstrap(): Promise<void> {
   validateProductionEnv();
   initDatabase();
   await ensureFarmerHelpRequestsTable();
+  await ensureAgentTasksTable();
   const farmerCount = await refreshHealthCounts();
   console.log(`Database ready: ${farmerCount} farmers`);
 
