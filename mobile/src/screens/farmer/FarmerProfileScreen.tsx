@@ -12,6 +12,9 @@ import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
 import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
+import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
+import { formatFarmerStatus } from '../../utils/farmerStatus';
 import { getLocalizedGreeting } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
 
@@ -102,6 +105,8 @@ export function FarmerProfileScreen() {
   const displayName = farmer?.name ?? user?.name ?? 'Farmer';
   const country = farmer?.country ?? 'Kenya';
   const greeting = getLocalizedGreeting(country, displayName);
+  const statusInfo = formatFarmerStatus(farmer?.status);
+  const isVerified = (farmer?.status ?? '').toLowerCase().replace(/\s+/g, '_') === 'verified';
 
   const handleHelpSubmit = async (message: string) => {
     setHelpLoading(true);
@@ -133,9 +138,9 @@ export function FarmerProfileScreen() {
         <Text className="mb-3 mt-1 text-center text-sm text-white/80">
           {[farmer?.district, farmer?.sub_county, country].filter(Boolean).join(' · ')}
         </Text>
-        <View className="flex-row items-center gap-1.5 rounded-xl bg-white/15 px-3 py-1.5">
-          <Ionicons name="shield-checkmark" size={14} color="#2E7D5E" />
-          <Text className="text-xs font-semibold text-white">Verified Farmer</Text>
+        <View className="mt-2 items-center">
+          <FarmerStatusChip status={farmer?.status} />
+          <Text className="mt-2 text-center text-xs text-white/85">{statusInfo.description}</Text>
         </View>
         <Text className="mt-2.5 text-xs font-semibold text-[#D4AF6A]">{currencyInfo.name} ({currency})</Text>
       </View>
@@ -148,6 +153,10 @@ export function FarmerProfileScreen() {
           </View>
         </>
       ) : null}
+
+      <View className="mb-5">
+        <FarmerVerificationStatusCard status={farmer?.status} />
+      </View>
 
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Cooperative</Text>
       <View className="mb-5 overflow-hidden rounded-xl bg-white">
@@ -207,7 +216,7 @@ export function FarmerProfileScreen() {
         <Divider />
         <ProfileRow icon="phone-portrait" label="M-Pesa" value={farmer?.phone_number ?? user?.phoneNumber} verified />
         <Divider />
-        <ProfileRow icon="shield-checkmark" label="National ID" value="Verified" verified />
+        <ProfileRow icon="shield-checkmark" label="National ID" value={isVerified ? 'Verified on file' : 'Pending verification'} verified={isVerified} />
       </View>
 
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Settings</Text>
