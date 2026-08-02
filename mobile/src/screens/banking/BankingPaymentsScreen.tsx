@@ -15,7 +15,9 @@ export function BankingPaymentsScreen() {
 
   React.useEffect(() => {
     api.get('/banking/payments').then((r) => setPayments(
-      (r.data.payments ?? []).filter((p: { payment_status: string }) => p.payment_status === 'Pending')
+      (r.data.payments ?? []).filter((p: { payment_status: string }) =>
+        (p.payment_status ?? '').toLowerCase() === 'pending'
+      )
     )).catch(() => {});
   }, []);
 
