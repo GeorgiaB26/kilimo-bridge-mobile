@@ -7,6 +7,8 @@ import { AgentTasksScreen } from '../screens/agent/AgentTasksScreen';
 import { AgentFarmersStackNavigator } from './AgentFarmersStackNavigator';
 import { AgentAuditScreen } from '../screens/agent/AgentAuditScreen';
 import { AgentProfileScreen } from '../screens/agent/AgentProfileScreen';
+import { MessagesStackNavigator } from './MessagesStackNavigator';
+import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import type { AgentTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<AgentTabParamList>();
@@ -27,6 +29,8 @@ export function AgentNavigator() {
             Dashboard: 'stats-chart',
             Farmers: 'people',
             Tasks: 'checkmark-circle',
+            Messages: 'chatbubbles',
+            Notifications: 'notifications',
             Audit: 'list',
             Profile: 'person',
           };
@@ -41,6 +45,8 @@ export function AgentNavigator() {
         options={{ headerShown: false, title: 'Farmers' }}
       />
       <Tab.Screen name="Tasks" component={AgentTasksScreen} options={{ title: 'Tasks' }} />
+      <Tab.Screen name="Messages" component={MessagesStackNavigator} options={{ title: 'Messages' }} />
+      <Tab.Screen name="Notifications" component={NotificationsStackNavigator} options={{ title: 'Notifications' }} />
       <Tab.Screen name="Audit" component={AgentAuditScreen} options={{ title: 'Activity Log' }} />
       <Tab.Screen name="Profile" component={AgentProfileScreen} options={{ title: 'Profile', headerShown: false }} />
     </Tab.Navigator>

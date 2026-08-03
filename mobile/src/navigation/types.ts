@@ -18,6 +18,8 @@ export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
   Payments: undefined;
+  Messages: undefined;
+  Notifications: undefined;
   Profile: undefined;
 };
 
@@ -67,8 +69,20 @@ export type AgentTabParamList = {
   Dashboard: undefined;
   Farmers: undefined;
   Tasks: undefined;
+  Messages: undefined;
+  Notifications: undefined;
   Audit: undefined;
   Profile: undefined;
+};
+
+export type MessagesStackParamList = {
+  MessagesList: undefined;
+  MessageDetail: { threadId: string };
+};
+
+export type NotificationsStackParamList = {
+  NotificationsList: undefined;
+  NotificationSettings: undefined;
 };
 
 export type RegistrationStackParamList = {
