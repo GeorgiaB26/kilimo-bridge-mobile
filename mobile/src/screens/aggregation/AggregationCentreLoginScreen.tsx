@@ -7,9 +7,10 @@ import { Text } from '@/components/ui/text';
 import { aggregationCentreLogin, getAggregationCentres, setAuthToken } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { extractApiError } from '../../utils/feedback';
-import type { AuthStackParamList } from '../../navigation/types';
+/** Deprecated on mobile — aggregation centre staff use the Loveable portal. Kept for reference. */
+type AggregationLoginParams = { AggregationLogin: undefined };
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'AggregationLogin'>;
+type Props = NativeStackScreenProps<AggregationLoginParams, 'AggregationLogin'>;
 
 const DEMO_AGENT_PHONE = '+254700000003';
 const DEMO_PASSWORD = '12345';
