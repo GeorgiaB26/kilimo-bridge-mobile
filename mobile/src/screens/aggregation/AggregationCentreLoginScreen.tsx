@@ -90,7 +90,7 @@ export function AggregationCentreLoginScreen({ navigation }: Props) {
       <Button className="mb-3 mt-2 h-12 bg-[#1A4D3E]" onPress={login} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Login</Text>}
       </Button>
-      <Button variant="ghost" onPress={() => navigation.navigate('Login')}>
+      <Button variant="ghost" onPress={() => navigation.goBack()}>
         <Text className="text-[#1A4D3E]">Back to main login</Text>
       </Button>
       <Text className="mt-4 text-xs leading-[18px] text-[#757575]">
