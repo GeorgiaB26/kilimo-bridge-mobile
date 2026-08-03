@@ -13,7 +13,7 @@ import {
 import { pushPendingRegistration, syncAllPendingRegistrations } from '../../services/submitFarmerRegistration';
 import { KBCard } from '../../components/ui/KBCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
-import { RegisterNewFarmerBanner } from '../../components/agent/RegisterNewFarmerButton';
+import { RegisterNewFarmerButton } from '../../components/agent/RegisterNewFarmerButton';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
 
 type FarmerRow = {
@@ -108,8 +108,6 @@ export function AgentFarmersScreen() {
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
 
-          <RegisterNewFarmerBanner onPress={() => navigation.navigate('RegisterFarmer')} />
-
           {pending.length > 0 ? (
             <View className="mb-4">
               <Text className="mb-2 text-[17px] font-bold text-[#333333]">Offline registrations</Text>
@@ -157,7 +155,7 @@ export function AgentFarmersScreen() {
           </Pressable>
         )}
       ListEmptyComponent={
-        <Text className="text-[#757575]">No farmers in your region yet. Tap REGISTER NEW FARMER above.</Text>
+        <Text className="text-[#757575]">No farmers in your region yet. Use REGISTER NEW FARMER in the header.</Text>
       }
     />
   );

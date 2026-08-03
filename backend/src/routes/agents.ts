@@ -8,14 +8,23 @@ import {
   createPaymentVerification,
   approvePaymentVerification,
   getAgentByUserId,
+  isFarmerVisibleToAgent,
 } from '../services/agentService';
-import { verifyFarmerByFieldAgent } from '../services/farmerService';
+import { verifyFarmerByFieldAgent, getFarmerById } from '../services/farmerService';
 import { getAgentAuditLogs } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
 import {
   listOpenHelpRequestsForAgent,
   resolveFarmerHelpRequest,
 } from '../services/farmerHelpRequestService';
+import {
+  createAgentPersonalTask,
+  getAgentDashboardSummary,
+  listAgentPersonalTasks,
+  listRegionFarmerTasks,
+  updateAgentPersonalTaskReminder,
+} from '../services/agentDashboardService';
+import { logAudit } from '../services/auditService';
 
 const router = Router();
 
@@ -91,6 +100,40 @@ router.get(
     }
     const farmers = await getFarmersInRegion(region, district);
     res.json({ farmers });
+  })
+);
+
+/** Full farmer profile for field agents (region-scoped) */
+router.get(
+  '/farmers/:farmerId',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const region = req.user!.region ?? '';
+    const district = req.user!.district;
+    const visible = await isFarmerVisibleToAgent(req.params.farmerId, region, district);
+    if (!visible) {
+      res.status(403).json({ error: 'Farmer is outside your assigned region' });
+      return;
+    }
+    const farmer = await getFarmerById(req.params.farmerId);
+    if (!farmer) {
+      res.status(404).json({ error: 'Farmer not found' });
+      return;
+    }
+    await logAudit({
+      userId: req.user!.userId,
+      userRole: req.user!.role,
+      action: 'farmer.read',
+      category: 'farmer_data',
+      resourceType: 'farmer',
+      resourceId: req.params.farmerId,
+      success: true,
+    });
+    res.json({ farmer });
   })
 );
 
@@ -206,6 +249,97 @@ router.get(
   asyncHandler(async (req, res) => {
     const agent = await getAgentByUserId(req.user!.userId);
     res.json({ agent });
+  })
+);
+
+/** Field Agent Platform dashboard — farmer metrics + upcoming/overdue tasks */
+router.get(
+  '/dashboard',
+  requirePermission('agents.read'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const region = req.user!.region ?? '';
+    const district = req.user!.district;
+    const summary = await getAgentDashboardSummary(req.user!.userId, region, district);
+    res.json(summary);
+  })
+);
+
+/** All farmer program tasks + personal tasks in agent region */
+router.get(
+  '/tasks',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const region = req.user!.region ?? '';
+    const district = req.user!.district;
+    const farmerTasks = await listRegionFarmerTasks(region, district);
+    const personalTasks = await listAgentPersonalTasks(req.user!.userId);
+    res.json({ farmer_tasks: farmerTasks, personal_tasks: personalTasks });
+  })
+);
+
+/** Create personal task on agent profile */
+router.post(
+  '/tasks',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const { name, description, due_date, priority, assigned_farmers, reminder_type } = req.body;
+    if (!name?.trim() || !due_date) {
+      res.status(400).json({ error: 'name and due_date are required' });
+      return;
+    }
+    const task = await createAgentPersonalTask(req.user!.userId, {
+      name: name.trim(),
+      description,
+      due_date,
+      priority,
+      assigned_farmers,
+      reminder_type,
+    });
+    await logAudit({
+      userId: req.user!.userId,
+      userRole: req.user!.role,
+      action: 'agent.action',
+      category: 'agent',
+      resourceType: 'agent_task',
+      resourceId: task.id,
+      details: { activity_type: 'task_created', name: task.name },
+      success: true,
+    });
+    res.status(201).json({ task });
+  })
+);
+
+router.post(
+  '/tasks/:taskId/reminder',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const { reminder_type } = req.body;
+    if (!reminder_type) {
+      res.status(400).json({ error: 'reminder_type required' });
+      return;
+    }
+    await updateAgentPersonalTaskReminder(
+      req.params.taskId,
+      req.user!.userId,
+      reminder_type
+    );
+    res.json({ success: true });
   })
 );
 

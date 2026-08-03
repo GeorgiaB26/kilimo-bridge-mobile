@@ -63,6 +63,14 @@ export type AgentFarmersStackParamList = {
   FarmerProfile: { farmerId: string; name: string };
 };
 
+export type AgentTabParamList = {
+  Dashboard: undefined;
+  Farmers: undefined;
+  Tasks: undefined;
+  Audit: undefined;
+  Profile: undefined;
+};
+
 export type RegistrationStackParamList = {
   Country: undefined;
   BasicInfo: undefined;

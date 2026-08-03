@@ -165,6 +165,12 @@ export async function getFarmerById(farmerId: string) {
   return data;
 }
 
+/** Field agent farmer profile — uses agent-scoped endpoint (avoids region/district scope mismatch). */
+export async function getAgentFarmerById(farmerId: string) {
+  const { data } = await api.get(`/agents/farmers/${farmerId}`);
+  return data;
+}
+
 export async function getAdminDashboard() {
   const { data } = await api.get('/admin/dashboard');
   return data;
@@ -192,6 +198,33 @@ export async function getAgentHelpRequests() {
 
 export async function resolveAgentHelpRequest(requestId: string) {
   const { data } = await api.post(`/agents/help-requests/${requestId}/resolve`);
+  return data;
+}
+
+export async function getAgentDashboard() {
+  const { data } = await api.get('/agents/dashboard');
+  return data;
+}
+
+export async function getAgentTasks() {
+  const { data } = await api.get('/agents/tasks');
+  return data;
+}
+
+export async function createAgentPersonalTask(body: {
+  name: string;
+  description?: string;
+  due_date: string;
+  priority?: string;
+  assigned_farmers?: string[];
+  reminder_type?: string;
+}) {
+  const { data } = await api.post('/agents/tasks', body);
+  return data;
+}
+
+export async function setAgentTaskReminder(taskId: string, reminder_type: string) {
+  const { data } = await api.post(`/agents/tasks/${taskId}/reminder`, { reminder_type });
   return data;
 }
 
