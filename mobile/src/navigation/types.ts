@@ -4,7 +4,7 @@ import type { FarmerProject } from '../types/farmerProject';
 export type AuthStackParamList = {
   Login: undefined;
   Otp: { phone: string; devCode?: string };
-  AggregationLogin: undefined;
+  Register: undefined;
 };
 
 export type FarmerProjectsStackParamList = {
@@ -18,6 +18,8 @@ export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
   Payments: undefined;
+  Messages: undefined;
+  Notifications: undefined;
   Profile: undefined;
 };
 
@@ -67,11 +69,26 @@ export type AgentTabParamList = {
   Dashboard: undefined;
   Farmers: undefined;
   Tasks: undefined;
+  Messages: undefined;
+  Notifications: undefined;
   Audit: undefined;
   Profile: undefined;
 };
 
+export type MessagesStackParamList = {
+  MessagesList: undefined;
+  MessageDetail: { threadId: string };
+};
+
+export type NotificationsStackParamList = {
+  NotificationsList: undefined;
+  NotificationSettings: undefined;
+};
+
 export type RegistrationStackParamList = {
+  UserTypeSelection: undefined;
+  FieldAgentRegistration: undefined;
+  StaffRegistration: { variant: 'admin' | 'project_manager' };
   Country: undefined;
   BasicInfo: undefined;
   Location: undefined;

@@ -61,6 +61,16 @@ export async function devQuickLogin(phone: string) {
   return data;
 }
 
+export async function devTokenLogin(role: 'farmer' | 'field_agent', phone?: string) {
+  const { data } = await api.post<{
+    status: string;
+    token: string;
+    user: AuthUser;
+    message?: string;
+  }>('/auth/dev-token', { role, phone });
+  return data;
+}
+
 export async function checkBackendHealth(): Promise<boolean> {
   const timeoutMs = API_BASE_URL.includes('onrender.com') ? 90000 : 8000;
   // Use /reference not /health — /health lacks CORS headers for browser requests from Netlify
@@ -81,6 +91,22 @@ export async function checkBackendHealth(): Promise<boolean> {
 export async function loginWithPassword(phone: string, password: string) {
   const { data } = await api.post('/auth/login', { phone, password });
   return data;
+}
+
+export async function selfRegister(body: {
+  userType: 'farmer' | 'field_agent' | 'admin' | 'project_manager';
+  name: string;
+  phone: string;
+  email?: string;
+  password?: string;
+  district?: string;
+  region?: string;
+  aggregationCenter?: string;
+  governmentId?: string;
+  sector?: string;
+}) {
+  const { data } = await api.post('/auth/self-register', body);
+  return data as { success: boolean; message: string; pendingApproval?: boolean };
 }
 
 export async function fetchMe() {
@@ -256,6 +282,89 @@ export async function claimPayment(paymentId: string) {
 export async function getFarmerNotifications() {
   const { data } = await api.get('/farmer/notifications');
   return data;
+}
+
+// Messaging & notifications (unified API)
+export async function getMessageThreads(search?: string) {
+  const { data } = await api.get('/messages/threads', {
+    params: search ? { search } : undefined,
+  });
+  return data as { threads: Array<Record<string, unknown>> };
+}
+
+export async function getMessageContacts() {
+  const { data } = await api.get('/messages/contacts');
+  return data as { contacts: Array<{ userId: string; name: string; role: string }> };
+}
+
+export async function startMessageThread(recipientId: string, title?: string) {
+  const { data } = await api.post('/messages/threads', { recipientId, title });
+  return data as { threadId: string };
+}
+
+export async function getThreadMessages(threadId: string) {
+  const { data } = await api.get(`/messages/threads/${threadId}`);
+  return data as {
+    messages: Array<{
+      id: string;
+      content: string;
+      created_at: string;
+      sender_name?: string;
+      is_mine?: boolean;
+    }>;
+    otherUser: { id: string; name: string } | null;
+  };
+}
+
+export async function sendThreadMessage(threadId: string, content: string) {
+  const { data } = await api.post(`/messages/threads/${threadId}/messages`, { content });
+  return data;
+}
+
+export async function getUnreadMessageCount() {
+  const { data } = await api.get('/messages/unread-count');
+  return data as { count: number };
+}
+
+export async function getAppNotifications(unreadOnly = false) {
+  const { data } = await api.get('/notifications', {
+    params: unreadOnly ? { unread: 'true' } : undefined,
+  });
+  return data as {
+    notifications: Array<{
+      id: string;
+      title: string;
+      message: string;
+      type: string;
+      is_read: boolean;
+      created_at: string;
+    }>;
+  };
+}
+
+export async function getUnreadNotificationCount() {
+  const { data } = await api.get('/notifications/unread-count');
+  return data as { count: number };
+}
+
+export async function markNotificationRead(notificationId: string) {
+  const { data } = await api.post(`/notifications/${notificationId}/read`);
+  return data;
+}
+
+export async function markAllNotificationsRead() {
+  const { data } = await api.post('/notifications/read-all');
+  return data;
+}
+
+export async function getNotificationSettings() {
+  const { data } = await api.get('/notifications/settings');
+  return data as { settings: Record<string, boolean | string | null> };
+}
+
+export async function updateNotificationSettings(patch: Record<string, boolean | string | null>) {
+  const { data } = await api.patch('/notifications/settings', patch);
+  return data as { settings: Record<string, boolean | string | null> };
 }
 
 // Phase 2 hierarchy

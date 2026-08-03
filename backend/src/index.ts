@@ -8,6 +8,9 @@ import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFar
 import { seedAggregationCentres } from './services/aggregationCentreService';
 import { ensureFarmerHelpRequestsTable } from './services/farmerHelpRequestService';
 import { ensureAgentTasksTable } from './services/agentDashboardService';
+import { ensureMessagingTables } from './services/messagingService';
+import messagesRoutes from './routes/messages';
+import notificationsRoutes from './routes/notifications';
 import { backfillLegacyIdNumberHashes } from './services/farmerService';
 import { validateProductionEnv } from './validateEnv';
 import apiRoutes from './routes/api';
@@ -74,6 +77,7 @@ async function bootstrap(): Promise<void> {
   initDatabase();
   await ensureFarmerHelpRequestsTable();
   await ensureAgentTasksTable();
+  await ensureMessagingTables();
   const farmerCount = await refreshHealthCounts();
   console.log(`Database ready: ${farmerCount} farmers`);
 
@@ -124,6 +128,8 @@ async function bootstrap(): Promise<void> {
   app.use('/api/aggregation-centres', aggregationCentresRoutes);
   app.use('/api/banking', bankingRoutes);
   app.use('/api/agents', agentRoutes);
+  app.use('/api/messages', messagesRoutes);
+  app.use('/api/notifications', notificationsRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/webhooks', equityWebhookRouter);
   app.use('/api', apiRoutes);

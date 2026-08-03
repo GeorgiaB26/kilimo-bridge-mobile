@@ -6,6 +6,8 @@ import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
+import { MessagesStackNavigator } from './MessagesStackNavigator';
+import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import type { FarmerTabParamList } from './types';
 
 import { FarmerCurrencySync } from '../components/FarmerCurrencySync';
@@ -30,6 +32,8 @@ export function FarmerNavigator() {
         <Tab.Screen name="Dashboard" component={FarmerDashboardScreen} options={{ title: 'Home', headerShown: false }} />
         <Tab.Screen name="Projects" component={FarmerProjectsNavigator} options={{ headerShown: false }} />
         <Tab.Screen name="Payments" component={FarmerPaymentsScreen} options={{ headerShown: false }} />
+        <Tab.Screen name="Messages" component={MessagesStackNavigator} options={{ headerShown: false }} />
+        <Tab.Screen name="Notifications" component={NotificationsStackNavigator} options={{ headerShown: false }} />
         <Tab.Screen name="Profile" component={FarmerProfileScreen} options={{ headerShown: false }} />
       </Tab.Navigator>
     </>

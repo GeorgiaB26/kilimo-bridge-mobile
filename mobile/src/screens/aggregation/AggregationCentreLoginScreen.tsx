@@ -7,9 +7,10 @@ import { Text } from '@/components/ui/text';
 import { aggregationCentreLogin, getAggregationCentres, setAuthToken } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { extractApiError } from '../../utils/feedback';
-import type { AuthStackParamList } from '../../navigation/types';
+/** Deprecated on mobile — aggregation centre staff use the Loveable portal. Kept for reference. */
+type AggregationLoginParams = { AggregationLogin: undefined };
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'AggregationLogin'>;
+type Props = NativeStackScreenProps<AggregationLoginParams, 'AggregationLogin'>;
 
 const DEMO_AGENT_PHONE = '+254700000003';
 const DEMO_PASSWORD = '12345';
@@ -89,7 +90,7 @@ export function AggregationCentreLoginScreen({ navigation }: Props) {
       <Button className="mb-3 mt-2 h-12 bg-[#1A4D3E]" onPress={login} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Login</Text>}
       </Button>
-      <Button variant="ghost" onPress={() => navigation.navigate('Login')}>
+      <Button variant="ghost" onPress={() => navigation.goBack()}>
         <Text className="text-[#1A4D3E]">Back to main login</Text>
       </Button>
       <Text className="mt-4 text-xs leading-[18px] text-[#757575]">
