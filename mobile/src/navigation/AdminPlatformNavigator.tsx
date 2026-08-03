@@ -53,7 +53,7 @@ export function AdminPlatformNavigator() {
       {showImport ? (
         <Tab.Screen name="Import" component={ImportNavigator} options={{ title: 'Import' }} />
       ) : null}
-      <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register', unmountOnBlur: true }} />
+      <Tab.Screen name="Register" component={RegistrationNavigator} options={{ title: 'Register' }} />
       {showManageUsers ? (
         <Tab.Screen name="Users" component={AdminUsersScreen} options={{ headerShown: true, headerStyle: { backgroundColor: COLORS.primary }, headerTintColor: '#fff', title: 'Users' }} />
       ) : null}
