@@ -8,6 +8,7 @@ import { backfillFarmerSupportLinks } from './services/farmerHelpRequestService'
 
 const DEMO_FARMER_PHONE = '+254712345678';
 const DEMO_AGENT_PHONE = '+254700000003';
+const TEST_SWITCHER_FA_PHONE = '+254745678901';
 const DEMO_BANKING_PHONE = '+254700000004';
 const DEMO_AGGREGATION_CENTRE = 'Kiambu Town Hall';
 
@@ -42,6 +43,7 @@ export async function ensureDemoFarmerPortal(): Promise<void> {
   await ensureDemoFarmerUser(farmerId);
   await ensureDemoStaffUsers();
   await ensureDemoAgentRecord();
+  await ensureTestSwitcherFieldAgent();
   await ensureDemoBankingUser();
   await linkDemoFarmerToAgent();
   await ensureDemoCentreManagers();
@@ -181,6 +183,69 @@ async function ensureDemoAgentRecord(): Promise<void> {
   if (!agent) {
     const agentId = uuidv4();
     const encryptedGovId = encryptField('GOV-AGENT-DEMO-001');
+    await query(
+      `INSERT INTO agents (
+        agent_id, user_id, government_id_encrypted, aggregation_center, region, district, status, verified_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW())`,
+      [agentId, user.user_id, encryptedGovId, DEMO_AGGREGATION_CENTRE, 'Central', 'Kiambu']
+    );
+  } else {
+    await query(
+      `UPDATE agents SET
+        aggregation_center = $1,
+        region = 'Central',
+        district = 'Kiambu',
+        status = 'active',
+        verified_at = COALESCE(verified_at, NOW())
+       WHERE agent_id = $2`,
+      [DEMO_AGGREGATION_CENTRE, agent.agent_id]
+    );
+  }
+}
+
+/** Second field agent for mobile test switcher (+254745678901). */
+async function ensureTestSwitcherFieldAgent(): Promise<void> {
+  const phone = TEST_SWITCHER_FA_PHONE;
+  const row = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [phone]
+  );
+  if (!row) {
+    await createUser({
+      phoneNumber: phone,
+      name: 'Test FieldAgent',
+      role: 'agent',
+      district: 'Kiambu',
+      region: 'Central',
+      aggregationCenter: DEMO_AGGREGATION_CENTRE,
+    });
+  } else {
+    await query(
+      `UPDATE users SET
+        name = 'Test FieldAgent',
+        role = 'agent',
+        district = 'Kiambu',
+        region = 'Central',
+        aggregation_center = $1,
+        status = 'active'
+       WHERE phone_number = $2`,
+      [DEMO_AGGREGATION_CENTRE, phone]
+    );
+  }
+
+  const user = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [phone]
+  );
+  if (!user) return;
+
+  const agent = await queryOne<{ agent_id: string }>(
+    'SELECT agent_id FROM agents WHERE user_id = $1',
+    [user.user_id]
+  );
+  if (!agent) {
+    const agentId = uuidv4();
+    const encryptedGovId = encryptField('GOV-TEST-FA-001');
     await query(
       `INSERT INTO agents (
         agent_id, user_id, government_id_encrypted, aggregation_center, region, district, status, verified_at

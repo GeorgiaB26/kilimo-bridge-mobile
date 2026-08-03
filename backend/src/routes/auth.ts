@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { requestOtp, verifyOtp, loginWithPassword, devQuickLogin } from '../services/authService';
+import { resolveTestSwitcherPhone, isDevAuthEnabled } from '../testUserSwitcher';
 import { authenticate } from '../middleware/auth';
 import { loginLimiter, otpRequestLimiter, otpVerifyLimiter } from '../middleware/security';
 import { logAudit } from '../services/auditService';
@@ -71,6 +72,36 @@ router.post(
       return;
     }
     res.json({ token: result.token, user: result.user });
+  })
+);
+
+/** Dev test switcher — role-based quick login (farmer / field_agent) */
+router.post(
+  '/dev-token',
+  loginLimiter,
+  asyncHandler(async (req, res) => {
+    if (!isDevAuthEnabled()) {
+      res.status(403).json({ error: 'Dev token only in development or pilot mode' });
+      return;
+    }
+    const { phone, role } = req.body as { phone?: string; role?: string };
+    const resolvedPhone = phone ?? (role ? resolveTestSwitcherPhone(role) : null);
+    if (!resolvedPhone) {
+      res.status(400).json({ error: 'phone or role (farmer | field_agent) is required' });
+      return;
+    }
+    const result = await devQuickLogin(resolvedPhone, req.ip);
+    if (!result.success) {
+      res.status(401).json({ error: result.error });
+      return;
+    }
+    const roleLabel = role ?? result.user?.role ?? 'user';
+    res.json({
+      status: 'success',
+      token: result.token,
+      user: result.user,
+      message: `Logged in as ${roleLabel} (dev mode)`,
+    });
   })
 );
 

@@ -61,6 +61,16 @@ export async function devQuickLogin(phone: string) {
   return data;
 }
 
+export async function devTokenLogin(role: 'farmer' | 'field_agent', phone?: string) {
+  const { data } = await api.post<{
+    status: string;
+    token: string;
+    user: AuthUser;
+    message?: string;
+  }>('/auth/dev-token', { role, phone });
+  return data;
+}
+
 export async function checkBackendHealth(): Promise<boolean> {
   const timeoutMs = API_BASE_URL.includes('onrender.com') ? 90000 : 8000;
   // Use /reference not /health — /health lacks CORS headers for browser requests from Netlify

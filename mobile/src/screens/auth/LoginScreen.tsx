@@ -8,7 +8,9 @@ import { Text } from '@/components/ui/text';
 import { KilimoLogo } from '../../components/KilimoLogo';
 import { API_BASE_URL, IS_HOSTED_API, IS_API_MISCONFIGURED } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
-import { requestOtp, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
+import { requestOtp, devTokenLogin, devQuickLogin, setAuthToken, api, checkBackendHealth } from '../../api/client';
+import { TestUserSwitcher } from '../../components/auth/TestUserSwitcher';
+import { SHOW_TEST_USER_SWITCHER, TEST_SWITCHER_USERS, type TestSwitcherRole } from '../../constants/testUsers';
 import { useAuthStore } from '../../store/authStore';
 import { clearAllSessionData } from '../../utils/session';
 import { extractApiError, showMessage } from '../../utils/feedback';
@@ -79,6 +81,26 @@ export function LoginScreen({ navigation }: Props) {
     }
   };
 
+  const quickLoginAsRole = async (role: TestSwitcherRole) => {
+    setError(null);
+    setLoading(true);
+    try {
+      await clearAllSessionData();
+      const testUser = TEST_SWITCHER_USERS[role];
+      const { token, user } = await devTokenLogin(role, testUser.phone);
+      setAuthToken(token);
+      await setAuth(token, user);
+      setBackendOk(true);
+    } catch (err: unknown) {
+      const msg = extractApiError(err, 'Dev login failed');
+      setError(msg);
+      setBackendOk(false);
+      showMessage('Error', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-5 pb-10">
       <View className="mb-6 mt-4 items-center">
@@ -122,6 +144,10 @@ export function LoginScreen({ navigation }: Props) {
           {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Send OTP</Text>}
         </Button>
       </View>
+
+      {SHOW_TEST_USER_SWITCHER ? (
+        <TestUserSwitcher loading={loading} onSelect={quickLoginAsRole} />
+      ) : null}
 
       <Text className="mb-3 text-sm font-semibold text-[#757575]">Quick access — tap to log in</Text>
       <Button className="mb-2.5 h-12 rounded-xl bg-[#1A4D3E]" disabled={loading} onPress={() => quickLogin(DEMO_FARMER, 'Farmer')}>
