@@ -10,6 +10,10 @@ export type AuditAction =
   | 'farmer.update'
   | 'farmer.update_location'
   | 'farmer.import'
+  | 'farmer.registration_review'
+  | 'farmer.pm_approved_for_field'
+  | 'farmer.field_verified'
+  | 'farmer.field_rejected'
   | 'agent.register'
   | 'agent.action'
   | 'payment.claim'
@@ -18,6 +22,7 @@ export type AuditAction =
   | 'payment.h2h_request'
   | 'payment.h2h_webhook'
   | 'banking.transaction'
+  | 'banking.verify_farmer_id'
   | 'data.access'
   | 'user.create'
   | 'permission.denied';
