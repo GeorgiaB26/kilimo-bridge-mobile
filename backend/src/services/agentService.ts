@@ -175,3 +175,25 @@ export async function getAgentByUserId(userId: string) {
 export async function getAgentById(agentId: string) {
   return queryOne('SELECT * FROM agents WHERE agent_id = $1', [agentId]);
 }
+
+/** Same visibility rules as getFarmersInRegion — used before showing farmer detail to an agent. */
+export async function isFarmerVisibleToAgent(
+  farmerId: string,
+  region: string,
+  district?: string
+): Promise<boolean> {
+  if (district) {
+    const row = await queryOne<{ farmer_id: string }>(
+      'SELECT farmer_id FROM farmers WHERE farmer_id = $1 AND district = $2',
+      [farmerId, district]
+    );
+    return !!row;
+  }
+  const row = await queryOne<{ farmer_id: string }>(
+    `SELECT f.farmer_id FROM farmers f
+     WHERE f.farmer_id = $1
+       AND f.district IN (SELECT DISTINCT district FROM agents WHERE region = $2)`,
+    [farmerId, region]
+  );
+  return !!row;
+}

@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { getFarmerById, verifyFarmerField, getAdminFarmerTasks } from '../../api/client';
+import { getAgentFarmerById, verifyFarmerField, getAdminFarmerTasks } from '../../api/client';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { VerifyFarmerModal } from '../../components/agent/VerifyFarmerModal';
 import { FarmerProfilePhoto } from '../../components/FarmerProfilePhoto';
@@ -72,11 +72,13 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
   const [taskCompleted, setTaskCompleted] = useState(0);
   const [taskOutstanding, setTaskOutstanding] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const data = await getFarmerById(farmerId);
+      const data = await getAgentFarmerById(farmerId);
       setFarmer(data.farmer as FarmerDetail);
       try {
         const tasksData = await getAdminFarmerTasks({ farmer_id: farmerId });
@@ -93,8 +95,9 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
         setTaskCompleted(0);
         setTaskOutstanding(0);
       }
-    } catch {
+    } catch (err: unknown) {
       setFarmer(null);
+      setLoadError(extractApiError(err, 'Could not load farmer profile'));
     } finally {
       setLoading(false);
     }
@@ -148,7 +151,13 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   if (!farmer) {
     return (
       <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-[#D32F2F]">Could not load farmer profile.</Text>
+        <Text className="text-center text-[#D32F2F]">{loadError ?? 'Could not load farmer profile.'}</Text>
+        <Button variant="outline" className="mt-4" onPress={() => navigation.goBack()}>
+          <Text>Back to farmers</Text>
+        </Button>
+        <Button variant="ghost" className="mt-2" onPress={load}>
+          <Text>Retry</Text>
+        </Button>
       </View>
     );
   }

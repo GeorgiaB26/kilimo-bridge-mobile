@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
 import { getAllFarmers, getFarmerCount, getFarmerById, advanceFarmerForFieldVerification } from '../services/farmerService';
+import { isFarmerVisibleToAgent } from '../services/agentService';
 import { logAudit } from '../services/auditService';
 import {
   isAgentRole,
@@ -64,7 +65,13 @@ function isOutsideViewerScope(
   const scope = viewerRegion ?? viewerDistrict;
   if (!scope) return false;
   if (isAgentRole(viewerRole)) {
-    return resource.district !== scope;
+    if (viewerDistrict) {
+      return resource.district !== viewerDistrict;
+    }
+    if (viewerRegion) {
+      return resource.region !== viewerRegion;
+    }
+    return false;
   }
   if (isRegionalAdminRole(viewerRole)) {
     return resource.district !== scope && resource.region !== scope;
@@ -174,7 +181,17 @@ router.get(
     }
 
     const f = farmer as { district?: string; region?: string };
-    if (isOutsideViewerScope(f, req.user!.role, req.user!.district, req.user!.region)) {
+    if (isAgentRole(req.user!.role)) {
+      const visible = await isFarmerVisibleToAgent(
+        req.params.farmerId,
+        req.user!.region ?? '',
+        req.user!.district
+      );
+      if (!visible) {
+        res.status(403).json({ error: 'Farmer is outside your assigned region' });
+        return;
+      }
+    } else if (isOutsideViewerScope(f, req.user!.role, req.user!.district, req.user!.region)) {
       res.status(403).json({ error: 'Farmer is outside your assigned region' });
       return;
     }

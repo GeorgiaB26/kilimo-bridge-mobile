@@ -8,8 +8,9 @@ import {
   createPaymentVerification,
   approvePaymentVerification,
   getAgentByUserId,
+  isFarmerVisibleToAgent,
 } from '../services/agentService';
-import { verifyFarmerByFieldAgent } from '../services/farmerService';
+import { verifyFarmerByFieldAgent, getFarmerById } from '../services/farmerService';
 import { getAgentAuditLogs } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
 import {
@@ -99,6 +100,40 @@ router.get(
     }
     const farmers = await getFarmersInRegion(region, district);
     res.json({ farmers });
+  })
+);
+
+/** Full farmer profile for field agents (region-scoped) */
+router.get(
+  '/farmers/:farmerId',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const region = req.user!.region ?? '';
+    const district = req.user!.district;
+    const visible = await isFarmerVisibleToAgent(req.params.farmerId, region, district);
+    if (!visible) {
+      res.status(403).json({ error: 'Farmer is outside your assigned region' });
+      return;
+    }
+    const farmer = await getFarmerById(req.params.farmerId);
+    if (!farmer) {
+      res.status(404).json({ error: 'Farmer not found' });
+      return;
+    }
+    await logAudit({
+      userId: req.user!.userId,
+      userRole: req.user!.role,
+      action: 'farmer.read',
+      category: 'farmer_data',
+      resourceType: 'farmer',
+      resourceId: req.params.farmerId,
+      success: true,
+    });
+    res.json({ farmer });
   })
 );
 

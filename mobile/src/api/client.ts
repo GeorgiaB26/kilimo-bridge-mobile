@@ -165,6 +165,12 @@ export async function getFarmerById(farmerId: string) {
   return data;
 }
 
+/** Field agent farmer profile — uses agent-scoped endpoint (avoids region/district scope mismatch). */
+export async function getAgentFarmerById(farmerId: string) {
+  const { data } = await api.get(`/agents/farmers/${farmerId}`);
+  return data;
+}
+
 export async function getAdminDashboard() {
   const { data } = await api.get('/admin/dashboard');
   return data;
