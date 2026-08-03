@@ -143,6 +143,14 @@ export function LoginScreen({ navigation }: Props) {
         <Button className="h-12 rounded-xl bg-[#1A4D3E]" disabled={loading} onPress={handleSendOtp}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Send OTP</Text>}
         </Button>
+        <Button
+          variant="ghost"
+          className="mt-3"
+          onPress={() => navigation.navigate('Register')}
+          disabled={loading}
+        >
+          <Text className="text-[#1A4D3E] font-semibold">Create an account</Text>
+        </Button>
       </View>
 
       {SHOW_TEST_USER_SWITCHER ? (

@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { requestOtp, verifyOtp, loginWithPassword, devQuickLogin } from '../services/authService';
 import { resolveTestSwitcherPhone, isDevAuthEnabled } from '../testUserSwitcher';
+import { selfRegisterUser } from '../services/selfRegistrationService';
 import { authenticate } from '../middleware/auth';
 import { loginLimiter, otpRequestLimiter, otpVerifyLimiter } from '../middleware/security';
 import { logAudit } from '../services/auditService';
@@ -75,7 +76,6 @@ router.post(
   })
 );
 
-/** Dev test switcher — role-based quick login (farmer / field_agent) */
 router.post(
   '/dev-token',
   loginLimiter,
@@ -102,6 +102,51 @@ router.post(
       user: result.user,
       message: `Logged in as ${roleLabel} (dev mode)`,
     });
+  })
+);
+
+/** Mobile self-registration — user type selected first on signup flow */
+router.post(
+  '/self-register',
+  loginLimiter,
+  asyncHandler(async (req, res) => {
+    const {
+      userType,
+      name,
+      phone,
+      email,
+      password,
+      district,
+      region,
+      aggregationCenter,
+      governmentId,
+      sector,
+    } = req.body;
+
+    if (!userType) {
+      res.status(400).json({ error: 'userType is required' });
+      return;
+    }
+
+    const result = await selfRegisterUser({
+      userType,
+      name,
+      phone,
+      email,
+      password,
+      district,
+      region,
+      aggregationCenter,
+      governmentId,
+      sector,
+    });
+
+    if (!result.success) {
+      res.status(400).json({ error: result.message });
+      return;
+    }
+
+    res.status(201).json(result);
   })
 );
 

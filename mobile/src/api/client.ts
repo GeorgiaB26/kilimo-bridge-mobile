@@ -93,6 +93,22 @@ export async function loginWithPassword(phone: string, password: string) {
   return data;
 }
 
+export async function selfRegister(body: {
+  userType: 'farmer' | 'field_agent' | 'admin' | 'project_manager';
+  name: string;
+  phone: string;
+  email?: string;
+  password?: string;
+  district?: string;
+  region?: string;
+  aggregationCenter?: string;
+  governmentId?: string;
+  sector?: string;
+}) {
+  const { data } = await api.post('/auth/self-register', body);
+  return data as { success: boolean; message: string; pendingApproval?: boolean };
+}
+
 export async function fetchMe() {
   const { data } = await api.get('/auth/me');
   return data;

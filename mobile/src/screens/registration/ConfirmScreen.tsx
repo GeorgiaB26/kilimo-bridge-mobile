@@ -15,7 +15,16 @@ import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Confirm'>;
 
-const STEP_SCREENS: (keyof RegistrationStackParamList)[] = [
+type FarmerRegScreen =
+  | 'Country'
+  | 'BasicInfo'
+  | 'Location'
+  | 'Membership'
+  | 'Details'
+  | 'Projects'
+  | 'Photo';
+
+const STEP_SCREENS: FarmerRegScreen[] = [
   'Country', 'BasicInfo', 'Location', 'Membership', 'Details', 'Projects', 'Photo',
 ];
 

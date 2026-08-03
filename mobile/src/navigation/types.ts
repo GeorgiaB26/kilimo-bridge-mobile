@@ -5,6 +5,7 @@ export type AuthStackParamList = {
   Login: undefined;
   Otp: { phone: string; devCode?: string };
   AggregationLogin: undefined;
+  Register: undefined;
 };
 
 export type FarmerProjectsStackParamList = {
@@ -72,6 +73,9 @@ export type AgentTabParamList = {
 };
 
 export type RegistrationStackParamList = {
+  UserTypeSelection: undefined;
+  FieldAgentRegistration: undefined;
+  StaffRegistration: { variant: 'admin' | 'project_manager' };
   Country: undefined;
   BasicInfo: undefined;
   Location: undefined;
