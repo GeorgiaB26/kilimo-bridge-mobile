@@ -10,7 +10,8 @@ import { assignAggregationCentre } from './aggregationCentreService';
 import { linkFarmerToUser } from './userService';
 import { PENDING_LOCATION_LABEL } from '../../../shared/src/constants';
 import { enrollFarmerInProgramProjects, getFarmerProjectSummaries } from './farmerProgramService';
-import { resolvePhotoUrlForDisplay } from './r2StorageService';
+import { isOwnFarmerProfilePhotoKey, resolvePhotoUrlForDisplay } from './r2StorageService';
+import { validateFarmerPhotoRequired } from '../../../shared/src/farmerPhoto';
 
 /** Postgres farmer_status enum — agent field registrations await PM review. */
 function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean): string {
@@ -525,6 +526,36 @@ export async function updateFarmerLocation(
     resourceType: 'farmer',
     resourceId: farmerId,
     details: { district: l1, subCounty: l2, parish, village },
+    success: true,
+  });
+}
+
+export async function updateFarmerPicture(farmerId: string, pictureUrl: string): Promise<void> {
+  const photoError = validateFarmerPhotoRequired(pictureUrl);
+  if (photoError) throw new Error(photoError);
+
+  const key = pictureUrl.trim();
+  if (!isOwnFarmerProfilePhotoKey(key, farmerId)) {
+    throw new Error('Invalid profile photo key for this farmer');
+  }
+
+  const exists = await queryOne<{ farmer_id: string }>(
+    'SELECT farmer_id FROM farmers WHERE farmer_id = $1',
+    [farmerId]
+  );
+  if (!exists) throw new Error('Farmer not found');
+
+  await query(
+    `UPDATE farmers SET picture_url = $1, updated_at = NOW() WHERE farmer_id = $2`,
+    [key, farmerId]
+  );
+
+  await logAudit({
+    action: 'farmer.update',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: { field: 'picture_url', objectKey: key },
     success: true,
   });
 }

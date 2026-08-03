@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { api } from '../api/client';
 
-export type UploadPurpose = 'farmer_registration' | 'task_evidence';
+export type UploadPurpose = 'farmer_registration' | 'task_evidence' | 'farmer_profile';
 export type UploadContentType = 'image/jpeg' | 'image/png' | 'image/webp';
 
 export interface PresignUploadResult {
@@ -44,7 +44,12 @@ export function base64ToUint8Array(base64OrDataUrl: string): {
   const binary =
     typeof atob === 'function'
       ? atob(base64)
-      : Buffer.from(base64, 'base64').toString('binary');
+      : (() => {
+          const Buf = (globalThis as { Buffer?: { from(data: string, enc: string): { toString(enc: string): string } } })
+            .Buffer;
+          if (!Buf) throw new Error('Base64 decode is not available in this environment');
+          return Buf.from(base64, 'base64').toString('binary');
+        })();
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
     bytes[i] = binary.charCodeAt(i);
@@ -53,8 +58,9 @@ export function base64ToUint8Array(base64OrDataUrl: string): {
 }
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(bytes).toString('base64');
+  const Buf = (globalThis as { Buffer?: { from(data: Uint8Array): { toString(enc: string): string } } }).Buffer;
+  if (Buf) {
+    return Buf.from(bytes).toString('base64');
   }
   let binary = '';
   const chunk = 0x8000;
@@ -149,7 +155,7 @@ async function putBytesToR2(
   const put = await fetch(presign.uploadUrl, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
-    body: bytes,
+    body: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
   });
 
   if (!put.ok) {

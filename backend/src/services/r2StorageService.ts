@@ -9,7 +9,7 @@ export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 export const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export type AllowedContentType = (typeof ALLOWED_CONTENT_TYPES)[number];
 
-export type UploadPurpose = 'farmer_registration' | 'task_evidence';
+export type UploadPurpose = 'farmer_registration' | 'task_evidence' | 'farmer_profile';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -61,17 +61,29 @@ function extensionForContentType(contentType: AllowedContentType): string {
 export function buildObjectKey(
   purpose: UploadPurpose,
   contentType: AllowedContentType,
-  farmerTaskId?: string
+  opts?: { farmerTaskId?: string; farmerId?: string }
 ): string {
   const id = randomUUID();
   const ext = extensionForContentType(contentType);
   if (purpose === 'task_evidence') {
-    if (!farmerTaskId?.trim()) {
+    if (!opts?.farmerTaskId?.trim()) {
       throw new Error('farmerTaskId is required for task_evidence uploads');
     }
-    return `tasks/${farmerTaskId.trim()}/${id}.${ext}`;
+    return `tasks/${opts.farmerTaskId.trim()}/${id}.${ext}`;
+  }
+  if (purpose === 'farmer_profile') {
+    if (!opts?.farmerId?.trim()) {
+      throw new Error('farmerId is required for farmer_profile uploads');
+    }
+    return `farmers/${opts.farmerId.trim()}/profile/${id}.${ext}`;
   }
   return `farmers/registration/${id}.${ext}`;
+}
+
+/** True if key is a profile photo for this farmer. */
+export function isOwnFarmerProfilePhotoKey(objectKey: string, farmerId: string): boolean {
+  const prefix = `farmers/${farmerId}/profile/`;
+  return objectKey.startsWith(prefix) && isR2ObjectKey(objectKey);
 }
 
 /** True if value looks like an R2 object key we store in Postgres. */
@@ -111,6 +123,7 @@ export async function createPresignedUpload(params: {
   purpose: UploadPurpose;
   contentType: AllowedContentType;
   farmerTaskId?: string;
+  farmerId?: string;
   contentLength?: number;
 }): Promise<{
   uploadUrl: string;
@@ -129,7 +142,10 @@ export async function createPresignedUpload(params: {
     throw new Error(`File too large (max ${MAX_UPLOAD_BYTES} bytes)`);
   }
 
-  const objectKey = buildObjectKey(params.purpose, params.contentType, params.farmerTaskId);
+  const objectKey = buildObjectKey(params.purpose, params.contentType, {
+    farmerTaskId: params.farmerTaskId,
+    farmerId: params.farmerId,
+  });
   const client = getS3Client();
   const command = new PutObjectCommand({
     Bucket: getBucket(),
@@ -169,6 +185,7 @@ export async function uploadObjectDirect(params: {
   contentType: AllowedContentType;
   body: Buffer;
   farmerTaskId?: string;
+  farmerId?: string;
 }): Promise<{ objectKey: string; previewUrl: string; contentType: AllowedContentType; size: number }> {
   if (!isR2Configured()) {
     throw new Error('Cloudflare R2 is not configured');
@@ -186,7 +203,10 @@ export async function uploadObjectDirect(params: {
     throw new Error(`Photo is too small (${params.body.length} bytes) — likely corrupt`);
   }
 
-  const objectKey = buildObjectKey(params.purpose, params.contentType, params.farmerTaskId);
+  const objectKey = buildObjectKey(params.purpose, params.contentType, {
+    farmerTaskId: params.farmerTaskId,
+    farmerId: params.farmerId,
+  });
   const client = getS3Client();
   await client.send(
     new PutObjectCommand({

@@ -264,6 +264,11 @@ export async function updateFarmerLocation(body: {
   return data;
 }
 
+export async function updateFarmerProfilePhoto(picture_url: string) {
+  const { data } = await api.patch('/farmer/profile/photo', { picture_url });
+  return data;
+}
+
 export async function getFarmerProjects() {
   const { data } = await api.get('/farmer/projects');
   return data;

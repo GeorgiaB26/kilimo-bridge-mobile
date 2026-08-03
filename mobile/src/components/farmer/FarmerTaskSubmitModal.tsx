@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, Image, StyleSheet, Modal, TextInput, Pressable, ScrollView, Alert, Platform,
+  View, Text, Image, StyleSheet, Modal, TextInput, Pressable, ScrollView, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from 'react-native-paper';
@@ -10,6 +10,7 @@ import { submitFarmerTaskCompletion } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';
 
+/** Client-only quality check — backend does not enforce a notes minimum. */
 const MIN_NOTES_LENGTH = 50;
 
 export interface FarmerTaskSubmitTarget {
@@ -31,10 +32,14 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const [notesError, setNotesError] = useState('');
 
   const reset = () => {
     setNotes('');
     setPhotoUri(null);
+    setPhotoError('');
+    setNotesError('');
   };
 
   const close = () => {
@@ -45,12 +50,13 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const pickImage = async (useCamera: boolean) => {
     if (!task) return;
     setPicking(true);
+    setPhotoError('');
     try {
       const permission = useCamera
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow camera or gallery access to upload a photo.');
+        showMessage('Permission needed', 'Please allow camera or gallery access to upload a photo.');
         return;
       }
       const result = useCamera
@@ -75,19 +81,29 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
   const submit = async () => {
     if (!task) return;
+    let valid = true;
     if (!photoUri) {
-      Alert.alert('Photo required', 'Please upload a photo (JPEG or PNG) of your completed work.');
-      return;
+      setPhotoError('Please upload a photo (JPEG or PNG) of your completed work.');
+      valid = false;
+    } else {
+      setPhotoError('');
     }
-    if (notes.trim().length < MIN_NOTES_LENGTH) {
-      Alert.alert('Notes required', `Please add at least ${MIN_NOTES_LENGTH} characters describing your work.`);
-      return;
+    const noteLen = notes.trim().length;
+    if (noteLen < MIN_NOTES_LENGTH) {
+      setNotesError(
+        `Notes must be at least ${MIN_NOTES_LENGTH} characters (currently ${noteLen}).`
+      );
+      valid = false;
+    } else {
+      setNotesError('');
     }
+    if (!valid) return;
+
     setSubmitting(true);
     try {
       const uploaded = await uploadPhotoToR2({
         purpose: 'task_evidence',
-        localUri: photoUri,
+        localUri: photoUri!,
         farmerTaskId: task.id,
       });
       await submitFarmerTaskCompletion(task.id, {
@@ -98,11 +114,14 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
       onSubmitted();
       showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
     } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not submit task'));
+      showMessage('Error', extractApiError(err, 'Could not submit task'));
     } finally {
       setSubmitting(false);
     }
   };
+
+  const noteLen = notes.trim().length;
+  const notesTooShort = noteLen < MIN_NOTES_LENGTH;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
@@ -140,17 +159,27 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
                   </Button>
                 ) : null}
               </View>
+              {photoError ? <Text style={styles.errorText}>{photoError}</Text> : null}
 
               <Text style={styles.label}>Notes * (min {MIN_NOTES_LENGTH} characters)</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, notesError ? styles.inputError : null]}
                 multiline
                 numberOfLines={4}
                 value={notes}
-                onChangeText={setNotes}
+                onChangeText={(text) => {
+                  setNotes(text);
+                  if (notesError && text.trim().length >= MIN_NOTES_LENGTH) {
+                    setNotesError('');
+                  }
+                }}
                 placeholder="Add any notes about your work..."
               />
-              <Text style={styles.charCount}>{notes.trim().length}/{MIN_NOTES_LENGTH}</Text>
+              <Text style={[styles.charCount, notesTooShort ? styles.charCountWarn : styles.charCountOk]}>
+                {noteLen}/{MIN_NOTES_LENGTH} characters
+                {notesTooShort ? ` — ${MIN_NOTES_LENGTH - noteLen} more needed` : ' ✓'}
+              </Text>
+              {notesError ? <Text style={styles.errorText}>{notesError}</Text> : null}
 
               <Button
                 mode="contained"
@@ -203,5 +232,9 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   charCount: { fontSize: 12, color: COLORS.muted, textAlign: 'right', marginTop: 4 },
+  charCountWarn: { color: COLORS.alert, fontWeight: '600' },
+  charCountOk: { color: COLORS.success },
+  errorText: { fontSize: 13, color: COLORS.alert, marginTop: 6, lineHeight: 18 },
+  inputError: { borderColor: COLORS.alert },
   submitBtn: { marginTop: 20 },
 });

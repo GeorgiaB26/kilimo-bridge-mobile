@@ -1,12 +1,22 @@
 import React, { useState, useCallback } from 'react';
-import { View, ScrollView, Alert } from 'react-native';
+import {
+  View,
+  ScrollView,
+  Alert,
+  Pressable,
+  Image,
+  ActivityIndicator,
+  Platform,
+  ActionSheetIOS,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Divider, List, Switch } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { APP_BUILD } from '../../constants/build';
-import { getFarmerDashboard, submitFarmerHelpRequest } from '../../api/client';
+import { getFarmerDashboard, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
@@ -17,6 +27,7 @@ import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
 import { getLocalizedGreeting } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
+import { uploadPhotoToR2 } from '../../services/uploadToR2';
 
 type SupportContacts = {
   fieldAgent?: {
@@ -64,6 +75,10 @@ export function FarmerProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpLoading, setHelpLoading] = useState(false);
+  const [pendingUri, setPendingUri] = useState<string | null>(null);
+  const [pendingBase64, setPendingBase64] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [savingPhoto, setSavingPhoto] = useState(false);
 
   const loadProfile = useCallback(() => {
     getFarmerDashboard()
@@ -83,6 +98,94 @@ export function FarmerProfileScreen() {
       loadProfile();
     }, [loadProfile])
   );
+
+  const discardPendingPhoto = () => {
+    setPendingUri(null);
+    setPendingBase64(null);
+  };
+
+  const pickImage = async (useCamera: boolean) => {
+    setPicking(true);
+    try {
+      const permission = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert('Permission needed', 'Please allow camera/gallery access to update your photo.');
+        return;
+      }
+
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+            base64: true,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+            base64: true,
+          });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        if (!asset.base64) {
+          Alert.alert('Photo error', 'Could not read image. Please try again.');
+          return;
+        }
+        setPendingUri(asset.uri);
+        setPendingBase64(asset.base64);
+      }
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  const promptChangePhoto = () => {
+    if (picking || savingPhoto) return;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Gallery'],
+          cancelButtonIndex: 0,
+        },
+        (index) => {
+          if (index === 1) void pickImage(true);
+          if (index === 2) void pickImage(false);
+        }
+      );
+      return;
+    }
+    Alert.alert('Change photo', 'Choose a source', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Take Photo', onPress: () => void pickImage(true) },
+      { text: 'Choose from Gallery', onPress: () => void pickImage(false) },
+    ]);
+  };
+
+  const handleSavePhoto = async () => {
+    if (!pendingUri || !pendingBase64) return;
+    setSavingPhoto(true);
+    try {
+      const uploaded = await uploadPhotoToR2({
+        purpose: 'farmer_profile',
+        localUri: pendingUri,
+        base64: pendingBase64,
+      });
+      const data = await updateFarmerProfilePhoto(uploaded.objectKey);
+      setFarmer(data.farmer);
+      setContacts(data.contacts ?? null);
+      discardPendingPhoto();
+      Alert.alert('Photo saved', 'Your profile photo has been updated.');
+    } catch (err: unknown) {
+      Alert.alert('Could not save photo', extractApiError(err, 'Please try again.'));
+    } finally {
+      setSavingPhoto(false);
+    }
+  };
 
   const fieldAgentName =
     contacts?.fieldAgent?.name ?? farmer?.registered_agent_name ?? null;
@@ -124,11 +227,68 @@ export function FarmerProfileScreen() {
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
       {error ? <FarmerOfflineBanner message={error} /> : null}
       <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">
-        <ProfileAvatar
-          name={displayName}
-          pictureUrl={farmer?.picture_url}
-          size="hero"
-        />
+        <Pressable
+          onPress={promptChangePhoto}
+          disabled={picking || savingPhoto}
+          accessibilityRole="button"
+          accessibilityLabel="Change profile photo"
+        >
+          {pendingUri ? (
+            <View className="mb-1 items-center">
+              <Image
+                source={{ uri: pendingUri }}
+                style={{
+                  width: 140,
+                  height: 140,
+                  borderRadius: 70,
+                  borderWidth: 4,
+                  borderColor: '#D4AF6A',
+                }}
+              />
+              <Text className="mt-2 text-center text-xs text-white/80">Preview — not saved yet</Text>
+            </View>
+          ) : (
+            <ProfileAvatar name={displayName} pictureUrl={farmer?.picture_url} size="hero" />
+          )}
+        </Pressable>
+        {!pendingUri ? (
+          <Pressable onPress={promptChangePhoto} disabled={picking || savingPhoto} className="mb-1 mt-1">
+            <Text className="text-center text-xs font-semibold text-[#D4AF6A]">
+              {picking ? 'Opening camera…' : 'Tap photo to change'}
+            </Text>
+          </Pressable>
+        ) : null}
+        {pendingUri ? (
+          <View className="mb-3 mt-3 w-full flex-row gap-2">
+            <Button
+              variant="outline"
+              className="h-11 flex-1 border-white/40"
+              onPress={discardPendingPhoto}
+              disabled={savingPhoto}
+            >
+              <Text className="text-white">Cancel</Text>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 flex-1 border-white/40"
+              onPress={() => void pickImage(true)}
+              disabled={savingPhoto || picking}
+            >
+              <Text className="text-white">Retake</Text>
+            </Button>
+            <Button
+              className="h-11 flex-1 bg-[#D4AF6A]"
+              onPress={() => void handleSavePhoto()}
+              disabled={savingPhoto || picking}
+            >
+              {savingPhoto ? (
+                <ActivityIndicator color="#1A4D3E" />
+              ) : (
+                <Text className="font-semibold text-[#1A4D3E]">Save photo</Text>
+              )}
+            </Button>
+          </View>
+        ) : null}
         <View className="mb-3 mt-3 w-full items-center rounded-xl bg-white/10 p-3.5">
           <Text className="text-center text-[22px] font-bold leading-[30px] text-white">{greeting.primary}</Text>
           <Text className="mt-1.5 text-center text-sm text-white/85">{greeting.secondary}</Text>
