@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,8 @@ export interface FarmerTaskRow {
   due_date?: string;
   description?: string;
   rejection_reason?: string;
+  photo_evidence_url?: string | null;
+  photo_url?: string | null;
 }
 
 interface Props {
@@ -35,6 +37,13 @@ function canOpenTask(status: string): boolean {
 function displayStatus(status: string): string {
   if (status === 'submitted-for-approval') return 'Submitted for Approval';
   return taskStatusLabel(status);
+}
+
+function evidencePhotoUri(item: FarmerTaskRow): string | null {
+  const url = (item.photo_evidence_url ?? item.photo_url)?.trim();
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('file:')) return url;
+  return null;
 }
 
 export function FarmerProjectTasksSection({ programProjectId, compact }: Props) {
@@ -101,9 +110,16 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
         const isApproved = item.status === 'approved' || item.status === 'completed';
         const isSubmitted = item.status === 'submitted-for-approval';
         const isRejected = item.status === 'rejected';
+        const openable = canOpenTask(item.status);
+        const evidenceUri =
+          (isSubmitted || isApproved) ? evidencePhotoUri(item) : null;
 
         return (
-          <KBCard key={item.id} elevated={false}>
+          <KBCard
+            key={item.id}
+            elevated={false}
+            onPress={openable ? () => setSubmitTask(item) : undefined}
+          >
             <View style={styles.row}>
               <View style={styles.nameCol}>
                 <Text style={styles.name}>{item.name}</Text>
@@ -124,6 +140,18 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
             {item.description ? <Text style={styles.description}>{item.description}</Text> : null}
             {item.due_date ? <Text style={styles.due}>Due {item.due_date}</Text> : null}
 
+            {evidenceUri ? (
+              <View style={styles.evidenceWrap}>
+                <Text style={styles.evidenceLabel}>Your submitted photo</Text>
+                <Image
+                  source={{ uri: evidenceUri }}
+                  style={styles.evidenceImage}
+                  resizeMode="cover"
+                  accessibilityLabel={`Evidence photo for ${item.name}`}
+                />
+              </View>
+            ) : null}
+
             {isSubmitted ? (
               <Text style={styles.awaiting}>Awaiting approval — status updates every 30 seconds</Text>
             ) : null}
@@ -132,7 +160,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
               <Text style={styles.rejected}>Rejected: {item.rejection_reason}</Text>
             ) : null}
 
-            {canOpenTask(item.status) ? (
+            {openable ? (
               <Button
                 mode="contained"
                 buttonColor={isRejected ? COLORS.warning : COLORS.primary}
@@ -177,6 +205,14 @@ const styles = StyleSheet.create({
   pay: { fontSize: 16, fontWeight: '700', color: COLORS.accent, marginTop: 4 },
   description: { fontSize: 14, color: COLORS.text, marginTop: 8, lineHeight: 20 },
   due: { fontSize: 13, color: COLORS.muted, marginTop: 6 },
+  evidenceWrap: { marginTop: 10 },
+  evidenceLabel: { fontSize: 12, fontWeight: '600', color: COLORS.muted, marginBottom: 6 },
+  evidenceImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+  },
   awaiting: { fontSize: 13, color: COLORS.info, marginTop: 8, fontStyle: 'italic' },
   rejected: { fontSize: 13, color: COLORS.alert, marginTop: 8, lineHeight: 18 },
   openBtn: { marginTop: 12 },

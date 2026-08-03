@@ -11,7 +11,6 @@ export type FarmerProjectsStackParamList = {
   ProjectsList: undefined;
   ProjectDetail: { project: FarmerProject; programProjectId?: string };
   HierarchyProjectDetail: { projectId: string; projectName: string };
-  HierarchyTaskDetail: { farmerTaskId: string; taskName: string };
 };
 
 export type FarmerTabParamList = {
