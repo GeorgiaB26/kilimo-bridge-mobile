@@ -171,8 +171,8 @@ export async function createFarmer(
 
   const bankAccountEncrypted = input.bankAccount ? encryptField(input.bankAccount) : null;
   const membershipType = input.membershipType ?? 'Active';
-  const farmerStatus = mapFarmerStatus(membershipType, !!registeredByAgentId);
   const registeredByAgentId = await resolveRegisteredByAgentId(registeredBy);
+  const farmerStatus = mapFarmerStatus(membershipType, !!registeredByAgentId);
 
   await query(
     `INSERT INTO farmers (

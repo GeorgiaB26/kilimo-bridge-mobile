@@ -5,31 +5,6 @@ import { createNotification, sendSms } from './notificationService';
 import { assignAggregationCentre } from './aggregationCentreService';
 
 const DEMO_FARMER_PHONE = '+254712345678';
-const PILOT_DEMO_CONTACTS: Omit<FarmerSupportContacts, 'fieldAgent'> & {
-  fieldAgent: Omit<FarmerSupportContacts['fieldAgent'], 'agentId' | 'userId'> & {
-    agentId?: string;
-    userId?: string;
-  };
-} = {
-  fieldAgent: {
-    name: 'Kiambu Agent',
-    phone: '+254700000003',
-    aggregationCenter: 'Kiambu Town Hall',
-    district: 'Kiambu',
-  },
-  aggregationCentre: {
-    centreId: 'ke-kiambu-01',
-    name: 'Kiambu Town Hall',
-    location: 'Kiambu, Central',
-    managerName: 'Kiambu Agent',
-    managerPhone: '+254700000003',
-    country: 'Kenya',
-  },
-  bankingAgent: {
-    name: 'Equity Banking Officer',
-    phone: '+254700000004',
-  },
-};
 
 export interface FarmerSupportContacts {
   fieldAgent: {
@@ -53,6 +28,37 @@ export interface FarmerSupportContacts {
     phone: string;
   } | null;
 }
+
+/** Demo contacts may omit agent/user ids until a real agent is linked. */
+type PilotDemoContacts = {
+  fieldAgent: Omit<NonNullable<FarmerSupportContacts['fieldAgent']>, 'agentId' | 'userId'> & {
+    agentId?: string;
+    userId?: string;
+  };
+  aggregationCentre: NonNullable<FarmerSupportContacts['aggregationCentre']>;
+  bankingAgent: NonNullable<FarmerSupportContacts['bankingAgent']>;
+};
+
+const PILOT_DEMO_CONTACTS: PilotDemoContacts = {
+  fieldAgent: {
+    name: 'Kiambu Agent',
+    phone: '+254700000003',
+    aggregationCenter: 'Kiambu Town Hall',
+    district: 'Kiambu',
+  },
+  aggregationCentre: {
+    centreId: 'ke-kiambu-01',
+    name: 'Kiambu Town Hall',
+    location: 'Kiambu, Central',
+    managerName: 'Kiambu Agent',
+    managerPhone: '+254700000003',
+    country: 'Kenya',
+  },
+  bankingAgent: {
+    name: 'Equity Banking Officer',
+    phone: '+254700000004',
+  },
+};
 
 export async function ensureFarmerHelpRequestsTable(): Promise<void> {
   await query(`
