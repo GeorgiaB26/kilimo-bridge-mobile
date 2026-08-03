@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StepIndicator } from '../components/StepIndicator';
 import { COLORS } from '../constants';
+import { useRegistrationStore } from '../store/registrationStore';
 import { UserTypeSelectionScreen } from '../screens/registration/UserTypeSelectionScreen';
 import { FieldAgentRegistrationScreen } from '../screens/registration/FieldAgentRegistrationScreen';
 import { StaffRegistrationScreen } from '../screens/registration/StaffRegistrationScreen';
@@ -61,7 +63,7 @@ function withSimpleLayout<P extends object>(Screen: React.ComponentType<P>) {
   };
 }
 
-export function RegistrationNavigator() {
+function RegistrationStack() {
   return (
     <Stack.Navigator
       initialRouteName="UserTypeSelection"
@@ -74,7 +76,7 @@ export function RegistrationNavigator() {
       <Stack.Screen
         name="UserTypeSelection"
         component={UserTypeSelectionScreen}
-        options={{ title: 'Sign up' }}
+        options={{ title: 'Sign up — step 1' }}
       />
       <Stack.Screen
         name="FieldAgentRegistration"
@@ -98,6 +100,20 @@ export function RegistrationNavigator() {
       <Stack.Screen name="Confirm" component={withFarmerLayout(ConfirmScreen, 'Confirm')} />
     </Stack.Navigator>
   );
+}
+
+/** Remounts registration stack on each open so step 1 (user type) always shows first. */
+export function RegistrationNavigator() {
+  const [mountKey, setMountKey] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      useRegistrationStore.getState().resetForm();
+      setMountKey((k) => k + 1);
+    }, [])
+  );
+
+  return <RegistrationStack key={mountKey} />;
 }
 
 const styles = StyleSheet.create({

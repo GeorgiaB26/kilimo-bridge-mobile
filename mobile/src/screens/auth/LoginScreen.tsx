@@ -12,6 +12,7 @@ import { requestOtp, devTokenLogin, devQuickLogin, setAuthToken, api, checkBacke
 import { TestUserSwitcher } from '../../components/auth/TestUserSwitcher';
 import { SHOW_TEST_USER_SWITCHER, TEST_SWITCHER_USERS, type TestSwitcherRole } from '../../constants/testUsers';
 import { useAuthStore } from '../../store/authStore';
+import { useRegistrationStore } from '../../store/registrationStore';
 import { clearAllSessionData } from '../../utils/session';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import type { AuthStackParamList } from '../../navigation/types';
@@ -144,13 +145,19 @@ export function LoginScreen({ navigation }: Props) {
           {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Send OTP</Text>}
         </Button>
         <Button
-          variant="ghost"
-          className="mt-3"
-          onPress={() => navigation.navigate('Register')}
+          variant="outline"
+          className="mt-3 h-12 rounded-xl border-[#1A4D3E]"
+          onPress={() => {
+            useRegistrationStore.getState().resetForm();
+            navigation.navigate('Register');
+          }}
           disabled={loading}
         >
-          <Text className="text-[#1A4D3E] font-semibold">Create an account</Text>
+          <Text className="font-semibold text-[#1A4D3E]">Create an account</Text>
         </Button>
+        <Text className="mt-2 text-center text-xs text-[#757575]">
+          Step 1: choose Farmer, Field Agent, Admin, or Project Manager
+        </Text>
       </View>
 
       {SHOW_TEST_USER_SWITCHER ? (

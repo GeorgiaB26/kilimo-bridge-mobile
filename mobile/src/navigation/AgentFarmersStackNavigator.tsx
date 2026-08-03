@@ -35,7 +35,7 @@ export function AgentFarmersStackNavigator() {
       <Stack.Screen
         name="RegisterFarmer"
         component={RegistrationNavigator}
-        options={{ headerShown: false }}
+        options={{ headerShown: false, unmountOnBlur: true }}
       />
       <Stack.Screen
         name="FarmerProfile"

@@ -19,7 +19,7 @@ export function AuthNavigator() {
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Sign In' }} />
-      <Stack.Screen name="Register" component={RegistrationNavigator} options={{ headerShown: false }} />
+      <Stack.Screen name="Register" component={RegistrationNavigator} options={{ headerShown: false, unmountOnBlur: true }} />
       <Stack.Screen name="AggregationLogin" component={AggregationCentreLoginScreen} options={{ title: 'Centre Login' }} />
       <Stack.Screen name="Otp" component={OtpScreen} options={{ title: 'Verify OTP' }} />
     </Stack.Navigator>
