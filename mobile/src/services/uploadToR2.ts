@@ -124,8 +124,10 @@ async function putBytesToR2(
 ): Promise<{ objectKey: string; previewUrl: string; contentType: UploadContentType }> {
   assertPhotoBytes(bytes, 'Photo');
 
-  // Web: R2 bucket has no CORS (API token can't set it) — browser PUT gets "Failed to fetch".
-  // Upload via our authenticated backend instead.
+  // Web: R2 CORS is configured for known origins (Lovable + localhost:8081–8083), so a
+  // browser PUT to a presigned URL can work. We still relay via Express so uploads don't
+  // break when Expo picks a new port or a new host is added without updating R2 CORS
+  // (API token can't manage CORS — dashboard only).
   if (Platform.OS === 'web') {
     const { data } = await api.post<{
       objectKey: string;
