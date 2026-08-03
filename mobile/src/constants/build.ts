@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.10.8-netlify-build-fix';
+export const APP_BUILD = 'v2.10.9-inbox-header-icons';

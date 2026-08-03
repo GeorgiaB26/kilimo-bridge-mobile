@@ -8,6 +8,7 @@ import { Text } from '@/components/ui/text';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
 import { KBCard } from '../../components/ui/KBCard';
+import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 
 const USEFUL_DOCUMENTS = [
   { name: 'User Guide v2.1', size: '2.3 MB', type: 'PDF' },
@@ -56,9 +57,12 @@ export function AgentProfileScreen() {
       <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
         <View className="mb-4 flex-row items-center justify-between">
           <Text className="text-[22px] font-bold text-[#1A4D3E]">Profile</Text>
-          <Pressable onPress={() => setSettingsOpen(true)} accessibilityLabel="Settings">
-            <Ionicons name="settings-outline" size={26} color="#1A4D3E" />
-          </Pressable>
+          <View className="flex-row items-center gap-1">
+            <MessagesNotificationsHeaderIcons iconColor="#1A4D3E" />
+            <Pressable onPress={() => setSettingsOpen(true)} accessibilityLabel="Settings">
+              <Ionicons name="settings-outline" size={26} color="#1A4D3E" />
+            </Pressable>
+          </View>
         </View>
 
         <View className="mb-4 items-center rounded-xl bg-white p-5">

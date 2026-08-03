@@ -16,7 +16,7 @@ const DB_NAME = 'kilimo_offline.db';
 type OfflineSqliteDb = {
   execAsync: (sql: string) => Promise<void>;
   getAllAsync: <T>(sql: string) => Promise<T[]>;
-  runAsync: (sql: string, params?: unknown[]) => Promise<void>;
+  runAsync: (sql: string, params?: (string | number | null)[]) => Promise<void>;
 };
 
 let dbReady = false;
@@ -31,7 +31,7 @@ async function initDb(): Promise<void> {
   try {
     const { openDatabaseAsync } = await import('expo-sqlite');
     const database = await openDatabaseAsync(DB_NAME);
-    sqliteDb = database;
+    sqliteDb = database as OfflineSqliteDb;
     await database.execAsync(`
       CREATE TABLE IF NOT EXISTS pending_registrations (
         id TEXT PRIMARY KEY NOT NULL,

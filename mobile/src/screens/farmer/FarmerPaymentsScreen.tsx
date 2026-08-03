@@ -5,6 +5,7 @@ import { Text } from '@/components/ui/text';
 import { getFarmerPayments } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 
@@ -37,8 +38,10 @@ export function FarmerPaymentsScreen() {
   }, []);
 
   return (
-    <FlatList
-      className="flex-1 bg-[#F5F5F5]"
+    <View className="flex-1 bg-[#F5F5F5]">
+      <FarmerInboxHeaderBar />
+      <FlatList
+      className="flex-1"
       data={payments}
       keyExtractor={(_, i) => String(i)}
       ListHeaderComponent={
@@ -81,5 +84,6 @@ export function FarmerPaymentsScreen() {
       )}
       ListEmptyComponent={<Text className="mt-10 text-center text-[#757575]">No payments yet</Text>}
     />
+    </View>
   );
 }

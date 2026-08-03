@@ -23,6 +23,7 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { showMessage } from '../../utils/feedback';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerTabParamList, FarmerProjectsStackParamList } from '../../navigation/types';
+import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<FarmerTabParamList, 'Dashboard'>,
@@ -128,6 +129,9 @@ export function FarmerDashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF6A" />}
       >
         <View className="items-center rounded-b-3xl bg-[#1A4D3E] px-6 pb-8 pt-5">
+          <View className="absolute right-4 top-4 z-10">
+            <MessagesNotificationsHeaderIcons iconColor="#fff" />
+          </View>
           <View className="mb-2.5 rounded-[10px] bg-white px-3.5 py-2.5">
             <KilimoLogo width={180} height={50} />
           </View>

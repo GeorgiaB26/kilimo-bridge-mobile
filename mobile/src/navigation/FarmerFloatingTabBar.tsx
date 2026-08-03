@@ -10,8 +10,6 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Dashboard: 'home',
   Projects: 'leaf',
   Payments: 'wallet',
-  Messages: 'chatbubbles',
-  Notifications: 'notifications',
   Profile: 'person',
 };
 

@@ -15,6 +15,7 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { formatDueDate, formatProjectStatus } from '../../utils/greeting';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
+import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 
 type Tab = 'active' | 'completed';
 type Nav = NativeStackNavigationProp<FarmerProjectsStackParamList, 'ProjectsList'>;
@@ -66,7 +67,9 @@ export function FarmerProjectsScreen() {
     const shown = tab === 'active' ? active : done;
 
     return (
-      <View className="flex-1 bg-[#F5F5F5] p-4">
+      <View className="flex-1 bg-[#F5F5F5]">
+        <FarmerInboxHeaderBar />
+        <View className="flex-1 p-4">
         <Text className="text-[26px] font-bold text-[#1A4D3E]">Your program projects</Text>
         <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">Tap a project to see your 5 tasks and mark them complete</Text>
         {hierarchyError ? (
@@ -103,6 +106,7 @@ export function FarmerProjectsScreen() {
           }}
           ListEmptyComponent={<Text className="text-center text-sm leading-5 text-[#757575]">No program projects assigned yet.</Text>}
         />
+        </View>
       </View>
     );
   }
@@ -116,7 +120,9 @@ export function FarmerProjectsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-[#F5F5F5] p-4">
+    <View className="flex-1 bg-[#F5F5F5]">
+      <FarmerInboxHeaderBar />
+      <View className="flex-1 p-4">
       <Text className="text-[26px] font-bold text-[#1A4D3E]">Your Projects</Text>
       <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">
         {tab === 'active'
@@ -180,6 +186,7 @@ export function FarmerProjectsScreen() {
           </View>
         }
       />
+      </View>
     </View>
   );
 }
