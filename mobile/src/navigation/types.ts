@@ -16,14 +16,14 @@ export type FarmerProjectsStackParamList = {
 export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
-  Payments: undefined;
+  Payments: { highlightPaymentId?: string } | undefined;
   Profile: undefined;
 };
 
 export type FarmerRootStackParamList = {
-  MainTabs: undefined;
-  MessagesFlow: undefined;
-  NotificationsFlow: undefined;
+  MainTabs: NavigatorScreenParams<FarmerTabParamList> | undefined;
+  MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
+  NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
 };
 
 export type AdminTabParamList = {

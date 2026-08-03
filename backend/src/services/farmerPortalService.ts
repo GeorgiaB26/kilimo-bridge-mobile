@@ -72,6 +72,7 @@ export async function getFarmerDashboard(farmerId: string) {
     contacts,
     pendingAmount: pendingPayments?.total ?? 0,
     totalEarnings: totalEarnings?.total ?? 0,
+    paymentSummary: await getFarmerPaymentSummary(farmerId),
     activeProjects: sortedActive,
     nextProject: sortedActive[0] ?? null,
   };
@@ -82,10 +83,64 @@ export async function getFarmerProjects(farmerId: string) {
 }
 
 export async function getFarmerPayments(farmerId: string) {
-  return query(
+  const rows = await query<Record<string, unknown>>(
     `SELECT * FROM payments WHERE farmer_id = $1 ORDER BY created_at DESC`,
     [farmerId]
   );
+  return rows.map((row) => ({
+    ...row,
+    id: String(row.id),
+    project_name: String(row.description ?? row.project_name ?? 'Payment'),
+    payment_status: normalizePaymentStatusLabel(String(row.payment_status ?? '')),
+    amount: Number(row.amount ?? 0),
+    created_at: row.created_at ? String(row.created_at) : '',
+    mpesa_reference: row.mpesa_reference ? String(row.mpesa_reference) : undefined,
+    payment_method: row.payment_method ? String(row.payment_method) : 'M-Pesa',
+  }));
+}
+
+function normalizePaymentStatusLabel(status: string): string {
+  const lower = status.toLowerCase();
+  if (lower === 'transferred' || lower === 'paid') return 'Transferred';
+  if (lower === 'pending') return 'Pending';
+  if (lower === 'processing') return 'Processing';
+  return status || 'Pending';
+}
+
+export async function getFarmerPaymentSummary(farmerId: string) {
+  const transferred = await queryOne<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments
+     WHERE farmer_id = $1 AND lower(payment_status) IN ('transferred', 'paid')`,
+    [farmerId]
+  );
+
+  const pending = await queryOne<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments
+     WHERE farmer_id = $1 AND lower(payment_status) IN ('pending', 'processing')`,
+    [farmerId]
+  );
+
+  const expected = await queryOne<{ total: number }>(
+    `
+    SELECT COALESCE(SUM(t.payment_value_kes), 0)::float AS total
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    WHERE ft.farmer_id = $1
+      AND ft.status NOT IN ('approved', 'completed', 'submitted')
+    `,
+    [farmerId]
+  );
+
+  const transferredTotal = transferred?.total ?? 0;
+  const pendingTotal = pending?.total ?? 0;
+  const expectedTotal = expected?.total ?? 0;
+
+  return {
+    transferred: transferredTotal,
+    pending: pendingTotal,
+    expected: expectedTotal,
+    total: transferredTotal + pendingTotal + expectedTotal,
+  };
 }
 
 export async function getFarmerNotifications(userId: string) {

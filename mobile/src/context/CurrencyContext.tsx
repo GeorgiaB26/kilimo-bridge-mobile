@@ -28,6 +28,7 @@ interface CurrencyContextValue {
   selectCountry: (countryName: string) => Promise<void>;
   formatAmount: (amount: number) => string;
   formatPayment: (amount: number, method?: string) => string;
+  formatClaim: (amount: number, method?: string) => string;
   isReady: boolean;
 }
 
@@ -80,6 +81,11 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     [formatAmount]
   );
 
+  const formatClaim = useCallback(
+    (amount: number, method = 'M-Pesa') => `Claim ${formatAmount(amount)} via ${method}`,
+    [formatAmount]
+  );
+
   const value = useMemo<CurrencyContextValue>(
     () => ({
       country,
@@ -89,9 +95,10 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       selectCountry: applyCountry,
       formatAmount,
       formatPayment,
+      formatClaim,
       isReady,
     }),
-    [country, currencyInfo, applyCountry, formatAmount, formatPayment, isReady]
+    [country, currencyInfo, applyCountry, formatAmount, formatPayment, formatClaim, isReady]
   );
 
   return <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>;

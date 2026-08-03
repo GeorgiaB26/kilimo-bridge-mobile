@@ -4,6 +4,7 @@ import {
   getFarmerDashboard,
   getFarmerProjects,
   getFarmerPayments,
+  getFarmerPaymentSummary,
   claimPayment,
 } from '../services/farmerPortalService';
 import { getUserNotifications } from '../services/notificationService';
@@ -76,7 +77,9 @@ router.get(
       return;
     }
     logFarmerDataAccess(req, 'payments', req.user.farmerId);
-    res.json({ payments: await getFarmerPayments(req.user.farmerId) });
+    const payments = await getFarmerPayments(req.user.farmerId);
+    const summary = await getFarmerPaymentSummary(req.user.farmerId);
+    res.json({ payments, summary });
   })
 );
 

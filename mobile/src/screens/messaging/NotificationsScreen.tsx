@@ -19,6 +19,7 @@ import {
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { NOTIFICATION_CONFIG, formatTimeAgo } from '../../constants/notifications';
+import { navigateFromFarmerNotification } from '../../utils/farmerNotificationNavigation';
 import type { NotificationsStackParamList } from '../../navigation/types';
 
 type NotificationRow = {
@@ -28,6 +29,9 @@ type NotificationRow = {
   type: string;
   is_read: boolean;
   created_at: string;
+  context_type?: string | null;
+  context_id?: string | null;
+  action_url?: string | null;
 };
 
 type Nav = NativeStackNavigationProp<NotificationsStackParamList, 'NotificationsList'>;
@@ -77,6 +81,13 @@ export function NotificationsScreen() {
     } catch {
       await load();
     }
+  };
+
+  const handleNotificationTap = async (item: NotificationRow) => {
+    if (!item.is_read) {
+      await handleMarkRead(item.id);
+    }
+    navigateFromFarmerNotification(navigation, item);
   };
 
   const handleClearAll = async () => {
@@ -136,7 +147,7 @@ export function NotificationsScreen() {
             return (
               <Pressable
                 style={[styles.card, !item.is_read && styles.unreadCard]}
-                onPress={() => !item.is_read && handleMarkRead(item.id)}
+                onPress={() => handleNotificationTap(item)}
               >
                 <Text style={styles.icon}>{config.icon}</Text>
                 <View style={styles.cardBody}>

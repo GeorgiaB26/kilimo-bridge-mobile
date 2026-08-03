@@ -33,13 +33,14 @@ type DashboardNav = CompositeNavigationProp<
 export function FarmerDashboardScreen() {
   const navigation = useNavigation<DashboardNav>();
   const user = useAuthStore((s) => s.user);
-  const { formatAmount, formatPayment } = useCurrency();
+  const { formatAmount, formatClaim } = useCurrency();
   const [data, setData] = useState<{
     farmer?: { name: string; country?: string; status?: string; profileLocationPending?: boolean };
     pendingAmount: number;
     totalEarnings: number;
     activeProjects: FarmerProject[];
     nextProject: FarmerProject | null;
+    paymentSummary?: { transferred: number; pending: number; expected: number; total: number };
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -151,7 +152,7 @@ export function FarmerDashboardScreen() {
 
         <View className={`${marginTopPayment} mb-6 mx-4 items-center rounded-2xl bg-white p-6 shadow-sm elevation-4`}>
           <KBStatusChip label="Ready to Claim" variant="success" />
-          <Text className="mt-3 text-sm text-[#757575]">Pending payment</Text>
+          <Text className="mt-3 text-sm text-[#757575]">Earnings to claim</Text>
           <Text className="my-2 text-4xl font-extrabold text-[#D4AF6A]">{formatAmount(pending)}</Text>
           <Button
             className="mt-2 h-12 w-full rounded-xl bg-[#D4AF6A]"
@@ -162,7 +163,7 @@ export function FarmerDashboardScreen() {
               <ActivityIndicator color="#1A4D3E" />
             ) : (
               <Text className="font-semibold text-[#1A4D3E]">
-                {pending > 0 ? formatPayment(pending) : 'Claim Now'}
+                {pending > 0 ? formatClaim(pending) : 'Claim now'}
               </Text>
             )}
           </Button>
@@ -226,8 +227,10 @@ export function FarmerDashboardScreen() {
         ) : null}
 
         <View className="mx-4 mb-20 flex-row justify-between rounded-xl bg-white p-5">
-          <Text className="text-base text-[#333333]">Total earned</Text>
-          <Text className="text-xl font-bold text-[#D4AF6A]">{formatAmount(data?.totalEarnings ?? 0)}</Text>
+          <Text className="text-base text-[#333333]">Total earnings</Text>
+          <Text className="text-xl font-bold text-[#D4AF6A]">
+            {formatAmount(data?.paymentSummary?.total ?? data?.totalEarnings ?? 0)}
+          </Text>
         </View>
       </ScrollView>
 

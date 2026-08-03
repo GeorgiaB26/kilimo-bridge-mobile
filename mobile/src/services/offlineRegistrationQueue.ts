@@ -31,7 +31,7 @@ async function initDb(): Promise<void> {
   try {
     const { openDatabaseAsync } = await import('expo-sqlite');
     const database = await openDatabaseAsync(DB_NAME);
-    sqliteDb = database as OfflineSqliteDb;
+    sqliteDb = database as unknown as OfflineSqliteDb;
     await database.execAsync(`
       CREATE TABLE IF NOT EXISTS pending_registrations (
         id TEXT PRIMARY KEY NOT NULL,

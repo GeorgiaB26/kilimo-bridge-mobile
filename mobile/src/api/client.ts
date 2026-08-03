@@ -276,7 +276,24 @@ export async function getFarmerProjects() {
 
 export async function getFarmerPayments() {
   const { data } = await api.get('/farmer/payments');
-  return data;
+  return data as {
+    payments: Array<{
+      id: string;
+      project_name: string;
+      amount: number;
+      payment_status: string;
+      payment_method: string;
+      created_at: string;
+      mpesa_reference?: string;
+      description?: string;
+    }>;
+    summary?: {
+      transferred: number;
+      pending: number;
+      expected: number;
+      total: number;
+    };
+  };
 }
 
 export async function claimPayment(paymentId: string) {
@@ -343,6 +360,9 @@ export async function getAppNotifications(unreadOnly = false) {
       type: string;
       is_read: boolean;
       created_at: string;
+      context_type?: string | null;
+      context_id?: string | null;
+      action_url?: string | null;
     }>;
   };
 }

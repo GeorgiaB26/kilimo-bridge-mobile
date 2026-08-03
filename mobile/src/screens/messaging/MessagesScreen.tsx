@@ -19,6 +19,7 @@ import {
   startMessageThread,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
+import { useAuthStore } from '../../store/authStore';
 import { formatTimeAgo } from '../../constants/notifications';
 import type { MessagesStackParamList } from '../../navigation/types';
 
@@ -36,6 +37,8 @@ const POLL_MS = 10000;
 
 export function MessagesScreen() {
   const navigation = useNavigation<Nav>();
+  const user = useAuthStore((s) => s.user);
+  const isFarmer = user?.role === 'farmer';
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -111,14 +114,18 @@ export function MessagesScreen() {
 
       {showNew && (
         <View style={styles.contactPicker}>
-          <Text style={styles.pickerTitle}>Start a conversation</Text>
+          <Text style={styles.pickerTitle}>
+            {isFarmer ? 'Message your support team' : 'Start a conversation'}
+          </Text>
           {contacts.length === 0 ? (
             <Text style={styles.muted}>No contacts available yet.</Text>
           ) : (
             contacts.map((c) => (
               <Pressable key={c.userId} style={styles.contactRow} onPress={() => startChat(c.userId)}>
                 <Text style={styles.contactName}>{c.name}</Text>
-                <Text style={styles.contactRole}>{c.role}</Text>
+                <Text style={styles.contactRole}>
+                  {c.role === 'field_agent' ? 'Field Agent' : c.role === 'tech_support' ? 'Tech Support' : c.role}
+                </Text>
               </Pressable>
             ))
           )}
@@ -127,6 +134,15 @@ export function MessagesScreen() {
           </Pressable>
         </View>
       )}
+
+      {isFarmer && !showNew && threads.length === 0 && !loading ? (
+        <View style={styles.contactPicker}>
+          <Text style={styles.pickerTitle}>Start a conversation</Text>
+          <Pressable onPress={openNewChat} style={styles.contactRow}>
+            <Text style={styles.contactName}>Chat with your field agent or tech support</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {loading && threads.length === 0 ? (
         <ActivityIndicator style={styles.loader} color={COLORS.primary} />

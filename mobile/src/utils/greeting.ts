@@ -98,3 +98,8 @@ export function formatDueDate(dateStr?: string | null): string {
     return dateStr;
   }
 }
+
+/** Format any ISO or date string for display (no T00 timestamps). */
+export function formatDisplayDate(dateStr?: string | null): string {
+  return formatDueDate(dateStr);
+}

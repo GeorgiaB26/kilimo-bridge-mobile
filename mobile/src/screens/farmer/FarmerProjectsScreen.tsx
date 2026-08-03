@@ -12,7 +12,7 @@ import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { useCurrency } from '../../context/CurrencyContext';
-import { formatDueDate, formatProjectStatus } from '../../utils/greeting';
+import { formatProjectStatus, formatDisplayDate } from '../../utils/greeting';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
@@ -164,7 +164,7 @@ export function FarmerProjectsScreen() {
                 <KBProgressBar
                   progress={progress}
                   label={`${progress}% done`}
-                  rightLabel={item.due_date ? `Due ${formatDueDate(item.due_date)}` : undefined}
+                  rightLabel={item.due_date ? `Due ${formatDisplayDate(item.due_date)}` : undefined}
                   stacked
                 />
               ) : (

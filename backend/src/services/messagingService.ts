@@ -365,18 +365,21 @@ export async function listMessageableUsers(
       users.push({
         userId: contacts.fieldAgent.userId,
         name: contacts.fieldAgent.name,
-        role: 'agent',
+        role: 'field_agent',
       });
     }
-    const admins = await query<{ user_id: string; name: string; role: string }>(
-      `SELECT user_id, name, role::text AS role FROM users
-       WHERE role::text IN ('admin', 'super_admin', 'platform_admin', 'project_manager')
-       ORDER BY name LIMIT 10`
+    const techSupport = await queryOne<{ user_id: string; name: string }>(
+      `SELECT user_id, name FROM users
+       WHERE role::text IN ('platform_admin', 'super_admin')
+       ORDER BY CASE role::text WHEN 'platform_admin' THEN 0 WHEN 'super_admin' THEN 1 ELSE 2 END
+       LIMIT 1`
     );
-    for (const a of admins) {
-      if (!users.some((u) => u.userId === a.user_id)) {
-        users.push({ userId: a.user_id, name: a.name, role: a.role });
-      }
+    if (techSupport && !users.some((u) => u.userId === techSupport.user_id)) {
+      users.push({
+        userId: techSupport.user_id,
+        name: 'Tech Support',
+        role: 'tech_support',
+      });
     }
     return users;
   }
