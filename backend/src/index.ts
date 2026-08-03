@@ -23,6 +23,7 @@ import auditRoutes from './routes/audit';
 import hierarchyAdminRoutes from './routes/hierarchyAdmin';
 import aggregationRoutes from './routes/aggregation';
 import aggregationCentresRoutes from './routes/aggregationCentres';
+import uploadsRoutes from './routes/uploads';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
 import { getFarmerCount } from './db/database';
@@ -132,6 +133,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/webhooks', equityWebhookRouter);
+  app.use('/api/uploads', uploadsRoutes);
   app.use('/api', apiRoutes);
 
   app.get('/api/metrics/live', async (req, res) => {

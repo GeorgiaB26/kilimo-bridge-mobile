@@ -22,7 +22,7 @@ export function MembershipScreen({ navigation }: Props) {
   const [groups, setGroups] = useState<string[]>([]);
   const [centres, setCentres] = useState<CentreOption[]>([]);
   const [loadingCentres, setLoadingCentres] = useState(false);
-  const [centreError, setCentreError] = useState('');
+  const [centreWarning, setCentreWarning] = useState('');
 
   useEffect(() => {
     fetchReferenceData()
@@ -41,11 +41,12 @@ export function MembershipScreen({ navigation }: Props) {
   useEffect(() => {
     if (!formData.country || !formData.district) {
       setCentres([]);
+      setCentreWarning('');
       return;
     }
     let cancelled = false;
     setLoadingCentres(true);
-    setCentreError('');
+    setCentreWarning('');
     fetchAggregationCentresByLocation({
       country: formData.country,
       county: formData.district,
@@ -56,8 +57,11 @@ export function MembershipScreen({ navigation }: Props) {
         const list = (data.centres ?? []).map((c) => ({ id: c.centre_id ?? c.id, name: c.name }));
         setCentres(list);
         if (list.length === 0) {
-          setCentreError('No aggregation centres found for this location. Contact admin.');
-          updateForm({ aggregationCenter: '', aggregationCentreId: '' });
+          setCentreWarning(
+            'No aggregation centres are set up for this location yet. You can leave the centre blank or type a name and continue — admin can link a centre later.'
+          );
+          // Keep any manual name the agent already typed; clear only a stale picker id
+          updateForm({ aggregationCentreId: '' });
         } else if (!formData.aggregationCenter || !list.some((c) => c.name === formData.aggregationCenter)) {
           updateForm({
             aggregationCenter: list[0].name,
@@ -67,14 +71,18 @@ export function MembershipScreen({ navigation }: Props) {
       })
       .catch(() => {
         if (!cancelled) {
-          setCentreError('Could not load aggregation centres. Please try again.');
+          setCentreWarning(
+            'Could not load aggregation centres. You can leave the centre blank or type a name and continue.'
+          );
           setCentres([]);
         }
       })
       .finally(() => {
         if (!cancelled) setLoadingCentres(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [formData.country, formData.district, formData.subCounty]);
 
   const validate = () => {
@@ -82,11 +90,9 @@ export function MembershipScreen({ navigation }: Props) {
     if (!formData.membershipGroup) e.membershipGroup = 'Membership group is required';
     if (!formData.membershipType) e.membershipType = 'Membership type is required';
     if (!formData.currency) e.currency = 'Currency preference is required';
-    if (!formData.aggregationCenter || centres.length === 0) {
-      e.aggregationCenter = 'Aggregation centre is required';
-    }
+    // Aggregation centre is optional — soft warning only when none match the location
     setErrors(e);
-    return Object.keys(e).length === 0 && centres.length > 0;
+    return Object.keys(e).length === 0;
   };
 
   const centreNames = centres.map((c) => c.name);
@@ -119,14 +125,25 @@ export function MembershipScreen({ navigation }: Props) {
               aggregationCentreId: match?.id ?? '',
             });
           }}
-          required
           error={errors.aggregationCenter}
         />
       ) : (
-        <View className="mb-4 rounded-lg border border-[#FF9800] bg-[#FFF8E1] p-3">
-          <Text className="text-sm text-[#757575]">
-            {centreError || 'Select location on the previous step to load centres.'}
-          </Text>
+        <View className="mb-4">
+          {centreWarning || !formData.district ? (
+            <View className="mb-3 rounded-lg border border-[#FF9800] bg-[#FFF8E1] p-3">
+              <Text className="text-sm text-[#757575]">
+                {centreWarning || 'Select location on the previous step to load centres.'}
+              </Text>
+            </View>
+          ) : null}
+          <FormField
+            label="Aggregation Centre (optional)"
+            value={formData.aggregationCenter ?? ''}
+            onChangeText={(aggregationCenter) =>
+              updateForm({ aggregationCenter, aggregationCentreId: '' })
+            }
+            placeholder="Leave blank or type a centre name"
+          />
         </View>
       )}
       <PickerField

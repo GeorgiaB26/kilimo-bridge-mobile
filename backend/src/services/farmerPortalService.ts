@@ -7,6 +7,7 @@ import {
   getFarmerProjectSummaries,
 } from './farmerProgramService';
 import { getFarmerSupportContacts } from './farmerHelpRequestService';
+import { resolvePhotoUrlForDisplay } from './r2StorageService';
 
 export async function getFarmerDashboard(farmerId: string) {
   const farmer = await queryOne(
@@ -45,11 +46,17 @@ export async function getFarmerDashboard(farmerId: string) {
     aggregation_center?: string | null;
     district: string;
     sub_county: string;
+    picture_url?: string | null;
   };
+
+  const picture_url = await resolvePhotoUrlForDisplay(
+    typeof farmerRecord.picture_url === 'string' ? farmerRecord.picture_url : null
+  );
 
   return {
     farmer: {
       ...farmerRecord,
+      picture_url,
       profileLocationPending: isLocationPending(farmer as { district: string; sub_county: string }),
       aggregation_center:
         farmerRecord.aggregation_center ??

@@ -13,6 +13,7 @@ import {
 import { extractApiError } from '../../utils/feedback';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
+import { uploadPhotoToR2 } from '../../services/uploadToR2';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 
 type Route = RouteProp<FarmerProjectsStackParamList, 'HierarchyTaskDetail'>;
@@ -34,7 +35,7 @@ export function FarmerHierarchyTaskDetailScreen() {
   } | null>(null);
   const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [localPhotoReady, setLocalPhotoReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [wasSubmitted, setWasSubmitted] = useState(false);
@@ -43,7 +44,12 @@ export function FarmerHierarchyTaskDetailScreen() {
     try {
       const data = await getFarmerHierarchyTask(farmerTaskId);
       setTask(data);
-      if (data.photo_evidence_url?.startsWith('data:') || data.photo_evidence_url?.startsWith('file:')) {
+      setLocalPhotoReady(false);
+      if (
+        data.photo_evidence_url?.startsWith('data:') ||
+        data.photo_evidence_url?.startsWith('file:') ||
+        data.photo_evidence_url?.startsWith('http')
+      ) {
         setPhotoUri(data.photo_evidence_url);
       }
     } catch {
@@ -84,11 +90,11 @@ export function FarmerHierarchyTaskDetailScreen() {
       return;
     }
     const result = useCamera
-      ? await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.7, base64: true })
-      : await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.7, base64: true });
+      ? await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.7 })
+      : await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.7 });
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
-      setPhotoBase64(result.assets[0].base64 ?? null);
+      setLocalPhotoReady(true);
     }
   };
 
@@ -99,10 +105,21 @@ export function FarmerHierarchyTaskDetailScreen() {
   };
 
   const submit = async () => {
+    if (!photoUri || !localPhotoReady) {
+      Alert.alert('Photo required', 'Please take or choose a photo before submitting.');
+      return;
+    }
     setSubmitting(true);
     try {
-      const photo_url = photoBase64 ? `data:image/jpeg;base64,${photoBase64}` : photoUri ?? undefined;
-      await submitFarmerTaskCompletion(farmerTaskId, { notes: notes.trim() || undefined, photo_url });
+      const uploaded = await uploadPhotoToR2({
+        purpose: 'task_evidence',
+        localUri: photoUri,
+        farmerTaskId,
+      });
+      await submitFarmerTaskCompletion(farmerTaskId, {
+        notes: notes.trim() || undefined,
+        photo_url: uploaded.objectKey,
+      });
       await load();
       Alert.alert('Submitted for approval', 'You will receive an SMS when your manager approves this task.');
     } catch (err: unknown) {

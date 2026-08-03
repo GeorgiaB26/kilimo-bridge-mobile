@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
 import { submitFarmerTaskCompletion } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
+import { uploadPhotoToR2 } from '../../services/uploadToR2';
 
 const MIN_NOTES_LENGTH = 50;
 
@@ -28,14 +29,12 @@ interface Props {
 export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: Props) {
   const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [picking, setPicking] = useState(false);
 
   const reset = () => {
     setNotes('');
     setPhotoUri(null);
-    setPhotoBase64(null);
   };
 
   const close = () => {
@@ -59,18 +58,15 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
             allowsEditing: true,
             aspect: [4, 3],
             quality: 0.7,
-            base64: true,
           })
         : await ImagePicker.launchImageLibraryAsync({
             allowsEditing: true,
             aspect: [4, 3],
             quality: 0.7,
-            base64: true,
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
           });
       if (!result.canceled && result.assets[0]) {
         setPhotoUri(result.assets[0].uri);
-        setPhotoBase64(result.assets[0].base64 ?? null);
       }
     } finally {
       setPicking(false);
@@ -79,7 +75,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
   const submit = async () => {
     if (!task) return;
-    if (!photoUri && !photoBase64) {
+    if (!photoUri) {
       Alert.alert('Photo required', 'Please upload a photo (JPEG or PNG) of your completed work.');
       return;
     }
@@ -89,12 +85,14 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
     }
     setSubmitting(true);
     try {
-      const photo_url = photoBase64
-        ? `data:image/jpeg;base64,${photoBase64}`
-        : photoUri ?? undefined;
+      const uploaded = await uploadPhotoToR2({
+        purpose: 'task_evidence',
+        localUri: photoUri,
+        farmerTaskId: task.id,
+      });
       await submitFarmerTaskCompletion(task.id, {
         notes: notes.trim(),
-        photo_url,
+        photo_url: uploaded.objectKey,
       });
       reset();
       onSubmitted();

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
+import { resolvePhotoUrlForDisplay } from './r2StorageService';
 
 export interface AgentPersonalTask {
   id: string;
@@ -128,11 +129,14 @@ export async function listRegionFarmerTasks(region: string, district?: string): 
     `,
     params
   );
-  return rows.map((row) => ({
-    ...row,
-    status: fromDbTaskStatus(row.status),
-    source: 'farmer' as const,
-  }));
+  return Promise.all(
+    rows.map(async (row) => ({
+      ...row,
+      photo_evidence_url: await resolvePhotoUrlForDisplay(row.photo_evidence_url),
+      status: fromDbTaskStatus(row.status),
+      source: 'farmer' as const,
+    }))
+  );
 }
 
 export async function listAgentPersonalTasks(agentUserId: string): Promise<AgentPersonalTask[]> {

@@ -10,6 +10,7 @@ import { assignAggregationCentre } from './aggregationCentreService';
 import { linkFarmerToUser } from './userService';
 import { PENDING_LOCATION_LABEL } from '../../../shared/src/constants';
 import { enrollFarmerInProgramProjects, getFarmerProjectSummaries } from './farmerProgramService';
+import { resolvePhotoUrlForDisplay } from './r2StorageService';
 
 /** Postgres farmer_status enum — agent field registrations await PM review. */
 function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean): string {
@@ -254,8 +255,11 @@ export async function getFarmerById(farmerId: string) {
   if (!farmer) return null;
 
   const projects = await getFarmerProjectSummaries(farmerId);
+  const picture_url = await resolvePhotoUrlForDisplay(
+    typeof farmer.picture_url === 'string' ? farmer.picture_url : null
+  );
 
-  return { ...farmer, projects };
+  return { ...farmer, picture_url, projects };
 }
 
 /** Audit + PM review queue entry after agent registers a farmer. */

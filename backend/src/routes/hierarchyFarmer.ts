@@ -7,6 +7,7 @@ import {
   submitFarmerTask,
 } from '../services/hierarchyService';
 import { getAdminNotifyPhone, sendSms } from '../services/notificationService';
+import { resolvePhotoUrlForDisplay } from '../services/r2StorageService';
 
 const router = Router();
 router.use(authenticate);
@@ -28,7 +29,9 @@ function farmerIdOr400(req: Request, res: Response): string | null {
   return farmerId;
 }
 
-function mapFarmerTaskRow(row: Record<string, unknown>) {
+async function mapFarmerTaskRow(row: Record<string, unknown>) {
+  const stored =
+    typeof row.photo_evidence_url === 'string' ? row.photo_evidence_url : null;
   return {
     id: row.id,
     name: row.name,
@@ -39,7 +42,8 @@ function mapFarmerTaskRow(row: Record<string, unknown>) {
     description: row.description,
     sequence_order: row.task_order,
     task_order: row.task_order,
-    photo_url: row.photo_evidence_url,
+    photo_url: await resolvePhotoUrlForDisplay(stored),
+    photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
     notes: row.notes,
     approval_date: row.approved_date,
     rejection_reason: row.rejection_reason,
@@ -59,7 +63,7 @@ router.get(
       string,
       unknown
     >[];
-    res.json({ tasks: rows.map(mapFarmerTaskRow) });
+    res.json({ tasks: await Promise.all(rows.map((row) => mapFarmerTaskRow(row))) });
   })
 );
 
@@ -133,7 +137,7 @@ router.get(
       res.status(403).json({ error: 'Not your task' });
       return;
     }
-    res.json(mapFarmerTaskRow(task as Record<string, unknown>));
+    res.json(await mapFarmerTaskRow(task as Record<string, unknown>));
   })
 );
 
@@ -162,7 +166,7 @@ router.post(
     res.json({
       status: 'submitted',
       message: 'Task submitted for approval',
-      task: mapFarmerTaskRow(updated as Record<string, unknown>),
+      task: await mapFarmerTaskRow(updated as Record<string, unknown>),
     });
   })
 );
@@ -191,7 +195,19 @@ router.get(
     }
     const status = req.query.status as string | undefined;
     const program_project_id = req.query.program_project_id as string | undefined;
-    res.json({ tasks: await listFarmerTasks(farmerId, { status, program_project_id }) });
+    const rows = (await listFarmerTasks(farmerId, { status, program_project_id })) as Record<
+      string,
+      unknown
+    >[];
+    const tasks = await Promise.all(
+      rows.map(async (row) => ({
+        ...row,
+        photo_evidence_url: await resolvePhotoUrlForDisplay(
+          typeof row.photo_evidence_url === 'string' ? row.photo_evidence_url : null
+        ),
+      }))
+    );
+    res.json({ tasks });
   })
 );
 
@@ -208,7 +224,12 @@ router.get(
       res.status(403).json({ error: 'Not your task' });
       return;
     }
-    res.json(task);
+    const photo_evidence_url = await resolvePhotoUrlForDisplay(
+      typeof (task as { photo_evidence_url?: string }).photo_evidence_url === 'string'
+        ? (task as { photo_evidence_url: string }).photo_evidence_url
+        : null
+    );
+    res.json({ ...task, photo_evidence_url });
   })
 );
 
@@ -234,7 +255,12 @@ router.post(
     if (adminPhone) {
       sendSms(adminPhone, `Farmer submitted task "${task.name}" for approval. Review in Kilimo Bridge admin.`);
     }
-    res.json(updated);
+    const photo_evidence_url = await resolvePhotoUrlForDisplay(
+      typeof (updated as { photo_evidence_url?: string })?.photo_evidence_url === 'string'
+        ? (updated as { photo_evidence_url: string }).photo_evidence_url
+        : null
+    );
+    res.json({ ...(updated as object), photo_evidence_url });
   })
 );
 
