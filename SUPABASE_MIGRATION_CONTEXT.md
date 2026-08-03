@@ -553,3 +553,147 @@ In addition to the outstanding items listed in Part 10, the following are open a
 | `program_projects` district vs. region scoping inconsistency | Known, accepted | This table has a `region` column but no `district` column, so `admin`-role RLS policies for it use region scoping while every other district-scoped table uses district; would need a schema migration to fully align, not currently blocking anything |
 | Identity verification via a third-party KYC aggregator (e.g. Smile ID) | Under discussion, not yet decided or built | Proposed as a first-pass automated check (matching a farmer's ID number/name against government records) to run alongside, not replace, the existing in-person field-agent verification step. Open questions before proceeding: actual per-verification pricing at real farmer-count scale, confirmation of Uganda coverage quality (not just Kenya), whether "Basic KYC" (name/DOB match) or full "Biometric KYC" (live selfie match) is actually needed, and a formal data processing agreement given real farmer national ID numbers would be sent to a third party |
 
+
+---
+
+## Part 20 — Session: Georgia's Field Agent Platform work, and coordinating a third contributor
+
+On 3 August 2026, a pull request (#33, `GeorgiaB26/cursor/field-agent-platform-dbb0`, "Field Agent Platform: dashboard, 5-tab nav, tasks, profile") was merged into `feature/postgres-supabase-migration_james_work`. This was Georgia's own, independently-run Cursor session, building a new field-agent-facing dashboard and navigation structure for the mobile app — separate work from anything in this document up to this point, done in parallel by a second person now actively contributing to the same codebase.
+
+### The build failure this caused, and why
+
+The merge introduced a Render deploy failure (`Exited with status 2 while building your code`), with three TypeScript errors:
+1. Several new audit-log action strings used by the new code (`banking.verify_farmer_id`, `farmer.registration_review`, `farmer.pm_approved_for_field`, `farmer.field_verified`, `farmer.field_rejected`) were not present in the existing `AuditAction` type, so the compiler correctly rejected them as invalid.
+2. A genuine ordering bug in `farmerService.ts` — a variable (`registeredByAgentId`) was referenced before it was actually declared/assigned a few lines later in the same function.
+3. A type mismatch in `farmerHelpRequestService.ts` — an object literal included a `name` property against a type that, due to a `| null` union being combined with `Omit<...>` incorrectly, had silently dropped that property from its allowed shape.
+
+All three were fixed (in that order): the new action names were added to `AuditAction`, the variable ordering was corrected without changing the intended logic, and the type was fixed by restructuring so `Omit` was no longer applied across a nullable union. The fix was initially pushed to Georgia's own branch (`cursor/field-agent-platform-dbb0`), then cherry-picked onto `feature/postgres-supabase-migration_james_work` (the branch Render actually deploys from) once it was noticed the fix had landed on the wrong branch for deployment purposes. This is a concrete, useful illustration of the coordination risk described in Part 18 of this document: a third person's independently-run AI coding session, merged in without a live conversation about it, produced a real (if small and quickly fixed) build break — exactly the class of issue this document's coordination practices exist to catch early.
+
+### Practical outcome
+
+Because the fix was made to the shared branch after the merge, Georgia will receive both her own original work and the fix together on her next `git pull` — nothing was lost or needed to be redone by her.
+
+---
+
+## Part 21 — Cloudflare R2 object storage: replacing base64-in-Postgres photo storage
+
+### Why this was needed
+
+Prior to this work, the only two image-bearing columns in the schema (`farmers.picture_url`, `farmer_tasks.photo_evidence_url`) were being populated with full base64-encoded `data:image/jpeg;base64,...` strings, stored directly as Postgres `TEXT`. This is a real, structural problem at any meaningful scale — every query touching these tables (including ones that never need the photo itself) has to move megabytes of encoded image data, database storage costs grow far faster than necessary, and Postgres is not designed to serve as a binary file store. This was true from the very first migration (Part 3 onward) but was not urgent to fix immediately, since almost no real photo data existed yet — confirmed directly by checking the live database before this work began: zero non-empty `farmers.picture_url` values, and only 3 non-empty `farmer_tasks.photo_evidence_url` values, of which only one was a genuine embedded photo (the other two were placeholder `example.com` test URLs from earlier testing sessions). This was, in effect, a greenfield opportunity to fix the pattern before real farmer data accumulated in it.
+
+### The architecture chosen: pre-signed URLs, not a server relay, for the primary (native) path
+
+A Cloudflare R2 bucket (`kilimo-bridge-photos`) was created, in a region near the existing Supabase project. A dedicated, narrowly-scoped API token was created for it — Object Read & Write permission, restricted to only this one bucket, not the Cloudflare account's other resources — and its four credentials (Account ID, Access Key ID, Secret Access Key, Endpoint) plus the bucket name were added to `backend/.env` as `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, `CLOUDFLARE_R2_BUCKET_NAME`, `CLOUDFLARE_R2_ENDPOINT`.
+
+The intended pattern, and the one used by the native mobile app: the phone asks Express for a pre-signed upload URL (`POST /api/uploads/presign`), Express (using `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`, since R2 is S3-API-compatible) generates a short-lived signed `PUT` URL directly against R2 and returns it, the phone then uploads the actual image bytes directly to R2 using that URL — Express's own server never touches the image bytes on this path. The database columns (`picture_url`, `photo_evidence_url`) now store an **object key** (e.g. `farmers/registration/{uuid}.jpg`), not a URL and not base64 data. For display, API responses resolve that stored object key into a short-lived signed **read** URL at the moment the data is returned, rather than storing an expiring URL in the database.
+
+**Chosen expiry windows**: 10 minutes for upload (`PUT`) URLs, 1 hour for read (`GET`) URLs — the longer read window specifically because photos are often displayed on screens that stay open well after the data was first loaded (a farmer profile, a task detail view), and a screen left open past the window simply re-fetches to get a fresh URL rather than showing a broken image.
+
+**The bucket is private**, not public — deliberately, given these are identity/verification-adjacent photos (farmer registration photos) and field evidence, not casual public content. All display access goes through the short-lived signed-read mechanism described above, never a permanently public URL.
+
+### The web-testing CORS problem, and the deliberate decision to keep a relay path for it
+
+When testing via `npx expo start --web` (a browser), direct browser-to-R2 uploads initially failed with a CORS error — the R2 bucket had no CORS policy permitting requests from a browser origin at all. Two things were done about this:
+
+1. **A dedicated relay endpoint was added to Express** (`POST /api/uploads/direct`) specifically for the web-testing scenario: the browser uploads the image to Express as normal (well within Express's existing CORS configuration), and Express itself performs the actual R2 upload server-side using the AWS SDK, then returns the object key. The web build of the mobile app uses this path; the native app (a real phone or simulator) does not, since browser-only CORS restrictions don't apply there and it uses the direct pre-signed-URL path instead.
+2. **Separately, R2's own CORS policy was properly configured** in the Cloudflare dashboard directly (this specific action cannot be performed via the scoped API token — `PutBucketCors`/`GetBucketCors` return `AccessDenied` for it; it requires the actual Cloudflare account owner acting through the dashboard), allowing the known web origins (`localhost:8081`/`8082`/`8083`, and later the Lovable admin panel's deployed domain) to perform direct `PUT`/`GET`/`DELETE` requests.
+
+Once R2's own CORS was properly configured, the Express relay technically became unnecessary for the CORS reason that originally created it — direct-to-R2 would now also work from a browser. **A deliberate decision was made to keep the relay path anyway**, rather than remove it as "now-redundant cleanup." The reasoning: the scoped API token's inability to read/manage R2's own CORS settings means any *future* new web origin (a new Metro port, a new deployment domain) requires someone to remember to manually add it to R2's CORS list via the dashboard — an easy, silent thing to forget, which would then fail with a confusing, hard-to-diagnose `Failed to fetch` error, similar to the original discovery of this problem. The relay path is a small, known, and currently-cheap cost (slightly more Express server load, a base64-inflated payload of roughly 33% larger than the raw file) in exchange for a permanently reliable web upload path that doesn't depend on anyone remembering an external configuration step. The outdated code comment claiming "R2 bucket has no CORS" (no longer true) was corrected to instead explain this deliberate reasoning, so a future reader doesn't mistake the relay for leftover, removable workaround code.
+
+### A genuine bug found and fixed along the way: offline-queue misclassification
+
+While debugging the initial CORS failure, it was discovered that the app's offline-registration-queue logic (which exists to preserve a farmer's registration data locally if a genuine network/connectivity failure occurs, so nothing is lost) was incorrectly treating **any** failure during the R2 upload step as evidence of "no internet connection," and silently routing the registration into the offline queue rather than surfacing the real error. This meant a genuine, fixable bug (the CORS block) was being masked as an unrelated, misleading symptom ("failed to fetch," presented as if offline) — a real risk, since a field agent seeing their registration "saved for later, will retry when back online" would have no reason to suspect there was actually a live, persistent bug causing every attempt to fail the same way, indefinitely, regardless of connectivity. This was fixed: photo/R2 upload failures are no longer treated as offline-network failures and now surface as real, visible errors; the offline queue is now reserved specifically for genuine failures to reach the Express backend itself.
+
+### Task evidence and farmer profile photo uploads — the other two surfaces
+
+**Task evidence photo submission** (farmer submitting proof of completing a task) uses the same `uploadToR2.ts` mobile-side helper and the same presign/upload pattern, with object keys following a `tasks/...` pattern. This was confirmed genuinely working end-to-end via real, hands-on testing: a rejected task ("Site Preparation," previously used in earlier testing) was resubmitted with a real photo, the resulting file was confirmed to exist in R2 at a real, non-trivial file size, and the task correctly returned to a "submitted for approval" state.
+
+During this same testing, a **separate real bug** was found and fixed: the task-submission modal enforces a genuine minimum-length requirement on the notes field (50 characters) as a real, existing validation rule, but on failure it was calling `Alert.alert`, which does not reliably display anything on Expo's web build — meaning the Submit button appeared to simply do nothing, with no indication of what was wrong or required. This was fixed with a visible inline error message and a live character counter, and by switching to a cross-platform-reliable message display mechanism instead of `Alert.alert` for this case.
+
+**Farmer profile photo upload** (`FarmerProfileScreen.tsx`, which previously only displayed an existing photo with no way to change it) was built as a new feature, following an explicit-confirm-step pattern (matching the existing registration `PhotoScreen` flow, deliberately not an instant upload-on-picker-close, to avoid a bad photo being uploaded unrecoverably on a poor connection): tap the avatar → pick a photo → see a local-only preview with the existing photo still unchanged → explicit "Save photo" (uploads to R2, then calls a new endpoint, `PATCH /farmer/profile/photo`, to update `farmers.picture_url`) or "Retake"/"Cancel" (discards the local preview, no change made). This required a new R2 upload "purpose" (`farmer_profile`) gated by a permission a farmer actually has on their own record (not the `farmers.write` permission used by registration, which only agents/admins hold) — a real, easy-to-miss permission-scoping detail that was specifically caught and corrected during planning before being built, rather than discovered as a bug afterward. **As of this writing, this feature has been built and passes `tsc --noEmit`, but has not yet been personally, hands-on tested** — it remains an open item (see Part 24).
+
+### Dead code found and removed during this work
+
+`FarmerHierarchyTaskDetailScreen` was found to be genuinely dead code — a full-screen task detail/submission view from an earlier point in the app's design, before task submission moved to the current card-list-plus-modal pattern (`FarmerProjectTasksSection` / `FarmerTaskSubmitModal`). Nothing in the app navigated to it any longer; it was investigated (confirming it had no unique capability the current pattern lacked, other than the ability to display a previously-submitted evidence photo, which nobody could reach anyway since the screen was unreachable) and then deleted, along with its navigator registration. Separately, the task cards themselves were found to not respond to a tap on the card body at all — only a specific "Open"/"Resubmit" button worked, which was not an obvious affordance to a real user. This was fixed by making the whole card tappable (for tasks in an openable state), and, as a genuine improvement over what the deleted screen offered, submitted/approved task cards now display the farmer's previously-submitted evidence photo directly on the card.
+
+---
+
+## Part 22 — A corrected, complete account of what Lovable has actually changed in the production database
+
+Earlier drafts of this document (see Part 18) noted that Lovable's own migration files exist as the record of "what Lovable did" to the database, separately from Cursor's own migration history — but did not contain a verified, complete list of what that actually was. During this session, that full account was obtained directly from Lovable, and is recorded here for accuracy, correcting and completing what was previously only inferred.
+
+**Important clarification on dates**: Lovable's very first five migration files (29–30 July 2026) ran against the **original Lovable Cloud database** — the separate, disconnected prototype database described in Part 13 — not against the real production project (`tzaipijebibisgkwrdnz`). Everything below reflects only what was actually run against the real, connected production database, from 1 August 2026 onward (i.e., after the reconnection work described in Part 13 was completed).
+
+### Tables Lovable created in the real production database
+
+| Table | Created | Purpose (as far as established) |
+|---|---|---|
+| `locations` | 2 Aug | Referenced but distinct from the pre-existing, unused `locations` concept described in Part 3 — worth confirming whether these are the same table or a genuine re-creation |
+| `invitations` | 2 Aug | Not yet reviewed in this document — worth a follow-up description of its actual schema/purpose |
+| `program_project_agents` | 3 Aug | Appears to be an agent-to-project assignment table, analogous in spirit to `program_project_farmers` |
+| `registration_reviews` | 3 Aug | Has RLS policies; likely supports the farmer-registration review/approval workflow visible in the admin portal |
+| `resource_documents` | 3 Aug | Backs the admin portal's "Documents/Resources" feature (Part 17's audit noted this screen existed and worked) |
+| `messages` | 3 Aug | A messaging table — **note this is a distinct, separate table from the `message_threads`/`message_thread_*` set created independently by the mobile/Express side (see Part 23) — these are two different messaging implementations that currently coexist, built by two different tools without coordination** |
+| `notification_settings` | 3 Aug | Per-user notification preferences; has an RLS policy (`notification_settings_own`) scoping each user to their own row |
+
+All seven were created with explicit `GRANT`s, RLS enabled, and real policies from the outset — unlike the six tables described in Part 23 below, which were created without RLS or policies at all until this same session's later work.
+
+### Columns Lovable added to existing tables
+
+- **`users.avatar_url`** and **`users.email`** — both added 3 August, specifically for the admin portal's Profile/Documents work (not, as briefly assumed earlier in this same session, part of the original schema re-point work described in Part 13 — that assumption was incorrect and has been corrected here). `email` is nullable and **not** unique, with no index.
+- **`farmers.profession`**, **`farmers.currency`** — 2 August
+- **`farmers.import_errors`**, **`farmers.import_status`**, **`farmers.imported_date`**, **`farmers.last_error_check_date`** — 3 August, presumably supporting a more detailed CSV-import error/status tracking capability than what this document's Part 5 originally described
+- **`program_projects.description`**
+- **`tasks.start_date`**; `tasks.program_project_id` was also made nullable, and `tasks.task_order` was given a default value of 1
+
+### RLS, policies, functions, and other database objects Lovable added
+
+- The original, large RLS-enabling pass described in Part 14 (10 `SECURITY DEFINER` helper functions including `app_role()`, `is_platform()`, `can_reach_farmer()`; RLS enabled with `GRANT`s across the original 19 tables; roughly 40 district-scoped policies) — this was, and remains, correctly documented in Part 14.
+- Later, smaller policy additions: `notif_staff_send`, `audit_self_read`, `audit_district_admin_read`, plus policies for each of the seven newly-created tables listed above, plus storage-level policies on the `farmer-photos` and `resources` Supabase Storage buckets (used before/alongside the R2 migration described in Part 21).
+- Functions/triggers: `set_updated_at` (a generic updated-timestamp trigger helper), and confirmation that the payment-approval trigger (`create_payment_on_task_approval`, with its `SECURITY DEFINER` fix — see Part 15) is Lovable-attributed infrastructure that remains live and correctly firing. Also `send_tech_support_message`.
+- **Realtime**: `messages` and `notifications` were added to Supabase's `supabase_realtime` publication, meaning changes to these two tables can be subscribed to live (e.g. for a real-time chat/notification UI) — a capability not previously mentioned anywhere in this document.
+
+### A stale, contradictory Cursor-side migration file, found and worth flagging
+
+Cursor's own migration file `002` (in `backend/migrations/`) contains a statement to `DROP` the task-approval payment trigger/function. This does **not** match the live database, where that trigger remains active and correctly functioning (per Part 15). This file was either never applied, or something reverted its effect — either way, it is now a dangerous, stale artifact: if anyone were to run it against the live database in the future, it would break the working payment-automation trigger. **This file should be deleted or unambiguously marked as obsolete/do-not-run** — this remains an open action item (see Part 24).
+
+---
+
+## Part 23 — A corrected, complete account of what has been added from the mobile/Express side, outside this document's earlier migration numbering
+
+Separately from Lovable's changes above, the live database was found to contain several tables not created by Lovable and not previously described in this document's earlier parts, presumably created via Cursor/Express-side migration files or `ensure*`-style runtime DDL (code that runs automatically on backend startup to create tables if they don't already exist, similar in spirit to the bootstrap/seed logic described in Part 4's Bootstrap domain discussion) — genuinely originating from mobile/backend-side work, not Lovable, confirmed by Lovable explicitly stating none of these appear anywhere in its own migration history.
+
+### Tables
+
+- **`farmer_help_requests`** — a farmer-support-request mechanism, with an associated `send_tech_support_message` function noted as Lovable-created, suggesting some cross-tool interplay around this specific feature that is not fully documented here
+- **`agent_tasks`** — appears to be the backing table for the new Field Agent Platform's personal/agent-assigned task list described in Part 20 (the "+ Add task to your profile" feature observed during testing)
+- **`message_threads`**, **`message_thread_participants`**, **`message_thread_messages`**, **`message_read_receipts`** — a complete, separate messaging system, distinct from Lovable's own `messages` table described in Part 22. **This is a genuine, real instance of the exact uncoordinated-parallel-work risk this document exists to prevent**: two different tools, working independently, appear to have each built their own, different messaging implementation, without either being aware of the other's. This has not yet been investigated further (which one, if either, is actually in active use; whether they should be reconciled into one) and is recorded here as a known, open discrepancy rather than something resolved.
+
+Additionally, `notifications` (an original, documented table from Part 3) had several columns added via runtime `ensure*` logic rather than a discrete, reviewable migration file: `context_type`, `context_id`, `action_url`, `priority` (default `'normal'`). Because this logic runs automatically whenever the Express backend starts up against the production `DATABASE_URL`, this is a category of schema change that can occur without anyone having deliberately run or reviewed a specific migration at a specific time — worth being aware of as a distinct pattern from the more deliberate, file-based migrations used elsewhere.
+
+### RLS remediation carried out this session
+
+At the point of investigation, six tables were found with a real, if fortunately non-critical, security gap: `agent_tasks` and all four `message_thread_*` tables had RLS entirely disabled; `farmer_help_requests` had RLS enabled but zero policies (meaning correctly deny-all, but with no legitimate path through it either). Critically, direct verification of table grants showed that **none of the six had any privileges granted to `anon`, `authenticated`, or `service_role`** — meaning they were not, in practice, reachable through Supabase's public Data API (PostgREST) at all, and were only ever accessible via Express's direct, owner-role Postgres connection (which bypasses RLS entirely regardless, per Part 14). This was therefore correctly characterized as a **latent hazard rather than a live, active exposure**: the risk was that someone might add a `GRANT` to one of these tables in the future (for a legitimate reason, e.g. wanting the admin portal to read from `agent_tasks`) without also ensuring proper RLS policies existed first, at which point the table would become instantly, fully open.
+
+This was remediated by Lovable during this session: RLS was enabled on the five tables missing it, and real, participant/owner-scoped policies were written and applied to all six (participant-scoped for the four message-thread tables, via a new `is_thread_participant()` `SECURITY DEFINER` helper function specifically written to avoid a recursive-policy problem between `message_threads` and `message_thread_participants`; farmer/assigned-agent-scoped for `farmer_help_requests`; agent-owned for `agent_tasks`). Explicitly confirmed as part of this fix: no `GRANT` statements were added as a side effect (the tables remain exactly as unreachable via the Data API as before — this was a defensive, forward-looking fix, not a change that newly exposes anything), and `FORCE ROW LEVEL SECURITY` was deliberately left off everywhere, consistent with Part 14's established architecture, so Express's owner-role connection remains entirely unaffected by any of this.
+
+### A verified non-issue
+
+A concern was raised that Lovable's mention of adding "a partial unique index on `payments.farmer_task_id`" might indicate a duplicate of the index already created during the original migration (Part 4's discussion of the `payments_farmer_task_id_key` partial unique index, added specifically to prevent duplicate payments on a reject/approve/reject/approve cycle). This was directly checked against the live database and confirmed to be a non-issue: only one such index exists, under its original name, with no duplicate.
+
+---
+
+## Part 24 — Updated outstanding work list (supersedes Part 19)
+
+| Item | Status | Notes |
+|---|---|---|
+| Task evidence photo upload via R2 | ✅ Done, verified | Confirmed via real hands-on testing during this session (Part 21) |
+| Farmer Profile photo upload via R2 | ⚠️ Built, not personally tested | `tsc --noEmit` passes; a 9-step manual test sequence has been provided but not yet walked through by a human. Given the permission-scoping subtlety involved (a farmer's own-record access, distinct from agent/admin registration permissions), this is worth genuinely testing before considering it reliable, not just assuming a clean compile means it works |
+| Dead `FarmerHierarchyTaskDetailScreen` / unwired task card taps | ✅ Done | Screen deleted, cards now tappable, evidence photo now shown on submitted/approved cards (Part 21) |
+| Express-relay (web) vs. direct-to-R2 (native) upload paths | ✅ Resolved — deliberate decision, not a bug | Both paths are intentionally kept; the relay is retained as a reliable fallback for web specifically because the scoped R2 API token cannot manage the bucket's own CORS settings, making manual dashboard updates an easy thing to forget for future new origins (Part 21) |
+| Schema/RLS drift between Lovable and Cursor's own records | ✅ Resolved for this session's scope | A full, verified account of both tools' actual changes has been obtained and recorded (Parts 22–23); the latent RLS gap on 6 tables has been properly fixed and verified |
+| Stale, contradictory Cursor migration file `002` (would drop the working payment trigger if ever run) | ⏳ Not yet done | Identified during this session's audit (Part 22); should be deleted or clearly marked obsolete to prevent future accidental damage |
+| Two separate, uncoordinated messaging implementations (Lovable's `messages` table vs. the mobile/Express side's `message_threads`/`message_thread_*` set) | ⏳ Not yet investigated | A genuine, real instance of the parallel-work risk this document exists to guard against; needs investigation into which (if either, or both) is actually in active use, and whether/how to reconcile them (Part 23) |
+| Several newly-discovered tables/columns not yet described in detail in this document (`locations`, `invitations`, `program_project_agents`, `registration_reviews`, `resource_documents`, `notification_settings` from Lovable; `farmer_help_requests`, `agent_tasks` from the mobile/Express side) | ⏳ Partially documented | Existence and creator are now recorded (Parts 22–23), but full column-level schema detail, in the same depth as Part 3's original table descriptions, has not yet been written up |
+
+All previously listed outstanding items from Part 10 and Part 19 not explicitly superseded above (RLS as a defense-in-depth layer generally, the `program_projects` district-vs-region scoping inconsistency, real physical-device testing via Expo Go, App Store readiness, the Equity Bank real API integration, the banking-role web-access product decision, dashboard/bulk-import screens in the Lovable admin panel, and the Smile ID identity-verification integration discussion) remain open and unchanged as of this update.
