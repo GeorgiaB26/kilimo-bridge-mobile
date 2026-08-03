@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.10.7-messaging-notifications';
+export const APP_BUILD = 'v2.10.8-netlify-build-fix';

@@ -13,8 +13,14 @@ export interface PendingRegistration {
 const ASYNC_KEY = 'kilimo_pending_registrations_v1';
 const DB_NAME = 'kilimo_offline.db';
 
+type OfflineSqliteDb = {
+  execAsync: (sql: string) => Promise<void>;
+  getAllAsync: <T>(sql: string) => Promise<T[]>;
+  runAsync: (sql: string, params?: unknown[]) => Promise<void>;
+};
+
 let dbReady = false;
-let sqliteDb: import('expo-sqlite').SQLiteDatabase | null = null;
+let sqliteDb: OfflineSqliteDb | null = null;
 
 async function initDb(): Promise<void> {
   if (dbReady) return;
