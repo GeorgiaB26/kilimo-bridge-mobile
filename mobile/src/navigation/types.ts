@@ -4,7 +4,6 @@ import type { FarmerProject } from '../types/farmerProject';
 export type AuthStackParamList = {
   Login: undefined;
   Otp: { phone: string; devCode?: string };
-  AggregationLogin: undefined;
   Register: undefined;
 };
 

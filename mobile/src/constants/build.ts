@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.10.5-user-type-step1-fix';
+export const APP_BUILD = 'v2.10.6-login-cleanup';
