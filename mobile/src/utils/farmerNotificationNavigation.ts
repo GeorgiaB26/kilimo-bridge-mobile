@@ -85,17 +85,7 @@ export function navigateFromFarmerNotification(
     contextType === 'task' ||
     type === 'task_assigned'
   ) {
-    if (contextId) {
-      mainTabs.navigate('MainTabs', {
-        screen: 'Projects',
-        params: {
-          screen: 'HierarchyProjectDetail',
-          params: { projectId: contextId, projectName: 'Your tasks' },
-        },
-      });
-    } else {
-      mainTabs.navigate('MainTabs', { screen: 'Projects' });
-    }
+    mainTabs.navigate('MainTabs', { screen: 'Tasks' });
     return;
   }
 

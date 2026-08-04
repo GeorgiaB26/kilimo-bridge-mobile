@@ -5,6 +5,7 @@ import { COLORS } from '../constants';
 import { FarmerDashboardScreen } from '../screens/farmer/FarmerDashboardScreen';
 import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
+import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
@@ -29,6 +30,7 @@ function FarmerTabNavigator() {
     >
       <Tab.Screen name="Dashboard" component={FarmerDashboardScreen} options={{ title: 'Home', headerShown: false }} />
       <Tab.Screen name="Projects" component={FarmerProjectsNavigator} options={{ headerShown: false }} />
+      <Tab.Screen name="Tasks" component={FarmerTasksScreen} options={{ title: 'Tasks', headerShown: false }} />
       <Tab.Screen name="Payments" component={FarmerPaymentsScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Profile" component={FarmerProfileScreen} options={{ headerShown: false }} />
     </Tab.Navigator>

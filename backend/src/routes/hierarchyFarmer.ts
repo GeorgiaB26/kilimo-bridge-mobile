@@ -47,6 +47,10 @@ async function mapFarmerTaskRow(row: Record<string, unknown>) {
     notes: row.notes,
     approval_date: row.approved_date,
     rejection_reason: row.rejection_reason,
+    program_project_name: row.program_project_name,
+    assigned_at: row.assigned_at ?? row.created_at,
+    assigned_by_name: row.assigned_by_name,
+    assigned_by_user_id: row.assigned_by_user_id,
   };
 }
 
@@ -59,7 +63,13 @@ router.get(
     if (!farmerId) return;
     const project_id = (req.query.project_id ?? req.query.program_project_id) as string | undefined;
     const status = req.query.status as string | undefined;
-    const rows = (await listFarmerTasks(farmerId, { program_project_id: project_id, status })) as Record<
+    const outstanding =
+      req.query.outstanding === 'true' || req.query.outstanding === '1';
+    const rows = (await listFarmerTasks(farmerId, {
+      program_project_id: project_id,
+      status,
+      outstanding,
+    })) as Record<
       string,
       unknown
     >[];
@@ -195,7 +205,13 @@ router.get(
     }
     const status = req.query.status as string | undefined;
     const program_project_id = req.query.program_project_id as string | undefined;
-    const rows = (await listFarmerTasks(farmerId, { status, program_project_id })) as Record<
+    const outstanding =
+      req.query.outstanding === 'true' || req.query.outstanding === '1';
+    const rows = (await listFarmerTasks(farmerId, {
+      status,
+      program_project_id,
+      outstanding,
+    })) as Record<
       string,
       unknown
     >[];

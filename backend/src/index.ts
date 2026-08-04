@@ -9,6 +9,7 @@ import { seedAggregationCentres } from './services/aggregationCentreService';
 import { ensureFarmerHelpRequestsTable } from './services/farmerHelpRequestService';
 import { ensureAgentTasksTable } from './services/agentDashboardService';
 import { ensureMessagingTables } from './services/messagingService';
+import { ensureFarmerTaskAssignerColumn } from './services/hierarchyService';
 import messagesRoutes from './routes/messages';
 import notificationsRoutes from './routes/notifications';
 import { backfillLegacyIdNumberHashes } from './services/farmerService';
@@ -79,6 +80,7 @@ async function bootstrap(): Promise<void> {
   await ensureFarmerHelpRequestsTable();
   await ensureAgentTasksTable();
   await ensureMessagingTables();
+  await ensureFarmerTaskAssignerColumn();
   const farmerCount = await refreshHealthCounts();
   console.log(`Database ready: ${farmerCount} farmers`);
 

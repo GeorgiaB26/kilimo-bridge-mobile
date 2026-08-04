@@ -554,7 +554,11 @@ export async function getFarmerHierarchyProjects() {
   return data;
 }
 
-export async function getFarmerHierarchyTasks(params?: { status?: string; program_project_id?: string }) {
+export async function getFarmerHierarchyTasks(params?: {
+  status?: string;
+  program_project_id?: string;
+  outstanding?: string;
+}) {
   const { data } = await api.get('/farmer/hierarchy/tasks', { params });
   return data;
 }

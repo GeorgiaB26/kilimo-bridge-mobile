@@ -9,6 +9,7 @@ import { COLORS } from '../constants';
 const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Dashboard: 'home',
   Projects: 'leaf',
+  Tasks: 'checkbox',
   Payments: 'wallet',
   Profile: 'person',
 };
