@@ -1,6 +1,14 @@
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 
+/** Adds assigner tracking on farmer_tasks for farmer portal "assigned by" display. */
+export async function ensureFarmerTaskAssignerColumn(): Promise<void> {
+  await query(`
+    ALTER TABLE farmer_tasks
+    ADD COLUMN IF NOT EXISTS assigned_by_user_id TEXT REFERENCES users(user_id)
+  `);
+}
+
 export function toDbTaskStatus(status: string): string {
   return status === 'submitted-for-approval' ? 'submitted' : status;
 }
@@ -363,7 +371,12 @@ export async function removeFarmerFromProject(programProjectId: string, farmerId
   return deleted !== null;
 }
 
-export async function assignFarmersToProject(programProjectId: string, farmerIds: string[], taskIds?: string[]) {
+export async function assignFarmersToProject(
+  programProjectId: string,
+  farmerIds: string[],
+  taskIds?: string[],
+  assignedByUserId?: string | null
+) {
   let taskRows: { id: string }[];
   if (taskIds && taskIds.length > 0) {
     const placeholders = taskIds.map((_, i) => `$${i + 2}`).join(',');
@@ -387,10 +400,10 @@ export async function assignFarmersToProject(programProjectId: string, farmerIds
     `, [uuidv4(), programProjectId, farmerId]);
     for (const t of taskRows) {
       await query(`
-        INSERT INTO farmer_tasks (id, task_id, farmer_id, program_project_id)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO farmer_tasks (id, task_id, farmer_id, program_project_id, assigned_by_user_id)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (task_id, farmer_id) DO NOTHING
-      `, [uuidv4(), t.id, farmerId, programProjectId]);
+      `, [uuidv4(), t.id, farmerId, programProjectId, assignedByUserId ?? null]);
     }
     assigned++;
   }
@@ -411,13 +424,21 @@ export async function getFarmerTask(farmerTaskId: string) {
   return mapFarmerTaskRow(row as { status?: string });
 }
 
-export async function listFarmerTasks(farmerId: string, filters?: { status?: string; program_project_id?: string }) {
+export async function listFarmerTasks(
+  farmerId: string,
+  filters?: { status?: string; program_project_id?: string; outstanding?: boolean }
+) {
   let sql = `
     SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
-      pp.name AS program_project_name
+      pp.name AS program_project_name,
+      ft.created_at AS assigned_at,
+      COALESCE(assigner.name, manager.name, 'Kilimo Bridge') AS assigned_by_name,
+      assigner.user_id AS assigned_by_user_id
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
+    LEFT JOIN users assigner ON assigner.user_id = ft.assigned_by_user_id
+    LEFT JOIN users manager ON manager.user_id = pp.country_manager_id
     WHERE ft.farmer_id = $1
   `;
   const params: unknown[] = [farmerId];
@@ -429,7 +450,10 @@ export async function listFarmerTasks(farmerId: string, filters?: { status?: str
     params.push(toDbTaskStatus(filters.status));
     sql += ` AND ft.status = $${params.length}`;
   }
-  sql += ' ORDER BY pp.name, t.task_order';
+  if (filters?.outstanding) {
+    sql += ` AND ft.status NOT IN ('approved', 'completed')`;
+  }
+  sql += ' ORDER BY t.due_date NULLS LAST, pp.name, t.task_order';
   const rows = await query<{ status?: string }>(sql, params);
   return mapFarmerTaskRows(rows);
 }

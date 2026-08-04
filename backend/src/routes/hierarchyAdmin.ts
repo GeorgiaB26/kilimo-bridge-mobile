@@ -461,7 +461,7 @@ router.post(
       res.status(400).json({ error: 'farmer_ids array is required' });
       return;
     }
-    res.json(await assignFarmersToProject(req.params.projectId, farmer_ids, task_ids));
+    res.json(await assignFarmersToProject(req.params.projectId, farmer_ids, task_ids, req.user?.userId));
   })
 );
 
@@ -475,7 +475,7 @@ router.post(
       res.status(400).json({ error: 'farmer_ids array is required' });
       return;
     }
-    res.json(await assignFarmersToProject(req.params.projectId, farmer_ids, task_ids));
+    res.json(await assignFarmersToProject(req.params.projectId, farmer_ids, task_ids, req.user?.userId));
   })
 );
 

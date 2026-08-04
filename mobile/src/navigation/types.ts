@@ -16,6 +16,7 @@ export type FarmerProjectsStackParamList = {
 export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
+  Tasks: undefined;
   Payments: { highlightPaymentId?: string } | undefined;
   Profile: undefined;
 };
