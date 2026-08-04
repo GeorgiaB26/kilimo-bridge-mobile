@@ -7,6 +7,8 @@ type Summary = {
   pending: number;
   expected: number;
   total: number;
+  completed?: number;
+  allPayments?: number;
 };
 
 type Props = {
@@ -42,8 +44,8 @@ export function PaymentSummaryBreakdown({ summary, formatAmount }: Props) {
       <Text style={styles.totalLabel}>Total earnings</Text>
       <Text style={styles.totalAmount}>{formatAmount(summary.total)}</Text>
       <BreakdownRow
-        label="Transferred"
-        amount={summary.transferred}
+        label="Completed"
+        amount={summary.completed ?? summary.transferred}
         dotColor="#70AD47"
         formatAmount={formatAmount}
       />

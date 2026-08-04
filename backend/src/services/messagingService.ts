@@ -125,8 +125,9 @@ async function findDirectThread(userId: string, otherUserId: string): Promise<st
     `
     SELECT p1.thread_id
     FROM message_thread_participants p1
-    JOIN message_thread_participants p2 ON p2.thread_id = p1.thread_id AND p2.user_id = $2
-    WHERE p1.user_id = $1
+    JOIN message_thread_participants p2
+      ON p2.thread_id = p1.thread_id AND p2.user_id::text = $2
+    WHERE p1.user_id::text = $1
     LIMIT 1
     `,
     [userId, otherUserId]
@@ -134,20 +135,46 @@ async function findDirectThread(userId: string, otherUserId: string): Promise<st
   return row?.thread_id ?? null;
 }
 
+/** Resolve users.user_id from user_id or agents.agent_id (avoids uuid = text errors). */
+export async function resolveMessagingUserId(recipientId: string): Promise<string> {
+  const trimmed = recipientId.trim();
+  if (!trimmed) throw new Error('Recipient not found');
+
+  const byUser = await queryOne<{ user_id: string }>(
+    `SELECT user_id::text AS user_id FROM users WHERE user_id::text = $1`,
+    [trimmed]
+  );
+  if (byUser) return byUser.user_id;
+
+  const byAgent = await queryOne<{ user_id: string }>(
+    `
+    SELECT u.user_id::text AS user_id
+    FROM agents a
+    JOIN users u ON u.user_id = a.user_id
+    WHERE a.agent_id::text = $1
+    `,
+    [trimmed]
+  );
+  if (byAgent) return byAgent.user_id;
+
+  throw new Error('Recipient not found');
+}
+
 export async function getOrCreateDirectThread(
   userId: string,
   otherUserId: string,
   title?: string
 ): Promise<string> {
-  if (userId === otherUserId) {
+  const resolvedOther = await resolveMessagingUserId(otherUserId);
+  if (userId === resolvedOther) {
     throw new Error('Cannot message yourself');
   }
-  const existing = await findDirectThread(userId, otherUserId);
+  const existing = await findDirectThread(userId, resolvedOther);
   if (existing) return existing;
 
   const other = await queryOne<{ name: string }>(
-    'SELECT name FROM users WHERE user_id = $1',
-    [otherUserId]
+    'SELECT name FROM users WHERE user_id::text = $1',
+    [resolvedOther]
   );
   if (!other) throw new Error('Recipient not found');
 
@@ -158,8 +185,8 @@ export async function getOrCreateDirectThread(
     [threadId, title ?? other.name, userId]
   );
   await query(
-    `INSERT INTO message_thread_participants (thread_id, user_id) VALUES ($1, $2), ($1, $3)`,
-    [threadId, userId, otherUserId]
+    `INSERT INTO message_thread_participants (thread_id, user_id) VALUES ($1, $2::text), ($1, $3::text)`,
+    [threadId, userId, resolvedOther]
   );
   return threadId;
 }
@@ -198,10 +225,10 @@ export async function listThreadsForUser(userId: string, search?: string): Promi
         0
       ) AS unread_count
     FROM message_threads t
-    JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id = $1
+    JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id::text = $1
     JOIN message_thread_participants op
-      ON op.thread_id = t.id AND op.user_id <> $1
-    JOIN users ou ON ou.user_id = op.user_id
+      ON op.thread_id = t.id AND op.user_id::text <> $1
+    JOIN users ou ON ou.user_id::text = op.user_id::text
     LEFT JOIN LATERAL (
       SELECT content, sender_id
       FROM message_thread_messages
@@ -362,8 +389,9 @@ export async function listMessageableUsers(
     const { getFarmerSupportContacts } = await import('./farmerHelpRequestService');
     const contacts = await getFarmerSupportContacts(farmerId);
     if (contacts.fieldAgent?.userId) {
+      const resolved = await resolveMessagingUserId(contacts.fieldAgent.userId);
       users.push({
-        userId: contacts.fieldAgent.userId,
+        userId: resolved,
         name: contacts.fieldAgent.name,
         role: 'field_agent',
       });
@@ -376,7 +404,7 @@ export async function listMessageableUsers(
     );
     if (techSupport && !users.some((u) => u.userId === techSupport.user_id)) {
       users.push({
-        userId: techSupport.user_id,
+        userId: String(techSupport.user_id),
         name: 'Tech Support',
         role: 'tech_support',
       });

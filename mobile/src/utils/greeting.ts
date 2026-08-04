@@ -99,6 +99,18 @@ export function formatDueDate(dateStr?: string | null): string {
   }
 }
 
+/** Short project date without ISO timestamps (e.g. "Aug 5"). */
+export function formatProjectDate(dateStr?: string | null): string {
+  if (!dateStr) return 'N/A';
+  try {
+    const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return dateStr.split('T')[0];
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return dateStr.split('T')[0];
+  }
+}
+
 /** Format any ISO or date string for display (no T00 timestamps). */
 export function formatDisplayDate(dateStr?: string | null): string {
   return formatDueDate(dateStr);

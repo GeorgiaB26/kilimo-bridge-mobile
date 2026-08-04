@@ -7,7 +7,7 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerProjectTasksSection } from '../../components/farmer/FarmerProjectTasksSection';
-import { formatDueDate, formatProjectStatus } from '../../utils/greeting';
+import { formatDueDate, formatProjectStatus, formatProjectDate } from '../../utils/greeting';
 import { PROJECT_DESCRIPTIONS } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 
@@ -35,6 +35,15 @@ export function FarmerProjectDetailScreen({ route }: Props) {
       <View className="mb-3 rounded-xl bg-white p-[18px]">
         <Text className="mb-2 text-xs font-bold uppercase tracking-wide text-[#757575]">About this project</Text>
         <Text className="text-[15px] leading-[22px] text-[#333333]">{description}</Text>
+      </View>
+
+      <View className="mb-3 rounded-xl bg-white p-[18px]">
+        <Text className="mb-2 text-xs font-bold uppercase tracking-wide text-[#757575]">Schedule</Text>
+        <Text className="text-[15px] leading-[22px] text-[#333333]">
+          Start: {formatProjectDate(project.start_date)}
+          {' · '}
+          End: {formatProjectDate(project.due_date)}
+        </Text>
       </View>
 
       <View className="mb-3 rounded-xl bg-white p-[18px]">

@@ -16,7 +16,7 @@ export type FarmerProjectsStackParamList = {
 export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
-  Tasks: undefined;
+  Tasks: { statusFilter?: 'overdue' | 'upcoming' } | undefined;
   Payments: { highlightPaymentId?: string } | undefined;
   Profile: undefined;
 };
