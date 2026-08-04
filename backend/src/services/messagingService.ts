@@ -189,19 +189,19 @@ export async function listThreadsForUser(userId: string, search?: string): Promi
           SELECT COUNT(*)::int
           FROM message_thread_messages m
           WHERE m.thread_id = t.id
-            AND m.sender_id <> $1
+            AND m.sender_id::text <> $1::text
             AND NOT EXISTS (
               SELECT 1 FROM message_read_receipts r
-              WHERE r.message_id = m.id AND r.user_id = $1
+              WHERE r.message_id = m.id AND r.user_id::text = $1::text
             )
         ),
         0
       ) AS unread_count
     FROM message_threads t
-    JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id = $1
+    JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id::text = $1::text
     JOIN message_thread_participants op
-      ON op.thread_id = t.id AND op.user_id <> $1
-    JOIN users ou ON ou.user_id = op.user_id
+      ON op.thread_id = t.id AND op.user_id::text <> $1::text
+    JOIN users ou ON ou.user_id::text = op.user_id::text
     LEFT JOIN LATERAL (
       SELECT content, sender_id
       FROM message_thread_messages
@@ -209,7 +209,7 @@ export async function listThreadsForUser(userId: string, search?: string): Promi
       ORDER BY created_at DESC
       LIMIT 1
     ) lm ON TRUE
-  WHERE ($2::text IS NULL OR ou.name ILIKE '%' || $2 || '%' OR t.title ILIKE '%' || $2 || '%')
+  WHERE ($2::text IS NULL OR ou.name ILIKE '%' || $2 || '%' OR COALESCE(t.title, '') ILIKE '%' || $2 || '%')
     ORDER BY COALESCE(t.last_message_at, t.created_at) DESC
     `,
     [userId, search?.trim() || null]

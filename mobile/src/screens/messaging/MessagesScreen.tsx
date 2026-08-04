@@ -22,6 +22,13 @@ import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import { formatTimeAgo } from '../../constants/notifications';
 import type { MessagesStackParamList } from '../../navigation/types';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import {
+  getReadCache,
+  loadWithReadCache,
+  READ_CACHE_KEYS,
+} from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type ThreadRow = {
   id: string;
@@ -31,33 +38,79 @@ type ThreadRow = {
   unread_count: number;
 };
 
+type ThreadsPayload = { threads?: ThreadRow[] };
+
 type Nav = NativeStackNavigationProp<MessagesStackParamList, 'MessagesList'>;
 
 const POLL_MS = 10000;
 
+function filterThreads(threads: ThreadRow[], query: string): ThreadRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return threads;
+  return threads.filter((t) => {
+    const name = (t.other_user_name ?? '').toLowerCase();
+    const preview = (t.last_message_content ?? '').toLowerCase();
+    return name.includes(q) || preview.includes(q);
+  });
+}
+
 export function MessagesScreen() {
   const navigation = useNavigation<Nav>();
   const user = useAuthStore((s) => s.user);
+  const userScope = useReadCacheUserScope();
   const isFarmer = user?.role === 'farmer';
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [contacts, setContacts] = useState<Array<{ userId: string; name: string; role: string }>>([]);
 
   const load = useCallback(async () => {
+    const q = search.trim();
     try {
-      const data = await getMessageThreads(search.trim() || undefined);
-      setThreads((data.threads ?? []) as ThreadRow[]);
-      setError(null);
+      if (q) {
+        // Online search uses the API; offline falls back to filtering the cached inbox list.
+        try {
+          const data = await getMessageThreads(q);
+          setThreads((data.threads ?? []) as ThreadRow[]);
+          setCacheFetchedAt(null);
+          setError(null);
+        } catch (err) {
+          const cached = await getReadCache<ThreadsPayload>(
+            READ_CACHE_KEYS.messageThreads,
+            userScope
+          );
+          if (cached) {
+            setThreads(filterThreads((cached.payload.threads ?? []) as ThreadRow[], q));
+            setCacheFetchedAt(cached.fetchedAt);
+            setError(null);
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        const result = await loadWithReadCache<ThreadsPayload>({
+          cacheKey: READ_CACHE_KEYS.messageThreads,
+          userScope,
+          fetchLive: async () => {
+            const data = await getMessageThreads();
+            return { threads: (data.threads ?? []) as ThreadRow[] };
+          },
+        });
+        setThreads((result.data.threads ?? []) as ThreadRow[]);
+        setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+        setError(null);
+      }
     } catch (err) {
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Could not load messages'));
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -107,10 +160,21 @@ export function MessagesScreen() {
           onSubmitEditing={load}
           returnKeyType="search"
         />
-        <Pressable onPress={openNewChat} style={styles.newBtn} accessibilityLabel="New message">
-          <Ionicons name="create-outline" size={22} color={COLORS.primary} />
+        <Pressable
+          onPress={openNewChat}
+          style={styles.newBtn}
+          accessibilityLabel="New message"
+          disabled={!!cacheFetchedAt}
+        >
+          <Ionicons
+            name="create-outline"
+            size={22}
+            color={cacheFetchedAt ? COLORS.muted : COLORS.primary}
+          />
         </Pressable>
       </View>
+
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
 
       {showNew && (
         <View style={styles.contactPicker}>
@@ -135,7 +199,7 @@ export function MessagesScreen() {
         </View>
       )}
 
-      {isFarmer && !showNew && threads.length === 0 && !loading ? (
+      {isFarmer && !showNew && threads.length === 0 && !loading && !cacheFetchedAt ? (
         <View style={styles.contactPicker}>
           <Text style={styles.pickerTitle}>Start a conversation</Text>
           <Pressable onPress={openNewChat} style={styles.contactRow}>
