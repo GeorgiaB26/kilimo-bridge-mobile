@@ -73,6 +73,7 @@ export async function getFarmerDashboard(farmerId: string) {
     pendingAmount: pendingPayments?.total ?? 0,
     totalEarnings: totalEarnings?.total ?? 0,
     paymentSummary: await getFarmerPaymentSummary(farmerId),
+    taskStats: await getFarmerTaskSnapshotStats(farmerId),
     activeProjects: sortedActive,
     nextProject: sortedActive[0] ?? null,
   };
@@ -108,6 +109,11 @@ function normalizePaymentStatusLabel(status: string): string {
 }
 
 export async function getFarmerPaymentSummary(farmerId: string) {
+  const allPayments = await queryOne<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments WHERE farmer_id = $1`,
+    [farmerId]
+  );
+
   const transferred = await queryOne<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments
      WHERE farmer_id = $1 AND lower(payment_status::text) IN ('transferred', 'paid')`,
@@ -134,13 +140,47 @@ export async function getFarmerPaymentSummary(farmerId: string) {
   const transferredTotal = transferred?.total ?? 0;
   const pendingTotal = pending?.total ?? 0;
   const expectedTotal = expected?.total ?? 0;
+  const allPaymentsTotal = allPayments?.total ?? 0;
 
   return {
     transferred: transferredTotal,
     pending: pendingTotal,
     expected: expectedTotal,
-    total: transferredTotal + pendingTotal + expectedTotal,
+    completed: transferredTotal,
+    allPayments: allPaymentsTotal,
+    total: allPaymentsTotal,
   };
+}
+
+export async function getFarmerTaskSnapshotStats(farmerId: string) {
+  const rows = await query<{ due_date: string | null }>(
+    `
+    SELECT t.due_date::text AS due_date
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    WHERE ft.farmer_id = $1 AND ft.status NOT IN ('approved', 'completed')
+    `,
+    [farmerId]
+  );
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const nextWeek = new Date(today);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+
+  let overdue = 0;
+  let upcoming = 0;
+
+  for (const row of rows) {
+    if (!row.due_date) continue;
+    const d = new Date(row.due_date.includes('T') ? row.due_date : `${row.due_date}T12:00:00`);
+    if (Number.isNaN(d.getTime())) continue;
+    d.setHours(0, 0, 0, 0);
+    if (d < today) overdue++;
+    else if (d <= nextWeek) upcoming++;
+  }
+
+  return { overdue, upcoming };
 }
 
 export async function getFarmerNotifications(userId: string) {

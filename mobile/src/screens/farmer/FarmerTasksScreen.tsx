@@ -6,7 +6,8 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
 import { COLORS } from '../../constants';
@@ -24,6 +25,9 @@ import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import { formatDisplayDate, formatDueDate } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
+import type { FarmerTabParamList } from '../../navigation/types';
+
+type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 
 function canOpenTask(status: string): boolean {
   return ['not-started', 'in-progress', 'rejected'].includes(status);
@@ -36,12 +40,24 @@ function displayStatus(status: string): string {
 
 function isOverdue(due?: string | null): boolean {
   if (!due) return false;
-  const d = new Date(due);
+  const d = new Date(due.includes('T') ? due : `${due}T12:00:00`);
   if (Number.isNaN(d.getTime())) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   d.setHours(0, 0, 0, 0);
   return d < today;
+}
+
+function isUpcoming(due?: string | null): boolean {
+  if (!due) return false;
+  const d = new Date(due.includes('T') ? due : `${due}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const week = new Date(today);
+  week.setDate(week.getDate() + 7);
+  d.setHours(0, 0, 0, 0);
+  return d >= today && d <= week;
 }
 
 type ExtendedTaskRow = FarmerTaskRow & {
@@ -51,6 +67,8 @@ type ExtendedTaskRow = FarmerTaskRow & {
 };
 
 export function FarmerTasksScreen() {
+  const route = useRoute<TasksRoute>();
+  const statusFilter = route.params?.statusFilter;
   const { formatAmount } = useCurrency();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +105,20 @@ export function FarmerTasksScreen() {
     load();
   };
 
+  const filteredTasks = tasks.filter((task) => {
+    if (!statusFilter) return true;
+    if (statusFilter === 'overdue') return isOverdue(task.due_date);
+    if (statusFilter === 'upcoming') return isUpcoming(task.due_date) && !isOverdue(task.due_date);
+    return true;
+  });
+
+  const filterLabel =
+    statusFilter === 'overdue'
+      ? 'Overdue tasks'
+      : statusFilter === 'upcoming'
+        ? 'Upcoming this week'
+        : null;
+
   if (loading && tasks.length === 0) {
     return (
       <View style={styles.root}>
@@ -103,7 +135,7 @@ export function FarmerTasksScreen() {
     <View style={styles.root}>
       <FarmerInboxHeaderBar />
       <FlatList
-        data={tasks}
+        data={filteredTasks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshControl={
@@ -112,10 +144,13 @@ export function FarmerTasksScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Text className="text-2xl font-bold text-foreground">Your Tasks</Text>
+            {filterLabel ? (
+              <Text className="mt-1 text-sm font-semibold text-[#4472C4]">{filterLabel}</Text>
+            ) : null}
             <Text className="mt-1 text-sm text-muted-foreground">
-              {tasks.length === 0
-                ? 'No outstanding tasks right now.'
-                : `${tasks.length} outstanding · status updates every 30s`}
+              {filteredTasks.length === 0
+                ? 'No tasks match this filter.'
+                : `${filteredTasks.length} shown · status updates every 30s`}
             </Text>
             {error ? <FarmerOfflineBanner message={error} /> : null}
           </View>

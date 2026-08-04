@@ -13,7 +13,7 @@ import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { useCurrency } from '../../context/CurrencyContext';
-import { formatProjectStatus, formatDisplayDate } from '../../utils/greeting';
+import { formatProjectStatus, formatDisplayDate, formatProjectDate } from '../../utils/greeting';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
@@ -28,6 +28,8 @@ interface HierarchyProject {
   name: string;
   program_name?: string;
   status: string;
+  start_date?: string | null;
+  end_date?: string | null;
   task_count?: number;
   completed_task_count?: number;
 }
@@ -120,6 +122,13 @@ export function FarmerProjectsScreen() {
                   <Ionicons name="chevron-forward" size={20} color="#757575" />
                 </View>
                 <Text className="mb-2 mt-1 text-[13px] text-[#757575]">{item.program_name}</Text>
+                {(item.start_date || item.end_date) ? (
+                  <Text className="mb-2 text-[12px] text-[#757575]">
+                    {item.start_date ? `Start: ${formatProjectDate(item.start_date)}` : ''}
+                    {item.start_date && item.end_date ? ' · ' : ''}
+                    {item.end_date ? `End: ${formatProjectDate(item.end_date)}` : ''}
+                  </Text>
+                ) : null}
                 <KBProgressBar progress={progress} label={`${doneCount}/${total} tasks`} stacked />
               </KBCard>
             );
