@@ -18,6 +18,10 @@ export const READ_CACHE_KEYS = {
   agentFarmers: 'agent:farmers',
   farmerPayments: 'farmer:payments',
   messageThreads: 'messages:threads',
+  adminDashboard: 'admin:dashboard',
+  adminFarmers: 'admin:farmers',
+  adminFarmerDetail: (farmerId: string) => `admin:farmer:${farmerId}`,
+  adminTasks: 'admin:tasks',
 } as const;
 
 export function readCacheCompositeKey(userScope: string, cacheKey: string): string {
