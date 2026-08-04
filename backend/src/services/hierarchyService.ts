@@ -3,9 +3,10 @@ import { query, queryOne } from '../db/database';
 
 /** Adds assigner tracking on farmer_tasks for farmer portal "assigned by" display. */
 export async function ensureFarmerTaskAssignerColumn(): Promise<void> {
+  // No FK — Supabase users.user_id is often UUID while farmer_tasks ids are TEXT.
   await query(`
     ALTER TABLE farmer_tasks
-    ADD COLUMN IF NOT EXISTS assigned_by_user_id TEXT REFERENCES users(user_id)
+    ADD COLUMN IF NOT EXISTS assigned_by_user_id TEXT
   `);
 }
 
@@ -437,8 +438,8 @@ export async function listFarmerTasks(
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
-    LEFT JOIN users assigner ON assigner.user_id = ft.assigned_by_user_id
-    LEFT JOIN users manager ON manager.user_id = pp.country_manager_id
+    LEFT JOIN users assigner ON assigner.user_id::text = ft.assigned_by_user_id::text
+    LEFT JOIN users manager ON manager.user_id::text = pp.country_manager_id::text
     WHERE ft.farmer_id = $1
   `;
   const params: unknown[] = [farmerId];
