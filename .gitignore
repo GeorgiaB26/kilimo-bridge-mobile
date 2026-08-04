@@ -7,3 +7,6 @@ dist/
 .DS_Store
 .expo/
 web-build/
+scripts/_prove-task-outbox-e2e.bundle.cjs
+scripts/_tmp_task_evidence.jpg
+scripts/_tmp_task_evidence.b64
