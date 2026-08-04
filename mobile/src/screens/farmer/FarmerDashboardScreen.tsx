@@ -44,37 +44,37 @@ type PaymentRow = {
   created_at?: string;
 };
 
+type DashboardData = {
+  farmer?: {
+    name: string;
+    country?: string;
+    district?: string;
+    region?: string;
+    status?: string;
+    profileLocationPending?: boolean;
+    picture_url?: string | null;
+  };
+  pendingAmount: number;
+  totalEarnings: number;
+  activeProjects: FarmerProject[];
+  nextProject: FarmerProject | null;
+  paymentSummary?: {
+    transferred: number;
+    pending: number;
+    expected: number;
+    total: number;
+    completed?: number;
+    allPayments?: number;
+  };
+  taskStats?: { overdue: number; upcoming: number };
+};
+
 export function FarmerDashboardScreen() {
   const navigation = useNavigation<DashboardNav>();
   const logout = useAuthStore((s) => s.logout);
   const { formatAmount, currencyInfo } = useCurrency();
-  const user = useAuthStore((s) => s.user);
   const userScope = useReadCacheUserScope();
-  const { formatAmount, formatClaim } = useCurrency();
-  const [data, setData] = useState<{
-    farmer?: {
-      name: string;
-      country?: string;
-      district?: string;
-      region?: string;
-      status?: string;
-      profileLocationPending?: boolean;
-      picture_url?: string | null;
-    };
-    pendingAmount: number;
-    totalEarnings: number;
-    activeProjects: FarmerProject[];
-    nextProject: FarmerProject | null;
-    paymentSummary?: {
-      transferred: number;
-      pending: number;
-      expected: number;
-      total: number;
-      completed?: number;
-      allPayments?: number;
-    };
-    taskStats?: { overdue: number; upcoming: number };
-  } | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [recentPayments, setRecentPayments] = useState<PaymentRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,24 +82,25 @@ export function FarmerDashboardScreen() {
 
   const load = useCallback(async () => {
     try {
-      const result = await getFarmerDashboard();
-      setData(result);
-      const paymentsData = await getFarmerPayments();
-      setRecentPayments((paymentsData.payments ?? []) as PaymentRow[]);
-      setError(null);
-    } catch (err: unknown) {
-      setData(null);
-      setRecentPayments([]);
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerDashboard,
         userScope,
         fetchLive: () => getFarmerDashboard(),
       });
-      setData(result.data);
+      setData(result.data as DashboardData);
       setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+
+      try {
+        const paymentsData = await getFarmerPayments();
+        setRecentPayments((paymentsData.payments ?? []) as PaymentRow[]);
+      } catch {
+        setRecentPayments([]);
+      }
+
       setError(null);
     } catch (err: unknown) {
       setData(null);
+      setRecentPayments([]);
       setCacheFetchedAt(null);
       setError(extractApiError(err, 'Backend offline or farmer account not linked'));
     }
@@ -187,24 +188,6 @@ export function FarmerDashboardScreen() {
           onEditProfile={goToProfile}
           onLogout={() => logout()}
         />
-        <View className={`${marginTopPayment} mb-6 mx-4 items-center rounded-2xl bg-white p-6 shadow-sm elevation-4`}>
-          <KBStatusChip label="Ready to Claim" variant="success" />
-          <Text className="mt-3 text-sm text-[#757575]">Earnings to claim</Text>
-          <Text className="my-2 text-4xl font-extrabold text-[#D4AF6A]">{formatAmount(pending)}</Text>
-          <Button
-            className="mt-2 h-12 w-full rounded-xl bg-[#D4AF6A]"
-            onPress={handleClaim}
-            disabled={claiming || !!cacheFetchedAt}
-          >
-            {claiming ? (
-              <ActivityIndicator color="#1A4D3E" />
-            ) : (
-              <Text className="font-semibold text-[#1A4D3E]">
-                {pending > 0 ? formatClaim(pending) : 'Claim now'}
-              </Text>
-            )}
-          </Button>
-        </View>
 
         <FarmerDashboardEarningsCard
           paymentSummary={data?.paymentSummary}
@@ -238,16 +221,6 @@ export function FarmerDashboardScreen() {
         <FarmerDashboardSupportSection />
       </ScrollView>
 
-      {pending > 0 && !cacheFetchedAt ? (
-        <FAB
-          icon="cash"
-          label="Claim"
-          style={{ position: 'absolute', right: 16, bottom: 16, backgroundColor: '#D4AF6A' }}
-          color="#1A4D3E"
-          onPress={handleClaim}
-          loading={claiming}
-        />
-      ) : null}
       <FarmerLocationPrompt
         country={country}
         visible={showLocationPrompt && !cacheFetchedAt}
