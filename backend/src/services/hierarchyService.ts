@@ -521,6 +521,17 @@ export async function listCentreInventory(centreId: string, status?: string) {
   return query(sql, [centreId]);
 }
 
+export async function getCentreInventoryById(inventoryId: string) {
+  return queryOne(
+    `
+    SELECT ci.*, f.name AS farmer_name FROM centre_inventory ci
+    JOIN farmers f ON f.farmer_id = ci.farmer_id
+    WHERE ci.id = $1
+  `,
+    [inventoryId]
+  );
+}
+
 export async function receiveDelivery(data: {
   centre_id: string;
   farmer_id: string;

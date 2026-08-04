@@ -119,8 +119,16 @@ export async function getOutboxStatusCounts(): Promise<OutboxStatusCounts> {
     ready: 0,
   };
   for (const item of items) {
-    if (item.status in counts && item.status !== 'ready') {
-      counts[item.status as keyof Omit<OutboxStatusCounts, 'ready'>] += 1;
+    switch (item.status) {
+      case 'pending':
+      case 'uploading':
+      case 'synced':
+      case 'failed':
+      case 'needs_review':
+        counts[item.status] += 1;
+        break;
+      default:
+        break;
     }
     if (isRetryableFailure(item, now)) counts.ready += 1;
   }

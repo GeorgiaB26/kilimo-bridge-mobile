@@ -9,8 +9,10 @@
  */
 import {
   approveFarmerTask,
+  approveInventoryQuality,
   getAdminFarmerTask,
   getAgentFarmerById,
+  getCentreInventoryItem,
   registerFarmer,
   rejectFarmerTask,
   submitFarmerTaskCompletion,
@@ -54,6 +56,20 @@ export interface FarmerVerificationOutboxPayload {
   notes: string;
   /** Prior farmers.status that must still hold (normally pending_field_verification). */
   expected: { status: string };
+}
+
+/**
+ * Centre inventory quality check.
+ * Authoritative pin: centre_inventory.quality_status === 'pending'.
+ * Decision maps to API approved|rejected (DB stores passed|failed).
+ */
+export interface CentreQcOutboxPayload {
+  inventoryId: string;
+  productName: string;
+  decision: 'approve' | 'reject';
+  qualityNotes: string;
+  marketplacePricePerUnit: number | null;
+  expected: { quality_status: string };
 }
 
 export type OutboxHandlerResult = unknown;
@@ -158,6 +174,43 @@ function asFarmerVerificationPayload(
     verificationStatus,
     notes: typeof payload.notes === 'string' ? payload.notes : '',
     expected: { status: expectedStatus },
+  };
+}
+
+function asCentreQcPayload(payload: Record<string, unknown>): CentreQcOutboxPayload {
+  const inventoryId = typeof payload.inventoryId === 'string' ? payload.inventoryId.trim() : '';
+  const decision =
+    payload.decision === 'reject' ? 'reject' : payload.decision === 'approve' ? 'approve' : null;
+  const expectedRaw = payload.expected;
+  const expectedQualityStatus =
+    expectedRaw &&
+    typeof expectedRaw === 'object' &&
+    typeof (expectedRaw as { quality_status?: unknown }).quality_status === 'string'
+      ? (expectedRaw as { quality_status: string }).quality_status.trim()
+      : '';
+  if (!inventoryId) {
+    throw new Error('Invalid centre_qc payload: inventoryId is required');
+  }
+  if (!decision) {
+    throw new Error('Invalid centre_qc payload: decision must be approve or reject');
+  }
+  if (!expectedQualityStatus) {
+    throw new Error('Invalid centre_qc payload: expected.quality_status is required');
+  }
+  const priceRaw = payload.marketplacePricePerUnit;
+  const marketplacePricePerUnit =
+    typeof priceRaw === 'number' && Number.isFinite(priceRaw)
+      ? priceRaw
+      : typeof priceRaw === 'string' && priceRaw.trim() && Number.isFinite(Number(priceRaw))
+        ? Number(priceRaw)
+        : null;
+  return {
+    inventoryId,
+    productName: typeof payload.productName === 'string' ? payload.productName : 'Delivery',
+    decision,
+    qualityNotes: typeof payload.qualityNotes === 'string' ? payload.qualityNotes : '',
+    marketplacePricePerUnit,
+    expected: { quality_status: expectedQualityStatus },
   };
 }
 
@@ -282,6 +335,46 @@ async function handleFarmerVerification(item: OutboxItem): Promise<OutboxHandler
   );
 }
 
+async function handleCentreQc(item: OutboxItem): Promise<OutboxHandlerResult> {
+  const payload = asCentreQcPayload(item.payload);
+  let delivery: { quality_status?: string; product_name?: string } | null = null;
+  try {
+    const data = await getCentreInventoryItem(payload.inventoryId);
+    delivery =
+      (data?.delivery as { quality_status?: string; product_name?: string } | undefined) ?? null;
+  } catch (err: unknown) {
+    const msg = extractApiError(err, '');
+    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('404')) {
+      throw new OutboxNeedsReviewError(
+        `Delivery "${payload.productName}" no longer exists. Dismiss this queued QC ${payload.decision}.`
+      );
+    }
+    throw err;
+  }
+  if (!delivery) {
+    throw new OutboxNeedsReviewError(
+      `Delivery "${payload.productName}" no longer exists. Dismiss this queued QC ${payload.decision}.`
+    );
+  }
+
+  assertExpected(
+    { quality_status: delivery.quality_status },
+    payload.expected,
+    {
+      label: `Delivery "${payload.productName || delivery.product_name || payload.inventoryId}"`,
+    }
+  );
+
+  return approveInventoryQuality(payload.inventoryId, {
+    quality_status: payload.decision === 'approve' ? 'approved' : 'rejected',
+    quality_notes: payload.qualityNotes.trim() || undefined,
+    marketplace_price_per_unit:
+      payload.decision === 'approve'
+        ? (payload.marketplacePricePerUnit ?? undefined)
+        : undefined,
+  });
+}
+
 let registered = false;
 
 /** Idempotent — call before processOutboxItem / processReadyOutbox. */
@@ -291,6 +384,7 @@ export function ensureOutboxHandlersRegistered(): void {
   registerOutboxHandler('task_submission', handleTaskSubmission);
   registerOutboxHandler('task_approval', handleTaskApproval);
   registerOutboxHandler('farmer_verification', handleFarmerVerification);
+  registerOutboxHandler('centre_qc', handleCentreQc);
   registered = true;
 }
 

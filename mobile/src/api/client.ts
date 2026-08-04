@@ -643,6 +643,12 @@ export async function approveInventoryQuality(inventoryId: string, body: {
   return data;
 }
 
+/** Single inventory/delivery row for offline QC conflict checks. */
+export async function getCentreInventoryItem(inventoryId: string) {
+  const { data } = await api.get(`/aggregation-centres/deliveries/${inventoryId}`);
+  return data;
+}
+
 /** Bank MVP — pending QC deliveries at a centre (centre_inventory with quality_status = pending). */
 export async function getPendingQcDeliveries(centreId: string) {
   const { data } = await api.get(`/aggregation-centres/${centreId}/deliveries`);

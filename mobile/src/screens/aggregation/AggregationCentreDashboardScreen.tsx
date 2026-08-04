@@ -11,12 +11,21 @@ import {
   getCentreInventory,
   getPendingDeliveries,
   receiveCentreDelivery,
-  approveCentreQuality,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { OutboxCentreQcCard } from '../../components/OutboxCentreQcCard';
+import {
+  CENTRE_QC_EXPECTED_QUALITY_STATUS,
+  dismissCentreQcOutbox,
+  listPendingCentreQc,
+  pushPendingCentreQc,
+  submitCentreQcWithOutbox,
+  syncAllPendingCentreQc,
+  type PendingCentreQcView,
+} from '../../services/submitCentreQcOutbox';
 
 type InvTab = 'awaiting_qc' | 'ready_for_marketplace' | 'all';
 
@@ -64,8 +73,15 @@ export function AggregationCentreDashboardScreen() {
   const [notes, setNotes] = useState('');
   const [qcNotes, setQcNotes] = useState('');
   const [qcPrice, setQcPrice] = useState('500');
+  const [qcActing, setQcActing] = useState(false);
+  const [pendingQc, setPendingQc] = useState<PendingCentreQcView[]>([]);
+  const [pushingId, setPushingId] = useState<string | null>(null);
 
   const resolvedCentreId = centreId || 'self';
+
+  const loadPending = useCallback(async () => {
+    setPendingQc(await listPendingCentreQc());
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -86,11 +102,19 @@ export function AggregationCentreDashboardScreen() {
     }
   }, [centreId, invTab]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        await syncAllPendingCentreQc();
+        await Promise.all([load(), loadPending()]);
+      })();
+    }, [load, loadPending])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await syncAllPendingCentreQc();
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
   };
 
@@ -116,20 +140,66 @@ export function AggregationCentreDashboardScreen() {
     }
   };
 
-  const confirmQc = async () => {
-    if (!qcModal || !qcNotes.trim() || !qcPrice.trim()) return;
+  const applyQc = async (decision: 'approve' | 'reject') => {
+    if (!qcModal) return;
+    if (decision === 'approve' && (!qcNotes.trim() || !qcPrice.trim())) return;
+    if (decision === 'reject' && !qcNotes.trim()) {
+      Alert.alert('Notes required', 'Enter a quality assessment note for rejection.');
+      return;
+    }
+    setQcActing(true);
     try {
-      await approveCentreQuality(centreId || undefined, {
-        inventory_id: qcModal.id,
-        quality_notes: qcNotes.trim(),
-        marketplace_price_per_unit: Number(qcPrice),
+      const result = await submitCentreQcWithOutbox({
+        inventoryId: qcModal.id,
+        productName: qcModal.product_name,
+        decision,
+        expectedQualityStatus: qcModal.quality_status || CENTRE_QC_EXPECTED_QUALITY_STATUS,
+        qualityNotes: qcNotes.trim(),
+        marketplacePricePerUnit:
+          decision === 'approve' ? Number(qcPrice) : undefined,
       });
-      setQcModal(null);
-      setQcNotes('');
-      await load();
-      Alert.alert('Approved', 'Item listed on marketplace. Farmer notified via SMS.');
+      await loadPending();
+      if (result.mode === 'online') {
+        setQcModal(null);
+        setQcNotes('');
+        await load();
+        Alert.alert(
+          decision === 'approve' ? 'Approved' : 'Rejected',
+          decision === 'approve'
+            ? 'Item listed on marketplace. Farmer notified via SMS.'
+            : 'Delivery failed QC.'
+        );
+        return;
+      }
+      if (result.mode === 'offline') {
+        setQcModal(null);
+        setQcNotes('');
+        Alert.alert('Saved offline', 'QC decision queued for sync.');
+        return;
+      }
+      Alert.alert('Needs your review', result.error);
     } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not approve quality'));
+      Alert.alert('Error', extractApiError(err, 'Could not apply quality check'));
+    } finally {
+      setQcActing(false);
+    }
+  };
+
+  const handlePush = async (item: PendingCentreQcView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingCentreQc(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.productName} QC updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -165,6 +235,21 @@ export function AggregationCentreDashboardScreen() {
           <Text className="mt-1 text-xs text-[#757575]">Ready for Sale</Text>
         </KBCard>
       </View>
+
+      {pendingQc.length > 0 ? (
+        <View className="mb-2 mt-4">
+          <Text className="mb-2 text-[17px] font-bold text-[#333333]">Queued QC decisions</Text>
+          {pendingQc.map((item) => (
+            <OutboxCentreQcCard
+              key={item.id}
+              item={item}
+              pushing={pushingId === item.id}
+              onPush={() => handlePush(item)}
+              onDismiss={() => dismissCentreQcOutbox(item.id).then(loadPending)}
+            />
+          ))}
+        </View>
+      ) : null}
 
       <Text className="mb-2.5 mt-5 text-[17px] font-bold text-[#333333]">Pending deliveries</Text>
       {deliveries.length === 0 ? (
@@ -203,7 +288,7 @@ export function AggregationCentreDashboardScreen() {
               <KBStatusChip label={item.is_marketplace_ready ? 'Ready' : item.quality_status} variant={item.is_marketplace_ready ? 'success' : 'pending'} />
               {item.quality_status === 'pending' ? (
                 <Button size="sm" className="bg-[#1A4D3E]" onPress={() => setQcModal(item)}>
-                  <Text className="text-white">Approve</Text>
+                  <Text className="text-white">QC</Text>
                 </Button>
               ) : (
                 <Text className="font-bold text-[#D4AF6A]">{item.marketplace_price_per_unit ?? 0} KES/unit</Text>
@@ -240,10 +325,13 @@ export function AggregationCentreDashboardScreen() {
             <Text className="mt-1 text-[13px] text-[#757575]">{qcModal?.product_name} · {qcModal?.quantity_received} {qcModal?.unit}</Text>
             <TextInput className="mb-2.5 mt-2 min-h-[72px] rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Quality assessment (required)" value={qcNotes} onChangeText={setQcNotes} multiline textAlignVertical="top" />
             <TextInput className="mb-2.5 rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Marketplace price per unit (KES)" value={qcPrice} onChangeText={setQcPrice} keyboardType="decimal-pad" />
-            <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={confirmQc}>
-              <Text className="text-white">Confirm approval</Text>
+            <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={() => applyQc('approve')} disabled={qcActing}>
+              {qcActing ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Confirm approval</Text>}
             </Button>
-            <Button variant="ghost" onPress={() => setQcModal(null)}>
+            <Button variant="outline" className="mb-2 h-11" onPress={() => applyQc('reject')} disabled={qcActing}>
+              <Text className="text-[#D32F2F]">Reject QC</Text>
+            </Button>
+            <Button variant="ghost" onPress={() => setQcModal(null)} disabled={qcActing}>
               <Text>Cancel</Text>
             </Button>
           </View>

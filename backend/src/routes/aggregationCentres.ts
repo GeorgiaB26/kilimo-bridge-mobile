@@ -8,6 +8,7 @@ import {
   receiveDelivery,
   listPendingQcDeliveries,
   approveInventoryQuality,
+  getCentreInventoryById,
   getFarmerPhone,
   getCentreName,
   findCentreByName,
@@ -102,6 +103,19 @@ router.post(
       status: 'received',
       delivery: record,
     });
+  })
+);
+
+router.get(
+  '/deliveries/:id',
+  requirePermission('centres.read'),
+  asyncHandler(async (req, res) => {
+    const delivery = await getCentreInventoryById(req.params.id);
+    if (!delivery) {
+      res.status(404).json({ error: 'Delivery not found' });
+      return;
+    }
+    res.json({ delivery });
   })
 );
 
