@@ -16,7 +16,7 @@ const DB_NAME = 'kilimo_offline.db';
 type OfflineSqliteDb = {
   execAsync: (sql: string) => Promise<void>;
   getAllAsync: <T>(sql: string) => Promise<T[]>;
-  runAsync: (sql: string, params?: (string | number | null)[]) => Promise<void>;
+  runAsync: (sql: string, params?: (string | number | null)[]) => Promise<unknown>;
 };
 
 let dbReady = false;
