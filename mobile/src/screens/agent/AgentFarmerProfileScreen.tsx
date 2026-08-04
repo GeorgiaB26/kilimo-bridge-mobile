@@ -4,15 +4,24 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { getAgentFarmerById, verifyFarmerField, getAdminFarmerTasks } from '../../api/client';
+import { getAgentFarmerById, getAdminFarmerTasks } from '../../api/client';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { VerifyFarmerModal } from '../../components/agent/VerifyFarmerModal';
 import { FarmerProfilePhoto } from '../../components/FarmerProfilePhoto';
+import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import { isUsableFarmerPhotoUrl } from '../../../shared/src/farmerPhoto';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
+import {
+  dismissFarmerVerificationOutbox,
+  listPendingFarmerVerifications,
+  pushPendingFarmerVerification,
+  submitFarmerVerificationWithOutbox,
+  syncAllPendingFarmerVerifications,
+  type PendingFarmerVerificationView,
+} from '../../services/submitFarmerVerificationOutbox';
 
 type Props = NativeStackScreenProps<AgentFarmersStackParamList, 'FarmerProfile'>;
 
@@ -73,6 +82,15 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   const [taskCompleted, setTaskCompleted] = useState(0);
   const [taskOutstanding, setTaskOutstanding] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pendingVerifications, setPendingVerifications] = useState<PendingFarmerVerificationView[]>(
+    []
+  );
+  const [pushingId, setPushingId] = useState<string | null>(null);
+
+  const loadPending = useCallback(async () => {
+    const all = await listPendingFarmerVerifications();
+    setPendingVerifications(all.filter((p) => p.farmerId === farmerId));
+  }, [farmerId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,7 +121,14 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     }
   }, [farmerId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        await syncAllPendingFarmerVerifications();
+        await Promise.all([load(), loadPending()]);
+      })();
+    }, [load, loadPending])
+  );
 
   const statusInfo = formatFarmerStatus(farmer?.status);
   const canVerify = farmer?.status === 'pending_field_verification';
@@ -121,22 +146,68 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     verificationStatus: 'verified' | 'rejected',
     notes?: string
   ) => {
+    if (!farmer) return;
     setVerifying(true);
     try {
-      await verifyFarmerField(farmerId, verificationStatus, notes);
-      setVerifyModalOpen(false);
-      Alert.alert(
-        verificationStatus === 'verified' ? 'Farmer verified' : 'Farmer rejected',
-        verificationStatus === 'verified'
-          ? '✅ Farmer verified successfully!'
-          : 'Farmer marked as rejected.'
-      );
-      await load();
-      navigation.goBack();
+      const result = await submitFarmerVerificationWithOutbox({
+        farmerId,
+        farmerName: farmer.name,
+        verificationStatus,
+        // Authoritative pin: farmers.status (must still be pending_field_verification)
+        expectedStatus: farmer.status,
+        notes,
+      });
+      await loadPending();
+
+      if (result.mode === 'online') {
+        setVerifyModalOpen(false);
+        Alert.alert(
+          verificationStatus === 'verified' ? 'Farmer verified' : 'Farmer rejected',
+          verificationStatus === 'verified'
+            ? '✅ Farmer verified successfully!'
+            : 'Farmer marked as rejected.'
+        );
+        await load();
+        navigation.goBack();
+        return;
+      }
+
+      if (result.mode === 'offline') {
+        setVerifyModalOpen(false);
+        Alert.alert(
+          'Saved offline',
+          'Verification queued on this device. It will sync when you are back online.'
+        );
+        return;
+      }
+
+      Alert.alert('Needs your review', result.error);
     } catch (err) {
       Alert.alert('Error', extractApiError(err, 'Verification failed'));
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handlePush = async (item: PendingFarmerVerificationView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingFarmerVerification(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert(
+          'Synced',
+          `${item.farmerName} ${item.verificationStatus === 'verified' ? 'verified' : 'rejected'}.`
+        );
+        navigation.goBack();
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync verification');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -200,6 +271,23 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
         </View>
 
         <View className="p-4">
+          {pendingVerifications.length > 0 ? (
+            <View className="mb-3">
+              <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
+                Queued verification
+              </Text>
+              {pendingVerifications.map((item) => (
+                <OutboxFarmerVerificationCard
+                  key={item.id}
+                  item={item}
+                  pushing={pushingId === item.id}
+                  onPush={() => handlePush(item)}
+                  onDismiss={() => dismissFarmerVerificationOutbox(item.id).then(loadPending)}
+                />
+              ))}
+            </View>
+          ) : null}
+
           <View className="mb-3 rounded-lg bg-white p-3.5">
             <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Basic information</Text>
             <DetailRow label="National ID" value="On file (encrypted)" />
@@ -289,7 +377,7 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
             </View>
           ) : null}
 
-          {canVerify ? (
+          {canVerify && pendingVerifications.length === 0 ? (
             <Button className="h-12 bg-[#1A4D3E]" onPress={() => setVerifyModalOpen(true)}>
               <Text className="text-white">Verify Farmer</Text>
             </Button>

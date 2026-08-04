@@ -7,7 +7,8 @@
 export type OutboxActionType =
   | 'farmer_registration'
   | 'task_submission'
-  | 'task_approval';
+  | 'task_approval'
+  | 'farmer_verification';
 
 /**
  * Lifecycle:

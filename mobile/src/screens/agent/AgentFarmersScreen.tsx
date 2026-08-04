@@ -12,9 +12,17 @@ import {
   syncAllPendingRegistrations,
   type PendingRegistrationView,
 } from '../../services/submitFarmerRegistration';
+import {
+  dismissFarmerVerificationOutbox,
+  listPendingFarmerVerifications,
+  pushPendingFarmerVerification,
+  syncAllPendingFarmerVerifications,
+  type PendingFarmerVerificationView,
+} from '../../services/submitFarmerVerificationOutbox';
 import { KBCard } from '../../components/ui/KBCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
@@ -33,26 +41,29 @@ export function AgentFarmersScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AgentFarmersStackParamList>>();
   const [farmers, setFarmers] = useState<FarmerRow[]>([]);
   const [pending, setPending] = useState<PendingRegistrationView[]>([]);
+  const [pendingVerifications, setPendingVerifications] = useState<PendingFarmerVerificationView[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const loadPending = useCallback(async () => listPendingRegistrationOutbox(), []);
+  const loadPendingVerifications = useCallback(async () => listPendingFarmerVerifications(), []);
 
   const load = useCallback(async () => {
     try {
       const pendingRegs = await loadPending();
       setPending(pendingRegs);
+      setPendingVerifications(await loadPendingVerifications());
 
       if (pendingRegs.length > 0) {
-        const { synced } = await syncAllPendingRegistrations();
-        if (synced > 0) {
-          setPending(await loadPending());
-        } else {
-          setPending(await loadPending());
-        }
+        await syncAllPendingRegistrations();
+        setPending(await loadPending());
       }
+      await syncAllPendingFarmerVerifications();
+      setPendingVerifications(await loadPendingVerifications());
 
       const result = await loadWithReadCache<{ farmers?: FarmerRow[] }>({
         cacheKey: READ_CACHE_KEYS.agentFarmers,
@@ -68,10 +79,11 @@ export function AgentFarmersScreen() {
       setFarmers([]);
       setCacheFetchedAt(null);
       setPending(await loadPending());
+      setPendingVerifications(await loadPendingVerifications());
     } finally {
       setLoading(false);
     }
-  }, [loadPending, userScope]);
+  }, [loadPending, loadPendingVerifications, userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -95,6 +107,28 @@ export function AgentFarmersScreen() {
       } else {
         Alert.alert('Push failed', result.error ?? 'Could not sync registration');
         setPending(await loadPending());
+      }
+    } finally {
+      setPushingId(null);
+    }
+  };
+
+  const handlePushVerification = async (item: PendingFarmerVerificationView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingFarmerVerification(item.id);
+      if (result.success) {
+        Alert.alert(
+          'Synced',
+          `${item.farmerName} ${item.verificationStatus === 'verified' ? 'verified' : 'rejected'}.`
+        );
+        await load();
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+        setPendingVerifications(await loadPendingVerifications());
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync verification');
+        setPendingVerifications(await loadPendingVerifications());
       }
     } finally {
       setPushingId(null);
@@ -163,6 +197,25 @@ export function AgentFarmersScreen() {
                     </Button>
                   ) : null}
                 </KBCard>
+              ))}
+            </View>
+          ) : null}
+
+          {pendingVerifications.length > 0 ? (
+            <View className="mb-4">
+              <Text className="mb-2 text-[17px] font-bold text-[#333333]">Queued verifications</Text>
+              {pendingVerifications.map((item) => (
+                <OutboxFarmerVerificationCard
+                  key={item.id}
+                  item={item}
+                  pushing={pushingId === item.id}
+                  onPush={() => handlePushVerification(item)}
+                  onDismiss={() =>
+                    dismissFarmerVerificationOutbox(item.id).then(async () => {
+                      setPendingVerifications(await loadPendingVerifications());
+                    })
+                  }
+                />
               ))}
             </View>
           ) : null}

@@ -10,9 +10,11 @@
 import {
   approveFarmerTask,
   getAdminFarmerTask,
+  getAgentFarmerById,
   registerFarmer,
   rejectFarmerTask,
   submitFarmerTaskCompletion,
+  verifyFarmerField,
 } from '../api/client';
 import type { RegistrationFormData } from '../types';
 import { extractApiError } from '../utils/feedback';
@@ -36,6 +38,21 @@ export interface TaskApprovalOutboxPayload {
   notes: string;
   rejectionReason: string;
   /** Prior server state that must still hold when syncing. */
+  expected: { status: string };
+}
+
+/**
+ * Field-agent farmer verification.
+ * Authoritative pin: farmers.status (must still be pending_field_verification).
+ * Decision body uses verification_status verified|rejected → writes farmers.status.
+ */
+export interface FarmerVerificationOutboxPayload {
+  farmerId: string;
+  farmerName: string;
+  /** Decision sent to API as verification_status. */
+  verificationStatus: 'verified' | 'rejected';
+  notes: string;
+  /** Prior farmers.status that must still hold (normally pending_field_verification). */
   expected: { status: string };
 }
 
@@ -103,6 +120,43 @@ function asTaskApprovalPayload(payload: Record<string, unknown>): TaskApprovalOu
     notes: typeof payload.notes === 'string' ? payload.notes : '',
     rejectionReason:
       typeof payload.rejectionReason === 'string' ? payload.rejectionReason.trim() : '',
+    expected: { status: expectedStatus },
+  };
+}
+
+function asFarmerVerificationPayload(
+  payload: Record<string, unknown>
+): FarmerVerificationOutboxPayload {
+  const farmerId = typeof payload.farmerId === 'string' ? payload.farmerId.trim() : '';
+  const verificationStatus =
+    payload.verificationStatus === 'rejected'
+      ? 'rejected'
+      : payload.verificationStatus === 'verified'
+        ? 'verified'
+        : null;
+  const expectedRaw = payload.expected;
+  const expectedStatus =
+    expectedRaw &&
+    typeof expectedRaw === 'object' &&
+    typeof (expectedRaw as { status?: unknown }).status === 'string'
+      ? (expectedRaw as { status: string }).status.trim()
+      : '';
+  if (!farmerId) {
+    throw new Error('Invalid farmer_verification payload: farmerId is required');
+  }
+  if (!verificationStatus) {
+    throw new Error(
+      'Invalid farmer_verification payload: verificationStatus must be verified or rejected'
+    );
+  }
+  if (!expectedStatus) {
+    throw new Error('Invalid farmer_verification payload: expected.status is required');
+  }
+  return {
+    farmerId,
+    farmerName: typeof payload.farmerName === 'string' ? payload.farmerName : 'Farmer',
+    verificationStatus,
+    notes: typeof payload.notes === 'string' ? payload.notes : '',
     expected: { status: expectedStatus },
   };
 }
@@ -194,6 +248,40 @@ async function handleTaskApproval(item: OutboxItem): Promise<OutboxHandlerResult
   return rejectFarmerTask(payload.farmerTaskId, payload.rejectionReason);
 }
 
+async function handleFarmerVerification(item: OutboxItem): Promise<OutboxHandlerResult> {
+  const payload = asFarmerVerificationPayload(item.payload);
+  let farmer: { status?: string; name?: string } | null = null;
+  try {
+    const data = await getAgentFarmerById(payload.farmerId);
+    farmer = (data?.farmer as { status?: string; name?: string } | undefined) ?? null;
+  } catch (err: unknown) {
+    const msg = extractApiError(err, '');
+    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('404')) {
+      throw new OutboxNeedsReviewError(
+        `Farmer "${payload.farmerName}" no longer exists or is not visible. Dismiss this queued verification.`
+      );
+    }
+    throw err;
+  }
+  if (!farmer) {
+    throw new OutboxNeedsReviewError(
+      `Farmer "${payload.farmerName}" no longer exists or is not visible. Dismiss this queued verification.`
+    );
+  }
+
+  assertExpected(
+    { status: farmer.status },
+    payload.expected,
+    { label: `Farmer "${payload.farmerName || farmer.name || payload.farmerId}"` }
+  );
+
+  return verifyFarmerField(
+    payload.farmerId,
+    payload.verificationStatus,
+    payload.notes.trim() || undefined
+  );
+}
+
 let registered = false;
 
 /** Idempotent — call before processOutboxItem / processReadyOutbox. */
@@ -202,6 +290,7 @@ export function ensureOutboxHandlersRegistered(): void {
   registerOutboxHandler('farmer_registration', handleFarmerRegistration);
   registerOutboxHandler('task_submission', handleTaskSubmission);
   registerOutboxHandler('task_approval', handleTaskApproval);
+  registerOutboxHandler('farmer_verification', handleFarmerVerification);
   registered = true;
 }
 
