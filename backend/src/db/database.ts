@@ -4,28 +4,37 @@ import { Pool, type QueryResultRow } from 'pg';
 
 loadEnv({ path: path.resolve(process.cwd(), '.env') });
 
+let pool: Pool | null = null;
+
 function requireDatabaseUrl(): string {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) {
-    throw new Error('DATABASE_URL is not set — add it to backend/.env');
+    throw new Error(
+      'DATABASE_URL is not set. On Render: Environment → add DATABASE_URL (Supabase transaction pooler URL, port 6543).'
+    );
   }
   return url;
 }
 
-/** Shared Postgres pool (Supabase transaction pooler). */
-export const pool = new Pool({
-  connectionString: requireDatabaseUrl(),
-  ssl: { rejectUnauthorized: false },
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
-});
+/** Lazy pool so the process can start /health before env is validated at query time. */
+export function getPool(): Pool {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: requireDatabaseUrl(),
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+    });
+  }
+  return pool;
+}
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<T[]> {
-  const result = await pool.query<T>(text, params);
+  const result = await getPool().query<T>(text, params);
   return result.rows;
 }
 
@@ -49,7 +58,10 @@ export async function testConnection(): Promise<{ farmerCount: number }> {
 }
 
 export async function closeDatabase(): Promise<void> {
-  await pool.end();
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
 }
 
 /** Schema is managed in Supabase — no runtime DDL. */

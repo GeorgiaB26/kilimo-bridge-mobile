@@ -110,6 +110,18 @@ curl https://kilimo-bridge-api.onrender.com/health
 
 You should see `"status":"ok"` and a farmer count matching your Supabase data.
 
+If deploy fails, check `/health` for diagnostics:
+
+```bash
+curl https://YOUR-SERVICE.onrender.com/health
+```
+
+- `"status":"error"` with `"error":"DATABASE_URL is not set..."` → add `DATABASE_URL` in Render Environment (Supabase pooler URL, port **6543**).
+- Build log `Exited with status 2` → open Render **Logs** tab; usually TypeScript build errors or missing `shared/` (Root Directory must be `backend`, full repo cloned).
+- Service starts then crashes → check **Events** for bootstrap errors (schema FK mismatches are fixed in recent commits).
+
+**Required Render env vars:** `DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`, `NODE_ENV=production`, `PILOT_OTP=true`, `CORS_ORIGINS` (your Netlify URL).
+
 ### Your farmer data (important)
 
 The Netlify link is only the **web app**. All farmer records live in **Supabase Postgres**, not on Render's filesystem.

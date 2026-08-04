@@ -34,6 +34,7 @@ const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
 let appReady = false;
+let bootstrapError: string | null = null;
 let cachedFarmerCount: number | null = null;
 let cachedHierarchyProjects: number | null = null;
 let cachedDemoFarmerTasks: number | null = null;
@@ -45,7 +46,8 @@ if (process.env.NODE_ENV === 'production') {
 
 function healthPayload() {
   return {
-    status: appReady ? 'ok' : 'starting',
+    status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
+    error: bootstrapError,
     timestamp: new Date().toISOString(),
     farmers: appReady ? cachedFarmerCount : null,
     hierarchy_projects: appReady ? cachedHierarchyProjects : null,
@@ -69,18 +71,20 @@ app.get('/health', (_req, res) => {
 app.listen(PORT, HOST, () => {
   console.log(`Kilimo Bridge API listening on ${HOST}:${PORT}`);
   bootstrap().catch((err) => {
-    console.error('Failed to start:', err);
-    process.exit(1);
+    const message = err instanceof Error ? err.message : String(err);
+    bootstrapError = message;
+    console.error('Bootstrap failed (service stays up for /health diagnostics):', err);
   });
 });
 
-async function bootstrap(): Promise<void> {
-  validateProductionEnv();
-  initDatabase();
+async function runSchemaEnsures(): Promise<void> {
   await ensureFarmerHelpRequestsTable();
   await ensureAgentTasksTable();
   await ensureMessagingTables();
   await ensureFarmerTaskAssignerColumn();
+}
+
+async function runSeedAndCounts(): Promise<number> {
   const farmerCount = await refreshHealthCounts();
   console.log(`Database ready: ${farmerCount} farmers`);
 
@@ -97,7 +101,10 @@ async function bootstrap(): Promise<void> {
   await ensureDemoAgentPassword();
   await seedHierarchyIfEmpty();
   await refreshHealthCounts();
+  return farmerCount;
+}
 
+function mountApiRoutes(): void {
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -162,4 +169,25 @@ async function bootstrap(): Promise<void> {
 
   appReady = true;
   console.log('Kilimo Bridge API ready');
+}
+
+async function bootstrap(): Promise<void> {
+  validateProductionEnv();
+  initDatabase();
+
+  try {
+    await runSchemaEnsures();
+  } catch (err) {
+    console.error('[bootstrap] Schema ensure step failed (continuing):', err);
+  }
+
+  try {
+    await runSeedAndCounts();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    bootstrapError = message;
+    console.error('[bootstrap] Database seed/count step failed:', err);
+  }
+
+  mountApiRoutes();
 }
