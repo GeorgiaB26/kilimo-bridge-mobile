@@ -9,7 +9,8 @@ export type OutboxActionType =
   | 'task_submission'
   | 'task_approval'
   | 'farmer_verification'
-  | 'centre_qc';
+  | 'centre_qc'
+  | 'project_assign';
 
 /**
  * Lifecycle:

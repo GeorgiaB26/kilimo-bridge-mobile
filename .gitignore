@@ -15,5 +15,6 @@ scripts/_prove-read-cache-admin.bundle.cjs
 scripts/_prove-task-approval-outbox.bundle.cjs
 scripts/_prove-farmer-verification-outbox.bundle.cjs
 scripts/_prove-centre-qc-outbox.bundle.cjs
+scripts/_prove-project-assign-outbox.bundle.cjs
 scripts/_tmp_task_evidence.jpg
 scripts/_tmp_task_evidence.b64

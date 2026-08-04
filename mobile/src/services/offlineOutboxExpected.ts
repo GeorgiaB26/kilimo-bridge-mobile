@@ -27,6 +27,13 @@ function formatValue(value: unknown): string {
   if (value === undefined) return '(missing)';
   if (value === null) return 'null';
   if (typeof value === 'string') return `"${value}"`;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '[]';
+    if (value.length <= 4 && value.every((v) => typeof v === 'string')) {
+      return `[${value.map((v) => `"${v}"`).join(', ')}]`;
+    }
+    return `[${value.length} ids]`;
+  }
   return String(value);
 }
 

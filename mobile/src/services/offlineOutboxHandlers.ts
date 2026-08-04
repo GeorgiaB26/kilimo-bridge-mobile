@@ -10,9 +10,11 @@
 import {
   approveFarmerTask,
   approveInventoryQuality,
+  assignFarmersToProgramProject,
   getAdminFarmerTask,
   getAgentFarmerById,
   getCentreInventoryItem,
+  getProgramProject,
   registerFarmer,
   rejectFarmerTask,
   submitFarmerTaskCompletion,
@@ -70,6 +72,18 @@ export interface CentreQcOutboxPayload {
   qualityNotes: string;
   marketplacePricePerUnit: number | null;
   expected: { quality_status: string };
+}
+
+/**
+ * Assign farmers to a program project (additive API).
+ * Authoritative pin: sorted enrolled farmer_id set at enqueue time.
+ * (program_projects.updated_at is not bumped by assign, so set membership is the signal.)
+ */
+export interface ProjectAssignOutboxPayload {
+  projectId: string;
+  projectName: string;
+  farmerIds: string[];
+  expected: { farmerIds: string[] };
 }
 
 export type OutboxHandlerResult = unknown;
@@ -211,6 +225,45 @@ function asCentreQcPayload(payload: Record<string, unknown>): CentreQcOutboxPayl
     qualityNotes: typeof payload.qualityNotes === 'string' ? payload.qualityNotes : '',
     marketplacePricePerUnit,
     expected: { quality_status: expectedQualityStatus },
+  };
+}
+
+/** Stable sorted unique farmer ids for set comparison. */
+export function sortedFarmerIds(ids: string[]): string[] {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))].sort();
+}
+
+function asProjectAssignPayload(payload: Record<string, unknown>): ProjectAssignOutboxPayload {
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId.trim() : '';
+  const farmerIdsRaw = payload.farmerIds;
+  if (!projectId) {
+    throw new Error('Invalid project_assign payload: projectId is required');
+  }
+  if (!Array.isArray(farmerIdsRaw) || farmerIdsRaw.length === 0) {
+    throw new Error('Invalid project_assign payload: farmerIds must be a non-empty array');
+  }
+  const farmerIds = sortedFarmerIds(
+    farmerIdsRaw.filter((id): id is string => typeof id === 'string')
+  );
+  if (farmerIds.length === 0) {
+    throw new Error('Invalid project_assign payload: farmerIds must be a non-empty array');
+  }
+  const expectedRaw = payload.expected;
+  if (!expectedRaw || typeof expectedRaw !== 'object') {
+    throw new Error('Invalid project_assign payload: expected.farmerIds is required');
+  }
+  const expectedIdsRaw = (expectedRaw as { farmerIds?: unknown }).farmerIds;
+  if (!Array.isArray(expectedIdsRaw)) {
+    throw new Error('Invalid project_assign payload: expected.farmerIds must be an array');
+  }
+  const expectedFarmerIds = sortedFarmerIds(
+    expectedIdsRaw.filter((id): id is string => typeof id === 'string')
+  );
+  return {
+    projectId,
+    projectName: typeof payload.projectName === 'string' ? payload.projectName : 'Project',
+    farmerIds,
+    expected: { farmerIds: expectedFarmerIds },
   };
 }
 
@@ -375,6 +428,44 @@ async function handleCentreQc(item: OutboxItem): Promise<OutboxHandlerResult> {
   });
 }
 
+async function handleProjectAssign(item: OutboxItem): Promise<OutboxHandlerResult> {
+  const payload = asProjectAssignPayload(item.payload);
+  let project: {
+    name?: string;
+    farmers?: Array<{ farmer_id?: string }>;
+  } | null = null;
+  try {
+    project = await getProgramProject(payload.projectId);
+  } catch (err: unknown) {
+    const msg = extractApiError(err, '');
+    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('404')) {
+      throw new OutboxNeedsReviewError(
+        `Project "${payload.projectName}" no longer exists. Dismiss this queued farmer assignment.`
+      );
+    }
+    throw err;
+  }
+  if (!project) {
+    throw new OutboxNeedsReviewError(
+      `Project "${payload.projectName}" no longer exists. Dismiss this queued farmer assignment.`
+    );
+  }
+
+  const currentFarmerIds = sortedFarmerIds(
+    (project.farmers ?? [])
+      .map((f) => f.farmer_id)
+      .filter((id): id is string => typeof id === 'string')
+  );
+
+  assertExpected(
+    { farmerIds: currentFarmerIds },
+    payload.expected,
+    { label: `Project "${payload.projectName || project.name || payload.projectId}"` }
+  );
+
+  return assignFarmersToProgramProject(payload.projectId, payload.farmerIds);
+}
+
 let registered = false;
 
 /** Idempotent — call before processOutboxItem / processReadyOutbox. */
@@ -385,6 +476,7 @@ export function ensureOutboxHandlersRegistered(): void {
   registerOutboxHandler('task_approval', handleTaskApproval);
   registerOutboxHandler('farmer_verification', handleFarmerVerification);
   registerOutboxHandler('centre_qc', handleCentreQc);
+  registerOutboxHandler('project_assign', handleProjectAssign);
   registered = true;
 }
 
