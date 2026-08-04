@@ -14,7 +14,10 @@ import {
 } from '../../services/submitFarmerRegistration';
 import { KBCard } from '../../components/ui/KBCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type FarmerRow = {
   farmer_id: string;
@@ -26,12 +29,14 @@ type FarmerRow = {
 
 export function AgentFarmersScreen() {
   const user = useAuthStore((s) => s.user);
+  const userScope = useReadCacheUserScope();
   const navigation = useNavigation<NativeStackNavigationProp<AgentFarmersStackParamList>>();
   const [farmers, setFarmers] = useState<FarmerRow[]>([]);
   const [pending, setPending] = useState<PendingRegistrationView[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const loadPending = useCallback(async () => listPendingRegistrationOutbox(), []);
 
@@ -49,15 +54,24 @@ export function AgentFarmersScreen() {
         }
       }
 
-      const farmersRes = await api.get('/agents/farmers');
-      setFarmers(farmersRes.data.farmers ?? []);
+      const result = await loadWithReadCache<{ farmers?: FarmerRow[] }>({
+        cacheKey: READ_CACHE_KEYS.agentFarmers,
+        userScope,
+        fetchLive: async () => {
+          const farmersRes = await api.get('/agents/farmers');
+          return farmersRes.data;
+        },
+      });
+      setFarmers(result.data.farmers ?? []);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
     } catch {
       setFarmers([]);
+      setCacheFetchedAt(null);
       setPending(await loadPending());
     } finally {
       setLoading(false);
     }
-  }, [loadPending]);
+  }, [loadPending, userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -109,6 +123,8 @@ export function AgentFarmersScreen() {
           <Text className="mb-3 text-sm text-[#757575]">
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
+
+          {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
 
           {pending.length > 0 ? (
             <View className="mb-4">

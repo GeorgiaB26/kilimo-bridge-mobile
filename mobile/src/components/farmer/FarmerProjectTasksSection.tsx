@@ -17,6 +17,9 @@ import {
   syncAllPendingTaskSubmissions,
   type PendingTaskSubmissionView,
 } from '../../services/submitFarmerTaskOutbox';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { OfflineCachedDataBanner } from '../OfflineCachedDataBanner';
 
 export interface FarmerTaskRow {
   id: string;
@@ -54,9 +57,11 @@ function evidencePhotoUri(item: FarmerTaskRow): string | null {
 }
 
 export function FarmerProjectTasksSection({ programProjectId, compact }: Props) {
+  const userScope = useReadCacheUserScope();
   const [tasks, setTasks] = useState<FarmerTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [submitTask, setSubmitTask] = useState<FarmerTaskRow | null>(null);
   const [pendingByTask, setPendingByTask] = useState<Map<string, PendingTaskSubmissionView>>(
     new Map()
@@ -66,9 +71,17 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
 
   const resolveProjectId = useCallback(async (): Promise<string | null> => {
     if (programProjectId) return programProjectId;
-    const data = await getFarmerHierarchyProjects();
-    return data.projects?.[0]?.id ?? null;
-  }, [programProjectId]);
+    try {
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerProjects,
+        userScope,
+        fetchLive: () => getFarmerHierarchyProjects(),
+      });
+      return result.data.projects?.[0]?.id ?? null;
+    } catch {
+      return null;
+    }
+  }, [programProjectId, userScope]);
 
   const applyPendingAgainstTasks = useCallback(
     async (taskList: FarmerTaskRow[]) => {
@@ -100,24 +113,33 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       const pid = await resolveProjectId();
       if (!pid) {
         setTasks([]);
+        setCacheFetchedAt(null);
         setError('No program tasks assigned yet. Restart the backend if you expect demo tasks.');
         await applyPendingAgainstTasks([]);
         return;
       }
-      const data = await getFarmerProjectTasks(pid);
-      const list = (data.tasks ?? []) as FarmerTaskRow[];
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerTasks(pid),
+        userScope,
+        fetchLive: () => getFarmerProjectTasks(pid),
+      });
+      const list = (result.data.tasks ?? []) as FarmerTaskRow[];
       list.sort((a, b) => a.task_order - b.task_order);
       setTasks(list);
-      setError(list.length === 0 ? 'No tasks for this project yet.' : null);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      setError(
+        !result.fromCache && list.length === 0 ? 'No tasks for this project yet.' : null
+      );
       await applyPendingAgainstTasks(list);
     } catch (err: unknown) {
       setTasks([]);
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Could not load tasks'));
       await applyPendingAgainstTasks([]);
     } finally {
       setLoading(false);
     }
-  }, [resolveProjectId, applyPendingAgainstTasks]);
+  }, [resolveProjectId, applyPendingAgainstTasks, userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -167,6 +189,11 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {cacheFetchedAt ? (
+        <View style={styles.cacheBannerWrap}>
+          <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} />
+        </View>
+      ) : null}
 
       {orphanPending.length > 0 ? (
         <View style={styles.offlineSection}>
@@ -321,6 +348,7 @@ const styles = StyleSheet.create({
   loading: { padding: 24, alignItems: 'center' },
   loadingText: { marginTop: 8, color: COLORS.muted },
   error: { color: COLORS.alert, marginBottom: 12, lineHeight: 20 },
+  cacheBannerWrap: { marginHorizontal: -16, marginBottom: 4 },
   offlineSection: { marginBottom: 8 },
   offlineTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 8 },
   offlineMeta: { fontSize: 13, color: COLORS.muted, marginTop: 4 },

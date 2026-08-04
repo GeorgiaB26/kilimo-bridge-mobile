@@ -13,6 +13,7 @@ import { FarmerLocationPrompt } from '../../components/FarmerLocationPrompt';
 import { getFarmerDashboard, claimPayment, getFarmerPayments, getFarmerHierarchyProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { useAuthStore } from '../../store/authStore';
 import { getLocalizedGreeting, formatDueDate } from '../../utils/greeting';
@@ -24,6 +25,8 @@ import { showMessage } from '../../utils/feedback';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerTabParamList, FarmerProjectsStackParamList } from '../../navigation/types';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<FarmerTabParamList, 'Dashboard'>,
@@ -33,6 +36,7 @@ type DashboardNav = CompositeNavigationProp<
 export function FarmerDashboardScreen() {
   const navigation = useNavigation<DashboardNav>();
   const user = useAuthStore((s) => s.user);
+  const userScope = useReadCacheUserScope();
   const { formatAmount, formatClaim } = useCurrency();
   const [data, setData] = useState<{
     farmer?: { name: string; country?: string; status?: string; profileLocationPending?: boolean };
@@ -45,17 +49,24 @@ export function FarmerDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const result = await getFarmerDashboard();
-      setData(result);
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerDashboard,
+        userScope,
+        fetchLive: () => getFarmerDashboard(),
+      });
+      setData(result.data);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setError(null);
     } catch (err: unknown) {
       setData(null);
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Backend offline or farmer account not linked'));
     }
-  }, []);
+  }, [userScope]);
 
   React.useEffect(() => { load(); }, [load]);
 
@@ -142,7 +153,8 @@ export function FarmerDashboardScreen() {
           <Text className="mt-1.5 text-center text-sm text-white/75">Here&apos;s your earnings overview</Text>
         </View>
 
-        {error ? <FarmerOfflineBanner message={error} /> : null}
+        {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+        {error && !data ? <FarmerOfflineBanner message={error} /> : null}
 
         {showVerificationBanner ? (
           <View className="mx-4 mb-4 mt-2">
@@ -157,7 +169,7 @@ export function FarmerDashboardScreen() {
           <Button
             className="mt-2 h-12 w-full rounded-xl bg-[#D4AF6A]"
             onPress={handleClaim}
-            disabled={claiming}
+            disabled={claiming || !!cacheFetchedAt}
           >
             {claiming ? (
               <ActivityIndicator color="#1A4D3E" />
@@ -234,7 +246,7 @@ export function FarmerDashboardScreen() {
         </View>
       </ScrollView>
 
-      {pending > 0 ? (
+      {pending > 0 && !cacheFetchedAt ? (
         <FAB
           icon="cash"
           label="Claim"
@@ -246,7 +258,7 @@ export function FarmerDashboardScreen() {
       ) : null}
       <FarmerLocationPrompt
         country={country}
-        visible={showLocationPrompt}
+        visible={showLocationPrompt && !cacheFetchedAt}
         onCompleted={load}
       />
     </View>
