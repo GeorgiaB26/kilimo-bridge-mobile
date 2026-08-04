@@ -261,8 +261,8 @@ export async function getThreadMessages(
     `
     SELECT u.user_id, u.name
     FROM message_thread_participants p
-    JOIN users u ON u.user_id = p.user_id
-    WHERE p.thread_id = $1 AND p.user_id <> $2
+    JOIN users u ON u.user_id::text = p.user_id::text
+    WHERE p.thread_id::text = $1::text AND p.user_id::text <> $2::text
     LIMIT 1
     `,
     [threadId, userId]
@@ -272,8 +272,8 @@ export async function getThreadMessages(
     `
     SELECT m.id, m.thread_id, m.sender_id, m.content, m.created_at, u.name AS sender_name
     FROM message_thread_messages m
-    JOIN users u ON u.user_id = m.sender_id
-    WHERE m.thread_id = $1
+    JOIN users u ON u.user_id::text = m.sender_id::text
+    WHERE m.thread_id::text = $1::text
     ORDER BY m.created_at ASC
     `,
     [threadId]
@@ -370,8 +370,8 @@ export async function sendThreadMessage(
   `
     SELECT m.id, m.thread_id, m.sender_id, m.content, m.created_at, u.name AS sender_name
     FROM message_thread_messages m
-    JOIN users u ON u.user_id = m.sender_id
-    WHERE m.id = $1
+    JOIN users u ON u.user_id::text = m.sender_id::text
+    WHERE m.id::text = $1::text
     `,
     [messageId]
   );
