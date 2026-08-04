@@ -11,6 +11,12 @@ import { kilimoTheme } from './src/theme/paperTheme';
 import { CurrencyProvider } from './src/context/CurrencyContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { NativeWindSmokeTest } from './src/components/ui/NativeWindSmokeTest';
+import { useOutboxConnectivitySync } from './src/hooks/useOutboxConnectivitySync';
+
+function OutboxConnectivitySync() {
+  useOutboxConnectivitySync();
+  return null;
+}
 
 export default function App() {
   return (
@@ -19,6 +25,7 @@ export default function App() {
         <PaperProvider theme={kilimoTheme}>
           <NavigationContainer>
             <StatusBar style="light" />
+            <OutboxConnectivitySync />
             <RootNavigator />
             <NativeWindSmokeTest />
             <PortalHost />

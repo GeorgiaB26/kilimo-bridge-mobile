@@ -20,6 +20,10 @@ export function setAuthToken(token: string | null) {
   }
 }
 
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
 api.interceptors.request.use((config) => {
   if (authToken) {
     config.headers.Authorization = `Bearer ${authToken}`;
