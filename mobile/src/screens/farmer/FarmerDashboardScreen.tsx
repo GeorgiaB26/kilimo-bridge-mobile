@@ -13,6 +13,7 @@ import {
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { useAuthStore } from '../../store/authStore';
 import { useCurrency } from '../../context/CurrencyContext';
@@ -27,6 +28,8 @@ import {
   FarmerDashboardRecentPayments,
   FarmerDashboardSupportSection,
 } from '../../components/farmer/FarmerDashboardSections';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<FarmerTabParamList, 'Dashboard'>,
@@ -45,6 +48,9 @@ export function FarmerDashboardScreen() {
   const navigation = useNavigation<DashboardNav>();
   const logout = useAuthStore((s) => s.logout);
   const { formatAmount, currencyInfo } = useCurrency();
+  const user = useAuthStore((s) => s.user);
+  const userScope = useReadCacheUserScope();
+  const { formatAmount, formatClaim } = useCurrency();
   const [data, setData] = useState<{
     farmer?: {
       name: string;
@@ -72,6 +78,7 @@ export function FarmerDashboardScreen() {
   const [recentPayments, setRecentPayments] = useState<PaymentRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -83,9 +90,20 @@ export function FarmerDashboardScreen() {
     } catch (err: unknown) {
       setData(null);
       setRecentPayments([]);
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerDashboard,
+        userScope,
+        fetchLive: () => getFarmerDashboard(),
+      });
+      setData(result.data);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      setError(null);
+    } catch (err: unknown) {
+      setData(null);
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Backend offline or farmer account not linked'));
     }
-  }, []);
+  }, [userScope]);
 
   React.useEffect(() => {
     load();
@@ -154,7 +172,8 @@ export function FarmerDashboardScreen() {
           </View>
         </View>
 
-        {error ? <FarmerOfflineBanner message={error} /> : null}
+        {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+        {error && !data ? <FarmerOfflineBanner message={error} /> : null}
 
         {showVerificationBanner ? (
           <View className="mx-3 mb-2 mt-2">
@@ -168,6 +187,24 @@ export function FarmerDashboardScreen() {
           onEditProfile={goToProfile}
           onLogout={() => logout()}
         />
+        <View className={`${marginTopPayment} mb-6 mx-4 items-center rounded-2xl bg-white p-6 shadow-sm elevation-4`}>
+          <KBStatusChip label="Ready to Claim" variant="success" />
+          <Text className="mt-3 text-sm text-[#757575]">Earnings to claim</Text>
+          <Text className="my-2 text-4xl font-extrabold text-[#D4AF6A]">{formatAmount(pending)}</Text>
+          <Button
+            className="mt-2 h-12 w-full rounded-xl bg-[#D4AF6A]"
+            onPress={handleClaim}
+            disabled={claiming || !!cacheFetchedAt}
+          >
+            {claiming ? (
+              <ActivityIndicator color="#1A4D3E" />
+            ) : (
+              <Text className="font-semibold text-[#1A4D3E]">
+                {pending > 0 ? formatClaim(pending) : 'Claim now'}
+              </Text>
+            )}
+          </Button>
+        </View>
 
         <FarmerDashboardEarningsCard
           paymentSummary={data?.paymentSummary}
@@ -201,9 +238,19 @@ export function FarmerDashboardScreen() {
         <FarmerDashboardSupportSection />
       </ScrollView>
 
+      {pending > 0 && !cacheFetchedAt ? (
+        <FAB
+          icon="cash"
+          label="Claim"
+          style={{ position: 'absolute', right: 16, bottom: 16, backgroundColor: '#D4AF6A' }}
+          color="#1A4D3E"
+          onPress={handleClaim}
+          loading={claiming}
+        />
+      ) : null}
       <FarmerLocationPrompt
         country={country}
-        visible={showLocationPrompt}
+        visible={showLocationPrompt && !cacheFetchedAt}
         onCompleted={load}
       />
     </View>

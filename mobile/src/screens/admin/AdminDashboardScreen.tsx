@@ -7,9 +7,13 @@ import { extractApiError } from '../../utils/feedback';
 import { API_BASE_URL } from '../../constants';
 import { getAdminDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 export function AdminDashboardScreen() {
   const user = useAuthStore((s) => s.user);
+  const userScope = useReadCacheUserScope();
   const [stats, setStats] = useState<{
     totalFarmers: number;
     totalUsers: number;
@@ -23,15 +27,22 @@ export function AdminDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await getAdminDashboard();
-      setStats(data);
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.adminDashboard,
+        userScope,
+        fetchLive: () => getAdminDashboard(),
+      });
+      setStats(result.data);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setError(null);
     } catch (err: unknown) {
       const detail = extractApiError(err, '');
       const staleSession = detail.toLowerCase().includes('authentication') || detail.toLowerCase().includes('invalid or expired');
+      setCacheFetchedAt(null);
       setError(
         staleSession
           ? 'Session expired after server update — log out and sign in again.'
@@ -40,7 +51,7 @@ export function AdminDashboardScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -75,7 +86,9 @@ export function AdminDashboardScreen() {
         {user?.name} · {user?.role?.replace('_', ' ')}
       </Text>
 
-      {error ? (
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+
+      {error && !stats ? (
         <View className="mb-4 rounded-lg border-l-4 border-[#D32F2F] bg-[#FFEBEE] p-3">
           <Text className="text-sm text-[#D32F2F]">{error}</Text>
           <Text className="mt-1.5 text-xs text-[#757575]">API: {API_BASE_URL}</Text>

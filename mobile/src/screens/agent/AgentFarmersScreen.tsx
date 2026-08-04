@@ -7,14 +7,25 @@ import { Text } from '@/components/ui/text';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import {
-  listPendingRegistrations,
-  type PendingRegistration,
-} from '../../services/offlineRegistrationQueue';
-import { pushPendingRegistration, syncAllPendingRegistrations } from '../../services/submitFarmerRegistration';
+  listPendingRegistrationOutbox,
+  pushPendingRegistration,
+  syncAllPendingRegistrations,
+  type PendingRegistrationView,
+} from '../../services/submitFarmerRegistration';
+import {
+  dismissFarmerVerificationOutbox,
+  listPendingFarmerVerifications,
+  pushPendingFarmerVerification,
+  syncAllPendingFarmerVerifications,
+  type PendingFarmerVerificationView,
+} from '../../services/submitFarmerVerificationOutbox';
 import { KBCard } from '../../components/ui/KBCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
-import { RegisterNewFarmerButton } from '../../components/agent/RegisterNewFarmerButton';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type FarmerRow = {
   farmer_id: string;
@@ -26,42 +37,59 @@ type FarmerRow = {
 
 export function AgentFarmersScreen() {
   const user = useAuthStore((s) => s.user);
+  const userScope = useReadCacheUserScope();
   const navigation = useNavigation<NativeStackNavigationProp<AgentFarmersStackParamList>>();
   const [farmers, setFarmers] = useState<FarmerRow[]>([]);
-  const [pending, setPending] = useState<PendingRegistration[]>([]);
+  const [pending, setPending] = useState<PendingRegistrationView[]>([]);
+  const [pendingVerifications, setPendingVerifications] = useState<PendingFarmerVerificationView[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
+
+  const loadPending = useCallback(async () => listPendingRegistrationOutbox(), []);
+  const loadPendingVerifications = useCallback(async () => listPendingFarmerVerifications(), []);
 
   const load = useCallback(async () => {
     try {
-      const [farmersRes, pendingRegs] = await Promise.all([
-        api.get('/agents/farmers'),
-        listPendingRegistrations(),
-      ]);
-      setFarmers(farmersRes.data.farmers ?? []);
+      const pendingRegs = await loadPending();
       setPending(pendingRegs);
+      setPendingVerifications(await loadPendingVerifications());
+
       if (pendingRegs.length > 0) {
-        const { synced } = await syncAllPendingRegistrations();
-        if (synced > 0) {
-          const refreshed = await api.get('/agents/farmers');
-          setFarmers(refreshed.data.farmers ?? []);
-          setPending(await listPendingRegistrations());
-        } else {
-          setPending(await listPendingRegistrations());
-        }
+        await syncAllPendingRegistrations();
+        setPending(await loadPending());
       }
+      await syncAllPendingFarmerVerifications();
+      setPendingVerifications(await loadPendingVerifications());
+
+      const result = await loadWithReadCache<{ farmers?: FarmerRow[] }>({
+        cacheKey: READ_CACHE_KEYS.agentFarmers,
+        userScope,
+        fetchLive: async () => {
+          const farmersRes = await api.get('/agents/farmers');
+          return farmersRes.data;
+        },
+      });
+      setFarmers(result.data.farmers ?? []);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
     } catch {
       setFarmers([]);
-      setPending(await listPendingRegistrations());
+      setCacheFetchedAt(null);
+      setPending(await loadPending());
+      setPendingVerifications(await loadPendingVerifications());
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadPending, loadPendingVerifications, userScope]);
 
-  useFocusEffect(useCallback(() => {
-    load();
-  }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -78,7 +106,29 @@ export function AgentFarmersScreen() {
         await load();
       } else {
         Alert.alert('Push failed', result.error ?? 'Could not sync registration');
-        setPending(await listPendingRegistrations());
+        setPending(await loadPending());
+      }
+    } finally {
+      setPushingId(null);
+    }
+  };
+
+  const handlePushVerification = async (item: PendingFarmerVerificationView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingFarmerVerification(item.id);
+      if (result.success) {
+        Alert.alert(
+          'Synced',
+          `${item.farmerName} ${item.verificationStatus === 'verified' ? 'verified' : 'rejected'}.`
+        );
+        await load();
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+        setPendingVerifications(await loadPendingVerifications());
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync verification');
+        setPendingVerifications(await loadPendingVerifications());
       }
     } finally {
       setPushingId(null);
@@ -108,30 +158,64 @@ export function AgentFarmersScreen() {
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
 
+          {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+
           {pending.length > 0 ? (
             <View className="mb-4">
               <Text className="mb-2 text-[17px] font-bold text-[#333333]">Offline registrations</Text>
               {pending.map((item) => (
                 <KBCard key={item.id} elevated={false} style={{ marginBottom: 8 }}>
-                  <Text className="text-base font-semibold text-[#333333]">{item.formData.name || 'Unnamed farmer'}</Text>
-                  <Text className="mt-0.5 text-[13px] text-[#757575]">
-                    {item.formData.phone || 'No phone'} · saved {new Date(item.createdAt).toLocaleString()}
+                  <Text className="text-base font-semibold text-[#333333]">
+                    {item.formData.name || 'Unnamed farmer'}
                   </Text>
+                  <Text className="mt-0.5 text-[13px] text-[#757575]">
+                    {item.formData.phone || 'No phone'} · saved{' '}
+                    {new Date(item.createdAt).toLocaleString()}
+                    {item.status === 'needs_review'
+                      ? ' · Needs your review'
+                      : item.status !== 'pending'
+                        ? ` · ${item.status}`
+                        : ''}
+                  </Text>
+                  {item.status === 'needs_review' ? (
+                    <Text className="mt-1 text-xs font-semibold text-[#D32F2F]">Needs your review</Text>
+                  ) : null}
                   {item.syncError ? (
                     <Text className="mt-1 text-xs text-[#D32F2F]">{item.syncError}</Text>
                   ) : null}
-                  <Button
-                    className="mt-2 h-10 bg-[#1A4D3E]"
-                    disabled={pushingId === item.id}
-                    onPress={() => handlePushRegistration(item.id, item.formData.name)}
-                  >
-                    {pushingId === item.id ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text className="text-white">Push Registration</Text>
-                    )}
-                  </Button>
+                  {item.status !== 'needs_review' ? (
+                    <Button
+                      className="mt-2 h-10 bg-[#1A4D3E]"
+                      disabled={pushingId === item.id}
+                      onPress={() => handlePushRegistration(item.id, item.formData.name || 'Unnamed farmer')}
+                    >
+                      {pushingId === item.id ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text className="text-white">Push Registration</Text>
+                      )}
+                    </Button>
+                  ) : null}
                 </KBCard>
+              ))}
+            </View>
+          ) : null}
+
+          {pendingVerifications.length > 0 ? (
+            <View className="mb-4">
+              <Text className="mb-2 text-[17px] font-bold text-[#333333]">Queued verifications</Text>
+              {pendingVerifications.map((item) => (
+                <OutboxFarmerVerificationCard
+                  key={item.id}
+                  item={item}
+                  pushing={pushingId === item.id}
+                  onPush={() => handlePushVerification(item)}
+                  onDismiss={() =>
+                    dismissFarmerVerificationOutbox(item.id).then(async () => {
+                      setPendingVerifications(await loadPendingVerifications());
+                    })
+                  }
+                />
               ))}
             </View>
           ) : null}
@@ -140,22 +224,26 @@ export function AgentFarmersScreen() {
         </View>
       }
       renderItem={({ item }) => (
-          <Pressable
-            className="mb-2 rounded-xl border border-[#E8E8E8] bg-white p-4"
-            onPress={() => navigation.navigate('FarmerProfile', { farmerId: item.farmer_id, name: item.name })}
-          >
-            <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
-            <Text className="mt-0.5 text-[13px] text-[#757575]">
-              🌾 Farmer · {item.phone_number}
-            </Text>
-            <View className="mt-2">
-              <FarmerStatusChip status={item.status} />
-            </View>
-            <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view profile →</Text>
-          </Pressable>
-        )}
+        <Pressable
+          className="mb-2 rounded-xl border border-[#E8E8E8] bg-white p-4"
+          onPress={() =>
+            navigation.navigate('FarmerProfile', { farmerId: item.farmer_id, name: item.name })
+          }
+        >
+          <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
+          <Text className="mt-0.5 text-[13px] text-[#757575]">
+            🌾 Farmer · {item.phone_number}
+          </Text>
+          <View className="mt-2">
+            <FarmerStatusChip status={item.status} />
+          </View>
+          <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view profile →</Text>
+        </Pressable>
+      )}
       ListEmptyComponent={
-        <Text className="text-[#757575]">No farmers in your region yet. Use REGISTER NEW FARMER in the header.</Text>
+        <Text className="text-[#757575]">
+          No farmers in your region yet. Use REGISTER NEW FARMER in the header.
+        </Text>
       }
     />
   );

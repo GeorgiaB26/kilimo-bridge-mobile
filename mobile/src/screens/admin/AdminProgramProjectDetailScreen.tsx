@@ -3,11 +3,21 @@ import { View, ScrollView, RefreshControl, ActivityIndicator, Alert } from 'reac
 import { useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { assignFarmersToProgramProject, getFarmers, getProgramProject } from '../../api/client';
+import { getFarmers, getProgramProject } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { OutboxProjectAssignCard } from '../../components/OutboxProjectAssignCard';
 import type { AdminProgramsStackParamList } from '../../navigation/types';
+import {
+  dismissProjectAssignOutbox,
+  listPendingProjectAssigns,
+  pushPendingProjectAssign,
+  submitProjectAssignWithOutbox,
+  syncAllPendingProjectAssigns,
+  type PendingProjectAssignView,
+} from '../../services/submitProjectAssignOutbox';
+import { sortedFarmerIds } from '../../services/offlineOutboxHandlers';
 
 type Route = RouteProp<AdminProgramsStackParamList, 'ProgramProjectDetail'>;
 
@@ -25,6 +35,13 @@ export function AdminProgramProjectDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [pendingAssigns, setPendingAssigns] = useState<PendingProjectAssignView[]>([]);
+  const [pushingId, setPushingId] = useState<string | null>(null);
+
+  const loadPending = useCallback(async () => {
+    const all = await listPendingProjectAssigns();
+    setPendingAssigns(all.filter((p) => p.projectId === projectId));
+  }, [projectId]);
 
   const load = useCallback(async () => {
     try {
@@ -37,15 +54,24 @@ export function AdminProgramProjectDetailScreen() {
     }
   }, [projectId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        await syncAllPendingProjectAssigns();
+        await Promise.all([load(), loadPending()]);
+      })();
+    }, [load, loadPending])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await syncAllPendingProjectAssigns();
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
   };
 
   const assignDemoFarmers = async () => {
+    if (!project) return;
     setAssigning(true);
     try {
       const data = await getFarmers(10, 0);
@@ -54,13 +80,51 @@ export function AdminProgramProjectDetailScreen() {
         Alert.alert('No farmers', 'Import or register farmers first.');
         return;
       }
-      await assignFarmersToProgramProject(projectId, ids);
-      await load();
-      Alert.alert('Assigned', `${ids.length} farmers assigned to this project.`);
+      const expectedFarmerIds = sortedFarmerIds(
+        (project.farmers ?? []).map((f) => f.farmer_id)
+      );
+      const result = await submitProjectAssignWithOutbox({
+        projectId,
+        projectName: project.name,
+        farmerIds: ids,
+        expectedFarmerIds,
+      });
+      await loadPending();
+      if (result.mode === 'online') {
+        await load();
+        Alert.alert('Assigned', `${ids.length} farmers assigned to this project.`);
+        return;
+      }
+      if (result.mode === 'offline') {
+        Alert.alert(
+          'Saved offline',
+          'Farmer assignment queued. It will sync when you are back online.'
+        );
+        return;
+      }
+      Alert.alert('Needs your review', result.error);
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not assign farmers'));
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handlePush = async (item: PendingProjectAssignView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingProjectAssign(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.farmerIds.length} farmers assigned to ${item.projectName}.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -81,8 +145,31 @@ export function AdminProgramProjectDetailScreen() {
       <Text className="mt-1 text-sm text-[#757575]">{project?.program_name} · {project?.region ?? '—'}</Text>
       <Text className="mt-1 text-sm text-[#757575]">{project?.farmers_count ?? 0} farmers enrolled</Text>
 
-      <Button className="my-4 h-11 bg-[#1A4D3E]" onPress={assignDemoFarmers} disabled={assigning}>
-        {assigning ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Assign first 10 farmers</Text>}
+      {pendingAssigns.length > 0 ? (
+        <View className="mt-4">
+          <Text className="mb-2 text-base font-bold text-[#333333]">Queued assignments</Text>
+          {pendingAssigns.map((item) => (
+            <OutboxProjectAssignCard
+              key={item.id}
+              item={item}
+              pushing={pushingId === item.id}
+              onPush={() => handlePush(item)}
+              onDismiss={() => dismissProjectAssignOutbox(item.id).then(loadPending)}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      <Button
+        className="my-4 h-11 bg-[#1A4D3E]"
+        onPress={assignDemoFarmers}
+        disabled={assigning || pendingAssigns.length > 0}
+      >
+        {assigning ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text className="text-white">Assign first 10 farmers</Text>
+        )}
       </Button>
 
       <Text className="mb-2 mt-4 text-base font-bold text-[#333333]">Tasks (sequence)</Text>

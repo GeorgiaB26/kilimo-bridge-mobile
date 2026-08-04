@@ -13,13 +13,25 @@ import { getFarmers, searchFarmers } from '../../api/client';
 import { COUNTRY_LIST } from '../../constants/regional';
 import { PENDING_LOCATION_LABEL } from '../../constants/regional';
 import { KBSearchBar } from '../../components/KBSearchBar';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import type { AdminFarmerSummary, AdminFarmersStackParamList } from '../../navigation/types';
+import {
+  getReadCache,
+  loadWithReadCache,
+  READ_CACHE_KEYS,
+} from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 const FILTER_OPTIONS = ['All', ...COUNTRY_LIST.map((c) => c.name)];
 const PAGE_SIZE = 50;
 const SEARCH_LIMIT = 200;
 
 type Nav = NativeStackNavigationProp<AdminFarmersStackParamList, 'FarmersList'>;
+
+type FarmersListPayload = {
+  farmers?: AdminFarmerSummary[];
+  total?: number;
+};
 
 function formatDistrict(district: string): string {
   return district === PENDING_LOCATION_LABEL ? 'Location pending' : district;
@@ -44,8 +56,23 @@ function farmerMatchesQuery(farmer: AdminFarmerSummary, query: string): boolean 
   );
 }
 
+function filterCachedFarmers(
+  farmers: AdminFarmerSummary[],
+  opts: { search?: string; country?: string }
+): AdminFarmerSummary[] {
+  let list = farmers;
+  if (opts.country && opts.country !== 'All') {
+    list = list.filter((f) => f.country === opts.country);
+  }
+  if (opts.search?.trim()) {
+    list = list.filter((f) => farmerMatchesQuery(f, opts.search!));
+  }
+  return list;
+}
+
 export function AdminFarmersScreen() {
   const navigation = useNavigation<Nav>();
+  const userScope = useReadCacheUserScope();
   const [farmers, setFarmers] = useState<AdminFarmerSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [countryFilter, setCountryFilter] = useState('All');
@@ -54,6 +81,7 @@ export function AdminFarmersScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const farmersRef = useRef<AdminFarmerSummary[]>([]);
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -71,38 +99,97 @@ export function AdminFarmersScreen() {
 
     try {
       if (activeSearch) {
-        const d = await searchFarmers(activeSearch, SEARCH_LIMIT);
-        if (fetchId !== fetchIdRef.current) return;
-        const batch = ((d.farmers ?? []) as AdminFarmerSummary[]).filter((f) =>
-          farmerMatchesQuery(f, activeSearch)
-        );
-        setFarmers(batch);
-        setTotal(d.total ?? batch.length);
-        setHasMore(false);
-        hasMoreRef.current = false;
-        return;
+        try {
+          const d = await searchFarmers(activeSearch, SEARCH_LIMIT);
+          if (fetchId !== fetchIdRef.current) return;
+          const batch = ((d.farmers ?? []) as AdminFarmerSummary[]).filter((f) =>
+            farmerMatchesQuery(f, activeSearch)
+          );
+          setFarmers(batch);
+          setTotal(d.total ?? batch.length);
+          setHasMore(false);
+          hasMoreRef.current = false;
+          setCacheFetchedAt(null);
+          return;
+        } catch {
+          const cached = await getReadCache<FarmersListPayload>(
+            READ_CACHE_KEYS.adminFarmers,
+            userScope
+          );
+          if (fetchId !== fetchIdRef.current) return;
+          if (cached) {
+            const batch = filterCachedFarmers(cached.payload.farmers ?? [], {
+              search: activeSearch,
+              country: countryFilter,
+            });
+            setFarmers(batch);
+            setTotal(batch.length);
+            setHasMore(false);
+            hasMoreRef.current = false;
+            setCacheFetchedAt(cached.fetchedAt);
+            return;
+          }
+          throw new Error('search failed');
+        }
       }
 
       const country = countryFilter === 'All' ? undefined : countryFilter;
-      const d = await getFarmers(PAGE_SIZE, 0, country);
+      if (country) {
+        try {
+          const d = await getFarmers(PAGE_SIZE, 0, country);
+          if (fetchId !== fetchIdRef.current) return;
+          const batch = (d.farmers ?? []) as AdminFarmerSummary[];
+          const nextTotal = d.total ?? 0;
+          setFarmers(batch);
+          setTotal(nextTotal);
+          setHasMore(batch.length < nextTotal);
+          hasMoreRef.current = batch.length < nextTotal;
+          setCacheFetchedAt(null);
+          return;
+        } catch {
+          const cached = await getReadCache<FarmersListPayload>(
+            READ_CACHE_KEYS.adminFarmers,
+            userScope
+          );
+          if (fetchId !== fetchIdRef.current) return;
+          if (cached) {
+            const batch = filterCachedFarmers(cached.payload.farmers ?? [], { country });
+            setFarmers(batch);
+            setTotal(batch.length);
+            setHasMore(false);
+            hasMoreRef.current = false;
+            setCacheFetchedAt(cached.fetchedAt);
+            return;
+          }
+          throw new Error('country filter failed');
+        }
+      }
+
+      const result = await loadWithReadCache<FarmersListPayload>({
+        cacheKey: READ_CACHE_KEYS.adminFarmers,
+        userScope,
+        fetchLive: () => getFarmers(PAGE_SIZE, 0),
+      });
       if (fetchId !== fetchIdRef.current) return;
-      const batch = (d.farmers ?? []) as AdminFarmerSummary[];
-      const nextTotal = d.total ?? 0;
+      const batch = (result.data.farmers ?? []) as AdminFarmerSummary[];
+      const nextTotal = result.data.total ?? batch.length;
       setFarmers(batch);
       setTotal(nextTotal);
-      setHasMore(batch.length < nextTotal);
-      hasMoreRef.current = batch.length < nextTotal;
+      setHasMore(!result.fromCache && batch.length < nextTotal);
+      hasMoreRef.current = !result.fromCache && batch.length < nextTotal;
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
     } catch {
       if (fetchId !== fetchIdRef.current) return;
       setFarmers([]);
+      setCacheFetchedAt(null);
       setSearchError('Could not load farmers — restart backend: cd backend && npm run dev');
     } finally {
       if (fetchId === fetchIdRef.current) setLoading(false);
     }
-  }, [activeSearch, countryFilter]);
+  }, [activeSearch, countryFilter, userScope]);
 
   const loadMore = useCallback(async () => {
-    if (activeSearch || loadingMoreRef.current || !hasMoreRef.current) return;
+    if (activeSearch || cacheFetchedAt || loadingMoreRef.current || !hasMoreRef.current) return;
     loadingMoreRef.current = true;
     setLoadingMore(true);
     const fetchId = ++fetchIdRef.current;
@@ -123,7 +210,7 @@ export function AdminFarmersScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [activeSearch, countryFilter]);
+  }, [activeSearch, countryFilter, cacheFetchedAt]);
 
   useEffect(() => {
     const timer = setTimeout(() => runSearch(), activeSearch ? 250 : 0);
@@ -149,6 +236,7 @@ export function AdminFarmersScreen() {
             ? `Search results (${displayedFarmers.length.toLocaleString()})`
             : `All Farmers (${total.toLocaleString()})`}
         </Text>
+        {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         <KBSearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}

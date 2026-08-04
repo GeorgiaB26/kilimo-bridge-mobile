@@ -20,6 +20,10 @@ export function setAuthToken(token: string | null) {
   }
 }
 
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
 api.interceptors.request.use((config) => {
   if (authToken) {
     config.headers.Authorization = `Bearer ${authToken}`;
@@ -640,6 +644,12 @@ export async function approveInventoryQuality(inventoryId: string, body: {
     quality_notes: body.quality_notes,
     price_per_unit_applied: body.price_per_unit_applied ?? body.marketplace_price_per_unit,
   });
+  return data;
+}
+
+/** Single inventory/delivery row for offline QC conflict checks. */
+export async function getCentreInventoryItem(inventoryId: string) {
+  const { data } = await api.get(`/aggregation-centres/deliveries/${inventoryId}`);
   return data;
 }
 

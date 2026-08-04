@@ -7,6 +7,7 @@ import { Text } from '@/components/ui/text';
 import { getFarmerPayments } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { PaymentSummaryBreakdown } from '../../components/farmer/PaymentSummaryBreakdown';
 import {
@@ -18,6 +19,8 @@ import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { useCurrency } from '../../context/CurrencyContext';
 import { formatDisplayDate } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type Route = RouteProp<FarmerTabParamList, 'Payments'>;
 
@@ -31,6 +34,7 @@ function paymentStatusColor(status: string): string {
 export function FarmerPaymentsScreen() {
   const route = useRoute<Route>();
   const { formatAmount } = useCurrency();
+  const userScope = useReadCacheUserScope();
   const [payments, setPayments] = useState<FarmerPaymentRow[]>([]);
   const [summary, setSummary] = useState({
     transferred: 0,
@@ -39,20 +43,28 @@ export function FarmerPaymentsScreen() {
     total: 0,
   });
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [selected, setSelected] = useState<FarmerPaymentRow | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const d = await getFarmerPayments();
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerPayments,
+        userScope,
+        fetchLive: () => getFarmerPayments(),
+      });
+      const d = result.data;
       setPayments((d.payments ?? []) as FarmerPaymentRow[]);
       if (d.summary) {
         setSummary(d.summary);
       }
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setError(null);
     } catch (err: unknown) {
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Could not load payments'));
     }
-  }, []);
+  }, [userScope]);
 
   useEffect(() => {
     load();
@@ -74,7 +86,8 @@ export function FarmerPaymentsScreen() {
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
           <>
-            {error ? <FarmerOfflineBanner message={error} /> : null}
+            {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+            {error && payments.length === 0 ? <FarmerOfflineBanner message={error} /> : null}
             <PaymentSummaryBreakdown summary={summary} formatAmount={formatAmount} />
           </>
         }

@@ -8,6 +8,7 @@ import { Text } from '@/components/ui/text';
 import { getFarmerHierarchyProjects, getFarmerProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
@@ -16,6 +17,8 @@ import { formatProjectStatus, formatDisplayDate, formatProjectDate } from '../..
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type Tab = 'active' | 'completed';
 type Nav = NativeStackNavigationProp<FarmerProjectsStackParamList, 'ProjectsList'>;
@@ -34,6 +37,7 @@ interface HierarchyProject {
 export function FarmerProjectsScreen() {
   const navigation = useNavigation<Nav>();
   const { formatAmount } = useCurrency();
+  const userScope = useReadCacheUserScope();
   const [tab, setTab] = useState<Tab>('active');
   const [projects, setProjects] = useState<FarmerProject[]>([]);
   const [hierarchyProjects, setHierarchyProjects] = useState<HierarchyProject[]>([]);
@@ -41,22 +45,37 @@ export function FarmerProjectsScreen() {
 
   const [hierarchyError, setHierarchyError] = useState<string | null>(null);
   const [hierarchyChecked, setHierarchyChecked] = useState(false);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const loadHierarchy = useCallback(() => {
-    getFarmerHierarchyProjects()
-      .then((d) => {
-        const list = d.projects ?? [];
+    loadWithReadCache({
+      cacheKey: READ_CACHE_KEYS.farmerProjects,
+      userScope,
+      fetchLive: () => getFarmerHierarchyProjects(),
+    })
+      .then((result) => {
+        const list = result.data.projects ?? [];
         setHierarchyProjects(list);
         setUseHierarchy(true);
-        setHierarchyError(list.length === 0 ? 'No program projects assigned. Restart backend to load demo data.' : null);
+        setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+        if (result.fromCache) {
+          setHierarchyError(null);
+        } else {
+          setHierarchyError(
+            list.length === 0
+              ? 'No program projects assigned. Restart backend to load demo data.'
+              : null
+          );
+        }
       })
       .catch((err: unknown) => {
         setHierarchyProjects([]);
         setUseHierarchy(true);
+        setCacheFetchedAt(null);
         setHierarchyError(extractApiError(err, 'Could not load program projects'));
       })
       .finally(() => setHierarchyChecked(true));
-  }, []);
+  }, [userScope]);
 
   useEffect(() => {
     loadHierarchy();
@@ -74,7 +93,8 @@ export function FarmerProjectsScreen() {
         <View className="flex-1 p-4">
         <Text className="text-[26px] font-bold text-[#1A4D3E]">Your program projects</Text>
         <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">Tap a project to see your 5 tasks and mark them complete</Text>
-        {hierarchyError ? (
+        {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+        {hierarchyError && hierarchyProjects.length === 0 ? (
           <FarmerOfflineBanner message={hierarchyError} hint="Restart backend, then log out and use Farmer quick login (+254712345678)." />
         ) : null}
         <SegmentedButtons

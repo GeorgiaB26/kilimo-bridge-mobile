@@ -4,7 +4,10 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { getFarmerById } from '../../api/client';
 import { PENDING_LOCATION_LABEL } from '../../constants/regional';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import type { AdminFarmersStackParamList } from '../../navigation/types';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type Props = NativeStackScreenProps<AdminFarmersStackParamList, 'FarmerDetail'>;
 
@@ -55,16 +58,37 @@ function formatLocation(value: string): string {
 
 export function AdminFarmerDetailScreen({ route }: Props) {
   const { farmerId } = route.params;
+  const userScope = useReadCacheUserScope();
   const [farmer, setFarmer] = useState<FarmerDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   useEffect(() => {
-    getFarmerById(farmerId)
-      .then((data) => setFarmer(data.farmer))
-      .catch(() => setError('Could not load farmer details'));
-  }, [farmerId]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await loadWithReadCache<{ farmer: FarmerDetail }>({
+          cacheKey: READ_CACHE_KEYS.adminFarmerDetail(farmerId),
+          userScope,
+          fetchLive: () => getFarmerById(farmerId),
+        });
+        if (cancelled) return;
+        setFarmer(result.data.farmer);
+        setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+        setError(null);
+      } catch {
+        if (cancelled) return;
+        setFarmer(null);
+        setCacheFetchedAt(null);
+        setError('Could not load farmer details');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [farmerId, userScope]);
 
-  if (error) {
+  if (error && !farmer) {
     return (
       <View className="flex-1 items-center justify-center p-6">
         <Text className="text-center text-base text-[#D32F2F]">{error}</Text>
@@ -84,6 +108,7 @@ export function AdminFarmerDetailScreen({ route }: Props) {
 
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-8">
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
       <View className="mb-4 rounded-xl bg-[#1A4D3E] p-5">
         <Text className="text-2xl font-bold text-white">{farmer.name}</Text>
         <Text className="mt-1.5 text-base text-[#E8F5F0]">{farmer.phone_number}</Text>

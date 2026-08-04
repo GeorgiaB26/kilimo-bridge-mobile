@@ -116,13 +116,13 @@ export async function getFarmerPaymentSummary(farmerId: string) {
 
   const transferred = await queryOne<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments
-     WHERE farmer_id = $1 AND lower(payment_status) IN ('transferred', 'paid')`,
+     WHERE farmer_id = $1 AND lower(payment_status::text) IN ('transferred', 'paid')`,
     [farmerId]
   );
 
   const pending = await queryOne<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments
-     WHERE farmer_id = $1 AND lower(payment_status) IN ('pending', 'processing')`,
+     WHERE farmer_id = $1 AND lower(payment_status::text) IN ('pending', 'processing')`,
     [farmerId]
   );
 

@@ -3,11 +3,21 @@ import { View, ScrollView, RefreshControl, ActivityIndicator, Alert, TextInput }
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { approveInventoryQuality, getCentreDashboard, getCentreInventory, receiveCentreDelivery } from '../../api/client';
+import { getCentreDashboard, getCentreInventory, receiveCentreDelivery } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { OutboxCentreQcCard } from '../../components/OutboxCentreQcCard';
+import {
+  CENTRE_QC_EXPECTED_QUALITY_STATUS,
+  dismissCentreQcOutbox,
+  listPendingCentreQc,
+  pushPendingCentreQc,
+  submitCentreQcWithOutbox,
+  syncAllPendingCentreQc,
+  type PendingCentreQcView,
+} from '../../services/submitCentreQcOutbox';
 
 export function AgentCentreDashboardScreen() {
   const user = useAuthStore((s) => s.user);
@@ -32,8 +42,15 @@ export function AgentCentreDashboardScreen() {
   const [product, setProduct] = useState('');
   const [quantity, setQuantity] = useState('');
   const [receiving, setReceiving] = useState(false);
+  const [pendingQc, setPendingQc] = useState<PendingCentreQcView[]>([]);
+  const [pushingId, setPushingId] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
 
   const centreLabel = user?.aggregationCenter ?? 'Your centre';
+
+  const loadPending = useCallback(async () => {
+    setPendingQc(await listPendingCentreQc());
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -50,11 +67,19 @@ export function AgentCentreDashboardScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        await syncAllPendingCentreQc();
+        await Promise.all([load(), loadPending()]);
+      })();
+    }, [load, loadPending])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await syncAllPendingCentreQc();
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
   };
 
@@ -83,12 +108,59 @@ export function AgentCentreDashboardScreen() {
     }
   };
 
-  const approveItem = async (id: string) => {
-    try {
-      await approveInventoryQuality(id, { quality_status: 'approved', marketplace_price_per_unit: 100 });
+  const handleQcResult = async (
+    result: Awaited<ReturnType<typeof submitCentreQcWithOutbox>>,
+    decision: 'approve' | 'reject'
+  ) => {
+    await loadPending();
+    if (result.mode === 'online') {
       await load();
+      return;
+    }
+    if (result.mode === 'offline') {
+      Alert.alert(
+        'Saved offline',
+        `QC ${decision === 'approve' ? 'approval' : 'rejection'} queued for sync.`
+      );
+      return;
+    }
+    Alert.alert('Needs your review', result.error);
+  };
+
+  const applyQc = async (item: { id: string; product_name: string; quality_status: string }, decision: 'approve' | 'reject') => {
+    setActingId(item.id);
+    try {
+      const result = await submitCentreQcWithOutbox({
+        inventoryId: item.id,
+        productName: item.product_name,
+        decision,
+        expectedQualityStatus: item.quality_status || CENTRE_QC_EXPECTED_QUALITY_STATUS,
+        marketplacePricePerUnit: decision === 'approve' ? 100 : undefined,
+        qualityNotes: decision === 'reject' ? 'Rejected at centre QC' : undefined,
+      });
+      await handleQcResult(result, decision);
     } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not approve quality'));
+      Alert.alert('Error', extractApiError(err, 'Could not apply quality check'));
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const handlePush = async (item: PendingCentreQcView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingCentreQc(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.productName} QC ${item.decision === 'approve' ? 'approved' : 'rejected'}.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -129,6 +201,21 @@ export function AgentCentreDashboardScreen() {
         </KBCard>
       </View>
 
+      {pendingQc.length > 0 ? (
+        <View className="mb-2 mt-4">
+          <Text className="mb-2 text-base font-bold text-[#333333]">Queued QC decisions</Text>
+          {pendingQc.map((item) => (
+            <OutboxCentreQcCard
+              key={item.id}
+              item={item}
+              pushing={pushingId === item.id}
+              onPush={() => handlePush(item)}
+              onDismiss={() => dismissCentreQcOutbox(item.id).then(loadPending)}
+            />
+          ))}
+        </View>
+      ) : null}
+
       <Text className="mb-2 mt-5 text-base font-bold text-[#333333]">Receive delivery</Text>
       <TextInput
         className="mb-2 rounded-lg border border-[#E0E0E0] bg-white p-3"
@@ -164,9 +251,24 @@ export function AgentCentreDashboardScreen() {
             <View className="mt-2 flex-row items-center justify-between">
               <KBStatusChip label={item.quality_status} variant={item.is_marketplace_ready ? 'success' : 'pending'} />
               {item.quality_status === 'pending' ? (
-                <Button variant="ghost" size="sm" onPress={() => approveItem(item.id)}>
-                  <Text className="text-[#2E7D5E]">Approve QC</Text>
-                </Button>
+                <View className="flex-row gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={actingId === item.id}
+                    onPress={() => applyQc(item, 'approve')}
+                  >
+                    <Text className="text-[#2E7D5E]">Approve QC</Text>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={actingId === item.id}
+                    onPress={() => applyQc(item, 'reject')}
+                  >
+                    <Text className="text-[#D32F2F]">Reject</Text>
+                  </Button>
+                </View>
               ) : null}
             </View>
           </KBCard>

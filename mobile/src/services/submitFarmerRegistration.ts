@@ -1,17 +1,17 @@
-import { registerFarmer } from '../api/client';
 import type { RegistrationFormData } from '../types';
 import { extractApiError } from '../utils/feedback';
 import {
+  deleteOutboxItem,
+  enqueueOutbox,
+  listOutbox,
+  type OutboxItem,
+} from './offlineOutbox';
+import { isLikelyConnectivityError } from './offlineOutboxHandlers';
+import { processOutboxItem } from './offlineOutboxProcessor';
+import {
   listPendingRegistrations,
   removePendingRegistration,
-  savePendingRegistration,
-  updatePendingSyncError,
 } from './offlineRegistrationQueue';
-import { uploadBase64PhotoToR2, uploadPhotoToR2 } from './uploadToR2';
-
-function makePendingId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
 
 /** True only for backend unreachable — NOT for R2/CORS/upload failures. */
 export function isBackendNetworkError(err: unknown): boolean {
@@ -34,42 +34,89 @@ export function isNetworkError(err: unknown): boolean {
   return isBackendNetworkError(err);
 }
 
-async function resolveRegistrationPicture(
-  formData: RegistrationFormData,
-  pictureBase64?: string
-): Promise<string> {
-  if (formData.pictureUri && /^(farmers|tasks)\//.test(formData.pictureUri)) {
-    return formData.pictureUri;
-  }
-
-  // Prefer base64 from ImagePicker — avoids empty/corrupt blobs from fetch(localUri) on web.
-  if (pictureBase64?.trim()) {
-    const uploaded = await uploadBase64PhotoToR2({
-      purpose: 'farmer_registration',
-      base64: pictureBase64,
-    });
-    return uploaded.objectKey;
-  }
-
-  if (formData.pictureUri && !formData.pictureUri.startsWith('data:')) {
-    const uploaded = await uploadPhotoToR2({
-      purpose: 'farmer_registration',
-      localUri: formData.pictureUri,
-    });
-    return uploaded.objectKey;
-  }
-
-  if (formData.pictureUri?.startsWith('data:')) {
-    const uploaded = await uploadBase64PhotoToR2({
-      purpose: 'farmer_registration',
-      base64: formData.pictureUri,
-    });
-    return uploaded.objectKey;
-  }
-
-  throw new Error('A verification photo is required before registration');
+function formDataWithoutPhoto(formData: RegistrationFormData): RegistrationFormData {
+  const { pictureBase64: _b, pictureUri: _u, ...rest } = formData;
+  return { ...rest };
 }
 
+function resolveLocalPhoto(
+  formData: RegistrationFormData,
+  pictureBase64?: string
+): { photoBase64: string | null; photoLocalUri: string | null } {
+  const base64 =
+    pictureBase64?.trim() ||
+    formData.pictureBase64?.trim() ||
+    (formData.pictureUri?.startsWith('data:') ? formData.pictureUri : null) ||
+    null;
+
+  const uri = formData.pictureUri?.trim() || null;
+  const localUri =
+    uri &&
+    !uri.startsWith('data:') &&
+    !/^(farmers|tasks)\//.test(uri)
+      ? uri
+      : null;
+
+  return {
+    photoBase64: base64,
+    photoLocalUri: localUri,
+  };
+}
+
+export type PendingRegistrationView = {
+  id: string;
+  formData: RegistrationFormData;
+  createdAt: string;
+  syncError?: string;
+  status: OutboxItem['status'];
+};
+
+function outboxItemToPendingView(item: OutboxItem): PendingRegistrationView {
+  const formData =
+    item.payload.formData && typeof item.payload.formData === 'object'
+      ? (item.payload.formData as RegistrationFormData)
+      : ({ name: '', phone: '' } as RegistrationFormData);
+  return {
+    id: item.id,
+    formData,
+    createdAt: item.createdAt,
+    syncError: item.lastError ?? undefined,
+    status: item.status,
+  };
+}
+
+/** One-time move of legacy pending_registrations rows into sync_outbox. */
+export async function migrateLegacyPendingRegistrationsToOutbox(): Promise<number> {
+  const legacy = await listPendingRegistrations();
+  let moved = 0;
+  for (const row of legacy) {
+    const photo = resolveLocalPhoto(row.formData, row.pictureBase64);
+    await enqueueOutbox({
+      id: row.id,
+      actionType: 'farmer_registration',
+      payload: { formData: formDataWithoutPhoto(row.formData) },
+      photoBase64: photo.photoBase64 ?? row.pictureBase64 ?? null,
+      photoLocalUri: photo.photoLocalUri,
+    });
+    await removePendingRegistration(row.id);
+    moved += 1;
+  }
+  return moved;
+}
+
+export async function listPendingRegistrationOutbox(): Promise<PendingRegistrationView[]> {
+  await migrateLegacyPendingRegistrationsToOutbox();
+  const items = await listOutbox({
+    actionType: 'farmer_registration',
+    includeSynced: false,
+  });
+  return items.map(outboxItemToPendingView);
+}
+
+/**
+ * Enqueue-first registration: persist locally (including photo), then try sync.
+ * Connectivity failures leave the row queued; other failures remove it and throw.
+ */
 export async function submitFarmerRegistration(
   formData: RegistrationFormData,
   pictureBase64?: string
@@ -77,64 +124,67 @@ export async function submitFarmerRegistration(
   | { mode: 'online'; farmerId?: string; kbFarmerId?: string; key?: string }
   | { mode: 'offline'; pendingId: string }
 > {
-  let objectKey: string;
-  try {
-    objectKey = await resolveRegistrationPicture(formData, pictureBase64);
-  } catch (err) {
-    // Photo upload failed (CORS, corrupt bytes, R2, etc.) — do NOT pretend we're offline.
-    throw err instanceof Error
-      ? err
-      : new Error(extractApiError(err, 'Photo upload failed'));
+  const photo = resolveLocalPhoto(formData, pictureBase64);
+  if (!photo.photoBase64 && !photo.photoLocalUri) {
+    throw new Error('A verification photo is required before registration');
   }
 
-  const payload: RegistrationFormData = {
-    ...formData,
-    pictureUri: objectKey,
-  };
+  const item = await enqueueOutbox({
+    actionType: 'farmer_registration',
+    payload: { formData: formDataWithoutPhoto(formData) },
+    photoBase64: photo.photoBase64,
+    photoLocalUri: photo.photoLocalUri,
+  });
 
-  try {
-    const result = await registerFarmer(payload);
+  const result = await processOutboxItem(item.id);
+
+  if (result.ok) {
+    const data = (result.data ?? {}) as {
+      farmerId?: string;
+      kbFarmerId?: string;
+      key?: string;
+    };
     return {
       mode: 'online',
-      farmerId: result.farmerId,
-      kbFarmerId: result.kbFarmerId,
-      key: result.key,
+      farmerId: data.farmerId,
+      kbFarmerId: data.kbFarmerId,
+      key: data.key,
     };
-  } catch (err) {
-    if (!isBackendNetworkError(err)) throw err;
-    const pendingId = makePendingId();
-    await savePendingRegistration({ id: pendingId, formData, pictureBase64 });
-    return { mode: 'offline', pendingId };
   }
+
+  if (result.skipped) {
+    throw new Error(result.error || 'Could not queue registration');
+  }
+
+  if (result.connectivity || isLikelyConnectivityError(result.error)) {
+    return { mode: 'offline', pendingId: item.id };
+  }
+
+  // Business / validation / non-network error — don't leave a stuck queue row
+  await deleteOutboxItem(item.id);
+  throw new Error(result.error || extractApiError(undefined, 'Registration failed'));
 }
 
-export async function pushPendingRegistration(pendingId: string): Promise<{ success: boolean; error?: string }> {
-  const pending = (await listPendingRegistrations()).find((p) => p.id === pendingId);
-  if (!pending) return { success: false, error: 'Registration not found on device' };
-
-  try {
-    const objectKey = await resolveRegistrationPicture(pending.formData, pending.pictureBase64);
-    const payload: RegistrationFormData = {
-      ...pending.formData,
-      pictureUri: objectKey,
-    };
-    await registerFarmer(payload);
-    await removePendingRegistration(pendingId);
-    return { success: true };
-  } catch (err) {
-    const message = extractApiError(err, 'Sync failed');
-    await updatePendingSyncError(pendingId, message);
-    return { success: false, error: message };
-  }
+export async function pushPendingRegistration(
+  pendingId: string
+): Promise<{ success: boolean; error?: string }> {
+  const result = await processOutboxItem(pendingId);
+  if (result.ok) return { success: true };
+  return { success: false, error: result.error || 'Sync failed' };
 }
 
+/** On Farmers-tab focus: try every queued registration (manual-style claim, ignores backoff). */
 export async function syncAllPendingRegistrations(): Promise<{ synced: number; failed: number }> {
-  const pending = await listPendingRegistrations();
+  await migrateLegacyPendingRegistrationsToOutbox();
+  const items = await listOutbox({
+    actionType: 'farmer_registration',
+    includeSynced: false,
+  });
   let synced = 0;
   let failed = 0;
-  for (const item of pending) {
-    const result = await pushPendingRegistration(item.id);
-    if (result.success) synced += 1;
+  for (const item of items) {
+    const result = await processOutboxItem(item.id);
+    if (result.ok) synced += 1;
     else failed += 1;
   }
   return { synced, failed };

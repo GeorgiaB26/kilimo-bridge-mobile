@@ -6,9 +6,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
-import { submitFarmerTaskCompletion } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
-import { uploadPhotoToR2 } from '../../services/uploadToR2';
+import { submitFarmerTaskWithOutbox } from '../../services/submitFarmerTaskOutbox';
 
 /** Client-only quality check — backend does not enforce a notes minimum. */
 const MIN_NOTES_LENGTH = 50;
@@ -24,12 +23,13 @@ interface Props {
   task: FarmerTaskSubmitTarget | null;
   visible: boolean;
   onClose: () => void;
-  onSubmitted: () => void;
+  onSubmitted: (result: { offline: boolean }) => void;
 }
 
 export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: Props) {
   const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [picking, setPicking] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -38,6 +38,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const reset = () => {
     setNotes('');
     setPhotoUri(null);
+    setPhotoBase64(null);
     setPhotoError('');
     setNotesError('');
   };
@@ -64,15 +65,18 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
             allowsEditing: true,
             aspect: [4, 3],
             quality: 0.7,
+            base64: true,
           })
         : await ImagePicker.launchImageLibraryAsync({
             allowsEditing: true,
             aspect: [4, 3],
             quality: 0.7,
+            base64: true,
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
           });
       if (!result.canceled && result.assets[0]) {
         setPhotoUri(result.assets[0].uri);
+        setPhotoBase64(result.assets[0].base64 ?? null);
       }
     } finally {
       setPicking(false);
@@ -101,18 +105,23 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
     setSubmitting(true);
     try {
-      const uploaded = await uploadPhotoToR2({
-        purpose: 'task_evidence',
-        localUri: photoUri!,
+      const result = await submitFarmerTaskWithOutbox({
         farmerTaskId: task.id,
-      });
-      await submitFarmerTaskCompletion(task.id, {
+        taskName: task.name,
         notes: notes.trim(),
-        photo_url: uploaded.objectKey,
+        photoLocalUri: photoUri!,
+        photoBase64,
       });
       reset();
-      onSubmitted();
-      showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
+      onSubmitted({ offline: result.mode === 'offline' });
+      if (result.mode === 'offline') {
+        showMessage(
+          'Saved offline',
+          'Your evidence is saved on this device. Open Your Tasks when back online to push it, or wait for automatic sync on this screen.'
+        );
+      } else {
+        showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
+      }
     } catch (err: unknown) {
       showMessage('Error', extractApiError(err, 'Could not submit task'));
     } finally {
