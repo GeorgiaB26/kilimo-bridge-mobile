@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
 import {
   View,
   ScrollView,
@@ -10,6 +11,14 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  Ban,
+  Bell,
+  CircleCheck,
+  Clock,
+  Hourglass,
+  TriangleAlert,
+} from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import {
@@ -81,6 +90,7 @@ function normalizeStatus(status: string): string {
 }
 
 function TaskSection({
+  TitleIcon,
   title,
   color,
   tasks,
@@ -93,6 +103,7 @@ function TaskSection({
   approve,
   reject,
 }: {
+  TitleIcon?: ComponentType<{ size?: number; color?: string }>;
   title: string;
   color?: string;
   tasks: UnifiedTask[];
@@ -106,11 +117,15 @@ function TaskSection({
   reject?: (id: string) => void;
 }) {
   if (!tasks.length) return null;
+  const titleColor = color ?? '#757575';
   return (
     <View className="mb-5">
-      <Text className="mb-2 text-sm font-bold uppercase tracking-wide" style={{ color: color ?? '#757575' }}>
-        {title}
-      </Text>
+      <View className="mb-2 flex-row items-center gap-1.5">
+        {TitleIcon ? <TitleIcon size={16} color={titleColor} /> : null}
+        <Text className="text-sm font-bold uppercase tracking-wide" style={{ color: titleColor }}>
+          {title}
+        </Text>
+      </View>
       {tasks.map((item) => {
         const isApproval = item.status === 'submitted-for-approval' || item.status === 'submitted';
         const expanded = expandedId === item.id;
@@ -133,19 +148,28 @@ function TaskSection({
                   onPress={() => onReminder(item, '1_day_before')}
                   className="rounded-md bg-[#F0F0F0] px-2 py-1"
                 >
-                  <Text className="text-xs">🔔 1 day before</Text>
+                  <View className="flex-row items-center gap-1">
+                    <Bell size={12} color="#333333" />
+                    <Text className="text-xs">1 day before</Text>
+                  </View>
                 </Pressable>
                 <Pressable
                   onPress={() => onReminder(item, '3_days_before')}
                   className="rounded-md bg-[#F0F0F0] px-2 py-1"
                 >
-                  <Text className="text-xs">🔔 3 days before</Text>
+                  <View className="flex-row items-center gap-1">
+                    <Bell size={12} color="#333333" />
+                    <Text className="text-xs">3 days before</Text>
+                  </View>
                 </Pressable>
                 <Pressable
                   onPress={() => onReminder(item, 'on_due_date')}
                   className="rounded-md bg-[#F0F0F0] px-2 py-1"
                 >
-                  <Text className="text-xs">🔔 On due date</Text>
+                  <View className="flex-row items-center gap-1">
+                    <Bell size={12} color="#333333" />
+                    <Text className="text-xs">On due date</Text>
+                  </View>
                 </Pressable>
               </View>
             ) : null}
@@ -447,7 +471,8 @@ export function AgentTasksScreen() {
         ) : null}
 
         <TaskSection
-          title="⏰ Upcoming (due in 7 days)"
+          TitleIcon={Clock}
+          title="Upcoming (due in 7 days)"
           color="#1A4D3E"
           tasks={upcoming}
           onReminder={handleReminder}
@@ -460,7 +485,8 @@ export function AgentTasksScreen() {
           reject={reject}
         />
         <TaskSection
-          title="🔴 Overdue"
+          TitleIcon={TriangleAlert}
+          title="Overdue"
           color="#EF4444"
           tasks={overdue}
           onReminder={handleReminder}
@@ -473,7 +499,8 @@ export function AgentTasksScreen() {
           reject={reject}
         />
         <TaskSection
-          title="⏳ In progress"
+          TitleIcon={Hourglass}
+          title="In progress"
           color="#2563EB"
           tasks={inProgress}
           onReminder={handleReminder}
@@ -486,12 +513,19 @@ export function AgentTasksScreen() {
           reject={reject}
         />
         <TaskSection
-          title="⊘ Not started"
+          TitleIcon={Ban}
+          title="Not started"
           color="#757575"
           tasks={notStarted}
           onReminder={handleReminder}
         />
-        <TaskSection title="✅ Completed" color="#10B981" tasks={completed} onReminder={handleReminder} />
+        <TaskSection
+          TitleIcon={CircleCheck}
+          title="Completed"
+          color="#10B981"
+          tasks={completed}
+          onReminder={handleReminder}
+        />
 
         {filtered.length === 0 && helpRequests.length === 0 ? (
           <View className="items-center rounded-xl bg-white p-6">

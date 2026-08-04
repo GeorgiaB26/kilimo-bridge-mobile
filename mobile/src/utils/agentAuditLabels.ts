@@ -1,3 +1,17 @@
+import type { ComponentType } from 'react';
+import {
+  Banknote,
+  Check,
+  CircleCheck,
+  CircleX,
+  ClipboardList,
+  Plus,
+  User,
+  Users,
+} from 'lucide-react-native';
+
+export type AuditIcon = ComponentType<{ size?: number | string; color?: string }>;
+
 /** Friendly labels for agent activity log entries */
 export function formatAgentAuditEntry(entry: {
   action?: string;
@@ -5,7 +19,7 @@ export function formatAgentAuditEntry(entry: {
   created_at?: string;
   details?: string | Record<string, unknown> | null;
   resource_type?: string;
-}): { icon: string; title: string; subtitle?: string; time: string } {
+}): { Icon: AuditIcon; title: string; subtitle?: string; time: string } {
   let details: Record<string, unknown> = {};
   if (typeof entry.details === 'string') {
     try {
@@ -22,42 +36,43 @@ export function formatAgentAuditEntry(entry: {
   const taskName = details.task_name as string | undefined;
   const name = details.name as string | undefined;
 
-  let icon = '📋';
+  let Icon: AuditIcon = ClipboardList;
   let title = entry.action ?? 'Activity';
 
-  if (activityType === 'task_created' || entry.action === 'agent.action' && name) {
-    icon = '➕';
+  if (activityType === 'task_created' || (entry.action === 'agent.action' && name)) {
+    Icon = Plus;
     title = `Created task: ${name}`;
   } else if (entry.action === 'farmer.create' || activityType === 'farmer_registered') {
-    icon = '👥';
+    Icon = Users;
     title = farmerName ? `Registered ${farmerName}` : 'Registered new farmer';
   } else if (entry.action?.includes('verify') || activityType === 'farmer_verified') {
-    icon = '✅';
+    Icon = CircleCheck;
     title = farmerName ? `Verified ${farmerName}` : 'Verified farmer';
   } else if (activityType === 'task_approved' || entry.action === 'payment.verify') {
-    icon = '✓';
+    Icon = Check;
     title = taskName
       ? `Approved task: ${taskName}`
       : farmerName
         ? `Approved task by ${farmerName}`
         : 'Approved task';
   } else if (activityType === 'task_rejected') {
-    icon = '❌';
+    Icon = CircleX;
     title = taskName
       ? `Rejected task: ${taskName}`
       : farmerName
         ? `Rejected task by ${farmerName}`
         : 'Rejected task';
   } else if (activityType === 'task_reviewed') {
-    icon = '📋';
-    title = farmerName && taskName
-      ? `Reviewed ${taskName} — ${farmerName}`
-      : 'Reviewed task completion';
+    Icon = ClipboardList;
+    title =
+      farmerName && taskName
+        ? `Reviewed ${taskName} — ${farmerName}`
+        : 'Reviewed task completion';
   } else if (entry.action === 'agent.register') {
-    icon = '👤';
+    Icon = User;
     title = 'Agent registration';
   } else if (entry.category === 'financial') {
-    icon = '💰';
+    Icon = Banknote;
     title = 'Payment activity';
   }
 
@@ -68,7 +83,7 @@ export function formatAgentAuditEntry(entry: {
   const time = formatAuditTime(entry.created_at);
 
   return {
-    icon,
+    Icon,
     title,
     subtitle: subtitleParts.length ? subtitleParts.join(' · ') : undefined,
     time,
@@ -112,7 +127,9 @@ export function groupAuditByDate(
     } else if (day.getTime() === yesterday.getTime()) {
       label = 'Yesterday';
     } else {
-      label = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
+      label = d
+        .toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+        .toUpperCase();
     }
     groups[label] = groups[label] ?? [];
     groups[label].push(log);

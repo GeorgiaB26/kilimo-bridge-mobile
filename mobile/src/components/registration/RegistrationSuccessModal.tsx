@@ -37,7 +37,7 @@ export function RegistrationSuccessModal({
           <View className="mb-4 items-center">
             <Ionicons name="checkmark-circle" size={64} color="#10B981" />
             <Text className="mt-3 text-xl font-bold text-[#1A4D3E]">
-              {offline ? 'Saved Offline' : '✅ Farmer Registered!'}
+              {offline ? 'Saved Offline' : 'Farmer Registered!'}
             </Text>
           </View>
 

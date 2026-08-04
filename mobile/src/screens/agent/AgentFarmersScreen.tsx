@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, FlatList, RefreshControl, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Sprout } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { api } from '../../api/client';
@@ -231,9 +232,10 @@ export function AgentFarmersScreen() {
           }
         >
           <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
-          <Text className="mt-0.5 text-[13px] text-[#757575]">
-            🌾 Farmer · {item.phone_number}
-          </Text>
+          <View className="mt-0.5 flex-row items-center gap-1.5">
+            <Sprout size={14} color="#757575" />
+            <Text className="text-[13px] text-[#757575]">Farmer · {item.phone_number}</Text>
+          </View>
           <View className="mt-2">
             <FarmerStatusChip status={item.status} />
           </View>

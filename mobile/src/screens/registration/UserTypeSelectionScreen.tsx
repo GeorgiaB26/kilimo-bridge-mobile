@@ -45,6 +45,7 @@ export function UserTypeSelectionScreen({ navigation }: Props) {
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {REGISTRATION_USER_TYPES.map((type) => {
           const selected = selectedType === type.id;
+          const Icon = type.Icon;
           return (
             <Pressable
               key={type.id}
@@ -54,7 +55,9 @@ export function UserTypeSelectionScreen({ navigation }: Props) {
               }`}
             >
               <View className="flex-row items-center">
-                <Text className="mr-3 text-3xl">{type.icon}</Text>
+                <View className="mr-3">
+                  <Icon size={28} color={selected ? '#3b82f6' : '#1f2937'} />
+                </View>
                 <View className="flex-1">
                   <Text className="text-base font-semibold text-[#1f2937]">{type.label}</Text>
                   <Text className="mt-1 text-[13px] text-[#6b7280]">{type.description}</Text>

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import type { ComponentType } from 'react';
 import { View, ScrollView, ActivityIndicator, Pressable, Linking } from 'react-native';
+import { Briefcase, Globe, Sprout, UserRound } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,20 +32,21 @@ const BACKEND_OFFLINE_MSG = IS_API_MISCONFIGURED
     : 'Backend offline — run: npm run backend';
 
 function LoginTypeCard({
-  emoji,
+  Icon,
   title,
   subtitle,
   onPress,
   disabled,
   variant,
 }: {
-  emoji: string;
+  Icon: ComponentType<{ size?: number; color?: string }>;
   title: string;
   subtitle: string;
   onPress: () => void;
   disabled?: boolean;
   variant: 'farmer' | 'agent';
 }) {
+  const iconColor = variant === 'farmer' ? '#FFFFFF' : '#1A4D3E';
   return (
     <Pressable
       onPress={onPress}
@@ -52,11 +55,14 @@ function LoginTypeCard({
         variant === 'farmer' ? 'border-[#1A4D3E] bg-[#1A4D3E]' : 'border-[#1A4D3E] bg-white'
       } ${disabled ? 'opacity-60' : 'active:opacity-90'}`}
     >
-      <Text
-        className={`text-base font-bold ${variant === 'farmer' ? 'text-white' : 'text-[#1A4D3E]'}`}
-      >
-        {emoji} {title}
-      </Text>
+      <View className="flex-row items-center gap-1.5">
+        <Icon size={18} color={iconColor} />
+        <Text
+          className={`text-base font-bold ${variant === 'farmer' ? 'text-white' : 'text-[#1A4D3E]'}`}
+        >
+          {title}
+        </Text>
+      </View>
       <Text className={`mt-1 text-sm ${variant === 'farmer' ? 'text-white/85' : 'text-[#757575]'}`}>
         Phone: {subtitle}
       </Text>
@@ -148,7 +154,10 @@ export function LoginScreen({ navigation }: Props) {
       <View className="mb-6 mt-4 items-center">
         <KilimoLogo width={240} height={66} />
         <Text className="mt-3 text-lg font-bold text-[#1A4D3E]">Kilimo Bridge</Text>
-        <Text className="mt-1 text-sm text-[#757575]">🌍 Farm to Market Platform</Text>
+        <View className="mt-1 flex-row items-center gap-1.5">
+          <Globe size={16} color="#757575" />
+          <Text className="text-sm text-[#757575]">Farm to Market Platform</Text>
+        </View>
       </View>
 
       {backendOk === false ? (
@@ -204,7 +213,7 @@ export function LoginScreen({ navigation }: Props) {
 
       <Text className="mb-3 text-sm font-semibold text-[#757575]">Choose your login type:</Text>
       <LoginTypeCard
-        emoji="🌾"
+        Icon={Sprout}
         title="FARMER LOGIN"
         subtitle={DEMO_FARMER}
         variant="farmer"
@@ -212,7 +221,7 @@ export function LoginScreen({ navigation }: Props) {
         onPress={() => quickLogin(DEMO_FARMER, 'Farmer')}
       />
       <LoginTypeCard
-        emoji="👨‍🌾"
+        Icon={UserRound}
         title="FIELD AGENT LOGIN"
         subtitle={DEMO_AGENT}
         variant="agent"
@@ -221,9 +230,12 @@ export function LoginScreen({ navigation }: Props) {
       />
 
       <Pressable onPress={openPortal} className="mb-4 py-2">
-        <Text className="text-center text-sm text-[#1A4D3E]">
-          👔 Admin or Aggregation Centre access? → <Text className="font-bold">Portal</Text>
-        </Text>
+        <View className="flex-row flex-wrap items-center justify-center gap-1.5">
+          <Briefcase size={16} color="#1A4D3E" />
+          <Text className="text-center text-sm text-[#1A4D3E]">
+            Admin or Aggregation Centre access? → <Text className="font-bold">Portal</Text>
+          </Text>
+        </View>
       </Pressable>
 
       {SHOW_TEST_USER_SWITCHER ? (

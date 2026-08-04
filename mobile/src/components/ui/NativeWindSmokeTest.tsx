@@ -16,7 +16,7 @@ export function NativeWindSmokeTest() {
       className="absolute bottom-8 right-4 z-50"
     >
       <Button variant="secondary" size="sm" onPress={() => {}}>
-        <Text>NW ✓</Text>
+        <Text>NW OK</Text>
       </Button>
     </View>
   );

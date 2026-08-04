@@ -3,6 +3,17 @@ import { View, ScrollView, Linking, Alert, Modal, Pressable, Switch } from 'reac
 import { useFocusEffect } from '@react-navigation/native';
 import { TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronRight,
+  CircleCheck,
+  CircleHelp,
+  FileText,
+  Info,
+  MessageCircle,
+  Phone,
+  Star,
+  X,
+} from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useAuthStore } from '../../store/authStore';
@@ -72,7 +83,10 @@ export function AgentProfileScreen() {
             </Text>
           </View>
           <Text className="text-xl font-bold text-[#333333]">{user?.name}</Text>
-          <Text className="mt-1 text-sm text-[#2E7D5E]">🟢 Active · Field Agent</Text>
+          <View className="mt-1 flex-row items-center gap-1.5">
+            <CircleCheck size={14} color="#2E7D5E" />
+            <Text className="text-sm text-[#2E7D5E]">Active · Field Agent</Text>
+          </View>
         </View>
 
         <KBCard style={{ marginBottom: 12 }}>
@@ -80,7 +94,10 @@ export function AgentProfileScreen() {
             Contact information
           </Text>
           <Row label="Phone" value={user?.phoneNumber} highlight />
-          <Text className="text-xs text-[#757575]">⭐ Payment method</Text>
+          <View className="flex-row items-center gap-1.5">
+            <Star size={14} color="#757575" />
+            <Text className="text-xs text-[#757575]">Payment method</Text>
+          </View>
         </KBCard>
 
         <KBCard style={{ marginBottom: 12 }}>
@@ -103,10 +120,16 @@ export function AgentProfileScreen() {
               <Row label="Phone" value={pm.phone} />
               <View className="mt-3 flex-row gap-2">
                 <Button variant="outline" className="flex-1 h-10" onPress={() => callPhone(pm.phone)}>
-                  <Text>📞 Call PM</Text>
+                  <View className="flex-row items-center gap-1.5">
+                    <Phone size={16} color="#1A4D3E" />
+                    <Text>Call PM</Text>
+                  </View>
                 </Button>
                 <Button variant="outline" className="flex-1 h-10" onPress={() => callPhone(pm.phone)}>
-                  <Text>💬 Message PM</Text>
+                  <View className="flex-row items-center gap-1.5">
+                    <MessageCircle size={16} color="#1A4D3E" />
+                    <Text>Message PM</Text>
+                  </View>
                 </Button>
               </View>
               <Button
@@ -114,7 +137,11 @@ export function AgentProfileScreen() {
                 className="mt-2"
                 onPress={() => Alert.alert('Get help', 'Contact your PM for support with registrations, tasks, or payments.')}
               >
-                <Text className="text-[#1A4D3E]">❓ Get help →</Text>
+                <View className="flex-row items-center gap-1.5">
+                  <CircleHelp size={16} color="#1A4D3E" />
+                  <Text className="text-[#1A4D3E]">Get help</Text>
+                  <ChevronRight size={16} color="#1A4D3E" />
+                </View>
               </Button>
             </>
           ) : (
@@ -128,7 +155,10 @@ export function AgentProfileScreen() {
           </Text>
           {USEFUL_DOCUMENTS.map((doc) => (
             <View key={doc.name} className="mb-3 border-b border-[#F0F0F0] pb-3">
-              <Text className="font-semibold text-[#333333]">📄 {doc.name}</Text>
+              <View className="flex-row items-center gap-1.5">
+                <FileText size={16} color="#333333" />
+                <Text className="font-semibold text-[#333333]">{doc.name}</Text>
+              </View>
               <Text className="text-xs text-[#757575]">{doc.type} · {doc.size}</Text>
               <View className="mt-2 flex-row gap-2">
                 <Button
@@ -176,12 +206,15 @@ export function AgentProfileScreen() {
             <View className="mb-4 flex-row items-center justify-between">
               <Text className="text-lg font-bold">Edit profile</Text>
               <Pressable onPress={() => setSettingsOpen(false)}>
-                <Text className="text-2xl text-[#757575]">×</Text>
+                <X size={24} color="#757575" />
               </Pressable>
             </View>
-            <Text className="mb-3 text-sm text-[#757575]">
-              ℹ️ Changes require PM approval before they apply in the system.
-            </Text>
+            <View className="mb-3 flex-row items-start gap-1.5">
+              <Info size={16} color="#757575" style={{ marginTop: 2 }} />
+              <Text className="flex-1 text-sm text-[#757575]">
+                Changes require PM approval before they apply in the system.
+              </Text>
+            </View>
             <TextInput label="Name" value={editName} onChangeText={setEditName} mode="outlined" style={{ marginBottom: 12 }} />
             <TextInput label="Phone" value={editPhone} onChangeText={setEditPhone} mode="outlined" style={{ marginBottom: 12 }} />
             <Text className="mb-2 text-sm font-semibold text-[#757575]">Area of coverage (read-only)</Text>

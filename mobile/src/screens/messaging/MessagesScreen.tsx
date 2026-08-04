@@ -8,6 +8,7 @@ import {
   RefreshControl,
   StyleSheet,
 } from 'react-native';
+import { SquarePen } from 'lucide-react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -218,7 +219,11 @@ export function MessagesScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
-            <Text style={styles.empty}>No conversations yet. Tap ✎ to message someone.</Text>
+            <View style={styles.emptyWrap}>
+              <Text style={styles.empty}>No conversations yet. Tap </Text>
+              <SquarePen size={14} color={COLORS.muted} />
+              <Text style={styles.empty}> to message someone.</Text>
+            </View>
           }
           renderItem={({ item }) => (
             <Pressable
@@ -292,7 +297,14 @@ const styles = StyleSheet.create({
   muted: { color: COLORS.muted },
   loader: { marginTop: 40 },
   errorText: { color: '#c0392b', padding: 16, textAlign: 'center' },
-  empty: { textAlign: 'center', color: COLORS.muted, padding: 24 },
+  emptyWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  empty: { textAlign: 'center', color: COLORS.muted },
   threadCard: {
     flexDirection: 'row',
     alignItems: 'center',

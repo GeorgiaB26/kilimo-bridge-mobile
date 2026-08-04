@@ -79,11 +79,13 @@ export function AgentAuditScreen() {
           </Text>
           {group.items.map((log, i) => {
             const entry = formatAgentAuditEntry(log as LogRow);
+            const Icon = entry.Icon;
             return (
               <View key={`${group.label}-${i}`} className="mb-2 rounded-xl bg-white p-3">
-                <Text className="text-sm font-medium text-[#333333]">
-                  {entry.icon} {entry.title}
-                </Text>
+                <View className="flex-row items-center gap-2">
+                  <Icon size={16} color="#333333" />
+                  <Text className="flex-1 text-sm font-medium text-[#333333]">{entry.title}</Text>
+                </View>
                 {entry.subtitle ? (
                   <Text className="mt-0.5 text-xs text-[#757575]">{entry.subtitle}</Text>
                 ) : null}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Alert, ActivityIndicator } from 'react-native';
+import { FileText, Folder } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -62,13 +63,13 @@ export function CsvUploadScreen({ navigation }: Props) {
       <View className="mb-5 items-center rounded-xl border-2 border-dashed border-[#E0E0E0] p-8">
         {fileName ? (
           <>
-            <Text className="mb-2 text-[40px]">📄</Text>
+            <FileText size={40} color="#757575" style={{ marginBottom: 8 }} />
             <Text className="text-base font-semibold text-[#333333]">{fileName}</Text>
             <Text className="mt-1 text-[13px] text-[#2E7D5E]">{isExcel ? 'Excel workbook ready to validate' : 'Ready to validate'}</Text>
           </>
         ) : (
           <>
-            <Text className="mb-2 text-[40px]">📁</Text>
+            <Folder size={40} color="#757575" style={{ marginBottom: 8 }} />
             <Text className="text-base font-medium text-[#333333]">Select a CSV file</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">Max size: 50MB · .csv, .txt, or .xlsx</Text>
           </>

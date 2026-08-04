@@ -4,6 +4,7 @@ import {
   Modal, TextInput, Pressable, ScrollView, Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { X } from 'lucide-react-native';
 import { Menu, Button as PaperButton } from 'react-native-paper';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -351,7 +352,10 @@ export function AdminTasksScreen() {
         <View className="flex-1 justify-end bg-black/50">
           <ScrollView className="max-h-[85%] rounded-t-2xl bg-white" contentContainerClassName="p-5 pb-10">
             <Pressable onPress={() => setSelected(null)} className="mb-2 self-end">
-              <Text className="text-base text-[#757575]">✕ Close</Text>
+              <View className="flex-row items-center gap-1">
+                <X size={16} color="#757575" />
+                <Text className="text-base text-[#757575]">Close</Text>
+              </View>
             </Pressable>
             {selected ? (
               <>

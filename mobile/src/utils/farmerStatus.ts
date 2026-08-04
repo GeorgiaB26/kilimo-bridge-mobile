@@ -1,11 +1,16 @@
+import type { ComponentType } from 'react';
+import { Ban, Circle, CircleCheck, Clock, Eye, X } from 'lucide-react-native';
+
 type Variant = 'success' | 'pending' | 'info' | 'warning' | 'danger';
+
+export type StatusIcon = ComponentType<{ size?: number | string; color?: string }>;
 
 export interface FarmerStatusInfo {
   label: string;
   variant: Variant;
   color: string;
   textColor: string;
-  icon: string;
+  Icon: StatusIcon;
   description: string;
 }
 
@@ -15,7 +20,7 @@ const STATUS_MAP: Record<string, FarmerStatusInfo> = {
     variant: 'warning',
     color: '#FCD34D',
     textColor: '#000',
-    icon: '⏳',
+    Icon: Clock,
     description: 'Awaiting PM review',
   },
   pending_field_verification: {
@@ -23,7 +28,7 @@ const STATUS_MAP: Record<string, FarmerStatusInfo> = {
     variant: 'warning',
     color: '#FBBF24',
     textColor: '#000',
-    icon: '👀',
+    Icon: Eye,
     description: 'Field agent needs to verify in person',
   },
   verified: {
@@ -31,7 +36,7 @@ const STATUS_MAP: Record<string, FarmerStatusInfo> = {
     variant: 'success',
     color: '#10B981',
     textColor: '#fff',
-    icon: '✅',
+    Icon: CircleCheck,
     description: 'Verified and approved',
   },
   inactive: {
@@ -39,7 +44,7 @@ const STATUS_MAP: Record<string, FarmerStatusInfo> = {
     variant: 'pending',
     color: '#9CA3AF',
     textColor: '#fff',
-    icon: '⊘',
+    Icon: Ban,
     description: 'Inactive account',
   },
   rejected: {
@@ -47,7 +52,7 @@ const STATUS_MAP: Record<string, FarmerStatusInfo> = {
     variant: 'danger',
     color: '#EF4444',
     textColor: '#fff',
-    icon: '✕',
+    Icon: X,
     description: 'Registration rejected',
   },
 };
@@ -61,7 +66,7 @@ export function formatFarmerStatus(status?: string | null): FarmerStatusInfo {
       variant: 'info',
       color: '#9CA3AF',
       textColor: '#fff',
-      icon: '•',
+      Icon: Circle,
       description: status,
     };
   }
@@ -70,7 +75,7 @@ export function formatFarmerStatus(status?: string | null): FarmerStatusInfo {
     variant: 'pending',
     color: '#9CA3AF',
     textColor: '#fff',
-    icon: '•',
+    Icon: Circle,
     description: 'Status unknown',
   };
 }

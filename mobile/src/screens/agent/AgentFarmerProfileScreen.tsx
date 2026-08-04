@@ -2,6 +2,13 @@ import React, { useCallback, useState } from 'react';
 import { View, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
+import {
+  ChevronLeft,
+  CircleCheck,
+  Hourglass,
+  Square,
+  SquareCheck,
+} from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { getAgentFarmerById, getAdminFarmerTasks } from '../../api/client';
@@ -164,7 +171,7 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
         Alert.alert(
           verificationStatus === 'verified' ? 'Farmer verified' : 'Farmer rejected',
           verificationStatus === 'verified'
-            ? '✅ Farmer verified successfully!'
+            ? 'Farmer verified successfully!'
             : 'Farmer marked as rejected.'
         );
         await load();
@@ -238,8 +245,9 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
       <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="pb-8">
         <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
           <View className="w-full flex-row items-center justify-between">
-            <Pressable onPress={() => navigation.goBack()} className="py-2">
-              <Text className="text-lg text-white">← Back</Text>
+            <Pressable onPress={() => navigation.goBack()} className="flex-row items-center gap-1 py-2">
+              <ChevronLeft size={20} color="#FFFFFF" />
+              <Text className="text-lg text-white">Back</Text>
             </Pressable>
             <Pressable
               onPress={() => Alert.alert('Edit profile', 'Profile editing will be available in a future update.')}
@@ -343,22 +351,35 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
           {(farmer.projects?.length ?? 0) > 0 ? (
             <View className="mb-3 rounded-lg bg-white p-3.5">
               <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Projects involved</Text>
-              {farmer.projects?.map((p) => (
-                <Text key={p.project_name} className="mb-1 text-[15px] font-semibold text-[#333333]">
-                  {farmer.status === 'verified' ? '☑' : '☐'} {p.project_name} · {p.status}
-                </Text>
-              ))}
+              {farmer.projects?.map((p) => {
+                const enrolled = farmer.status === 'verified';
+                const ProjectIcon = enrolled ? SquareCheck : Square;
+                return (
+                  <View key={p.project_name} className="mb-1 flex-row items-center gap-1.5">
+                    <ProjectIcon size={16} color="#333333" />
+                    <Text className="text-[15px] font-semibold text-[#333333]">
+                      {p.project_name} · {p.status}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
           ) : null}
 
           <View className="mb-3 rounded-lg bg-white p-3.5">
             <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Tasks completed</Text>
-            <Text className="text-[15px] font-semibold text-[#333333]">✅ {taskCompleted} task(s) completed</Text>
+            <View className="flex-row items-center gap-1.5">
+              <CircleCheck size={16} color="#333333" />
+              <Text className="text-[15px] font-semibold text-[#333333]">{taskCompleted} task(s) completed</Text>
+            </View>
           </View>
 
           <View className="mb-3 rounded-lg bg-white p-3.5">
             <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Tasks outstanding</Text>
-            <Text className="text-[15px] font-semibold text-[#333333]">⏳ {taskOutstanding} task(s) pending completion</Text>
+            <View className="flex-row items-center gap-1.5">
+              <Hourglass size={16} color="#333333" />
+              <Text className="text-[15px] font-semibold text-[#333333]">{taskOutstanding} task(s) pending completion</Text>
+            </View>
           </View>
 
           <View className="mb-3 rounded-lg bg-white p-3.5">

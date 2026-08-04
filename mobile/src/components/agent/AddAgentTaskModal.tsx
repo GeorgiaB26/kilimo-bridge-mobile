@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Modal, ScrollView, Pressable } from 'react-native';
+import { Square, SquareCheck, X } from 'lucide-react-native';
 import { TextInput } from 'react-native-paper';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -69,7 +70,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
           <View className="mb-4 flex-row items-center justify-between">
             <Text className="text-lg font-bold text-[#333333]">Add task to your profile</Text>
             <Pressable onPress={handleClose}>
-              <Text className="text-2xl text-[#757575]">×</Text>
+              <X size={24} color="#757575" />
             </Pressable>
           </View>
           <ScrollView>
@@ -117,16 +118,20 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
                 <Text className="mb-2 text-sm font-semibold text-[#333333]">
                   Assign to farmers (optional)
                 </Text>
-                {farmers.slice(0, 20).map((f) => (
+                {farmers.slice(0, 20).map((f) => {
+                  const selected = selectedFarmers.includes(f.farmer_id);
+                  const FarmerIcon = selected ? SquareCheck : Square;
+                  return (
                   <Pressable
                     key={f.farmer_id}
                     onPress={() => toggleFarmer(f.farmer_id)}
                     className="mb-1 flex-row items-center gap-2 py-1"
                   >
-                    <Text>{selectedFarmers.includes(f.farmer_id) ? '☑' : '☐'}</Text>
+                    <FarmerIcon size={18} color={selected ? '#1A4D3E' : '#757575'} />
                     <Text className="text-sm text-[#333333]">{f.name}</Text>
                   </Pressable>
-                ))}
+                  );
+                })}
               </>
             ) : null}
             <View className="mt-4 flex-row gap-2">

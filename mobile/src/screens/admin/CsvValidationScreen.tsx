@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, ActivityIndicator, Alert, Platform } from 'react-native';
+import { Ban, Check, X } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -29,10 +30,14 @@ function StatusBadge({ status }: { status: string }) {
     invalid: '#D32F2F',
     duplicate: '#D4AF6A',
   };
+  const color = colors[status] ?? '#757575';
+  const Icon = status === 'valid' ? Check : status === 'duplicate' ? Ban : X;
+  const label = status === 'valid' ? 'Valid' : status === 'duplicate' ? 'Duplicate' : 'Invalid';
   return (
-    <Text className="flex-1 text-[11px] font-semibold" style={{ color: colors[status] ?? '#757575' }}>
-      {status === 'valid' ? '✓ Valid' : status === 'duplicate' ? '⊘ Duplicate' : '✗ Invalid'}
-    </Text>
+    <View className="flex-1 flex-row items-center gap-1">
+      <Icon size={12} color={color} />
+      <Text className="text-[11px] font-semibold" style={{ color }}>{label}</Text>
+    </View>
   );
 }
 

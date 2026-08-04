@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, Image, StyleSheet, Modal, TextInput, Pressable, ScrollView, Platform,
 } from 'react-native';
+import { Check, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
@@ -137,7 +138,10 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
       <View style={styles.overlay}>
         <ScrollView style={styles.card} contentContainerStyle={styles.content}>
           <Pressable onPress={close} style={styles.closeRow}>
-            <Text style={styles.close}>✕ Close</Text>
+            <View style={styles.closeContent}>
+              <X size={16} color={COLORS.muted} />
+              <Text style={styles.close}>Close</Text>
+            </View>
           </Pressable>
           {task ? (
             <>
@@ -184,10 +188,13 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
                 }}
                 placeholder="Add any notes about your work..."
               />
-              <Text style={[styles.charCount, notesTooShort ? styles.charCountWarn : styles.charCountOk]}>
-                {noteLen}/{MIN_NOTES_LENGTH} characters
-                {notesTooShort ? ` — ${MIN_NOTES_LENGTH - noteLen} more needed` : ' ✓'}
-              </Text>
+              <View style={styles.charCountRow}>
+                <Text style={[styles.charCount, notesTooShort ? styles.charCountWarn : styles.charCountOk]}>
+                  {noteLen}/{MIN_NOTES_LENGTH} characters
+                  {notesTooShort ? ` — ${MIN_NOTES_LENGTH - noteLen} more needed` : ''}
+                </Text>
+                {!notesTooShort ? <Check size={14} color={COLORS.success} /> : null}
+              </View>
               {notesError ? <Text style={styles.errorText}>{notesError}</Text> : null}
 
               <Button
@@ -212,6 +219,7 @@ const styles = StyleSheet.create({
   card: { maxHeight: '92%', backgroundColor: COLORS.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   content: { padding: 20, paddingBottom: 40 },
   closeRow: { alignSelf: 'flex-end', marginBottom: 4 },
+  closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 16 },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
   description: { fontSize: 14, color: COLORS.text, marginTop: 8, lineHeight: 20 },
@@ -240,7 +248,8 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
-  charCount: { fontSize: 12, color: COLORS.muted, textAlign: 'right', marginTop: 4 },
+  charCountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 },
+  charCount: { fontSize: 12, color: COLORS.muted },
   charCountWarn: { color: COLORS.alert, fontWeight: '600' },
   charCountOk: { color: COLORS.success },
   errorText: { fontSize: 13, color: COLORS.alert, marginTop: 6, lineHeight: 18 },

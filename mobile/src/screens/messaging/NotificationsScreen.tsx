@@ -149,7 +149,9 @@ export function NotificationsScreen() {
                 style={[styles.card, !item.is_read && styles.unreadCard]}
                 onPress={() => handleNotificationTap(item)}
               >
-                <Text style={styles.icon}>{config.icon}</Text>
+                <View style={styles.icon}>
+                  <config.Icon size={22} color={config.color} />
+                </View>
                 <View style={styles.cardBody}>
                   <Text style={styles.cardTitle}>{item.title || config.title}</Text>
                   <Text style={styles.cardMessage} numberOfLines={2}>{item.message}</Text>
@@ -214,7 +216,7 @@ const styles = StyleSheet.create({
     borderColor: '#e8ecea',
   },
   unreadCard: { borderColor: '#4472C4', backgroundColor: '#f8fbff' },
-  icon: { fontSize: 22, marginRight: 10 },
+  icon: { marginRight: 10, alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1 },
   cardTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4 },
   cardMessage: { fontSize: 13, color: '#444', lineHeight: 18 },

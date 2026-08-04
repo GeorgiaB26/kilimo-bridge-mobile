@@ -1,7 +1,18 @@
 import React, { useCallback, useState } from 'react';
+import type { ComponentType } from 'react';
 import { View, ScrollView, RefreshControl, ActivityIndicator, Pressable } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import {
+  Calendar,
+  ChartColumn,
+  ChevronRight,
+  CircleCheck,
+  Clock,
+  TriangleAlert,
+  User,
+  Users,
+} from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { KBCard } from '../../components/ui/KBCard';
@@ -14,21 +25,57 @@ type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
 type DashboardData = Awaited<ReturnType<typeof getAgentDashboard>>;
 
 function MetricCard({
-  icon,
+  Icon,
+  iconColor,
   label,
   value,
   color,
 }: {
-  icon: string;
+  Icon: ComponentType<{ size?: number; color?: string }>;
+  iconColor?: string;
   label: string;
   value: number;
   color?: string;
 }) {
   return (
     <View className="flex-1 rounded-xl border border-[#E8E8E8] bg-white p-3">
-      <Text className="text-lg">{icon}</Text>
+      <Icon size={20} color={iconColor ?? '#757575'} />
       <Text className="mt-1 text-2xl font-bold" style={{ color: color ?? '#333333' }}>{value}</Text>
       <Text className="mt-0.5 text-xs text-[#757575]">{label}</Text>
+    </View>
+  );
+}
+
+function SectionHeading({
+  Icon,
+  iconColor,
+  children,
+}: {
+  Icon: ComponentType<{ size?: number; color?: string }>;
+  iconColor?: string;
+  children: string;
+}) {
+  return (
+    <View className="mb-3 mt-4 flex-row items-center gap-1.5">
+      <Icon size={16} color={iconColor ?? '#757575'} />
+      <Text className="text-sm font-bold uppercase tracking-wide text-[#757575]">{children}</Text>
+    </View>
+  );
+}
+
+function CardHeading({
+  Icon,
+  iconColor,
+  children,
+}: {
+  Icon: ComponentType<{ size?: number; color?: string }>;
+  iconColor?: string;
+  children: string;
+}) {
+  return (
+    <View className="flex-row items-center gap-1.5">
+      <Icon size={16} color={iconColor ?? '#333333'} />
+      <Text className="text-sm font-bold text-[#333333]">{children}</Text>
     </View>
   );
 }
@@ -76,31 +123,42 @@ export function AgentDashboardScreen() {
       contentContainerClassName="p-4 pb-10"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <Text className="text-sm text-[#757575]">
-        👤 {user?.name ?? 'Field Agent'} (FA) · {user?.district ?? user?.region ?? 'Your area'}
-      </Text>
+      <View className="flex-row items-center gap-1.5">
+        <User size={16} color="#757575" />
+        <Text className="text-sm text-[#757575]">
+          {user?.name ?? 'Field Agent'} (FA) · {user?.district ?? user?.region ?? 'Your area'}
+        </Text>
+      </View>
 
-      <Text className="mb-3 mt-4 text-sm font-bold uppercase tracking-wide text-[#757575]">
-        📊 Your activity
-      </Text>
+      <SectionHeading Icon={ChartColumn}>Your activity</SectionHeading>
       <View className="mb-4 flex-row gap-2">
-        <MetricCard icon="👥" label="Farmers registered" value={farmers?.total ?? 0} />
+        <MetricCard Icon={Users} label="Farmers registered" value={farmers?.total ?? 0} />
         <MetricCard
-          icon="🟠"
+          Icon={Clock}
+          iconColor="#FBBF24"
           label="Pending verification"
           value={farmers?.pending_verification ?? 0}
           color="#FBBF24"
         />
-        <MetricCard icon="✅" label="Verified" value={farmers?.verified ?? 0} color="#10B981" />
+        <MetricCard
+          Icon={CircleCheck}
+          iconColor="#10B981"
+          label="Verified"
+          value={farmers?.verified ?? 0}
+          color="#10B981"
+        />
       </View>
 
       <KBCard style={{ marginBottom: 12 }}>
-        <Text className="text-sm font-bold text-[#333333]">⏰ Upcoming tasks (due in 7 days)</Text>
+        <CardHeading Icon={Clock} iconColor="#333333">
+          Upcoming tasks (due in 7 days)
+        </CardHeading>
         {tasks?.upcoming_count > 0 ? (
           <>
             <Text className="mt-2 text-[#333333]">{tasks.upcoming_count} task(s) assigned</Text>
-            <Pressable onPress={() => navigation.navigate('Tasks')} className="mt-2">
-              <Text className="text-sm font-semibold text-[#1A4D3E]">View all →</Text>
+            <Pressable onPress={() => navigation.navigate('Tasks')} className="mt-2 flex-row items-center gap-1">
+              <Text className="text-sm font-semibold text-[#1A4D3E]">View all</Text>
+              <ChevronRight size={16} color="#1A4D3E" />
             </Pressable>
           </>
         ) : (
@@ -115,20 +173,26 @@ export function AgentDashboardScreen() {
           borderLeftColor: tasks?.overdue_count ? '#EF4444' : '#E8E8E8',
         }}
       >
-        <Text className="text-sm font-bold text-[#333333]">⚠️ Overdue tasks</Text>
+        <CardHeading Icon={TriangleAlert} iconColor={tasks?.overdue_count ? '#EF4444' : '#333333'}>
+          Overdue tasks
+        </CardHeading>
         {tasks?.overdue_count > 0 ? (
           <>
-            <Text className="mt-2 font-bold text-[#EF4444]">
-              🔴 {tasks.overdue_count} task(s) overdue
-            </Text>
+            <View className="mt-2 flex-row items-center gap-1.5">
+              <TriangleAlert size={16} color="#EF4444" />
+              <Text className="font-bold text-[#EF4444]">
+                {tasks.overdue_count} task(s) overdue
+              </Text>
+            </View>
             {tasks.overdue?.map((t: { id: string; name?: string; daysOverdue?: number }) => (
               <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
                 • {t.name ?? 'Task'}
                 {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
               </Text>
             ))}
-            <Pressable onPress={() => navigation.navigate('Tasks')} className="mt-2">
-              <Text className="text-sm font-semibold text-[#1A4D3E]">View all →</Text>
+            <Pressable onPress={() => navigation.navigate('Tasks')} className="mt-2 flex-row items-center gap-1">
+              <Text className="text-sm font-semibold text-[#1A4D3E]">View all</Text>
+              <ChevronRight size={16} color="#1A4D3E" />
             </Pressable>
           </>
         ) : (
@@ -136,9 +200,10 @@ export function AgentDashboardScreen() {
         )}
       </KBCard>
 
-      <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
-        📅 Quick actions
-      </Text>
+      <View className="mb-2 flex-row items-center gap-1.5">
+        <Calendar size={16} color="#757575" />
+        <Text className="text-sm font-bold uppercase tracking-wide text-[#757575]">Quick actions</Text>
+      </View>
       <View className="flex-row flex-wrap gap-2">
         <Button
           variant="outline"

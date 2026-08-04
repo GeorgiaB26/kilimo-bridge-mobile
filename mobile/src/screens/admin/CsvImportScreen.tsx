@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, ScrollView } from 'react-native';
+import { Check } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -112,7 +113,7 @@ export function CsvImportScreen({ navigation, route }: Props) {
         <>
           <ScreenHeader title="Import Complete" subtitle="Farmers have been imported" />
           <View className="my-4 items-center rounded-xl border-2 border-[#2E7D5E] bg-[#E8F5E9] p-8">
-            <Text className="text-[56px] text-[#2E7D5E]">✓</Text>
+            <Check size={56} color="#2E7D5E" strokeWidth={2.5} />
             <Text className="mt-2 text-2xl font-bold text-[#1A4D3E]">Import successful!</Text>
             <Text className="mt-3 text-xl font-semibold text-[#D4AF6A]">{imported.toLocaleString()} farmers imported</Text>
             {duplicatesSkipped > 0 ? (

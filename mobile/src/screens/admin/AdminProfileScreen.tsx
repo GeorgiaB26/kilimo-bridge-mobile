@@ -1,5 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
+import { Check } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useAuthStore } from '../../store/authStore';
@@ -25,7 +26,10 @@ export function AdminProfileScreen() {
       </View>
       <Text className="mb-2 text-base font-semibold text-[#1A4D3E]">Your permissions</Text>
       {getPermissions(user?.role).map((p) => (
-        <Text key={p} className="mb-1 text-sm text-[#333333]">✓ {p}</Text>
+        <View key={p} className="mb-1 flex-row items-center gap-1.5">
+          <Check size={14} color="#333333" />
+          <Text className="text-sm text-[#333333]">{p}</Text>
+        </View>
       ))}
       <Button variant="outline" className="mt-6" onPress={logout}>
         <Text>Sign Out</Text>
