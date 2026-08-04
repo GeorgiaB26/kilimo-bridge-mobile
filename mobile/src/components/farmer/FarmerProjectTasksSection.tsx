@@ -203,8 +203,15 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
               <Text style={styles.name}>{pending.taskName}</Text>
               <Text style={styles.offlineMeta}>
                 Saved {new Date(pending.createdAt).toLocaleString()}
-                {pending.status !== 'pending' ? ` · ${pending.status}` : ''}
+                {pending.status === 'needs_review'
+                  ? ' · Needs your review'
+                  : pending.status !== 'pending'
+                    ? ` · ${pending.status}`
+                    : ''}
               </Text>
+              {pending.status === 'needs_review' ? (
+                <Text style={styles.rejected}>Needs your review</Text>
+              ) : null}
               {pending.syncError ? <Text style={styles.rejected}>{pending.syncError}</Text> : null}
               <Button
                 mode="contained"

@@ -12,5 +12,6 @@ scripts/_prove-outbox-reconnect.bundle.cjs
 scripts/_prove-read-cache.bundle.cjs
 scripts/_prove-read-cache-payments-messages.bundle.cjs
 scripts/_prove-read-cache-admin.bundle.cjs
+scripts/_prove-task-approval-outbox.bundle.cjs
 scripts/_tmp_task_evidence.jpg
 scripts/_tmp_task_evidence.b64

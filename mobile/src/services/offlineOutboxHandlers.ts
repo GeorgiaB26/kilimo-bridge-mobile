@@ -7,9 +7,16 @@
  * 3. Register it in ensureOutboxHandlersRegistered()
  * No SQLite schema change required.
  */
-import { registerFarmer, submitFarmerTaskCompletion } from '../api/client';
+import {
+  approveFarmerTask,
+  getAdminFarmerTask,
+  registerFarmer,
+  rejectFarmerTask,
+  submitFarmerTaskCompletion,
+} from '../api/client';
 import type { RegistrationFormData } from '../types';
 import { extractApiError } from '../utils/feedback';
+import { assertExpected, OutboxNeedsReviewError } from './offlineOutboxExpected';
 import type { OutboxActionType, OutboxItem } from './offlineOutboxTypes';
 import { uploadBase64PhotoToR2, uploadPhotoToR2 } from './uploadToR2';
 
@@ -20,6 +27,16 @@ export interface FarmerRegistrationOutboxPayload {
 export interface TaskSubmissionOutboxPayload {
   farmerTaskId: string;
   notes: string;
+}
+
+export interface TaskApprovalOutboxPayload {
+  farmerTaskId: string;
+  taskName: string;
+  decision: 'approve' | 'reject';
+  notes: string;
+  rejectionReason: string;
+  /** Prior server state that must still hold when syncing. */
+  expected: { status: string };
 }
 
 export type OutboxHandlerResult = unknown;
@@ -52,6 +69,42 @@ function asTaskPayload(payload: Record<string, unknown>): TaskSubmissionOutboxPa
     throw new Error('Invalid task_submission payload: farmerTaskId is required');
   }
   return { farmerTaskId, notes };
+}
+
+function asTaskApprovalPayload(payload: Record<string, unknown>): TaskApprovalOutboxPayload {
+  const farmerTaskId =
+    typeof payload.farmerTaskId === 'string' ? payload.farmerTaskId.trim() : '';
+  const decision = payload.decision === 'reject' ? 'reject' : payload.decision === 'approve' ? 'approve' : null;
+  const expectedRaw = payload.expected;
+  const expectedStatus =
+    expectedRaw && typeof expectedRaw === 'object' && typeof (expectedRaw as { status?: unknown }).status === 'string'
+      ? (expectedRaw as { status: string }).status.trim()
+      : '';
+  if (!farmerTaskId) {
+    throw new Error('Invalid task_approval payload: farmerTaskId is required');
+  }
+  if (!decision) {
+    throw new Error('Invalid task_approval payload: decision must be approve or reject');
+  }
+  if (!expectedStatus) {
+    throw new Error('Invalid task_approval payload: expected.status is required');
+  }
+  if (decision === 'reject') {
+    const reason =
+      typeof payload.rejectionReason === 'string' ? payload.rejectionReason.trim() : '';
+    if (!reason) {
+      throw new Error('Invalid task_approval payload: rejectionReason is required for reject');
+    }
+  }
+  return {
+    farmerTaskId,
+    taskName: typeof payload.taskName === 'string' ? payload.taskName : 'Task',
+    decision,
+    notes: typeof payload.notes === 'string' ? payload.notes : '',
+    rejectionReason:
+      typeof payload.rejectionReason === 'string' ? payload.rejectionReason.trim() : '',
+    expected: { status: expectedStatus },
+  };
 }
 
 async function resolvePhotoObjectKey(
@@ -109,6 +162,38 @@ async function handleTaskSubmission(item: OutboxItem): Promise<OutboxHandlerResu
   });
 }
 
+async function handleTaskApproval(item: OutboxItem): Promise<OutboxHandlerResult> {
+  const payload = asTaskApprovalPayload(item.payload);
+  let current: { status?: string; name?: string } | null = null;
+  try {
+    current = await getAdminFarmerTask(payload.farmerTaskId);
+  } catch (err: unknown) {
+    const msg = extractApiError(err, '');
+    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('404')) {
+      throw new OutboxNeedsReviewError(
+        `Task "${payload.taskName}" no longer exists on the server. Dismiss this queued ${payload.decision}.`
+      );
+    }
+    throw err;
+  }
+  if (!current) {
+    throw new OutboxNeedsReviewError(
+      `Task "${payload.taskName}" no longer exists on the server. Dismiss this queued ${payload.decision}.`
+    );
+  }
+
+  assertExpected(
+    { status: current.status },
+    payload.expected,
+    { label: `Task "${payload.taskName || current.name || payload.farmerTaskId}"` }
+  );
+
+  if (payload.decision === 'approve') {
+    return approveFarmerTask(payload.farmerTaskId, payload.notes.trim() || undefined);
+  }
+  return rejectFarmerTask(payload.farmerTaskId, payload.rejectionReason);
+}
+
 let registered = false;
 
 /** Idempotent — call before processOutboxItem / processReadyOutbox. */
@@ -116,6 +201,7 @@ export function ensureOutboxHandlersRegistered(): void {
   if (registered) return;
   registerOutboxHandler('farmer_registration', handleFarmerRegistration);
   registerOutboxHandler('task_submission', handleTaskSubmission);
+  registerOutboxHandler('task_approval', handleTaskApproval);
   registered = true;
 }
 

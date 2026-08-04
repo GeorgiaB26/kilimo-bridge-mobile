@@ -275,10 +275,13 @@ export async function getOutboxStatusCounts(): Promise<OutboxStatusCounts> {
     uploading: 0,
     synced: 0,
     failed: 0,
+    needs_review: 0,
     ready: 0,
   };
   for (const item of items) {
-    counts[item.status] += 1;
+    if (item.status in counts && item.status !== 'ready') {
+      counts[item.status as keyof Omit<OutboxStatusCounts, 'ready'>] += 1;
+    }
     if (isRetryableFailure(item, now)) counts.ready += 1;
   }
   return counts;
@@ -304,6 +307,7 @@ export async function claimOutboxItem(id: string): Promise<OutboxItem | null> {
   const existing = await getOutboxItem(id);
   if (!existing) return null;
   if (existing.status === 'synced') return null;
+  if (existing.status === 'needs_review') return null;
   if (existing.status === 'uploading') return existing;
   if (existing.attemptCount >= OUTBOX_MAX_ATTEMPTS && existing.status === 'failed') {
     return null;
@@ -378,11 +382,41 @@ export async function markOutboxFailed(id: string, error: string): Promise<Outbo
   return updated;
 }
 
+/**
+ * Terminal conflict / precondition failure — never auto-retried.
+ * Does not increment attemptCount (not a transient failure).
+ */
+export async function markOutboxNeedsReview(
+  id: string,
+  message: string
+): Promise<OutboxItem | null> {
+  await initDb();
+  const existing = await getOutboxItem(id);
+  if (!existing) return null;
+  const now = nowIso();
+  const updated: OutboxItem = {
+    ...existing,
+    status: 'needs_review',
+    lastError: message.slice(0, 1000),
+    nextAttemptAt: null,
+    updatedAt: now,
+  };
+  if (!sqliteDb) {
+    const items = await listFromAsync();
+    await saveToAsync(items.map((i) => (i.id === id ? updated : i)));
+    return updated;
+  }
+  await upsertSqlite(updated);
+  return updated;
+}
+
 /** Manual retry: reset scheduling without clearing attempt history. */
 export async function resetOutboxForManualRetry(id: string): Promise<OutboxItem | null> {
   await initDb();
   const existing = await getOutboxItem(id);
   if (!existing || existing.status === 'synced') return null;
+  // Conflicts stay terminal until dismissed — do not convert to pending.
+  if (existing.status === 'needs_review') return null;
   const now = nowIso();
   const updated: OutboxItem = {
     ...existing,

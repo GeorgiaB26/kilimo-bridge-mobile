@@ -38,12 +38,18 @@ export async function syncOutboxAfterReconnect(
 
   syncInFlight = (async () => {
     if (!getAuthToken()) {
-      return { processed: 0, synced: 0, failed: 0, results: [] };
+      return { processed: 0, synced: 0, failed: 0, needsReview: 0, results: [] };
     }
 
     const queued = await listOutbox({ includeSynced: false });
     for (const item of queued) {
-      if (item.status === 'synced' || item.status === 'uploading') continue;
+      if (
+        item.status === 'synced' ||
+        item.status === 'uploading' ||
+        item.status === 'needs_review'
+      ) {
+        continue;
+      }
       await resetOutboxForManualRetry(item.id);
     }
 
@@ -71,6 +77,7 @@ function handleNetInfoChange(state: NetInfoState): void {
         processed: 0,
         synced: 0,
         failed: 0,
+        needsReview: 0,
         results: [{ ok: false as const, error: String(err) }],
       };
     });
@@ -134,5 +141,5 @@ export function __emitConnectivityRestoredForTests(): Promise<ProcessReadyOutbox
       txLinkSpeed: null,
     },
   } as NetInfoState);
-  return lastReconnectSync ?? Promise.resolve({ processed: 0, synced: 0, failed: 0, results: [] });
+  return lastReconnectSync ?? Promise.resolve({ processed: 0, synced: 0, failed: 0, needsReview: 0, results: [] });
 }

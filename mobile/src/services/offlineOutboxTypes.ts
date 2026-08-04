@@ -4,16 +4,20 @@
  */
 
 /** Extensible set of queued write actions — add new types without altering SQLite schema. */
-export type OutboxActionType = 'farmer_registration' | 'task_submission';
+export type OutboxActionType =
+  | 'farmer_registration'
+  | 'task_submission'
+  | 'task_approval';
 
 /**
  * Lifecycle:
- * - pending   — waiting (or ready after enqueue / reclaim)
- * - uploading — claimed by a sync worker
- * - synced    — successfully pushed to R2 + API
- * - failed    — last attempt failed; may still be retryable if nextAttemptAt is set
+ * - pending      — waiting (or ready after enqueue / reclaim)
+ * - uploading    — claimed by a sync worker
+ * - synced       — successfully pushed to R2 + API
+ * - failed       — last attempt failed; may still be retryable if nextAttemptAt is set
+ * - needs_review — conflict / precondition failed; terminal until user dismisses (no auto-retry)
  */
-export type OutboxStatus = 'pending' | 'uploading' | 'synced' | 'failed';
+export type OutboxStatus = 'pending' | 'uploading' | 'synced' | 'failed' | 'needs_review';
 
 export interface OutboxItem {
   id: string;
@@ -56,6 +60,7 @@ export interface OutboxStatusCounts {
   uploading: number;
   synced: number;
   failed: number;
+  needs_review: number;
   /** Ready now: pending/failed with nextAttemptAt <= now and under max attempts. */
   ready: number;
 }
@@ -89,7 +94,13 @@ export function backoffMsForAttempt(attemptCountAfterFailure: number): number {
 }
 
 export function isRetryableFailure(item: OutboxItem, now = Date.now()): boolean {
-  if (item.status === 'synced' || item.status === 'uploading') return false;
+  if (
+    item.status === 'synced' ||
+    item.status === 'uploading' ||
+    item.status === 'needs_review'
+  ) {
+    return false;
+  }
   if (item.attemptCount >= OUTBOX_MAX_ATTEMPTS) return false;
   if (!item.nextAttemptAt) return item.status === 'pending';
   return new Date(item.nextAttemptAt).getTime() <= now;

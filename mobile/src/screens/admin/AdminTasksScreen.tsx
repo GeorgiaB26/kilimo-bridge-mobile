@@ -8,15 +8,14 @@ import { Menu, Button as PaperButton } from 'react-native-paper';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import {
-  approveFarmerTask,
   getAdminFarmerTasks,
   getProgramProjects,
-  rejectFarmerTask,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import {
   getReadCache,
@@ -24,6 +23,14 @@ import {
   READ_CACHE_KEYS,
 } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import {
+  dismissTaskApprovalOutbox,
+  listPendingTaskApprovals,
+  pushPendingTaskApproval,
+  submitTaskDecisionWithOutbox,
+  syncAllPendingTaskApprovals,
+  type PendingTaskApprovalView,
+} from '../../services/submitTaskApprovalOutbox';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
@@ -87,6 +94,12 @@ export function AdminTasksScreen() {
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingTaskApprovalView[]>([]);
+  const [pushingId, setPushingId] = useState<string | null>(null);
+
+  const loadPending = useCallback(async () => {
+    setPendingApprovals(await listPendingTaskApprovals());
+  }, []);
 
   const load = useCallback(async () => {
     const hasFilter = Boolean(projectFilter || statusFilter);
@@ -145,23 +158,65 @@ export function AdminTasksScreen() {
     }
   }, [projectFilter, statusFilter, userScope]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        await syncAllPendingTaskApprovals();
+        await Promise.all([load(), loadPending()]);
+      })();
+    }, [load, loadPending])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await syncAllPendingTaskApprovals();
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
+  };
+
+  const handleDecisionResult = async (
+    result: Awaited<ReturnType<typeof submitTaskDecisionWithOutbox>>,
+    decision: 'approve' | 'reject'
+  ) => {
+    await loadPending();
+    if (result.mode === 'online') {
+      setSelected(null);
+      setApprovalNotes('');
+      setRejectReason('');
+      await load();
+      Alert.alert(
+        decision === 'approve' ? 'Approved' : 'Rejected',
+        decision === 'approve'
+          ? 'Farmer notified (SMS in pilot mode).'
+          : 'Farmer notified to resubmit.'
+      );
+      return;
+    }
+    if (result.mode === 'offline') {
+      setSelected(null);
+      setApprovalNotes('');
+      setRejectReason('');
+      Alert.alert(
+        'Saved offline',
+        `${decision === 'approve' ? 'Approval' : 'Rejection'} queued. It will sync when you are back online.`
+      );
+      return;
+    }
+    Alert.alert('Needs your review', result.error);
   };
 
   const approve = async () => {
     if (!selected || cacheFetchedAt) return;
     setActing(true);
     try {
-      await approveFarmerTask(selected.id, approvalNotes.trim() || undefined);
-      setSelected(null);
-      setApprovalNotes('');
-      await load();
-      Alert.alert('Approved', 'Farmer notified (SMS in pilot mode).');
+      const result = await submitTaskDecisionWithOutbox({
+        farmerTaskId: selected.id,
+        taskName: selected.name,
+        decision: 'approve',
+        expectedStatus: selected.status,
+        notes: approvalNotes.trim() || undefined,
+      });
+      await handleDecisionResult(result, 'approve');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not approve'));
     } finally {
@@ -177,16 +232,42 @@ export function AdminTasksScreen() {
     }
     setActing(true);
     try {
-      await rejectFarmerTask(selected.id, rejectReason.trim());
-      setSelected(null);
-      setRejectReason('');
-      await load();
-      Alert.alert('Rejected', 'Farmer notified to resubmit.');
+      const result = await submitTaskDecisionWithOutbox({
+        farmerTaskId: selected.id,
+        taskName: selected.name,
+        decision: 'reject',
+        expectedStatus: selected.status,
+        rejectionReason: rejectReason.trim(),
+      });
+      await handleDecisionResult(result, 'reject');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not reject'));
     } finally {
       setActing(false);
     }
+  };
+
+  const handlePush = async (item: PendingTaskApprovalView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingTaskApproval(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.taskName} ${item.decision === 'approve' ? 'approved' : 'rejected'}.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
+    }
+  };
+
+  const handleDismiss = async (id: string) => {
+    await dismissTaskApprovalOutbox(id);
+    await loadPending();
   };
 
   const projectLabel = projects.find((p) => p.id === projectFilter)?.name ?? 'All projects';
@@ -232,6 +313,22 @@ export function AdminTasksScreen() {
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerClassName="pb-8"
+        ListHeaderComponent={
+          pendingApprovals.length > 0 ? (
+            <View className="mb-4">
+              <Text className="mb-2 text-[17px] font-bold text-[#333333]">Queued decisions</Text>
+              {pendingApprovals.map((item) => (
+                <OutboxTaskApprovalCard
+                  key={item.id}
+                  item={item}
+                  pushing={pushingId === item.id}
+                  onPush={() => handlePush(item)}
+                  onDismiss={() => handleDismiss(item.id)}
+                />
+              ))}
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => (
           <KBCard onPress={() => setSelected(item)}>
             <View className="flex-row items-start justify-between gap-2">

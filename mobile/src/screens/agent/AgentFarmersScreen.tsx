@@ -137,22 +137,31 @@ export function AgentFarmersScreen() {
                   <Text className="mt-0.5 text-[13px] text-[#757575]">
                     {item.formData.phone || 'No phone'} · saved{' '}
                     {new Date(item.createdAt).toLocaleString()}
-                    {item.status !== 'pending' ? ` · ${item.status}` : ''}
+                    {item.status === 'needs_review'
+                      ? ' · Needs your review'
+                      : item.status !== 'pending'
+                        ? ` · ${item.status}`
+                        : ''}
                   </Text>
+                  {item.status === 'needs_review' ? (
+                    <Text className="mt-1 text-xs font-semibold text-[#D32F2F]">Needs your review</Text>
+                  ) : null}
                   {item.syncError ? (
                     <Text className="mt-1 text-xs text-[#D32F2F]">{item.syncError}</Text>
                   ) : null}
-                  <Button
-                    className="mt-2 h-10 bg-[#1A4D3E]"
-                    disabled={pushingId === item.id}
-                    onPress={() => handlePushRegistration(item.id, item.formData.name || 'Unnamed farmer')}
-                  >
-                    {pushingId === item.id ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text className="text-white">Push Registration</Text>
-                    )}
-                  </Button>
+                  {item.status !== 'needs_review' ? (
+                    <Button
+                      className="mt-2 h-10 bg-[#1A4D3E]"
+                      disabled={pushingId === item.id}
+                      onPress={() => handlePushRegistration(item.id, item.formData.name || 'Unnamed farmer')}
+                    >
+                      {pushingId === item.id ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text className="text-white">Push Registration</Text>
+                      )}
+                    </Button>
+                  ) : null}
                 </KBCard>
               ))}
             </View>
