@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Modal, Pressable, StyleSheet } from 'react-native';
 import { Text } from '@/components/ui/text';
-import { formatDueDate } from '../../utils/greeting';
+import { formatCleanDate } from '../../utils/greeting';
 
 export type FarmerPaymentRow = {
   id: string;
@@ -59,7 +59,7 @@ export function FarmerPaymentDetailModal({ payment, onClose, formatAmount }: Pro
             </>
           ) : null}
           <Text style={styles.label}>Date</Text>
-          <Text style={styles.value}>{formatDueDate(payment.created_at)}</Text>
+          <Text style={styles.value}>{formatCleanDate(payment.created_at)}</Text>
         </View>
       </View>
     </Modal>

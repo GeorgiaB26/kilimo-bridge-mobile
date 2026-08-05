@@ -72,6 +72,7 @@ type DashboardData = {
 export function FarmerDashboardScreen() {
   const navigation = useNavigation<DashboardNav>();
   const logout = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
   const { formatAmount, currencyInfo } = useCurrency();
   const userScope = useReadCacheUserScope();
   const [data, setData] = useState<DashboardData | null>(null);
@@ -218,7 +219,10 @@ export function FarmerDashboardScreen() {
           />
         </View>
 
-        <FarmerDashboardSupportSection />
+        <FarmerDashboardSupportSection
+          farmerName={data?.farmer?.name}
+          farmerPhone={user?.phone}
+        />
       </ScrollView>
 
       <FarmerLocationPrompt

@@ -9,6 +9,7 @@ import {
   backoffMsForAttempt,
   isRetryableFailure,
   makeOutboxId,
+  pruneOutboxItemsForStorage,
   type EnqueueOutboxInput,
   type ListOutboxOptions,
   type OutboxItem,
@@ -47,7 +48,20 @@ async function listAll(): Promise<OutboxItem[]> {
 }
 
 async function saveAll(items: OutboxItem[]): Promise<void> {
-  await AsyncStorage.setItem(ASYNC_KEY, JSON.stringify(items));
+  const pruned = pruneOutboxItemsForStorage(items);
+  const payload = JSON.stringify(pruned);
+  try {
+    await AsyncStorage.setItem(ASYNC_KEY, payload);
+  } catch {
+    const minimal = pruneOutboxItemsForStorage(pruned, { aggressive: true });
+    await AsyncStorage.setItem(ASYNC_KEY, JSON.stringify(minimal));
+  }
+}
+
+/** Trim sync queue after successful submits (web localStorage quota safety). */
+export async function pruneOutboxStorage(): Promise<void> {
+  const items = await listAll();
+  await saveAll(items);
 }
 
 async function replace(id: string, item: OutboxItem): Promise<void> {
@@ -162,19 +176,9 @@ export async function claimOutboxItem(id: string): Promise<OutboxItem | null> {
 }
 
 export async function markOutboxSynced(id: string): Promise<OutboxItem | null> {
-  const existing = await getOutboxItem(id);
-  if (!existing) return null;
-  const now = nowIso();
-  const updated: OutboxItem = {
-    ...existing,
-    status: 'synced',
-    lastError: null,
-    nextAttemptAt: null,
-    syncedAt: now,
-    updatedAt: now,
-  };
-  await replace(id, updated);
-  return updated;
+  await deleteOutboxItem(id);
+  await pruneOutboxStorage();
+  return null;
 }
 
 export async function markOutboxFailed(id: string, error: string): Promise<OutboxItem | null> {

@@ -23,7 +23,7 @@ import {
 import type { FarmerTaskRow } from '../../components/farmer/FarmerProjectTasksSection';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
-import { formatDisplayDate, formatDueDate } from '../../utils/greeting';
+import { formatDisplayDate, formatCleanDate } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerTabParamList } from '../../navigation/types';
 
@@ -168,7 +168,7 @@ export function FarmerTasksScreen() {
           const openable = canOpenTask(item.status);
           const overdue = isOverdue(item.due_date);
           const assignedWhen = formatDisplayDate(item.assigned_at);
-          const deadline = item.due_date ? formatDueDate(item.due_date) : 'No deadline set';
+          const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
           const assigner = item.assigned_by_name?.trim() || 'Program team';
 
           return (
