@@ -29,14 +29,34 @@ function getEndpoint(): string {
   return requiredEnv('CLOUDFLARE_R2_ENDPOINT').replace(/\/$/, '');
 }
 
+export const R2_ENV_VARS = [
+  'CLOUDFLARE_R2_ACCOUNT_ID',
+  'CLOUDFLARE_R2_ACCESS_KEY_ID',
+  'CLOUDFLARE_R2_SECRET_ACCESS_KEY',
+  'CLOUDFLARE_R2_BUCKET_NAME',
+  'CLOUDFLARE_R2_ENDPOINT',
+] as const;
+
 export function isR2Configured(): boolean {
-  return Boolean(
-    process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim() &&
-      process.env.CLOUDFLARE_R2_ACCESS_KEY_ID?.trim() &&
-      process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY?.trim() &&
-      process.env.CLOUDFLARE_R2_BUCKET_NAME?.trim() &&
-      process.env.CLOUDFLARE_R2_ENDPOINT?.trim()
-  );
+  return R2_ENV_VARS.every((name) => Boolean(process.env[name]?.trim()));
+}
+
+/**
+ * Deployment diagnostic: which R2 vars the running process can see.
+ * Reports names only — never values — so it is safe to expose on /health.
+ * `similarNamesFound` catches typos and stray whitespace in Render env keys.
+ */
+export function getR2ConfigStatus(): {
+  configured: boolean;
+  missing: string[];
+  similarNamesFound: string[];
+} {
+  const missing = R2_ENV_VARS.filter((name) => !process.env[name]?.trim());
+  const similarNamesFound = Object.keys(process.env)
+    .filter((name) => /r2|cloud.?fl/i.test(name))
+    .filter((name) => !R2_ENV_VARS.includes(name as (typeof R2_ENV_VARS)[number]))
+    .sort();
+  return { configured: missing.length === 0, missing, similarNamesFound };
 }
 
 function getS3Client(): S3Client {

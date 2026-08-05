@@ -25,6 +25,7 @@ import hierarchyAdminRoutes from './routes/hierarchyAdmin';
 import aggregationRoutes from './routes/aggregation';
 import aggregationCentresRoutes from './routes/aggregationCentres';
 import uploadsRoutes from './routes/uploads';
+import { getR2ConfigStatus } from './services/r2StorageService';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
 import { getFarmerCount } from './db/database';
@@ -52,6 +53,10 @@ function healthPayload() {
     farmers: appReady ? cachedFarmerCount : null,
     hierarchy_projects: appReady ? cachedHierarchyProjects : null,
     demo_farmer_tasks: appReady ? cachedDemoFarmerTasks : null,
+    photo_storage: getR2ConfigStatus(),
+    // Env vars are only re-read on restart — use this to confirm a Render env change took effect
+    started_at: new Date(Date.now() - Math.round(process.uptime() * 1000)).toISOString(),
+    uptime_seconds: Math.round(process.uptime()),
   };
 }
 
