@@ -10,7 +10,7 @@ import { KBCard } from '../ui/KBCard';
 import { KBStatusChip } from '../ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from './FarmerTaskSubmitModal';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
-import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
+import { formatCleanDate } from '../../utils/greeting';
 import {
   listPendingTaskSubmissions,
   pushPendingTaskSubmission,
@@ -266,7 +266,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
             </View>
 
             {item.description ? <Text style={styles.description}>{item.description}</Text> : null}
-            {item.due_date ? <Text style={styles.due}>Due {item.due_date}</Text> : null}
+            {item.due_date ? <Text style={styles.due}>Due {formatCleanDate(item.due_date)}</Text> : null}
 
             {pending ? (
               <View style={styles.pendingBlock}>
