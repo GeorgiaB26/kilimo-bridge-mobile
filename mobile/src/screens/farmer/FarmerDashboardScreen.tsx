@@ -221,7 +221,7 @@ export function FarmerDashboardScreen() {
 
         <FarmerDashboardSupportSection
           farmerName={data?.farmer?.name}
-          farmerPhone={user?.phone}
+          farmerPhone={user?.phoneNumber}
         />
       </ScrollView>
 
