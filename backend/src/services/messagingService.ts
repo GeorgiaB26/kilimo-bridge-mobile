@@ -225,9 +225,6 @@ export async function listThreadsForUser(userId: string, search?: string): Promi
         0
       ) AS unread_count
     FROM message_threads t
-    JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id::text = $1
-    JOIN message_thread_participants op
-      ON op.thread_id = t.id AND op.user_id::text <> $1
     JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id::text = $1::text
     JOIN message_thread_participants op
       ON op.thread_id = t.id AND op.user_id::text <> $1::text
