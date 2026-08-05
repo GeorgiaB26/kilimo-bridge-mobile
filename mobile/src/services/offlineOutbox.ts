@@ -12,6 +12,7 @@ import {
   backoffMsForAttempt,
   isRetryableFailure,
   makeOutboxId,
+  pruneOutboxItemsForStorage,
   type EnqueueOutboxInput,
   type ListOutboxOptions,
   type OutboxItem,
@@ -151,7 +152,13 @@ async function listFromAsync(): Promise<OutboxItem[]> {
 }
 
 async function saveToAsync(items: OutboxItem[]): Promise<void> {
-  await AsyncStorage.setItem(ASYNC_FALLBACK_KEY, JSON.stringify(items));
+  const pruned = pruneOutboxItemsForStorage(items);
+  try {
+    await AsyncStorage.setItem(ASYNC_FALLBACK_KEY, JSON.stringify(pruned));
+  } catch {
+    const minimal = pruneOutboxItemsForStorage(pruned, { aggressive: true });
+    await AsyncStorage.setItem(ASYNC_FALLBACK_KEY, JSON.stringify(minimal));
+  }
 }
 
 async function upsertSqlite(item: OutboxItem): Promise<void> {
@@ -512,4 +519,13 @@ export async function reclaimStaleUploading(
     reclaimed += 1;
   }
   return reclaimed;
+}
+
+/** Trim synced / oversized queue rows (AsyncStorage fallback on web builds). */
+export async function pruneOutboxStorage(): Promise<void> {
+  await purgeSyncedOutbox(0);
+  if (!sqliteDb) {
+    const items = await listFromAsync();
+    await saveToAsync(items);
+  }
 }

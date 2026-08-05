@@ -108,3 +108,21 @@ export function isRetryableFailure(item: OutboxItem, now = Date.now()): boolean 
   if (!item.nextAttemptAt) return item.status === 'pending';
   return new Date(item.nextAttemptAt).getTime() <= now;
 }
+
+/** Max queued rows kept in web localStorage / AsyncStorage fallback. */
+export const OUTBOX_MAX_STORED_ITEMS = 10;
+
+/** Drop synced rows and cap queue size to avoid localStorage quota errors on web. */
+export function pruneOutboxItemsForStorage(
+  items: OutboxItem[],
+  options?: { maxItems?: number; aggressive?: boolean }
+): OutboxItem[] {
+  const maxItems = options?.aggressive ? 5 : (options?.maxItems ?? OUTBOX_MAX_STORED_ITEMS);
+  let next = items.filter((i) => i.status !== 'synced');
+  next.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (next.length > maxItems) next = next.slice(0, maxItems);
+  return next.map((item) => {
+    if (!item.photoLocalUri || !item.photoBase64) return item;
+    return { ...item, photoBase64: null };
+  });
+}

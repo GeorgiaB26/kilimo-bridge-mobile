@@ -264,22 +264,26 @@ export function FarmerDashboardRecentPayments({
   );
 }
 
-export function FarmerDashboardSupportSection() {
-  const supportPhone = '+254700000000';
+export function FarmerDashboardSupportSection({
+  farmerName,
+  farmerPhone,
+}: {
+  farmerName?: string;
+  farmerPhone?: string;
+} = {}) {
+  const handleContactSupport = () => {
+    const email = 'support@kilimobridge.org';
+    const subject = 'Kilimo Bridge Farmer Support Request';
+    const body = `Farmer: ${farmerName ?? 'Farmer'}\nPhone: ${farmerPhone ?? 'Not provided'}\n\nIssue: `;
+    Linking.openURL(
+      `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    );
+  };
 
   return (
     <View style={styles.supportSection}>
-      <Pressable
-        style={styles.supportButton}
-        onPress={() => Linking.openURL(`tel:${supportPhone}`)}
-      >
-        <Text style={styles.supportButtonText}>📞 Contact Support</Text>
-      </Pressable>
-      <Pressable
-        style={styles.supportButton}
-        onPress={() => Linking.openURL('https://kilimobridge.com/faq')}
-      >
-        <Text style={styles.supportButtonText}>❓ FAQ</Text>
+      <Pressable style={styles.supportButton} onPress={handleContactSupport}>
+        <Text style={styles.supportButtonText}>Contact Support</Text>
       </Pressable>
     </View>
   );

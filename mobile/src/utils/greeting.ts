@@ -90,28 +90,33 @@ export function formatProjectStatus(status: string): { label: string; variant: '
 
 export function formatDueDate(dateStr?: string | null): string {
   if (!dateStr) return 'No due date set';
-  try {
-    const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  } catch {
-    return dateStr;
-  }
+  return formatCleanDate(dateStr);
 }
 
-/** Short project date without ISO timestamps (e.g. "Aug 5"). */
-export function formatProjectDate(dateStr?: string | null): string {
+/** DD/MM/YYYY — no ISO timestamps (T00:00:00). */
+export function formatCleanDate(dateStr?: string | null): string {
   if (!dateStr) return 'N/A';
   try {
     const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
-    if (Number.isNaN(d.getTime())) return dateStr.split('T')[0];
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (Number.isNaN(d.getTime())) {
+      const stripped = String(dateStr).split('T')[0];
+      return stripped || 'N/A';
+    }
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
   } catch {
-    return dateStr.split('T')[0];
+    return String(dateStr).split('T')[0] || 'N/A';
   }
+}
+
+/** Short project date without ISO timestamps. */
+export function formatProjectDate(dateStr?: string | null): string {
+  return formatCleanDate(dateStr);
 }
 
 /** Format any ISO or date string for display (no T00 timestamps). */
 export function formatDisplayDate(dateStr?: string | null): string {
-  return formatDueDate(dateStr);
+  return formatCleanDate(dateStr);
 }

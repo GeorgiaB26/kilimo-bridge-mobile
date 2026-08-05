@@ -7,6 +7,7 @@ import {
 } from './offlineOutbox';
 import { isLikelyConnectivityError } from './offlineOutboxHandlers';
 import { processOutboxItem } from './offlineOutboxProcessor';
+import { pruneOutboxStorage } from './offlineOutbox';
 
 export type PendingTaskSubmissionView = {
   id: string;
@@ -89,6 +90,7 @@ export async function submitFarmerTaskWithOutbox(params: {
   const result = await processOutboxItem(item.id);
 
   if (result.ok) {
+    await pruneOutboxStorage();
     return { mode: 'online' };
   }
 

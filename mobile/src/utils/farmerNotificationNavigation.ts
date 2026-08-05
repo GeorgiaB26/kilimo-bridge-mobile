@@ -6,20 +6,37 @@ export type FarmerNotification = {
   context_type?: string | null;
   context_id?: string | null;
   action_url?: string | null;
+  notification_type?: string | null;
+  related_id?: string | null;
 };
 
-function findNavigatorWithRoute(
-  navigation: NavigationProp<ParamListBase>,
-  routeName: string
-): NavigationProp<ParamListBase> | null {
-  let nav: NavigationProp<ParamListBase> | undefined = navigation;
-  while (nav) {
-    if (nav.getState().routeNames.includes(routeName)) {
-      return nav;
-    }
-    nav = nav.getParent() as NavigationProp<ParamListBase> | undefined;
+function getRootNavigation(
+  navigation: NavigationProp<ParamListBase>
+): NavigationProp<ParamListBase> {
+  let current: NavigationProp<ParamListBase> = navigation;
+  let parent = navigation.getParent();
+  while (parent) {
+    current = parent;
+    parent = current.getParent();
   }
-  return null;
+  return current;
+}
+
+function notificationType(notification: FarmerNotification): string {
+  const raw =
+    notification.type ||
+    notification.notification_type ||
+    notification.context_type ||
+    '';
+  return raw.toLowerCase();
+}
+
+function contextId(notification: FarmerNotification): string | undefined {
+  return (
+    notification.context_id ??
+    notification.related_id ??
+    undefined
+  );
 }
 
 /** Navigate from a notification tap to the related farmer screen. */
@@ -27,23 +44,23 @@ export function navigateFromFarmerNotification(
   navigation: NavigationProp<ParamListBase>,
   notification: FarmerNotification
 ): void {
-  const type = notification.type.toLowerCase();
-  const contextId = notification.context_id ?? undefined;
+  const type = notificationType(notification);
   const contextType = (notification.context_type ?? '').toLowerCase();
+  const contextIdValue = contextId(notification);
+  const root = getRootNavigation(navigation);
 
-  const mainTabs = findNavigatorWithRoute(navigation, 'MainTabs');
-  if (!mainTabs) return;
+  const isMessage =
+    type === 'message' ||
+    type === 'message_received' ||
+    type.includes('message') ||
+    contextType === 'message' ||
+    contextType === 'message_thread';
 
-  if (type === 'message_received' || contextType === 'message_thread') {
-    const messagesNav = findNavigatorWithRoute(navigation, 'MessagesFlow');
-    if (messagesNav && contextId) {
-      messagesNav.navigate('MessagesFlow', {
-        screen: 'MessageDetail',
-        params: { threadId: contextId },
-      });
-    } else if (messagesNav) {
-      messagesNav.navigate('MessagesFlow');
-    }
+  if (isMessage) {
+    root.navigate('MessagesFlow', {
+      screen: contextIdValue ? 'MessageDetail' : 'MessagesList',
+      params: contextIdValue ? { threadId: contextIdValue } : undefined,
+    });
     return;
   }
 
@@ -53,9 +70,9 @@ export function navigateFromFarmerNotification(
     type === 'payment_ready' ||
     type === 'payment_processed'
   ) {
-    mainTabs.navigate('MainTabs', {
+    root.navigate('MainTabs', {
       screen: 'Payments',
-      params: { highlightPaymentId: contextId },
+      params: contextIdValue ? { highlightPaymentId: contextIdValue } : undefined,
     });
     return;
   }
@@ -66,16 +83,16 @@ export function navigateFromFarmerNotification(
     contextType === 'program_project' ||
     type === 'project_assigned'
   ) {
-    if (contextId) {
-      mainTabs.navigate('MainTabs', {
+    if (contextIdValue) {
+      root.navigate('MainTabs', {
         screen: 'Projects',
         params: {
           screen: 'HierarchyProjectDetail',
-          params: { projectId: contextId, projectName: 'Your project' },
+          params: { projectId: contextIdValue, projectName: 'Your project' },
         },
       });
     } else {
-      mainTabs.navigate('MainTabs', { screen: 'Projects' });
+      root.navigate('MainTabs', { screen: 'Projects' });
     }
     return;
   }
@@ -85,7 +102,7 @@ export function navigateFromFarmerNotification(
     contextType === 'task' ||
     type === 'task_assigned'
   ) {
-    mainTabs.navigate('MainTabs', { screen: 'Tasks' });
+    root.navigate('MainTabs', { screen: 'Tasks' });
     return;
   }
 
@@ -94,11 +111,11 @@ export function navigateFromFarmerNotification(
     type.includes('registration') ||
     type === 'help_request_resolved'
   ) {
-    mainTabs.navigate('MainTabs', { screen: 'Profile' });
+    root.navigate('MainTabs', { screen: 'Profile' });
     return;
   }
 
   if (type.includes('help')) {
-    mainTabs.navigate('MainTabs', { screen: 'Profile' });
+    root.navigate('MainTabs', { screen: 'Profile' });
   }
 }
