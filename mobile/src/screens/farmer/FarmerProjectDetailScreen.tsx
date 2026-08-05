@@ -7,7 +7,7 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerProjectTasksSection } from '../../components/farmer/FarmerProjectTasksSection';
-import { formatDueDate, formatProjectStatus, formatProjectDate } from '../../utils/greeting';
+import { formatCleanDate, formatProjectStatus, formatProjectDate } from '../../utils/greeting';
 import { PROJECT_DESCRIPTIONS } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 
@@ -60,7 +60,7 @@ export function FarmerProjectDetailScreen({ route }: Props) {
           <KBProgressBar
             progress={project.completion_percentage}
             label={`${project.completion_percentage}% complete`}
-            rightLabel={project.due_date ? `Due ${formatDueDate(project.due_date)}` : undefined}
+            rightLabel={project.due_date ? `Due ${formatCleanDate(project.due_date)}` : undefined}
             stacked
           />
         </View>
