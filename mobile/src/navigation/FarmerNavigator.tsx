@@ -13,8 +13,19 @@ import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import type { FarmerRootStackParamList, FarmerTabParamList } from './types';
 
 import { FarmerCurrencySync } from '../components/FarmerCurrencySync';
+import { FarmerTabScene } from './FarmerTabScene';
 
 const Tab = createBottomTabNavigator<FarmerTabParamList>();
+
+function withFarmerTabScene<P extends object>(Component: React.ComponentType<P>) {
+  return function FarmerTabScreen(props: P) {
+    return (
+      <FarmerTabScene>
+        <Component {...props} />
+      </FarmerTabScene>
+    );
+  };
+}
 const RootStack = createNativeStackNavigator<FarmerRootStackParamList>();
 
 function FarmerTabNavigator() {
@@ -28,11 +39,31 @@ function FarmerTabNavigator() {
         sceneStyle: { paddingBottom: 88 },
       }}
     >
-      <Tab.Screen name="Dashboard" component={FarmerDashboardScreen} options={{ title: 'Home', headerShown: false }} />
-      <Tab.Screen name="Projects" component={FarmerProjectsNavigator} options={{ headerShown: false }} />
-      <Tab.Screen name="Tasks" component={FarmerTasksScreen} options={{ title: 'Tasks', headerShown: false }} />
-      <Tab.Screen name="Payments" component={FarmerPaymentsScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Profile" component={FarmerProfileScreen} options={{ headerShown: false }} />
+      <Tab.Screen
+        name="Dashboard"
+        component={withFarmerTabScene(FarmerDashboardScreen)}
+        options={{ title: 'Home', headerShown: false }}
+      />
+      <Tab.Screen
+        name="Projects"
+        component={withFarmerTabScene(FarmerProjectsNavigator)}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen
+        name="Tasks"
+        component={withFarmerTabScene(FarmerTasksScreen)}
+        options={{ title: 'Tasks', headerShown: false }}
+      />
+      <Tab.Screen
+        name="Payments"
+        component={withFarmerTabScene(FarmerPaymentsScreen)}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={withFarmerTabScene(FarmerProfileScreen)}
+        options={{ headerShown: false }}
+      />
     </Tab.Navigator>
   );
 }
