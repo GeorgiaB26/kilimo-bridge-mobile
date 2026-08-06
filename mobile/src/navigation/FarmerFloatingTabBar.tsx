@@ -103,6 +103,8 @@ const styles = StyleSheet.create({
     left: HORIZONTAL_MARGIN,
     right: HORIZONTAL_MARGIN,
     bottom: 0,
+    zIndex: 1000,
+    elevation: 1000,
   },
   pillShadow: {
     borderRadius: PILL_RADIUS,
