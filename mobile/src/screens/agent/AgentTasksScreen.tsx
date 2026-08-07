@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Pressable,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -33,7 +34,7 @@ import {
   updateAgentPersonalTask,
 } from '../../api/client';
 import { api } from '../../api/client';
-import { extractApiError } from '../../utils/feedback';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import { isAgentTaskOverdue, isAgentTaskUpcoming } from '../../utils/agentTaskDue';
 import { formatCleanDate } from '../../utils/greeting';
 import type { AgentTabParamList } from '../../navigation/types';
@@ -194,7 +195,9 @@ function TaskSection({
                   <Text className="text-[#D32F2F]">Reject</Text>
                 </Button>
               </View>
-            ) : null}
+            ) : (
+              <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view details</Text>
+            )}
           </KBCard>
         );
       })}
@@ -479,9 +482,10 @@ export function AgentTasksScreen() {
       navigation.setParams({ filter: undefined });
       await load();
       setAddModalOpen(false);
-      Alert.alert('Task created', 'Your task is now in the Tasks list.');
+      showMessage('Task created', 'Your task is now in the Tasks list.');
     } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not create task'));
+      const msg = extractApiError(err, 'Could not create task');
+      showMessage('Could not create task', msg);
       throw err;
     } finally {
       setCreating(false);
@@ -664,9 +668,13 @@ export function AgentTasksScreen() {
           </View>
         ) : null}
 
-        <Button className="mt-4 h-12 bg-[#FFD700]" onPress={() => setAddModalOpen(true)}>
+        <Pressable
+          onPress={() => setAddModalOpen(true)}
+          className="mt-4 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
+          style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+        >
           <Text className="font-bold text-black">+ Create task</Text>
-        </Button>
+        </Pressable>
       </ScrollView>
 
       <AgentTaskDetailModal
