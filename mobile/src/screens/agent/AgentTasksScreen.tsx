@@ -557,6 +557,22 @@ export function AgentTasksScreen() {
           </View>
         ) : null}
 
+        <TaskSection
+          TitleIcon={TriangleAlert}
+          title="Overdue"
+          color="#EF4444"
+          tasks={overdue}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+          onExpandApproval={setExpandedId}
+          expandedId={expandedId}
+          rejectReason={rejectReason}
+          setRejectReason={setRejectReason}
+          acting={acting}
+          approve={approve}
+          reject={reject}
+        />
+
         {helpRequests.length > 0 ? (
           <View className="mb-5">
             <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
@@ -612,21 +628,6 @@ export function AgentTasksScreen() {
           title="Upcoming (due in 7 days)"
           color="#1A4D3E"
           tasks={upcoming}
-          onReminder={handleReminder}
-          onTaskPress={openTaskDetail}
-          onExpandApproval={setExpandedId}
-          expandedId={expandedId}
-          rejectReason={rejectReason}
-          setRejectReason={setRejectReason}
-          acting={acting}
-          approve={approve}
-          reject={reject}
-        />
-        <TaskSection
-          TitleIcon={TriangleAlert}
-          title="Overdue"
-          color="#EF4444"
-          tasks={overdue}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
