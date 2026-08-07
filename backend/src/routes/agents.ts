@@ -304,25 +304,34 @@ router.post(
       res.status(400).json({ error: 'name and due_date are required' });
       return;
     }
-    const task = await createAgentPersonalTask(req.user!.userId, {
-      name: name.trim(),
-      description,
-      due_date,
-      priority,
-      assigned_farmers,
-      reminder_type,
-    });
-    await logAudit({
-      userId: req.user!.userId,
-      userRole: req.user!.role,
-      action: 'agent.action',
-      category: 'agent',
-      resourceType: 'agent_task',
-      resourceId: task.id,
-      details: { activity_type: 'task_created', name: task.name },
-      success: true,
-    });
-    res.status(201).json({ task });
+    try {
+      const task = await createAgentPersonalTask(req.user!.userId, {
+        name: name.trim(),
+        description,
+        due_date,
+        priority,
+        assigned_farmers,
+        reminder_type,
+      });
+      await logAudit({
+        userId: req.user!.userId,
+        userRole: req.user!.role,
+        action: 'agent.action',
+        category: 'agent',
+        resourceType: 'agent_task',
+        resourceId: task.id,
+        details: { activity_type: 'task_created', name: task.name },
+        success: true,
+      });
+      res.status(201).json({ task });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not create task';
+      if (message.includes('DD/MM/YYYY')) {
+        res.status(400).json({ error: message });
+        return;
+      }
+      throw err;
+    }
   })
 );
 

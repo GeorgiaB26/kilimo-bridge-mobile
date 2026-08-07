@@ -210,6 +210,16 @@ export function AgentTasksScreen() {
   const [showFilter, setShowFilter] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
+
+  const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => ({
+    id: String(t.id),
+    name: String(t.name ?? ''),
+    status: String(t.status ?? 'not_started'),
+    due_date: t.due_date as string | null,
+    priority: t.priority as string | undefined,
+    source: 'personal' as const,
+  });
 
   const load = useCallback(async () => {
     try {
@@ -230,14 +240,9 @@ export function AgentTasksScreen() {
         photo_evidence_url: t.photo_evidence_url as string | undefined,
         source: 'farmer' as const,
       }));
-      const pt = (tasksData.personal_tasks ?? []).map((t: Record<string, unknown>) => ({
-        id: String(t.id),
-        name: String(t.name ?? ''),
-        status: String(t.status ?? 'not_started'),
-        due_date: t.due_date as string | null,
-        priority: t.priority as string | undefined,
-        source: 'personal' as const,
-      }));
+      const pt = (tasksData.personal_tasks ?? []).map((t: Record<string, unknown>) =>
+        mapPersonalTask(t)
+      );
       setFarmerTasks(ft);
       setPersonalTasks(pt);
       setHelpRequests(helpData.requests ?? []);
@@ -372,6 +377,11 @@ export function AgentTasksScreen() {
     }
   };
 
+  const personalOnly = useMemo(
+    () => filtered.filter((t) => t.source === 'personal'),
+    [filtered]
+  );
+
   const handleCreateTask = async (data: {
     name: string;
     description?: string;
@@ -381,12 +391,22 @@ export function AgentTasksScreen() {
   }) => {
     setCreating(true);
     try {
-      await createAgentPersonalTask(data);
+      const result = await createAgentPersonalTask(data);
+      const created = result?.task as Record<string, unknown> | undefined;
+      if (created?.id) {
+        const mapped = mapPersonalTask(created);
+        setPersonalTasks((prev) => {
+          if (prev.some((t) => t.id === mapped.id)) return prev;
+          return [...prev, mapped];
+        });
+        setHighlightTaskId(mapped.id);
+      }
       setFilter('all');
       setShowFilter(false);
+      setSearch('');
       await load();
       setAddModalOpen(false);
-      Alert.alert('Task created', 'Personal task added to your profile.');
+      Alert.alert('Task created', 'Your task is now in the Tasks list.');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not create task'));
     } finally {
@@ -463,6 +483,28 @@ export function AgentTasksScreen() {
                 <Button className="mt-2 h-10 bg-[#1A4D3E]" onPress={() => markContacted(item.id)} disabled={acting === item.id}>
                   <Text className="text-white">Mark contacted</Text>
                 </Button>
+              </KBCard>
+            ))}
+          </View>
+        ) : null}
+
+        {personalOnly.length > 0 ? (
+          <View className="mb-5">
+            <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
+              Your profile tasks ({personalOnly.length})
+            </Text>
+            {personalOnly.map((item) => (
+              <KBCard
+                key={`profile-${item.id}`}
+                style={{
+                  marginBottom: 8,
+                  borderWidth: highlightTaskId === item.id ? 2 : 0,
+                  borderColor: highlightTaskId === item.id ? '#1A4D3E' : undefined,
+                }}
+              >
+                <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
+                <Text className="mt-1 text-[13px] text-[#757575]">Due: {formatDue(item.due_date)}</Text>
+                <Text className="text-[13px] text-[#757575]">Status: {item.status.replace(/_/g, ' ')}</Text>
               </KBCard>
             ))}
           </View>

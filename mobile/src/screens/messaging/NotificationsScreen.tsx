@@ -21,6 +21,7 @@ import { extractApiError } from '../../utils/feedback';
 import { NOTIFICATION_CONFIG, formatTimeAgo } from '../../constants/notifications';
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
 import { useAuthStore } from '../../store/authStore';
+import { useUnreadInboxCounts } from '../../hooks/useUnreadInboxCounts';
 import type { NotificationsStackParamList } from '../../navigation/types';
 
 type NotificationRow = {
@@ -43,6 +44,7 @@ export function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
   const user = useAuthStore((s) => s.user);
   const isAgent = user?.role === 'agent' || user?.role === 'field_officer';
+  const { refresh: refreshUnreadCounts } = useUnreadInboxCounts();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,7 @@ export function NotificationsScreen() {
           ? prev.filter((n) => n.id !== id)
           : prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
+      await refreshUnreadCounts();
     } catch {
       await load();
     }
@@ -91,6 +94,8 @@ export function NotificationsScreen() {
   const handleNotificationTap = async (item: NotificationRow) => {
     if (!item.is_read) {
       await handleMarkRead(item.id);
+    } else {
+      await refreshUnreadCounts();
     }
     navigateFromNotification(navigation, item, { isAgent });
   };
@@ -99,6 +104,7 @@ export function NotificationsScreen() {
     try {
       await markAllNotificationsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      await refreshUnreadCounts();
     } catch (err) {
       setError(extractApiError(err, 'Could not clear notifications'));
     }

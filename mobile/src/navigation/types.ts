@@ -80,9 +80,9 @@ export type AgentTabParamList = {
 };
 
 export type AgentRootStackParamList = {
-  MainTabs: undefined;
-  MessagesFlow: undefined;
-  NotificationsFlow: undefined;
+  MainTabs: NavigatorScreenParams<AgentTabParamList> | undefined;
+  MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
+  NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
 };
 
 export type MessagesStackParamList = {

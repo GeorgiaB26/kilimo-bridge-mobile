@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Modal, ScrollView, Pressable } from 'react-native';
+import { View, Modal, ScrollView, Pressable, Alert, Platform } from 'react-native';
 import { Square, SquareCheck, X } from 'lucide-react-native';
 import { TextInput } from 'react-native-paper';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { maskDdMmYyyyInput, parseAgentTaskDueDateInput } from '../../utils/agentTaskDate';
 
 interface FarmerOption {
   farmer_id: string;
@@ -52,10 +53,15 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
 
   const handleSubmit = async () => {
     if (!name.trim() || !dueDate.trim()) return;
+    const isoDue = parseAgentTaskDueDateInput(dueDate);
+    if (!isoDue) {
+      Alert.alert('Invalid date', 'Enter due date as DD/MM/YYYY (e.g. 15/08/2026).');
+      return;
+    }
     await onSubmit({
       name: name.trim(),
       description: description.trim() || undefined,
-      due_date: dueDate.trim(),
+      due_date: isoDue,
       priority,
       assigned_farmers: selectedFarmers.length ? selectedFarmers : undefined,
     });
@@ -91,14 +97,16 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
               mode="outlined"
               style={{ marginBottom: 12, backgroundColor: '#fff' }}
             />
-            <Text className="mb-1 text-sm font-semibold text-[#333333]">Due date * (YYYY-MM-DD)</Text>
+            <Text className="mb-1 text-sm font-semibold text-[#333333]">Due date * (DD/MM/YYYY)</Text>
             <TextInput
               value={dueDate}
-              onChangeText={setDueDate}
-              placeholder="2026-08-15"
+              onChangeText={(text) => setDueDate(maskDdMmYyyyInput(text))}
+              placeholder="15/08/2026"
+              keyboardType={Platform.OS === 'web' ? 'default' : 'number-pad'}
               mode="outlined"
-              style={{ marginBottom: 12, backgroundColor: '#fff' }}
+              style={{ marginBottom: 4, backgroundColor: '#fff' }}
             />
+            <Text className="mb-3 text-xs text-[#757575]">Example: 15/08/2026 for 15 August 2026</Text>
             <Text className="mb-2 text-sm font-semibold text-[#333333]">Priority</Text>
             <View className="mb-3 flex-row gap-2">
               {(['low', 'medium', 'high'] as const).map((p) => (
@@ -122,14 +130,14 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
                   const selected = selectedFarmers.includes(f.farmer_id);
                   const FarmerIcon = selected ? SquareCheck : Square;
                   return (
-                  <Pressable
-                    key={f.farmer_id}
-                    onPress={() => toggleFarmer(f.farmer_id)}
-                    className="mb-1 flex-row items-center gap-2 py-1"
-                  >
-                    <FarmerIcon size={18} color={selected ? '#1A4D3E' : '#757575'} />
-                    <Text className="text-sm text-[#333333]">{f.name}</Text>
-                  </Pressable>
+                    <Pressable
+                      key={f.farmer_id}
+                      onPress={() => toggleFarmer(f.farmer_id)}
+                      className="mb-1 flex-row items-center gap-2 py-1"
+                    >
+                      <FarmerIcon size={18} color={selected ? '#1A4D3E' : '#757575'} />
+                      <Text className="text-sm text-[#333333]">{f.name}</Text>
+                    </Pressable>
                   );
                 })}
               </>

@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import type { ComponentType } from 'react';
-import { View, ScrollView, RefreshControl, ActivityIndicator, Pressable } from 'react-native';
+import { View, ScrollView, RefreshControl, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import {
   Calendar,
@@ -24,7 +25,22 @@ import type { AgentTabParamList } from '../../navigation/types';
 
 type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
 
+const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
+
 type DashboardData = Awaited<ReturnType<typeof getAgentDashboard>>;
+
+function navigateNested(
+  navigation: Nav,
+  tab: 'Farmers' | 'Tasks' | 'Audit',
+  params?: Record<string, unknown>
+) {
+  navigation.dispatch(
+    CommonActions.navigate({
+      name: tab,
+      params,
+    })
+  );
+}
 
 function MetricCard({
   Icon,
@@ -50,7 +66,7 @@ function MetricCard({
   );
   if (onPress) {
     return (
-      <Pressable onPress={onPress} className="flex-1 active:opacity-85">
+      <Pressable onPress={onPress} className="flex-1 active:opacity-85" style={webPressable}>
         {inner}
       </Pressable>
     );
@@ -151,7 +167,12 @@ export function AgentDashboardScreen() {
 
       <SectionHeading Icon={ChartColumn}>Your activity</SectionHeading>
       <View className="mb-4 flex-row gap-2">
-        <MetricCard Icon={Users} label="Farmers registered" value={farmers?.total ?? 0} />
+        <MetricCard
+          Icon={Users}
+          label="Farmers registered"
+          value={farmers?.total ?? 0}
+          onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
+        />
         <MetricCard
           Icon={Clock}
           iconColor="#FBBF24"
@@ -159,7 +180,7 @@ export function AgentDashboardScreen() {
           value={farmers?.pending_verification ?? 0}
           color="#FBBF24"
           onPress={() =>
-            navigation.navigate('Farmers', {
+            navigateNested(navigation, 'Farmers', {
               screen: 'FarmerList',
               params: { statusFilter: 'pending_verification' },
             })
@@ -172,7 +193,7 @@ export function AgentDashboardScreen() {
           value={farmers?.verified ?? 0}
           color="#10B981"
           onPress={() =>
-            navigation.navigate('Farmers', {
+            navigateNested(navigation, 'Farmers', {
               screen: 'FarmerList',
               params: { statusFilter: 'verified' },
             })
@@ -180,59 +201,66 @@ export function AgentDashboardScreen() {
         />
       </View>
 
-      <KBCard style={{ marginBottom: 12 }}>
-        <CardHeading Icon={Clock} iconColor="#333333">
-          Upcoming tasks (due in 7 days)
-        </CardHeading>
-        {tasks?.upcoming_count > 0 ? (
-          <>
-            <Text className="mt-2 text-[#333333]">{tasks.upcoming_count} task(s) assigned</Text>
-            <Pressable onPress={() => navigation.navigate('Tasks')} className="mt-2 flex-row items-center gap-1">
-              <Text className="text-sm font-semibold text-[#1A4D3E]">View all</Text>
-              <ChevronRight size={16} color="#1A4D3E" />
-            </Pressable>
-          </>
-        ) : (
-          <Text className="mt-2 text-[#757575]">No upcoming tasks</Text>
-        )}
-      </KBCard>
-
-      <KBCard
-        style={{
-          marginBottom: 12,
-          borderLeftWidth: 4,
-          borderLeftColor: tasks?.overdue_count ? '#EF4444' : '#E8E8E8',
-        }}
+      <Pressable
+        onPress={() => navigateNested(navigation, 'Tasks', { filter: 'all' })}
+        style={webPressable}
       >
-        <CardHeading Icon={TriangleAlert} iconColor={tasks?.overdue_count ? '#EF4444' : '#333333'}>
-          Overdue tasks
-        </CardHeading>
-        {tasks?.overdue_count > 0 ? (
-          <>
-            <View className="mt-2 flex-row items-center gap-1.5">
-              <TriangleAlert size={16} color="#EF4444" />
-              <Text className="font-bold text-[#EF4444]">
-                {tasks.overdue_count} task(s) overdue
-              </Text>
-            </View>
-            {tasks.overdue?.map((t: { id: string; name?: string; daysOverdue?: number }) => (
-              <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
-                • {t.name ?? 'Task'}
-                {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
-              </Text>
-            ))}
-            <Pressable
-              onPress={() => navigation.navigate('Tasks', { filter: 'overdue' })}
-              className="mt-2 flex-row items-center gap-1"
-            >
-              <Text className="text-sm font-semibold text-[#1A4D3E]">View all</Text>
-              <ChevronRight size={16} color="#1A4D3E" />
-            </Pressable>
-          </>
-        ) : (
-          <Text className="mt-2 text-[#757575]">No overdue tasks</Text>
-        )}
-      </KBCard>
+        <KBCard style={{ marginBottom: 12 }}>
+          <CardHeading Icon={Clock} iconColor="#333333">
+            Upcoming tasks (due in 7 days)
+          </CardHeading>
+          {tasks?.upcoming_count > 0 ? (
+            <>
+              <Text className="mt-2 text-[#333333]">{tasks.upcoming_count} task(s) assigned</Text>
+              <View className="mt-2 flex-row items-center gap-1">
+                <Text className="text-sm font-semibold text-[#1A4D3E]">View all tasks</Text>
+                <ChevronRight size={16} color="#1A4D3E" />
+              </View>
+            </>
+          ) : (
+            <Text className="mt-2 text-[#757575]">No upcoming tasks</Text>
+          )}
+        </KBCard>
+      </Pressable>
+
+      <Pressable
+        onPress={() => navigateNested(navigation, 'Tasks', { filter: 'overdue' })}
+        style={webPressable}
+      >
+        <KBCard
+          style={{
+            marginBottom: 12,
+            borderLeftWidth: 4,
+            borderLeftColor: tasks?.overdue_count ? '#EF4444' : '#E8E8E8',
+          }}
+        >
+          <CardHeading Icon={TriangleAlert} iconColor={tasks?.overdue_count ? '#EF4444' : '#333333'}>
+            Overdue tasks
+          </CardHeading>
+          {tasks?.overdue_count > 0 ? (
+            <>
+              <View className="mt-2 flex-row items-center gap-1.5">
+                <TriangleAlert size={16} color="#EF4444" />
+                <Text className="font-bold text-[#EF4444]">
+                  {tasks.overdue_count} task(s) overdue
+                </Text>
+              </View>
+              {tasks.overdue?.map((t: { id: string; name?: string; daysOverdue?: number }) => (
+                <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
+                  • {t.name ?? 'Task'}
+                  {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
+                </Text>
+              ))}
+              <View className="mt-2 flex-row items-center gap-1">
+                <Text className="text-sm font-semibold text-[#1A4D3E]">View overdue tasks</Text>
+                <ChevronRight size={16} color="#1A4D3E" />
+              </View>
+            </>
+          ) : (
+            <Text className="mt-2 text-[#757575]">No overdue tasks</Text>
+          )}
+        </KBCard>
+      </Pressable>
 
       <View className="mb-2 flex-row items-center gap-1.5">
         <Calendar size={16} color="#757575" />
@@ -242,14 +270,18 @@ export function AgentDashboardScreen() {
         <Button
           variant="outline"
           className="h-10"
-          onPress={() => navigation.navigate('Tasks')}
+          onPress={() => navigateNested(navigation, 'Tasks', { filter: 'all' })}
         >
           <Text>+ Add task</Text>
         </Button>
-        <Button variant="outline" className="h-10" onPress={() => navigation.navigate('Farmers')}>
+        <Button
+          variant="outline"
+          className="h-10"
+          onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
+        >
           <Text>View farmers</Text>
         </Button>
-        <Button variant="outline" className="h-10" onPress={() => navigation.navigate('Audit')}>
+        <Button variant="outline" className="h-10" onPress={() => navigateNested(navigation, 'Audit')}>
           <Text>Activity log</Text>
         </Button>
       </View>

@@ -128,6 +128,7 @@ export async function ensureMessagingTables(): Promise<void> {
   await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS action_url TEXT`);
   await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'normal'`);
   await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read BOOLEAN DEFAULT FALSE`);
+  await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE`);
 }
 
 async function findDirectThread(userId: string, otherUserId: string): Promise<string | null> {
