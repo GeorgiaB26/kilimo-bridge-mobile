@@ -31,7 +31,10 @@ type PaymentSummary = {
 
 type TaskStats = {
   overdue: number;
-  upcoming: number;
+  in_progress?: number;
+  not_started?: number;
+  completed?: number;
+  total?: number;
 };
 
 type PaymentRow = {
@@ -53,7 +56,7 @@ type Props = {
   onEditProfile: () => void;
   onLogout: () => void;
   onPaymentsPress: () => void;
-  onTasksPress: (filter?: 'overdue' | 'upcoming') => void;
+  onTasksPress: (filter?: 'overdue' | 'in_progress' | 'not_started' | 'completed') => void;
   onProjectPress: (project: FarmerProject) => void;
 };
 
@@ -143,53 +146,70 @@ export function FarmerDashboardTaskSnapshots({
   onTasksPress,
 }: {
   taskStats?: TaskStats | null;
-  onTasksPress: (filter?: 'overdue' | 'upcoming') => void;
+  onTasksPress: (filter?: 'overdue' | 'in_progress' | 'not_started' | 'completed') => void;
 }) {
   const overdue = taskStats?.overdue ?? 0;
-  const upcoming = taskStats?.upcoming ?? 0;
+  const inProgress = taskStats?.in_progress ?? 0;
+  const notStarted = taskStats?.not_started ?? 0;
+  const completed = taskStats?.completed ?? 0;
+
+  const snapshots: Array<{
+    key: 'overdue' | 'in_progress' | 'not_started' | 'completed';
+    label: string;
+    count: number;
+    cardStyle: object;
+    countColor?: string;
+  }> = [
+    {
+      key: 'overdue',
+      label: 'Overdue',
+      count: overdue,
+      cardStyle: styles.overdueCard,
+      countColor: '#E74C3C',
+    },
+    {
+      key: 'in_progress',
+      label: 'In progress',
+      count: inProgress,
+      cardStyle: styles.inProgressCard,
+      countColor: '#2563EB',
+    },
+    {
+      key: 'not_started',
+      label: 'Not started',
+      count: notStarted,
+      cardStyle: styles.notStartedCard,
+    },
+    {
+      key: 'completed',
+      label: 'Completed',
+      count: completed,
+      cardStyle: styles.completedCard,
+      countColor: '#10B981',
+    },
+  ];
 
   return (
     <View style={styles.snapshotsContainer}>
-      <Text style={styles.snapshotsTitle}>Task Summary</Text>
+      <Text style={styles.snapshotsTitle}>Task summary</Text>
 
-      <Pressable
-        style={[styles.snapshotCard, styles.overdueCard]}
-        onPress={() => onTasksPress('overdue')}
-      >
-        <View style={styles.snapshotContent}>
-          <View style={styles.snapshotBadge}>
-            <Text style={styles.snapshotCount}>{overdue}</Text>
-          </View>
-          <View style={styles.snapshotText}>
-            <Text style={styles.snapshotLabel}>Overdue Tasks</Text>
-            <Text style={styles.snapshotDescription}>
-              {overdue} need attention
+      <View style={styles.snapshotGrid}>
+        {snapshots.map((item) => (
+          <Pressable
+            key={item.key}
+            style={[styles.snapshotGridItem, item.cardStyle]}
+            onPress={() => onTasksPress(item.key)}
+          >
+            <Text style={[styles.snapshotGridCount, item.countColor ? { color: item.countColor } : null]}>
+              {item.count}
             </Text>
-          </View>
-          <Text style={styles.snapshotArrow}>→</Text>
-        </View>
-      </Pressable>
-
-      <Pressable
-        style={[styles.snapshotCard, styles.upcomingCard]}
-        onPress={() => onTasksPress('upcoming')}
-      >
-        <View style={styles.snapshotContent}>
-          <View style={styles.snapshotBadge}>
-            <Text style={styles.snapshotCount}>{upcoming}</Text>
-          </View>
-          <View style={styles.snapshotText}>
-            <Text style={styles.snapshotLabel}>Upcoming This Week</Text>
-            <Text style={styles.snapshotDescription}>
-              {upcoming} due soon
-            </Text>
-          </View>
-          <Text style={styles.snapshotArrow}>→</Text>
-        </View>
-      </Pressable>
+            <Text style={styles.snapshotGridLabel}>{item.label}</Text>
+          </Pressable>
+        ))}
+      </View>
 
       <Pressable style={styles.viewAllTasks} onPress={() => onTasksPress()}>
-        <Text style={styles.viewAllTasksText}>View All Tasks →</Text>
+        <Text style={styles.viewAllTasksText}>View all tasks →</Text>
       </Pressable>
     </View>
   );
@@ -460,6 +480,43 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F4FD',
     borderLeftWidth: 4,
     borderLeftColor: '#4472C4',
+  },
+  snapshotGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 8,
+  },
+  snapshotGridItem: {
+    width: '47%',
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  snapshotGridCount: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F4E78',
+    marginBottom: 4,
+  },
+  snapshotGridLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  inProgressCard: {
+    backgroundColor: '#E8F0FE',
+    borderColor: '#2563EB',
+  },
+  notStartedCard: {
+    backgroundColor: '#F5F5F5',
+    borderColor: '#E0E0E0',
+  },
+  completedCard: {
+    backgroundColor: '#E8F8F0',
+    borderColor: '#10B981',
   },
   snapshotContent: {
     flexDirection: 'row',

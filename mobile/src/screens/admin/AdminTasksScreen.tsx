@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
-  View, FlatList, RefreshControl, ActivityIndicator,
+  View, FlatList, SectionList, RefreshControl, ActivityIndicator,
   Modal, TextInput, Pressable, ScrollView, Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -23,6 +23,7 @@ import {
   loadWithReadCache,
   READ_CACHE_KEYS,
 } from '../../services/offlineReadCache';
+import { categorizeTasks } from '../../utils/taskCategorization';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import {
   dismissTaskApprovalOutbox,
@@ -274,6 +275,51 @@ export function AdminTasksScreen() {
   const projectLabel = projects.find((p) => p.id === projectFilter)?.name ?? 'All projects';
   const statusLabel = STATUS_OPTIONS.find((s) => s.value === statusFilter)?.label ?? 'All statuses';
   const canAct = !cacheFetchedAt;
+  const useCategorySections = !projectFilter && !statusFilter;
+
+  const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
+  const categorySections = useMemo(() => {
+    if (!useCategorySections) return [];
+    return [
+      { title: `OVERDUE (${categorized.overdue.length})`, data: categorized.overdue },
+      { title: `IN PROGRESS (${categorized.inProgress.length})`, data: categorized.inProgress },
+      { title: `NOT STARTED (${categorized.notStarted.length})`, data: categorized.notStarted },
+      { title: `COMPLETED (${categorized.completed.length})`, data: categorized.completed },
+    ].filter((section) => section.data.length > 0);
+  }, [categorized, useCategorySections]);
+
+  const renderTaskCard = (item: TaskRow) => (
+    <KBCard onPress={() => setSelected(item)}>
+      <View className="flex-row items-start justify-between gap-2">
+        <Text className="flex-1 text-base font-bold text-[#333333]">{item.name}</Text>
+        <KBStatusChip label={taskStatusLabel(item.status)} variant={taskStatusVariant(item.status)} />
+      </View>
+      <Text className="mt-1 text-[13px] text-[#757575]">{item.farmer_name} · {item.program_project_name}</Text>
+      <Text className="mt-1 text-[13px] text-[#757575]">KES {(item.payment_value_kes ?? 0).toLocaleString()}{item.due_date ? ` · Due ${item.due_date}` : ''}</Text>
+      <Text className="mt-2 text-[13px] font-semibold text-[#1A4D3E]">View details →</Text>
+    </KBCard>
+  );
+
+  const listHeader = pendingApprovals.length > 0 ? (
+    <View className="mb-4">
+      <Text className="mb-2 text-[17px] font-bold text-[#333333]">Queued decisions</Text>
+      {pendingApprovals.map((item) => (
+        <OutboxTaskApprovalCard
+          key={item.id}
+          item={item}
+          pushing={pushingId === item.id}
+          onPush={() => handlePush(item)}
+          onDismiss={() => handleDismiss(item.id)}
+        />
+      ))}
+    </View>
+  ) : null;
+
+  const emptyList = (
+    <Text className="p-6 text-center leading-[22px] text-[#757575]">
+      No tasks yet. Restart the backend — demo hierarchy seeds automatically on first boot.
+    </Text>
+  );
 
   if (loading && tasks.length === 0) {
     return (
@@ -309,44 +355,33 @@ export function AdminTasksScreen() {
         </Menu>
       </View>
 
-      <FlatList
-        data={tasks}
-        keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerClassName="pb-8"
-        ListHeaderComponent={
-          pendingApprovals.length > 0 ? (
-            <View className="mb-4">
-              <Text className="mb-2 text-[17px] font-bold text-[#333333]">Queued decisions</Text>
-              {pendingApprovals.map((item) => (
-                <OutboxTaskApprovalCard
-                  key={item.id}
-                  item={item}
-                  pushing={pushingId === item.id}
-                  onPush={() => handlePush(item)}
-                  onDismiss={() => handleDismiss(item.id)}
-                />
-              ))}
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <KBCard onPress={() => setSelected(item)}>
-            <View className="flex-row items-start justify-between gap-2">
-              <Text className="flex-1 text-base font-bold text-[#333333]">{item.name}</Text>
-              <KBStatusChip label={taskStatusLabel(item.status)} variant={taskStatusVariant(item.status)} />
-            </View>
-            <Text className="mt-1 text-[13px] text-[#757575]">{item.farmer_name} · {item.program_project_name}</Text>
-            <Text className="mt-1 text-[13px] text-[#757575]">KES {(item.payment_value_kes ?? 0).toLocaleString()}{item.due_date ? ` · Due ${item.due_date}` : ''}</Text>
-            <Text className="mt-2 text-[13px] font-semibold text-[#1A4D3E]">View details →</Text>
-          </KBCard>
-        )}
-        ListEmptyComponent={
-          <Text className="p-6 text-center leading-[22px] text-[#757575]">
-            No tasks yet. Restart the backend — demo hierarchy seeds automatically on first boot.
-          </Text>
-        }
-      />
+      {useCategorySections ? (
+        <SectionList
+          sections={categorySections}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerClassName="pb-8"
+          ListHeaderComponent={listHeader}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section: { title } }) => (
+            <Text className="mb-2 mt-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
+              {title}
+            </Text>
+          )}
+          renderItem={({ item }) => renderTaskCard(item)}
+          ListEmptyComponent={emptyList}
+        />
+      ) : (
+        <FlatList
+          data={tasks}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerClassName="pb-8"
+          ListHeaderComponent={listHeader}
+          renderItem={({ item }) => renderTaskCard(item)}
+          ListEmptyComponent={emptyList}
+        />
+      )}
 
       <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
         <View className="flex-1 justify-end bg-black/50">

@@ -5,11 +5,12 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import {
+  Ban,
   Calendar,
   ChartColumn,
-  ChevronRight,
   CircleCheck,
-  Clock,
+  ChevronRight,
+  Hourglass,
   TriangleAlert,
   User,
   Users,
@@ -28,6 +29,8 @@ type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
 const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
 type DashboardData = Awaited<ReturnType<typeof getAgentDashboard>>;
+
+type TaskFilter = 'overdue' | 'in_progress' | 'not_started' | 'completed';
 
 function navigateNested(
   navigation: Nav,
@@ -91,23 +94,6 @@ function SectionHeading({
   );
 }
 
-function CardHeading({
-  Icon,
-  iconColor,
-  children,
-}: {
-  Icon: ComponentType<{ size?: number; color?: string }>;
-  iconColor?: string;
-  children: string;
-}) {
-  return (
-    <View className="flex-row items-center gap-1.5">
-      <Icon size={16} color={iconColor ?? '#333333'} />
-      <Text className="text-sm font-bold text-[#333333]">{children}</Text>
-    </View>
-  );
-}
-
 export function AgentDashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const navigation = useNavigation<Nav>();
@@ -132,6 +118,10 @@ export function AgentDashboardScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const goToTasks = (filter: TaskFilter | 'all') => {
+    navigateNested(navigation, 'Tasks', { filter });
   };
 
   if (loading) {
@@ -174,7 +164,7 @@ export function AgentDashboardScreen() {
           onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
         />
         <MetricCard
-          Icon={Clock}
+          Icon={Hourglass}
           iconColor="#FBBF24"
           label="Pending verification"
           value={farmers?.pending_verification ?? 0}
@@ -201,66 +191,65 @@ export function AgentDashboardScreen() {
         />
       </View>
 
-      <Pressable
-        onPress={() => navigateNested(navigation, 'Tasks', { filter: 'all' })}
-        style={webPressable}
-      >
-        <KBCard style={{ marginBottom: 12 }}>
-          <CardHeading Icon={Clock} iconColor="#333333">
-            Upcoming tasks (due in 7 days)
-          </CardHeading>
-          {tasks?.upcoming_count > 0 ? (
-            <>
-              <Text className="mt-2 text-[#333333]">{tasks.upcoming_count} task(s) assigned</Text>
-              <View className="mt-2 flex-row items-center gap-1">
-                <Text className="text-sm font-semibold text-[#1A4D3E]">View all tasks</Text>
-                <ChevronRight size={16} color="#1A4D3E" />
-              </View>
-            </>
-          ) : (
-            <Text className="mt-2 text-[#757575]">No upcoming tasks</Text>
-          )}
-        </KBCard>
-      </Pressable>
+      <SectionHeading Icon={Calendar}>Task snapshots</SectionHeading>
+      <View className="mb-2 flex-row gap-2">
+        <MetricCard
+          Icon={TriangleAlert}
+          iconColor="#EF4444"
+          label="Overdue"
+          value={tasks?.overdue_count ?? 0}
+          color="#EF4444"
+          onPress={() => goToTasks('overdue')}
+        />
+        <MetricCard
+          Icon={Hourglass}
+          iconColor="#2563EB"
+          label="In progress"
+          value={tasks?.in_progress_count ?? 0}
+          color="#2563EB"
+          onPress={() => goToTasks('in_progress')}
+        />
+      </View>
+      <View className="mb-4 flex-row gap-2">
+        <MetricCard
+          Icon={Ban}
+          label="Not started"
+          value={tasks?.not_started_count ?? 0}
+          onPress={() => goToTasks('not_started')}
+        />
+        <MetricCard
+          Icon={CircleCheck}
+          iconColor="#10B981"
+          label="Completed"
+          value={tasks?.completed_count ?? 0}
+          color="#10B981"
+          onPress={() => goToTasks('completed')}
+        />
+      </View>
 
-      <Pressable
-        onPress={() => navigateNested(navigation, 'Tasks', { filter: 'overdue' })}
-        style={webPressable}
-      >
-        <KBCard
-          style={{
-            marginBottom: 12,
-            borderLeftWidth: 4,
-            borderLeftColor: tasks?.overdue_count ? '#EF4444' : '#E8E8E8',
-          }}
-        >
-          <CardHeading Icon={TriangleAlert} iconColor={tasks?.overdue_count ? '#EF4444' : '#333333'}>
-            Overdue tasks
-          </CardHeading>
-          {tasks?.overdue_count > 0 ? (
-            <>
-              <View className="mt-2 flex-row items-center gap-1.5">
-                <TriangleAlert size={16} color="#EF4444" />
-                <Text className="font-bold text-[#EF4444]">
-                  {tasks.overdue_count} task(s) overdue
-                </Text>
-              </View>
-              {tasks.overdue?.map((t: { id: string; name?: string; daysOverdue?: number }) => (
-                <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
-                  • {t.name ?? 'Task'}
-                  {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
-                </Text>
-              ))}
-              <View className="mt-2 flex-row items-center gap-1">
-                <Text className="text-sm font-semibold text-[#1A4D3E]">View overdue tasks</Text>
-                <ChevronRight size={16} color="#1A4D3E" />
-              </View>
-            </>
-          ) : (
-            <Text className="mt-2 text-[#757575]">No overdue tasks</Text>
-          )}
-        </KBCard>
-      </Pressable>
+      {(tasks?.overdue_count ?? 0) > 0 ? (
+        <Pressable onPress={() => goToTasks('overdue')} style={webPressable}>
+          <KBCard
+            style={{
+              marginBottom: 12,
+              borderLeftWidth: 4,
+              borderLeftColor: '#EF4444',
+            }}
+          >
+            <Text className="text-sm font-bold text-[#EF4444]">Overdue highlights</Text>
+            {tasks?.overdue?.map((t: { id: string; name?: string; daysOverdue?: number }) => (
+              <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
+                • {t.name ?? 'Task'}
+                {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
+              </Text>
+            ))}
+            <View className="mt-2 flex-row items-center gap-1">
+              <Text className="text-sm font-semibold text-[#1A4D3E]">View overdue tasks</Text>
+              <ChevronRight size={16} color="#1A4D3E" />
+            </View>
+          </KBCard>
+        </Pressable>
+      ) : null}
 
       <View className="mb-2 flex-row items-center gap-1.5">
         <Calendar size={16} color="#757575" />

@@ -4,6 +4,7 @@ import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { createNotification } from './notificationService';
+import { countTaskCategories } from '../utils/taskCategorization';
 
 export interface AgentPersonalTask {
   id: string;
@@ -390,22 +391,24 @@ export async function getAgentDashboardSummary(
   const farmerTasks = await listRegionFarmerTasks(region, district);
   const personalTasks = await listAgentPersonalTasks(agentUserId);
 
-  const outstandingFarmer = farmerTasks.filter(
-    (t) => !['approved', 'completed'].includes(t.status)
-  );
-
-  const allDated = [
-    ...outstandingFarmer.filter((t) => t.due_date),
-    ...personalTasks.filter((t) => t.status !== 'completed'),
+  const allTasksForCounts = [
+    ...farmerTasks.map((t) => ({ status: t.status, due_date: t.due_date })),
+    ...personalTasks.map((t) => ({ status: t.status, due_date: t.due_date })),
   ];
+  const categoryCounts = countTaskCategories(allTasksForCounts);
 
-  const upcomingTasks = allDated.filter((t) => classifyTaskDue(t.due_date).upcoming);
-  const overdueTasks = allDated
-    .filter((t) => classifyTaskDue(t.due_date).overdue)
-    .map((t) => ({
-      ...t,
-      daysOverdue: classifyTaskDue(t.due_date).daysOverdue,
-    }));
+  const overdueTasks = [
+    ...farmerTasks.filter(
+      (t) => classifyTaskDue(t.due_date).overdue && !['approved', 'completed'].includes(t.status)
+    ),
+    ...personalTasks.filter(
+      (t) => classifyTaskDue(t.due_date).overdue && t.status !== 'completed'
+    ),
+  ].map((t) => ({
+    id: t.id,
+    name: t.name,
+    daysOverdue: classifyTaskDue(t.due_date).daysOverdue,
+  }));
 
   const pm = await getProjectManagerForAgent(region, district);
 
@@ -424,9 +427,11 @@ export async function getAgentDashboardSummary(
       rejected,
     },
     tasks: {
-      upcoming_count: upcomingTasks.length,
-      overdue_count: overdueTasks.length,
-      upcoming: upcomingTasks.slice(0, 5),
+      overdue_count: categoryCounts.overdue,
+      in_progress_count: categoryCounts.inProgress,
+      not_started_count: categoryCounts.notStarted,
+      completed_count: categoryCounts.completed,
+      total_count: categoryCounts.total,
       overdue: overdueTasks.slice(0, 5),
     },
     project_manager: pm
