@@ -21,6 +21,12 @@ import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitM
 import type { FarmerTaskRow } from '../../components/farmer/FarmerProjectTasksSection';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
+import {
+  categorizeTasks,
+  isTaskOverdue,
+  pickCategorizedTasks,
+  type TaskCategoryFilter,
+} from '../../utils/taskCategorization';
 import { formatDisplayDate, formatCleanDate } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerTabParamList } from '../../navigation/types';
@@ -35,11 +41,6 @@ type ExtendedTaskRow = FarmerTaskRow & {
 
 function normalizeTaskStatus(status: string): string {
   return status.replace(/_/g, '-');
-}
-
-function isCompletedStatus(status: string): boolean {
-  const s = normalizeTaskStatus(status);
-  return s === 'approved' || s === 'completed';
 }
 
 function canOpenTask(status: string): boolean {
@@ -57,26 +58,8 @@ function statusVariant(status: string) {
   return taskStatusVariant(normalizeTaskStatus(status));
 }
 
-function isOverdue(due?: string | null): boolean {
-  if (!due) return false;
-  const d = new Date(due.includes('T') ? due : `${due}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  d.setHours(0, 0, 0, 0);
-  return d < today;
-}
-
-function isUpcoming(due?: string | null): boolean {
-  if (!due) return false;
-  const d = new Date(due.includes('T') ? due : `${due}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const week = new Date(today);
-  week.setDate(week.getDate() + 7);
-  d.setHours(0, 0, 0, 0);
-  return d >= today && d <= week;
+function isOverdue(due?: string | null, status?: string): boolean {
+  return isTaskOverdue(due, status);
 }
 
 export function FarmerTasksScreen() {
@@ -118,58 +101,65 @@ export function FarmerTasksScreen() {
     load();
   };
 
-  const outstandingTasks = useMemo(
-    () => tasks.filter((t) => !isCompletedStatus(t.status)),
-    [tasks]
+  const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
+  const displayCategories = useMemo(
+    () =>
+      statusFilter
+        ? pickCategorizedTasks(categorized, statusFilter as TaskCategoryFilter)
+        : categorized,
+    [categorized, statusFilter]
   );
 
-  const completedTasks = useMemo(
-    () => tasks.filter((t) => isCompletedStatus(t.status)),
-    [tasks]
-  );
-
-  const filteredOutstanding = useMemo(() => {
-    if (!statusFilter) return outstandingTasks;
-    return outstandingTasks.filter((task) => {
-      if (statusFilter === 'overdue') return isOverdue(task.due_date);
-      if (statusFilter === 'upcoming') {
-        return isUpcoming(task.due_date) && !isOverdue(task.due_date);
-      }
-      return true;
-    });
-  }, [outstandingTasks, statusFilter]);
+  const categoryCounts = useMemo(() => ({
+    overdue: categorized.overdue.length,
+    inProgress: categorized.inProgress.length,
+    notStarted: categorized.notStarted.length,
+    completed: categorized.completed.length,
+  }), [categorized]);
 
   const sections = useMemo(() => {
     const list: Array<{ title: string; data: ExtendedTaskRow[] }> = [];
-    if (filteredOutstanding.length > 0) {
+    if (displayCategories.overdue.length > 0) {
       list.push({
-        title: statusFilter
-          ? statusFilter === 'overdue'
-            ? 'Overdue tasks'
-            : 'Upcoming this week'
-          : `Outstanding (${filteredOutstanding.length})`,
-        data: filteredOutstanding,
+        title: `OVERDUE (${displayCategories.overdue.length})`,
+        data: displayCategories.overdue,
       });
     }
-    if (!statusFilter && completedTasks.length > 0) {
+    if (displayCategories.inProgress.length > 0) {
       list.push({
-        title: `Completed (${completedTasks.length})`,
-        data: completedTasks,
+        title: `IN PROGRESS (${displayCategories.inProgress.length})`,
+        data: displayCategories.inProgress,
+      });
+    }
+    if (displayCategories.notStarted.length > 0) {
+      list.push({
+        title: `NOT STARTED (${displayCategories.notStarted.length})`,
+        data: displayCategories.notStarted,
+      });
+    }
+    if (displayCategories.completed.length > 0) {
+      list.push({
+        title: `COMPLETED (${displayCategories.completed.length})`,
+        data: displayCategories.completed,
       });
     }
     return list;
-  }, [filteredOutstanding, completedTasks, statusFilter]);
+  }, [displayCategories]);
 
   const filterLabel =
     statusFilter === 'overdue'
       ? 'Overdue tasks'
-      : statusFilter === 'upcoming'
-        ? 'Upcoming this week'
-        : null;
+      : statusFilter === 'in_progress'
+        ? 'In progress tasks'
+        : statusFilter === 'not_started'
+          ? 'Not started tasks'
+          : statusFilter === 'completed'
+            ? 'Completed tasks'
+            : null;
 
   const renderTask = (item: ExtendedTaskRow) => {
     const openable = canOpenTask(item.status);
-    const overdue = isOverdue(item.due_date);
+    const overdue = isOverdue(item.due_date, item.status);
     const assignedWhen = formatDisplayDate(item.assigned_at);
     const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
     const assigner = item.assigned_by_name?.trim() || 'Program team';
@@ -274,7 +264,8 @@ export function FarmerTasksScreen() {
               <Text className="mt-1 text-sm font-semibold text-[#4472C4]">{filterLabel}</Text>
             ) : null}
             <Text className="mt-1 text-sm text-muted-foreground">
-              {outstandingTasks.length} outstanding · {completedTasks.length} completed · updates every 30s
+              {categoryCounts.overdue} overdue · {categoryCounts.inProgress} in progress ·{' '}
+              {categoryCounts.notStarted} not started · {categoryCounts.completed} completed · updates every 30s
             </Text>
             {error ? <FarmerOfflineBanner message={error} /> : null}
           </View>

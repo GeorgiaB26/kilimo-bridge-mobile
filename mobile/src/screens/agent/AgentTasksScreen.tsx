@@ -17,7 +17,6 @@ import {
   Ban,
   Bell,
   CircleCheck,
-  Clock,
   Hourglass,
   TriangleAlert,
 } from 'lucide-react-native';
@@ -35,7 +34,8 @@ import {
 } from '../../api/client';
 import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
-import { isAgentTaskOverdue, isAgentTaskUpcoming } from '../../utils/agentTaskDue';
+import { isTaskOverdue } from '../../utils/taskCategorization';
+import { categorizeTasks, pickCategorizedTasks } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import type { AgentTabParamList } from '../../navigation/types';
 import { KBCard } from '../../components/ui/KBCard';
@@ -68,18 +68,7 @@ function formatDue(value?: string | null): string {
 }
 
 function isOverdue(due?: string | null, status?: string): boolean {
-  return isAgentTaskOverdue(due, status);
-}
-
-function isUpcoming(due?: string | null, status?: string): boolean {
-  return isAgentTaskUpcoming(due, status);
-}
-
-function normalizeStatus(status: string): string {
-  if (status === 'submitted-for-approval' || status === 'submitted') return 'in_progress';
-  if (status === 'not-started' || status === 'not_started') return 'not_started';
-  if (status === 'approved' || status === 'completed') return 'completed';
-  return status;
+  return isTaskOverdue(due, status);
 }
 
 function TaskSection({
@@ -224,7 +213,6 @@ export function AgentTasksScreen() {
   const [showFilter, setShowFilter] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<AgentTaskDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [updatingTask, setUpdatingTask] = useState(false);
@@ -333,7 +321,7 @@ export function AgentTasksScreen() {
 
   const allTasks = useMemo(() => [...farmerTasks, ...personalTasks], [farmerTasks, personalTasks]);
 
-  const filtered = useMemo(() => {
+  const searchFiltered = useMemo(() => {
     let list = allTasks;
     const q = search.trim().toLowerCase();
     if (q) {
@@ -343,35 +331,25 @@ export function AgentTasksScreen() {
           (t.farmer_name?.toLowerCase().includes(q) ?? false)
       );
     }
-    if (filter === 'overdue') {
-      list = list.filter(
-        (t) => isOverdue(t.due_date, t.status) && normalizeStatus(t.status) !== 'completed'
-      );
-    } else if (filter !== 'all') {
-      list = list.filter((t) => normalizeStatus(t.status) === filter);
-    }
     return list;
-  }, [allTasks, search, filter]);
+  }, [allTasks, search]);
 
-  const upcoming = filtered.filter(
-    (t) => isUpcoming(t.due_date, t.status) && normalizeStatus(t.status) !== 'completed'
+  const categorized = useMemo(() => categorizeTasks(searchFiltered), [searchFiltered]);
+  const displayCategories = useMemo(
+    () => pickCategorizedTasks(categorized, filter),
+    [categorized, filter]
   );
-  const overdue = filtered.filter(
-    (t) => isOverdue(t.due_date, t.status) && normalizeStatus(t.status) !== 'completed'
-  );
-  const completed = filtered.filter((t) => normalizeStatus(t.status) === 'completed');
-  const inProgress = filtered.filter(
-    (t) =>
-      normalizeStatus(t.status) === 'in_progress' &&
-      !isOverdue(t.due_date, t.status) &&
-      !isUpcoming(t.due_date, t.status)
-  );
-  const notStarted = filtered.filter(
-    (t) =>
-      normalizeStatus(t.status) === 'not_started' &&
-      !isOverdue(t.due_date, t.status) &&
-      !isUpcoming(t.due_date, t.status)
-  );
+
+  const overdue = displayCategories.overdue;
+  const inProgress = displayCategories.inProgress;
+  const notStarted = displayCategories.notStarted;
+  const completed = displayCategories.completed;
+  const hasVisibleTasks =
+    overdue.length +
+      inProgress.length +
+      notStarted.length +
+      completed.length >
+    0;
 
   const markContacted = async (id: string) => {
     setActing(id);
@@ -432,15 +410,6 @@ export function AgentTasksScreen() {
     }
   };
 
-  const personalOnly = useMemo(() => {
-    let list = personalTasks;
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((t) => t.name.toLowerCase().includes(q));
-    }
-    return list;
-  }, [personalTasks, search]);
-
   const handleUpdatePersonalStatus = async (taskId: string, status: string) => {
     setUpdatingTask(true);
     try {
@@ -474,7 +443,6 @@ export function AgentTasksScreen() {
           if (prev.some((t) => t.id === mapped.id)) return prev;
           return [...prev, mapped];
         });
-        setHighlightTaskId(mapped.id);
       }
       setFilter('all');
       setShowFilter(false);
@@ -559,7 +527,7 @@ export function AgentTasksScreen() {
 
         <TaskSection
           TitleIcon={TriangleAlert}
-          title="Overdue"
+          title={`Overdue (${overdue.length})`}
           color="#EF4444"
           tasks={overdue}
           onReminder={handleReminder}
@@ -590,57 +558,9 @@ export function AgentTasksScreen() {
           </View>
         ) : null}
 
-        {personalOnly.length > 0 ? (
-          <View className="mb-5">
-            <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
-              Your profile tasks ({personalOnly.length})
-            </Text>
-            {personalOnly.map((item) => (
-              <KBCard
-                key={`profile-${item.id}`}
-                style={{
-                  marginBottom: 8,
-                  borderWidth: highlightTaskId === item.id ? 2 : 0,
-                  borderColor: highlightTaskId === item.id ? '#1A4D3E' : undefined,
-                }}
-                onPress={() => openTaskDetail(item)}
-              >
-                <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
-                <Text className="mt-1 text-[13px] text-[#757575]">Due: {formatDue(item.due_date)}</Text>
-                <Text className="text-[13px] text-[#757575]">
-                  Status: {item.status.replace(/_/g, ' ')}
-                </Text>
-                {item.assigned_farmer_names?.length ? (
-                  <Text className="text-[13px] text-[#757575]">
-                    Farmers: {item.assigned_farmer_names.join(', ')}
-                  </Text>
-                ) : (
-                  <Text className="text-[13px] text-[#757575]">Assigned to: You</Text>
-                )}
-                <Text className="mt-1 text-xs font-semibold text-[#1A4D3E]">Tap to view or update</Text>
-              </KBCard>
-            ))}
-          </View>
-        ) : null}
-
-        <TaskSection
-          TitleIcon={Clock}
-          title="Upcoming (due in 7 days)"
-          color="#1A4D3E"
-          tasks={upcoming}
-          onReminder={handleReminder}
-          onTaskPress={openTaskDetail}
-          onExpandApproval={setExpandedId}
-          expandedId={expandedId}
-          rejectReason={rejectReason}
-          setRejectReason={setRejectReason}
-          acting={acting}
-          approve={approve}
-          reject={reject}
-        />
         <TaskSection
           TitleIcon={Hourglass}
-          title="In progress"
+          title={`In progress (${inProgress.length})`}
           color="#2563EB"
           tasks={inProgress}
           onReminder={handleReminder}
@@ -655,7 +575,7 @@ export function AgentTasksScreen() {
         />
         <TaskSection
           TitleIcon={Ban}
-          title="Not started"
+          title={`Not started (${notStarted.length})`}
           color="#757575"
           tasks={notStarted}
           onReminder={handleReminder}
@@ -663,14 +583,14 @@ export function AgentTasksScreen() {
         />
         <TaskSection
           TitleIcon={CircleCheck}
-          title="Completed"
+          title={`Completed (${completed.length})`}
           color="#10B981"
           tasks={completed}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
         />
 
-        {filtered.length === 0 && personalOnly.length === 0 && helpRequests.length === 0 ? (
+        {!hasVisibleTasks && helpRequests.length === 0 ? (
           <View className="items-center rounded-xl bg-white p-6">
             <Ionicons name="checkmark-circle-outline" size={48} color="#2E7D5E" />
             <Text className="mt-3 text-center text-[#757575]">No tasks match your filters.</Text>

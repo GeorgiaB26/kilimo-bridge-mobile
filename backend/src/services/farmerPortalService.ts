@@ -8,6 +8,7 @@ import {
 } from './farmerProgramService';
 import { getFarmerSupportContacts } from './farmerHelpRequestService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
+import { countTaskCategories } from '../utils/taskCategorization';
 
 export async function getFarmerDashboard(farmerId: string) {
   const farmer = await queryOne(
@@ -153,34 +154,30 @@ export async function getFarmerPaymentSummary(farmerId: string) {
 }
 
 export async function getFarmerTaskSnapshotStats(farmerId: string) {
-  const rows = await query<{ due_date: string | null }>(
+  const rows = await query<{ status: string; due_date: string | null }>(
     `
-    SELECT t.due_date::text AS due_date
+    SELECT ft.status, t.due_date::text AS due_date
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
-    WHERE ft.farmer_id = $1 AND ft.status NOT IN ('approved', 'completed')
+    WHERE ft.farmer_id = $1
     `,
     [farmerId]
   );
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const nextWeek = new Date(today);
-  nextWeek.setDate(nextWeek.getDate() + 7);
+  const counts = countTaskCategories(
+    rows.map((row) => ({
+      status: row.status,
+      due_date: row.due_date,
+    }))
+  );
 
-  let overdue = 0;
-  let upcoming = 0;
-
-  for (const row of rows) {
-    if (!row.due_date) continue;
-    const d = new Date(row.due_date.includes('T') ? row.due_date : `${row.due_date}T12:00:00`);
-    if (Number.isNaN(d.getTime())) continue;
-    d.setHours(0, 0, 0, 0);
-    if (d < today) overdue++;
-    else if (d <= nextWeek) upcoming++;
-  }
-
-  return { overdue, upcoming };
+  return {
+    overdue: counts.overdue,
+    in_progress: counts.inProgress,
+    not_started: counts.notStarted,
+    completed: counts.completed,
+    total: counts.total,
+  };
 }
 
 export async function getFarmerNotifications(userId: string) {

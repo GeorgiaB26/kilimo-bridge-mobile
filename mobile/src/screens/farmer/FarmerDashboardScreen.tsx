@@ -66,7 +66,13 @@ type DashboardData = {
     completed?: number;
     allPayments?: number;
   };
-  taskStats?: { overdue: number; upcoming: number };
+  taskStats?: {
+    overdue: number;
+    in_progress?: number;
+    not_started?: number;
+    completed?: number;
+    total?: number;
+  };
 };
 
 export function FarmerDashboardScreen() {
@@ -154,7 +160,9 @@ export function FarmerDashboardScreen() {
 
   const goToProfile = () => navigation.navigate('Profile');
   const goToPayments = () => navigation.navigate('Payments');
-  const goToTasks = (statusFilter?: 'overdue' | 'upcoming') => {
+  const goToTasks = (
+    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed'
+  ) => {
     navigation.navigate('Tasks', statusFilter ? { statusFilter } : undefined);
   };
 
