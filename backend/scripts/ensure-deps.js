@@ -7,7 +7,6 @@ const required = [
   'helmet',
   'express-rate-limit',
   'bcryptjs',
-  'better-sqlite3',
   'express',
   'tsx',
 ];

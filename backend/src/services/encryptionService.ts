@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { normalizeIdNumber } from '../../../shared/src/validation';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -48,4 +49,20 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 export function maskSensitive(value: string, visibleChars = 4): string {
   if (!value || value.length <= visibleChars) return '****';
   return '*'.repeat(value.length - visibleChars) + value.slice(-visibleChars);
+}
+
+function getIdNumberHmacKey(): Buffer {
+  const dedicated = process.env.ID_NUMBER_HMAC_KEY?.trim();
+  if (dedicated) {
+    return crypto.createHash('sha256').update(dedicated).digest();
+  }
+  const fallback = process.env.ENCRYPTION_KEY || 'kilimo-bridge-dev-encryption-key-32b!';
+  return crypto.createHash('sha256').update(`id-number-hmac-v1:${fallback}`).digest();
+}
+
+/** Deterministic HMAC-SHA256 of normalized ID — used for duplicate detection only. */
+export function hashIdNumber(idNumber: string): string {
+  const normalized = normalizeIdNumber(idNumber);
+  if (!normalized) return '';
+  return crypto.createHmac('sha256', getIdNumberHmacKey()).update(normalized, 'utf8').digest('hex');
 }

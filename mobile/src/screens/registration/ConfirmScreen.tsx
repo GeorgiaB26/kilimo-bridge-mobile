@@ -1,29 +1,47 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import {
+  View,
+  ScrollView,
+  ActivityIndicator,
+  Pressable,
+  Platform,
+  StyleSheet,
+} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from '../../components/Button';
+import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { COLORS, GENDER_OPTIONS } from '../../constants';
-import { registerFarmer } from '../../api/client';
+import { RegistrationSuccessModal } from '../../components/registration/RegistrationSuccessModal';
+import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCountryConfig, generateFarmerId } from '../../constants/regional';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
+import { submitFarmerRegistration } from '../../services/submitFarmerRegistration';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Confirm'>;
 
-const STEP_SCREENS: (keyof RegistrationStackParamList)[] = [
+type FarmerRegScreen =
+  | 'Country'
+  | 'BasicInfo'
+  | 'Location'
+  | 'Membership'
+  | 'Details'
+  | 'Projects'
+  | 'Photo';
+
+const STEP_SCREENS: FarmerRegScreen[] = [
   'Country', 'BasicInfo', 'Location', 'Membership', 'Details', 'Projects', 'Photo',
 ];
 
 function SummaryRow({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.rowContent}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowValue}>{value || '—'}</Text>
+    <View className="flex-row items-center justify-between border-b border-[#E0E0E0] py-2.5">
+      <View className="flex-1">
+        <Text className="mb-0.5 text-xs text-[#757575]">{label}</Text>
+        <Text className="text-base font-medium text-[#333333]">{value || '—'}</Text>
       </View>
-      <Text style={styles.editBtn} onPress={onEdit}>Edit</Text>
+      <Text className="ml-2 text-sm font-semibold text-[#1976D2]" onPress={onEdit}>Edit</Text>
     </View>
   );
 }
@@ -31,9 +49,17 @@ function SummaryRow({ label, value, onEdit }: { label: string; value: string; on
 export function ConfirmScreen({ navigation }: Props) {
   const { formData, resetForm } = useRegistrationStore();
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [success, setSuccess] = useState<{
+    farmerId?: string;
+    kbFarmerId?: string;
+    offline?: boolean;
+  } | null>(null);
 
   const countryConfig = getCountryConfig(formData.country);
-  const currencyInfo = getCurrencyForCountry(formData.country);
+  const currencyInfo = formData.currency
+    ? { code: formData.currency, name: formData.currency }
+    : getCurrencyForCountry(formData.country);
   const labels = countryConfig?.levelLabels ?? ['Region', 'Sub-Region', 'Area', 'Village'];
   const genderLabel = GENDER_OPTIONS.find((g) => g.value === formData.gender)?.label ?? formData.gender;
 
@@ -43,96 +69,199 @@ export function ConfirmScreen({ navigation }: Props) {
     [formData.district, formData.subCounty, formData.parish, formData.phone]
   );
 
+  const goToFarmersList = () => {
+    setSuccess(null);
+    resetForm();
+    navigation.getParent()?.goBack();
+  };
+
   const handleSubmit = async () => {
+    if (!formData.pictureBase64 && !formData.pictureUri) {
+      const msg = 'A verification photo is required. Go back to the Photo step and add one.';
+      setSubmitError(msg);
+      showMessage('Photo required', msg);
+      return;
+    }
+
     setLoading(true);
+    setSubmitError('');
     try {
-      const result = await registerFarmer(formData);
-      Alert.alert(
-        'Registration Successful',
-        `Farmer ID: ${result.kbFarmerId ?? kbFarmerId}\nKey: ${result.key}`,
-        [{ text: 'OK', onPress: () => { resetForm(); } }]
-      );
+      const result = await submitFarmerRegistration(formData, formData.pictureBase64);
+      if (result.mode === 'offline') {
+        setSuccess({ offline: true, kbFarmerId });
+        showMessage(
+          'Saved offline',
+          'Registration is queued on this device and will sync when connection is available.'
+        );
+        return;
+      }
+      setSuccess({
+        farmerId: result.farmerId,
+        kbFarmerId: result.kbFarmerId ?? kbFarmerId,
+      });
+      showMessage('Farmer registered', `${formData.name} was registered successfully.`);
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { errors?: { error: string }[] } } }).response?.data?.errors?.[0]?.error
-        : 'Registration failed. Please try again.';
-      Alert.alert('Registration Failed', message ?? 'Please check your details and try again.');
+      const msg = extractApiError(err, 'Please check your details and try again.');
+      setSubmitError(msg);
+      showMessage('Registration failed', msg);
     } finally {
       setLoading(false);
     }
   };
 
+  const viewProfile = () => {
+    const id = success?.farmerId;
+    if (!id) return;
+    const farmerName = formData.name;
+    setSuccess(null);
+    resetForm();
+    const parent = navigation.getParent();
+    parent?.goBack();
+    setTimeout(() => {
+      (parent as { navigate?: (name: string, params: unknown) => void })?.navigate?.('FarmerProfile', {
+        farmerId: id,
+        name: farmerName,
+      });
+    }, 100);
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <ScreenHeader title="Confirm" subtitle="Review your information" />
-      <View style={styles.idCard}>
-        <Text style={styles.idLabel}>Your Kilimo Bridge ID</Text>
-        <Text style={styles.idValue}>{kbFarmerId}</Text>
+    <>
+      <View className="flex-1 px-4 pb-4">
+        <ScreenHeader title="Confirm" subtitle="Review your information" />
+
+        <View className="mb-4 flex-row gap-3">
+          <Pressable
+            onPress={() => navigation.goBack()}
+            disabled={loading}
+            style={({ pressed }) => [styles.outlineBtn, pressed && styles.btnPressed]}
+            accessibilityRole="button"
+          >
+            <Text className="font-semibold text-[#333333]">Back</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleSubmit}
+            disabled={loading}
+            style={({ pressed }) => [
+              styles.submitBtn,
+              loading && styles.submitBtnDisabled,
+              pressed && !loading && styles.btnPressed,
+            ]}
+            accessibilityRole="button"
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="font-semibold text-white">Register farmer</Text>
+            )}
+          </Pressable>
+        </View>
+
+        {submitError ? <Text className="mb-3 text-sm text-[#D32F2F]">{submitError}</Text> : null}
+
+        <ScrollView
+          className="flex-1"
+          keyboardShouldPersistTaps="always"
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View className="mb-4 items-center rounded-[10px] bg-[#1A4D3E] p-4">
+            <Text className="mb-1 text-[13px] text-white/85">Your Kilimo Bridge ID</Text>
+            <Text className="text-[22px] font-bold tracking-wide text-[#D4AF6A]">{kbFarmerId}</Text>
+          </View>
+          <View className="mb-4 rounded-lg bg-[#F9F9F9] p-4">
+            <SummaryRow label="Country" value={formData.country} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
+            <SummaryRow label="Currency" value={`${currencyInfo.code}`} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+            <SummaryRow label="Name" value={formData.name} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
+            <SummaryRow label="Gender" value={genderLabel} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
+            <SummaryRow label="Phone" value={formData.phone} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
+            <SummaryRow label="ID Number" value={formData.idNumber} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
+            <SummaryRow label={labels[0]} value={formData.district} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
+            <SummaryRow label={labels[1]} value={formData.subCounty} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
+            {formData.parish ? (
+              <SummaryRow label={labels[2]} value={formData.parish} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
+            ) : null}
+            {formData.village ? (
+              <SummaryRow label={labels[3]} value={formData.village} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
+            ) : null}
+            <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+            <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter ?? ''} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+            <SummaryRow label="Membership Type" value={formData.membershipType ?? 'Active'} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
+            {formData.profession ? (
+              <SummaryRow label="Profession" value={formData.profession} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+            ) : null}
+            {formData.occupation ? (
+              <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+            ) : null}
+            {formData.sizeOfLand ? (
+              <SummaryRow label="Land (acres)" value={formData.sizeOfLand} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+            ) : null}
+            {formData.project1 ? (
+              <SummaryRow label="Project 1" value={formData.project1} onEdit={() => navigation.navigate(STEP_SCREENS[5])} />
+            ) : null}
+            <SummaryRow
+              label="Photo"
+              value={formData.pictureUri || formData.pictureBase64 ? 'Uploaded' : 'Missing'}
+              onEdit={() => navigation.navigate(STEP_SCREENS[6])}
+            />
+          </View>
+        </ScrollView>
       </View>
-      <View style={styles.card}>
-        <SummaryRow label="Country" value={formData.country} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
-        <SummaryRow label="Currency" value={`${currencyInfo.code} — ${currencyInfo.name}`} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
-        <SummaryRow label="Name" value={formData.name} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
-        <SummaryRow label="Gender" value={genderLabel} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
-        <SummaryRow label="Phone" value={formData.phone} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
-        <SummaryRow label="ID Number" value={formData.idNumber} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
-        <SummaryRow label={labels[0]} value={formData.district} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
-        <SummaryRow label={labels[1]} value={formData.subCounty} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
-        {formData.parish ? (
-          <SummaryRow label={labels[2]} value={formData.parish} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
-        ) : null}
-        {formData.village ? (
-          <SummaryRow label={labels[3]} value={formData.village} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
-        ) : null}
-        <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-        {formData.aggregationCenter ? (
-          <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-        ) : null}
-        {formData.occupation ? (
-          <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
-        ) : null}
-        {formData.project1 ? (
-          <SummaryRow label="Project 1" value={formData.project1} onEdit={() => navigation.navigate(STEP_SCREENS[5])} />
-        ) : null}
-        <SummaryRow label="Photo" value={formData.pictureUri ? 'Uploaded' : 'Initials avatar'} onEdit={() => navigation.navigate(STEP_SCREENS[6])} />
-      </View>
-      <View style={styles.actions}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
-        <Button title="Submit Registration" onPress={handleSubmit} loading={loading} style={styles.half} />
-      </View>
-    </ScrollView>
+
+      <RegistrationSuccessModal
+        visible={!!success}
+        farmerName={formData.name}
+        farmerPhone={formData.phone}
+        statusLabel="pending_review"
+        farmerId={success?.farmerId}
+        kbFarmerId={success?.kbFarmerId ?? kbFarmerId}
+        offline={success?.offline}
+        onViewProfile={viewProfile}
+        onRegisterAnother={() => {
+          setSuccess(null);
+          resetForm();
+          navigation.navigate('Country');
+        }}
+        onClose={goToFarmersList}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  idCard: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 16,
-    alignItems: 'center',
+  scrollContent: {
+    paddingBottom: 24,
   },
-  idLabel: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 4 },
-  idValue: { fontSize: 22, fontWeight: '700', color: COLORS.accent, letterSpacing: 1 },
-  card: {
-    backgroundColor: COLORS.cardBg,
+  submitBtn: {
+    flex: 1,
+    height: 48,
     borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: '#1A4D3E',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    justifyContent: 'center',
+    ...Platform.select({
+      web: { cursor: 'pointer' as const },
+    }),
   },
-  rowContent: { flex: 1 },
-  rowLabel: { fontSize: 12, color: COLORS.muted, marginBottom: 2 },
-  rowValue: { fontSize: 16, color: COLORS.text, fontWeight: '500' },
-  editBtn: { color: COLORS.info, fontSize: 14, fontWeight: '600', marginLeft: 8 },
-  actions: { flexDirection: 'row', gap: 12, marginBottom: 32 },
-  half: { flex: 1 },
+  submitBtnDisabled: {
+    opacity: 0.65,
+    ...Platform.select({
+      web: { cursor: 'default' as const },
+    }),
+  },
+  outlineBtn: {
+    height: 48,
+    minWidth: 96,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    ...Platform.select({
+      web: { cursor: 'pointer' as const },
+    }),
+  },
+  btnPressed: {
+    opacity: 0.9,
+  },
 });

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, Image, StyleSheet, Alert } from 'react-native';
+import { View, Image, ActivityIndicator, Pressable, Platform, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Button } from '../../components/Button';
+import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { COLORS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
+import { showMessage } from '../../utils/feedback';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Photo'>;
@@ -13,77 +14,149 @@ type Props = NativeStackScreenProps<RegistrationStackParamList, 'Photo'>;
 export function PhotoScreen({ navigation }: Props) {
   const { formData, updateForm } = useRegistrationStore();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const pickImage = async (useCamera: boolean) => {
     setLoading(true);
+    setError('');
     try {
       const permission = useCamera
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow camera/gallery access to upload a photo.');
+        showMessage('Permission needed', 'Please allow camera/gallery access to upload a photo.');
         return;
       }
 
       const result = useCamera
-        ? await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 })
-        : await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+            base64: true,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+            base64: true,
+          });
 
       if (!result.canceled && result.assets[0]) {
-        updateForm({ pictureUri: result.assets[0].uri });
+        const asset = result.assets[0];
+        if (!asset.base64) {
+          showMessage('Photo error', 'Could not read image. Please try again.');
+          return;
+        }
+        updateForm({
+          pictureUri: asset.uri,
+          pictureBase64: asset.base64,
+        });
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const initials = formData.name
-    .split(' ')
-    .map((n: string) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const handleNext = () => {
+    if (!formData.pictureBase64) {
+      setError('A real verification photo is required (camera or gallery).');
+      return;
+    }
+    setError('');
+    navigation.navigate('Confirm');
+  };
+
+  const hasPhoto = !!formData.pictureBase64;
 
   return (
-    <View style={styles.container}>
-      <ScreenHeader title="Photo" subtitle="Add a verification photo (optional)" />
-      <View style={styles.preview}>
-        {formData.pictureUri ? (
-          <Image source={{ uri: formData.pictureUri }} style={styles.image} />
+    <View className="flex-1">
+      <ScreenHeader
+        title="Verification photo"
+        subtitle="Required — take a clear photo of the farmer's face"
+      />
+      <Text className="mb-4 text-sm text-[#757575]">
+        This must be a real photo from your camera or gallery. Letter avatars are not accepted.
+      </Text>
+      <View className="my-4 items-center">
+        {hasPhoto && formData.pictureUri ? (
+          <Image source={{ uri: formData.pictureUri }} className="h-40 w-40 rounded-full" />
         ) : (
-          <View style={styles.avatar}>
-            <Text style={styles.initials}>{initials || '?'}</Text>
+          <View className="h-40 w-40 items-center justify-center rounded-full border-2 border-dashed border-[#D4AF6A] bg-[#1A4D3E]">
+            <Ionicons name="camera-outline" size={48} color="#D4AF6A" />
+            <Text className="mt-2 text-center text-xs font-semibold text-[#D4AF6A]">Photo required</Text>
           </View>
         )}
       </View>
-      <Button title="Take Photo" onPress={() => pickImage(true)} loading={loading} style={styles.btn} />
-      <Button title="Choose from Gallery" onPress={() => pickImage(false)} variant="outline" loading={loading} style={styles.btn} />
+      <Pressable
+        onPress={() => pickImage(true)}
+        disabled={loading}
+        style={({ pressed }) => [styles.primaryBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
+      >
+        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Take photo</Text>}
+      </Pressable>
+      <Pressable
+        onPress={() => pickImage(false)}
+        disabled={loading}
+        style={({ pressed }) => [styles.outlineBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
+        className="mt-2"
+      >
+        {loading ? <ActivityIndicator color="#1A4D3E" /> : <Text className="font-semibold text-[#333333]">Choose from gallery</Text>}
+      </Pressable>
       {formData.pictureUri ? (
-        <Button title="Retake" onPress={() => updateForm({ pictureUri: undefined })} variant="outline" style={styles.btn} />
+        <Pressable
+          onPress={() => updateForm({ pictureUri: undefined, pictureBase64: undefined })}
+          style={({ pressed }) => [styles.outlineBtn, pressed && styles.btnPressed]}
+          className="mt-2"
+        >
+          <Text className="font-semibold text-[#333333]">Retake</Text>
+        </Pressable>
       ) : null}
-      <View style={styles.row}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
-        <Button title="Next" onPress={() => navigation.navigate('Confirm')} style={styles.half} />
+      {error ? <Text className="mb-2 mt-2 text-sm text-[#D32F2F]">{error}</Text> : null}
+      <View className="mt-2 flex-row gap-3">
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={({ pressed }) => [styles.outlineBtn, styles.halfBtn, pressed && styles.btnPressed]}
+        >
+          <Text className="font-semibold text-[#333333]">Back</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleNext}
+          style={({ pressed }) => [styles.primaryBtn, styles.halfBtn, pressed && styles.btnPressed]}
+        >
+          <Text className="font-semibold text-white">Next</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  preview: { alignItems: 'center', marginVertical: 24 },
-  image: { width: 160, height: 160, borderRadius: 80 },
-  avatar: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: COLORS.primary,
+  primaryBtn: {
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#1A4D3E',
     alignItems: 'center',
     justifyContent: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
-  initials: { fontSize: 48, color: COLORS.accent, fontWeight: '700' },
-  btn: { marginBottom: 8 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  half: { flex: 1 },
+  outlineBtn: {
+    height: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  halfBtn: {
+    flex: 1,
+  },
+  btnDisabled: {
+    opacity: 0.65,
+  },
+  btnPressed: {
+    opacity: 0.9,
+  },
 });

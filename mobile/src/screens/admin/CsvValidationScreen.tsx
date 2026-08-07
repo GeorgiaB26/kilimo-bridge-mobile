@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Alert, Platform } from 'react-native';
+import { Ban, Check, X } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from '../../components/Button';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { COLORS } from '../../constants';
 import { validateCsvImportText } from '../../api/client';
 import { downloadImportErrorsCsv, fetchAndDownloadImportErrors, importErrorsToCsv } from '../../utils/downloadImportErrors';
 import type { ImportValidationResult } from '../../types';
@@ -13,23 +15,29 @@ type Props = NativeStackScreenProps<ImportStackParamList, 'CsvValidation'>;
 
 function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
-    <View style={styles.statCard}>
-      <Text style={[styles.statValue, color ? { color } : null]}>{value.toLocaleString()}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View className="min-w-[45%] flex-1 items-center rounded-lg bg-[#F9F9F9] p-3">
+      <Text className="text-[22px] font-bold text-[#1A4D3E]" style={color ? { color } : undefined}>
+        {value.toLocaleString()}
+      </Text>
+      <Text className="mt-0.5 text-xs text-[#757575]">{label}</Text>
     </View>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    valid: COLORS.success,
-    invalid: COLORS.alert,
-    duplicate: COLORS.accent,
+    valid: '#2E7D5E',
+    invalid: '#D32F2F',
+    duplicate: '#D4AF6A',
   };
+  const color = colors[status] ?? '#757575';
+  const Icon = status === 'valid' ? Check : status === 'duplicate' ? Ban : X;
+  const label = status === 'valid' ? 'Valid' : status === 'duplicate' ? 'Duplicate' : 'Invalid';
   return (
-    <Text style={[styles.badge, { color: colors[status] ?? COLORS.muted }]}>
-      {status === 'valid' ? '✓ Valid' : status === 'duplicate' ? '⊘ Duplicate' : '✗ Invalid'}
-    </Text>
+    <View className="flex-1 flex-row items-center gap-1">
+      <Icon size={12} color={color} />
+      <Text className="text-[11px] font-semibold" style={{ color }}>{label}</Text>
+    </View>
   );
 }
 
@@ -85,79 +93,79 @@ export function CsvValidationScreen({ navigation, route }: Props) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Validating {fileName}...</Text>
+      <View className="flex-1 items-center justify-center p-6">
+        <ActivityIndicator size="large" color="#1A4D3E" />
+        <Text className="mt-4 text-base text-[#757575]">Validating {fileName}...</Text>
       </View>
     );
   }
 
   if (error || !result) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error ?? 'Validation failed'}</Text>
-        <Button title="Go Back" onPress={() => navigation.goBack()} variant="outline" />
+      <View className="flex-1 items-center justify-center p-6">
+        <Text className="mb-4 text-center text-base text-[#D32F2F]">{error ?? 'Validation failed'}</Text>
+        <Button variant="outline" onPress={() => navigation.goBack()}>
+          <Text>Go Back</Text>
+        </Button>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView className="flex-1" contentContainerClassName="p-4 pb-12">
       <ScreenHeader title="Validation Results" subtitle={fileName} />
       {!result.headersMatch && result.columnMapping ? (
-        <View style={styles.warningCard}>
-          <Text style={styles.warningTitle}>Column mapping applied</Text>
-          <Text style={styles.warningText}>
+        <View className="mb-4 rounded-lg border-l-4 border-[#D4AF6A] bg-[#FFF8E1] p-3">
+          <Text className="mb-1 font-semibold text-[#333333]">Column mapping applied</Text>
+          <Text className="text-[13px] text-[#757575]">
             Headers did not match exactly. Auto-mapped columns were used.
           </Text>
         </View>
       ) : null}
-      <View style={styles.statsRow}>
+      <View className="mb-4 flex-row flex-wrap gap-2">
         <StatCard label="Total Rows" value={result.totalRows} />
-        <StatCard label="Valid" value={result.validRows} color={COLORS.success} />
-        <StatCard label="Issues" value={result.invalidRows} color={COLORS.alert} />
-        <StatCard label="Duplicates" value={result.duplicates} color={COLORS.accent} />
+        <StatCard label="Valid" value={result.validRows} color="#2E7D5E" />
+        <StatCard label="Issues" value={result.invalidRows} color="#D32F2F" />
+        <StatCard label="Duplicates" value={result.duplicates} color="#D4AF6A" />
       </View>
-      <Text style={styles.importCount}>
-        Will import: <Text style={styles.importNumber}>{result.willImport.toLocaleString()}</Text> farmers
+      <Text className="mb-4 text-center text-base text-[#333333]">
+        Will import: <Text className="text-xl font-bold text-[#D4AF6A]">{result.willImport.toLocaleString()}</Text> farmers
       </Text>
 
       {errorCount > 0 ? (
-        <View style={styles.errorsPanel}>
-          <Text style={styles.errorsPanelTitle}>Fix in Excel — {errorCount} issues</Text>
-          <Text style={styles.errorsHint}>
+        <View className="mb-4 rounded-lg border-2 border-[#D4AF6A] bg-[#FFF3E0] p-3.5">
+          <Text className="mb-1.5 text-base font-bold text-[#333333]">Fix in Excel — {errorCount} issues</Text>
+          <Text className="mb-3 text-[13px] leading-5 text-[#333333]">
             Download or copy the full error list. Use the Row column to find each line in your spreadsheet.
           </Text>
-          <Button
-            title={downloading ? 'Downloading…' : `Download all ${errorCount} errors (CSV)`}
-            onPress={handleDownloadErrors}
-            loading={downloading}
-            style={styles.downloadFull}
-          />
-          <Button
-            title="Copy errors to clipboard"
-            onPress={handleCopyErrors}
-            variant="outline"
-            style={styles.copyBtn}
-          />
-          <Text style={styles.terminalHint}>
+          <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={handleDownloadErrors} disabled={downloading}>
+            {downloading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-white">Download all {errorCount} errors (CSV)</Text>
+            )}
+          </Button>
+          <Button variant="outline" className="mb-2 h-11" onPress={handleCopyErrors}>
+            <Text>Copy errors to clipboard</Text>
+          </Button>
+          <Text className={cn('text-[11px] text-[#757575]', Platform.OS === 'web' && 'font-mono')}>
             Terminal: cd backend && npx tsx scripts/export-import-errors.ts
           </Text>
         </View>
       ) : null}
 
       {result.importHints?.map((hint) => (
-        <View key={hint} style={styles.hintCard}>
-          <Text style={styles.hintText}>{hint}</Text>
+        <View key={hint} className="mb-3 rounded-lg border-l-4 border-[#D32F2F] bg-[#FFEBEE] p-3">
+          <Text className="text-[13px] leading-5 text-[#333333]">{hint}</Text>
         </View>
       ))}
 
       {errorCount > 0 ? (
         <>
-          <Text style={styles.sectionTitle}>All errors ({errorCount})</Text>
+          <Text className="mb-2 mt-2 text-base font-semibold text-[#1A4D3E]">All errors ({errorCount})</Text>
           {result.errors.map((err, i) => (
-            <View key={`${err.row}-${err.field}-${i}`} style={styles.errorRow}>
-              <Text style={styles.errorRowText}>
+            <View key={`${err.row}-${err.field}-${i}`} className="mb-1 rounded bg-[#FFEBEE] p-2">
+              <Text className="text-xs text-[#D32F2F]">
                 Row {err.row}: {err.field} — {err.error}
                 {err.value ? ` [${err.value}]` : ''}
                 {err.suggestion ? ` (${err.suggestion})` : ''}
@@ -168,115 +176,44 @@ export function CsvValidationScreen({ navigation, route }: Props) {
       ) : null}
 
       {result.willImport > 0 ? (
-        <View style={styles.successCard}>
-          <Text style={styles.successTitle}>On import, each valid row creates:</Text>
-          <Text style={styles.successText}>• Farmer profile</Text>
-          <Text style={styles.successText}>• Login account (OTP sign-in)</Text>
-          <Text style={styles.successText}>• Project enrollments (if Project 1/2/3 filled)</Text>
+        <View className="mb-4 rounded-lg border-l-4 border-[#2E7D5E] bg-[#E8F5E9] p-3">
+          <Text className="mb-1.5 font-semibold text-[#333333]">On import, each valid row creates:</Text>
+          <Text className="text-[13px] leading-5 text-[#333333]">• Farmer profile</Text>
+          <Text className="text-[13px] leading-5 text-[#333333]">• Login account (OTP sign-in)</Text>
+          <Text className="text-[13px] leading-5 text-[#333333]">• Project enrollments (if Project 1/2/3 filled)</Text>
         </View>
       ) : null}
 
-      <Text style={styles.sectionTitle}>Preview (first 10 rows)</Text>
-      <View style={styles.table}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.cell, styles.headerCell, { flex: 2 }]}>Name</Text>
-          <Text style={[styles.cell, styles.headerCell, { flex: 2 }]}>Phone</Text>
-          <Text style={[styles.cell, styles.headerCell]}>District</Text>
-          <Text style={[styles.cell, styles.headerCell]}>Status</Text>
+      <Text className="mb-2 mt-2 text-base font-semibold text-[#1A4D3E]">Preview (first 10 rows)</Text>
+      <View className="mb-4 overflow-hidden rounded-lg border border-[#E0E0E0]">
+        <View className="flex-row bg-[#1A4D3E] p-2">
+          <Text className="flex-[2] text-xs font-semibold text-white">Name</Text>
+          <Text className="flex-[2] text-xs font-semibold text-white">Phone</Text>
+          <Text className="flex-1 text-xs font-semibold text-white">District</Text>
+          <Text className="flex-1 text-xs font-semibold text-white">Status</Text>
         </View>
         {result.preview.map((row, i) => (
-          <View key={i} style={styles.tableRow}>
-            <Text style={[styles.cell, { flex: 2 }]} numberOfLines={1}>{row.name}</Text>
-            <Text style={[styles.cell, { flex: 2 }]} numberOfLines={1}>{row.phone}</Text>
-            <Text style={styles.cell} numberOfLines={1}>{row.district}</Text>
+          <View key={i} className="flex-row border-b border-[#E0E0E0] p-2">
+            <Text className="flex-[2] text-xs text-[#333333]" numberOfLines={1}>{row.name}</Text>
+            <Text className="flex-[2] text-xs text-[#333333]" numberOfLines={1}>{row.phone}</Text>
+            <Text className="flex-1 text-xs text-[#333333]" numberOfLines={1}>{row.district}</Text>
             <StatusBadge status={row.status} />
           </View>
         ))}
       </View>
 
-      <View style={styles.actions}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
+      <View className="my-6 flex-row gap-3">
+        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
+          <Text>Back</Text>
+        </Button>
         <Button
-          title={`Import ${result.willImport} Farmers`}
+          className="h-12 flex-1 bg-[#1A4D3E]"
           onPress={() => navigation.navigate('CsvImport', { sessionId: result.sessionId, willImport: result.willImport })}
           disabled={result.willImport === 0}
-          style={styles.half}
-        />
+        >
+          <Text className="text-white">Import {result.willImport} Farmers</Text>
+        </Button>
       </View>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { padding: 16, paddingBottom: 48 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loadingText: { marginTop: 16, color: COLORS.muted, fontSize: 16 },
-  errorText: { color: COLORS.alert, fontSize: 16, marginBottom: 16, textAlign: 'center' },
-  warningCard: {
-    backgroundColor: '#FFF8E1',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.accent,
-  },
-  warningTitle: { fontWeight: '600', color: COLORS.text, marginBottom: 4 },
-  warningText: { fontSize: 13, color: COLORS.muted },
-  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  statCard: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-  },
-  statValue: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
-  statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
-  importCount: { fontSize: 16, color: COLORS.text, marginBottom: 16, textAlign: 'center' },
-  importNumber: { fontWeight: '700', color: COLORS.accent, fontSize: 20 },
-  errorsPanel: {
-    backgroundColor: '#FFF3E0',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: COLORS.accent,
-  },
-  errorsPanelTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 6 },
-  errorsHint: { fontSize: 13, color: COLORS.text, marginBottom: 12, lineHeight: 20 },
-  downloadFull: { marginBottom: 8 },
-  copyBtn: { marginBottom: 8 },
-  terminalHint: { fontSize: 11, color: COLORS.muted, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined },
-  hintCard: {
-    backgroundColor: '#FFEBEE',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.alert,
-  },
-  hintText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
-  successCard: {
-    backgroundColor: '#E8F5E9',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.success,
-  },
-  successTitle: { fontWeight: '600', color: COLORS.text, marginBottom: 6 },
-  successText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: COLORS.primary, marginBottom: 8, marginTop: 8 },
-  table: { borderRadius: 8, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },
-  tableHeader: { flexDirection: 'row', backgroundColor: COLORS.primary, padding: 8 },
-  headerCell: { color: '#fff', fontWeight: '600', fontSize: 12 },
-  tableRow: { flexDirection: 'row', padding: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  cell: { fontSize: 12, color: COLORS.text, flex: 1 },
-  badge: { fontSize: 11, fontWeight: '600', flex: 1 },
-  errorRow: { backgroundColor: '#FFEBEE', padding: 8, borderRadius: 4, marginBottom: 4 },
-  errorRowText: { fontSize: 12, color: COLORS.alert },
-  actions: { flexDirection: 'row', gap: 12, marginVertical: 24 },
-  half: { flex: 1 },
-});

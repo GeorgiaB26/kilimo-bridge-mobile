@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { ActivityIndicator } from 'react-native-paper';
+import { View, ActivityIndicator } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { KilimoLogo } from '../../components/KilimoLogo';
-import { COLORS } from '../../constants';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -15,33 +14,13 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
   }, [onFinish]);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.logoWrap}>
+    <View className="flex-1 items-center justify-center bg-[#1A4D3E] p-6">
+      <View className="mb-3 items-center rounded-xl bg-white p-4">
         <KilimoLogo width={260} height={72} />
       </View>
-      <Text style={styles.platformName}>Kilimo Bridge Platform</Text>
-      <Text style={styles.tagline}>Earn · Grow · Get Paid</Text>
-      <ActivityIndicator animating color={COLORS.accent} size="large" style={styles.spinner} />
+      <Text className="mb-2 text-lg font-bold text-white">Kilimo Bridge Platform</Text>
+      <Text className="mb-10 text-base text-white/85">Earn · Grow · Get Paid</Text>
+      <ActivityIndicator animating color="#D4AF6A" size="large" className="mt-2" />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  logoWrap: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  platformName: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 8 },
-  tagline: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginBottom: 40 },
-  spinner: { marginTop: 8 },
-});

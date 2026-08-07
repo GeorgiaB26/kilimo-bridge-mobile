@@ -1,51 +1,82 @@
 import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 import { FarmerDashboardScreen } from '../screens/farmer/FarmerDashboardScreen';
 import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
+import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
-import type { FarmerTabParamList } from './types';
+import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
+import { MessagesStackNavigator } from './MessagesStackNavigator';
+import { NotificationsStackNavigator } from './NotificationsStackNavigator';
+import type { FarmerRootStackParamList, FarmerTabParamList } from './types';
 
 import { FarmerCurrencySync } from '../components/FarmerCurrencySync';
+import { FarmerTabScene } from './FarmerTabScene';
 
 const Tab = createBottomTabNavigator<FarmerTabParamList>();
+
+function withFarmerTabScene<P extends object>(Component: React.ComponentType<P>) {
+  return function FarmerTabScreen(props: P) {
+    return (
+      <FarmerTabScene>
+        <Component {...props} />
+      </FarmerTabScene>
+    );
+  };
+}
+const RootStack = createNativeStackNavigator<FarmerRootStackParamList>();
+
+function FarmerTabNavigator() {
+  return (
+    <Tab.Navigator
+      tabBar={(props) => <FarmerFloatingTabBar {...props} />}
+      screenOptions={{
+        headerStyle: { backgroundColor: COLORS.primary },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '600' },
+        sceneStyle: { paddingBottom: 88 },
+      }}
+    >
+      <Tab.Screen
+        name="Dashboard"
+        component={withFarmerTabScene(FarmerDashboardScreen)}
+        options={{ title: 'Home', headerShown: false }}
+      />
+      <Tab.Screen
+        name="Projects"
+        component={withFarmerTabScene(FarmerProjectsNavigator)}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen
+        name="Tasks"
+        component={withFarmerTabScene(FarmerTasksScreen)}
+        options={{ title: 'Tasks', headerShown: false }}
+      />
+      <Tab.Screen
+        name="Payments"
+        component={withFarmerTabScene(FarmerPaymentsScreen)}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={withFarmerTabScene(FarmerProfileScreen)}
+        options={{ headerShown: false }}
+      />
+    </Tab.Navigator>
+  );
+}
 
 export function FarmerNavigator() {
   return (
     <>
       <FarmerCurrencySync />
-      <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerStyle: { backgroundColor: COLORS.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600' },
-        tabBarStyle: {
-          backgroundColor: COLORS.background,
-          borderTopColor: COLORS.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 4,
-        },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.muted,
-        tabBarIcon: ({ color, size }) => {
-          const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-            Dashboard: 'home',
-            Projects: 'leaf',
-            Payments: 'wallet',
-            Profile: 'person',
-          };
-          return <Ionicons name={icons[route.name] ?? 'ellipse'} size={size} color={color} />;
-        },
-      })}
-    >
-      <Tab.Screen name="Dashboard" component={FarmerDashboardScreen} options={{ title: 'Home', headerShown: false }} />
-      <Tab.Screen name="Projects" component={FarmerProjectsNavigator} options={{ headerShown: false }} />
-      <Tab.Screen name="Payments" component={FarmerPaymentsScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Profile" component={FarmerProfileScreen} options={{ headerShown: false }} />
-    </Tab.Navigator>
+      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+        <RootStack.Screen name="MainTabs" component={FarmerTabNavigator} />
+        <RootStack.Screen name="MessagesFlow" component={MessagesStackNavigator} />
+        <RootStack.Screen name="NotificationsFlow" component={NotificationsStackNavigator} />
+      </RootStack.Navigator>
     </>
   );
 }

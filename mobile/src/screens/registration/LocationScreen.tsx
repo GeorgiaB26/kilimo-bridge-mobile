@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
-import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { useRegistrationStore } from '../../store/registrationStore';
 import {
@@ -63,7 +64,7 @@ export function LocationScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1">
       <ScreenHeader title="Location" subtitle={`Where are you based in ${formData.country}?`} />
       <PickerField
         label={labels[0]}
@@ -106,20 +107,17 @@ export function LocationScreen({ navigation }: Props) {
         onChangeText={(village) => updateForm({ village })}
         placeholder="Optional"
       />
-      <View style={styles.row}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
+      <View className="mt-2 flex-row gap-3">
+        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
+          <Text>Back</Text>
+        </Button>
         <Button
-          title="Next"
+          className="h-12 flex-1 bg-[#1A4D3E]"
           onPress={() => validate() && navigation.navigate('Membership')}
-          style={styles.half}
-        />
+        >
+          <Text className="text-white">Next</Text>
+        </Button>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  half: { flex: 1 },
-});

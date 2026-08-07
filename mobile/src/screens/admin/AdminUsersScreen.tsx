@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, FlatList, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { COLORS } from '../../constants';
+import { Text } from '@/components/ui/text';
 import { getUsers } from '../../api/client';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore, canManageUsers } from '../../store/authStore';
 import { KBSearchBar } from '../../components/KBSearchBar';
 
 const ROLE_COLORS: Record<string, string> = {
-  super_admin: COLORS.alert,
-  admin: COLORS.primary,
-  field_officer: COLORS.info,
-  farmer: COLORS.success,
+  platform_admin: '#D32F2F',
+  super_admin: '#D32F2F',
+  admin: '#1A4D3E',
+  agent: '#1976D2',
+  banking_agent: '#FF9800',
+  banking_admin: '#FF9800',
+  farmer: '#2E7D5E',
+  field_officer: '#1976D2',
 };
 
 const SEARCH_MIN = 1;
@@ -36,7 +40,7 @@ export function AdminUsersScreen() {
   const activeSearch = debouncedSearch.length >= SEARCH_MIN ? debouncedSearch : undefined;
 
   const load = useCallback(async () => {
-    if (user?.role !== 'super_admin' && user?.role !== 'admin') return;
+    if (!user?.role || !canManageUsers(user.role)) return;
     setLoading(true);
     try {
       const d = await getUsers(activeSearch);
@@ -54,55 +58,64 @@ export function AdminUsersScreen() {
     }, [load])
   );
 
-  if (user?.role !== 'super_admin' && user?.role !== 'admin') {
+  if (!user?.role || !canManageUsers(user.role)) {
     return (
-      <View style={styles.denied}>
-        <Text style={styles.deniedText}>You don't have permission to view users.</Text>
+      <View className="flex-1 items-center justify-center p-6">
+        <Text className="text-center text-base text-[#757575]">You don't have permission to view users.</Text>
       </View>
     );
   }
 
   const listHeader = (
     <View>
-      <Text style={styles.title}>Platform Users ({users.length.toLocaleString()})</Text>
+      <Text className="mb-1 text-[22px] font-bold text-[#1A4D3E]">
+        Platform Users ({users.length.toLocaleString()})
+      </Text>
       <KBSearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
         placeholder="Search name, phone, role, district..."
       />
       {searchQuery.length > 0 && searchQuery.length < SEARCH_MIN ? (
-        <Text style={styles.searchHint}>Type at least {SEARCH_MIN} characters to search</Text>
+        <Text className="-mt-2 mb-2 text-xs text-[#757575]">
+          Type at least {SEARCH_MIN} characters to search
+        </Text>
       ) : null}
       {activeSearch ? (
-        <Text style={styles.subtitle}>Results for "{activeSearch}"</Text>
+        <Text className="mb-3 text-[13px] text-[#757575]">Results for "{activeSearch}"</Text>
       ) : null}
     </View>
   );
 
   return (
     <FlatList
-      style={styles.container}
-      contentContainerStyle={styles.listContent}
+      className="flex-1 bg-[#F5F5F5]"
+      contentContainerClassName="p-4 pb-8"
       data={users}
       keyExtractor={(item) => item.phone_number}
       ListHeaderComponent={listHeader}
       renderItem={({ item }) => (
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={[styles.role, { color: ROLE_COLORS[item.role] ?? COLORS.muted }]}>
-              {item.role.replace('_', ' ')}
+        <View className="mb-2 rounded-lg bg-[#F9F9F9] p-3.5">
+          <View className="flex-row items-center justify-between">
+            <Text className="flex-1 text-base font-semibold text-[#333333]">{item.name}</Text>
+            <Text
+              className="text-xs font-semibold capitalize"
+              style={{ color: ROLE_COLORS[item.role] ?? '#757575' }}
+            >
+              {item.role.replace(/_/g, ' ')}
             </Text>
           </View>
-          <Text style={styles.phone}>{item.phone_number}</Text>
-          {item.district ? <Text style={styles.district}>District: {item.district}</Text> : null}
+          <Text className="mt-1 text-[13px] text-[#757575]">{item.phone_number}</Text>
+          {item.district ? (
+            <Text className="mt-0.5 text-xs text-[#1976D2]">District: {item.district}</Text>
+          ) : null}
         </View>
       )}
       ListEmptyComponent={
         loading ? (
-          <ActivityIndicator color={COLORS.primary} style={styles.loader} />
+          <ActivityIndicator color="#1A4D3E" className="mt-6" />
         ) : (
-          <Text style={styles.empty}>
+          <Text className="mt-6 text-center italic text-[#757575]">
             {activeSearch ? `No users matching "${activeSearch}"` : 'No users found'}
           </Text>
         )
@@ -110,21 +123,3 @@ export function AdminUsersScreen() {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  listContent: { padding: 16, paddingBottom: 32 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
-  searchHint: { fontSize: 12, color: COLORS.muted, marginTop: -8, marginBottom: 8 },
-  subtitle: { fontSize: 13, color: COLORS.muted, marginBottom: 12 },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 16, fontWeight: '600', color: COLORS.text, flex: 1 },
-  role: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
-  phone: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  district: { fontSize: 12, color: COLORS.info, marginTop: 2 },
-  denied: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  deniedText: { color: COLORS.muted, fontSize: 16, textAlign: 'center' },
-  loader: { marginTop: 24 },
-  empty: { color: COLORS.muted, fontStyle: 'italic', textAlign: 'center', marginTop: 24 },
-});

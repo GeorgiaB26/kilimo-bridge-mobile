@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, ScrollView } from 'react-native';
+import { Check } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from '../../components/Button';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { COLORS } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { confirmCsvImport, getImportProgress, getImportComplete } from '../../api/client';
 import { showMessage } from '../../utils/feedback';
@@ -107,19 +108,21 @@ export function CsvImportScreen({ navigation, route }: Props) {
   const remaining = Math.max(0, importTarget - imported);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView className="flex-1" contentContainerClassName="p-4 pb-10">
       {isComplete ? (
         <>
           <ScreenHeader title="Import Complete" subtitle="Farmers have been imported" />
-          <View style={styles.successCard}>
-            <Text style={styles.successIcon}>✓</Text>
-            <Text style={styles.successTitle}>Import successful!</Text>
-            <Text style={styles.successStat}>{imported.toLocaleString()} farmers imported</Text>
+          <View className="my-4 items-center rounded-xl border-2 border-[#2E7D5E] bg-[#E8F5E9] p-8">
+            <Check size={56} color="#2E7D5E" strokeWidth={2.5} />
+            <Text className="mt-2 text-2xl font-bold text-[#1A4D3E]">Import successful!</Text>
+            <Text className="mt-3 text-xl font-semibold text-[#D4AF6A]">{imported.toLocaleString()} farmers imported</Text>
             {duplicatesSkipped > 0 ? (
-              <Text style={styles.successDetail}>{duplicatesSkipped} duplicates were skipped</Text>
+              <Text className="mt-2 text-sm text-[#757575]">{duplicatesSkipped} duplicates were skipped</Text>
             ) : null}
           </View>
-          <Button title="Done — back to Import" onPress={() => navigation.popToTop()} />
+          <Button className="h-12 bg-[#1A4D3E]" onPress={() => navigation.popToTop()}>
+            <Text className="text-white">Done — back to Import</Text>
+          </Button>
         </>
       ) : (
         <>
@@ -131,58 +134,23 @@ export function CsvImportScreen({ navigation, route }: Props) {
                 : `Importing ${importTarget.toLocaleString()} farmers`
             }
           />
-          <View style={styles.progressCard}>
-            <Text style={styles.progressPercent}>{phase === 'failed' ? '!' : `${progress}%`}</Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
+          <View className="mt-4 items-center rounded-xl bg-[#F9F9F9] p-6">
+            <Text className="text-5xl font-bold text-[#1A4D3E]">{phase === 'failed' ? '!' : `${progress}%`}</Text>
+            <View className="my-4 h-3 w-full overflow-hidden rounded-md bg-[#E0E0E0]">
+              <View className="h-full rounded-md bg-[#2E7D5E]" style={{ width: `${Math.min(progress, 100)}%` }} />
             </View>
-            <Text style={styles.progressDetail}>
+            <Text className="text-sm text-[#333333]">
               {imported.toLocaleString()} imported, {remaining.toLocaleString()} remaining
             </Text>
           </View>
           {phase === 'failed' ? (
-            <Button title="Back" onPress={() => navigation.goBack()} style={{ marginTop: 16 }} />
+            <Button className="mt-4 h-12" variant="outline" onPress={() => navigation.goBack()}>
+              <Text>Back</Text>
+            </Button>
           ) : null}
         </>
       )}
-      <Text style={styles.buildTag}>Screen build {APP_BUILD}</Text>
+      <Text className="mt-6 text-center text-[11px] text-[#757575]">Screen build {APP_BUILD}</Text>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  progressCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  progressPercent: { fontSize: 48, fontWeight: '700', color: COLORS.primary },
-  progressBar: {
-    width: '100%',
-    height: 12,
-    backgroundColor: COLORS.border,
-    borderRadius: 6,
-    marginVertical: 16,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: COLORS.success, borderRadius: 6 },
-  progressDetail: { fontSize: 14, color: COLORS.text },
-  successCard: {
-    backgroundColor: '#E8F5E9',
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center',
-    marginVertical: 16,
-    borderWidth: 2,
-    borderColor: COLORS.success,
-  },
-  successIcon: { fontSize: 56, color: COLORS.success },
-  successTitle: { fontSize: 24, fontWeight: '700', color: COLORS.primary, marginTop: 8 },
-  successStat: { fontSize: 20, color: COLORS.accent, fontWeight: '600', marginTop: 12 },
-  successDetail: { fontSize: 14, color: COLORS.muted, marginTop: 8 },
-  buildTag: { fontSize: 11, color: COLORS.muted, textAlign: 'center', marginTop: 24 },
-});

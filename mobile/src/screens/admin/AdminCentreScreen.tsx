@@ -1,12 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Alert, TextInput,
+  View, ScrollView, RefreshControl, ActivityIndicator, Alert, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Button, Menu } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { Menu, Button as PaperButton } from 'react-native-paper';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import {
-  approveInventoryQuality,
   getAggregationCentres,
   getCentreDashboard,
   getCentreInventory,
@@ -16,6 +16,16 @@ import {
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { OutboxCentreQcCard } from '../../components/OutboxCentreQcCard';
+import {
+  CENTRE_QC_EXPECTED_QUALITY_STATUS,
+  dismissCentreQcOutbox,
+  listPendingCentreQc,
+  pushPendingCentreQc,
+  submitCentreQcWithOutbox,
+  syncAllPendingCentreQc,
+  type PendingCentreQcView,
+} from '../../services/submitCentreQcOutbox';
 
 export function AdminCentreScreen() {
   const [centres, setCentres] = useState<Array<{ centre_id: string; name: string }>>([]);
@@ -48,6 +58,13 @@ export function AdminCentreScreen() {
   const [product, setProduct] = useState('');
   const [quantity, setQuantity] = useState('');
   const [selectedDelivery, setSelectedDelivery] = useState<typeof deliveries[0] | null>(null);
+  const [pendingQc, setPendingQc] = useState<PendingCentreQcView[]>([]);
+  const [pushingId, setPushingId] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const loadPending = useCallback(async () => {
+    setPendingQc(await listPendingCentreQc());
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -73,11 +90,19 @@ export function AdminCentreScreen() {
     }
   }, [centreId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        await syncAllPendingCentreQc();
+        await Promise.all([load(), loadPending()]);
+      })();
+    }, [load, loadPending])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await syncAllPendingCentreQc();
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
   };
 
@@ -104,12 +129,62 @@ export function AdminCentreScreen() {
     }
   };
 
-  const approveQc = async (id: string) => {
-    try {
-      await approveInventoryQuality(id, { quality_status: 'approved', marketplace_price_per_unit: 100 });
+  const handleQcResult = async (
+    result: Awaited<ReturnType<typeof submitCentreQcWithOutbox>>,
+    decision: 'approve' | 'reject'
+  ) => {
+    await loadPending();
+    if (result.mode === 'online') {
       await load();
+      return;
+    }
+    if (result.mode === 'offline') {
+      Alert.alert(
+        'Saved offline',
+        `QC ${decision === 'approve' ? 'approval' : 'rejection'} queued for sync.`
+      );
+      return;
+    }
+    Alert.alert('Needs your review', result.error);
+  };
+
+  const applyQc = async (
+    item: { id: string; product_name: string; quality_status: string },
+    decision: 'approve' | 'reject'
+  ) => {
+    setActingId(item.id);
+    try {
+      const result = await submitCentreQcWithOutbox({
+        inventoryId: item.id,
+        productName: item.product_name,
+        decision,
+        expectedQualityStatus: item.quality_status || CENTRE_QC_EXPECTED_QUALITY_STATUS,
+        marketplacePricePerUnit: decision === 'approve' ? 100 : undefined,
+        qualityNotes: decision === 'reject' ? 'Rejected at centre QC' : undefined,
+      });
+      await handleQcResult(result, decision);
     } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not approve'));
+      Alert.alert('Error', extractApiError(err, 'Could not apply quality check'));
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const handlePush = async (item: PendingCentreQcView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingCentreQc(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.productName} QC updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -117,64 +192,109 @@ export function AdminCentreScreen() {
 
   if (loading && !stats) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color="#1A4D3E" />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      <Text style={styles.title}>Aggregation Centre</Text>
+    <ScrollView className="flex-1 bg-[#F5F5F5] p-4" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+      <Text className="mb-3 text-[26px] font-bold text-[#1A4D3E]">Aggregation Centre</Text>
       <Menu visible={menuOpen} onDismiss={() => setMenuOpen(false)} anchor={
-        <Button mode="outlined" onPress={() => setMenuOpen(true)} style={styles.centreBtn}>{centreName}</Button>
+        <PaperButton mode="outlined" onPress={() => setMenuOpen(true)} style={{ marginBottom: 12, alignSelf: 'flex-start' }}>{centreName}</PaperButton>
       }>
         {centres.map((c) => (
           <Menu.Item key={c.centre_id} onPress={() => { setCentreId(c.centre_id); setMenuOpen(false); }} title={c.name} />
         ))}
       </Menu>
 
-      <View style={styles.statsRow}>
-        <KBCard style={styles.stat} elevated={false}>
-          <Text style={styles.statVal}>{stats?.total_inventory ?? 0}</Text>
-          <Text style={styles.statLabel}>Total received</Text>
+      <View className="mb-4 flex-row gap-2">
+        <KBCard style={{ flex: 1, marginBottom: 0 }} elevated={false}>
+          <Text className="text-[22px] font-extrabold text-[#1A4D3E]">{stats?.total_inventory ?? 0}</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Total received</Text>
         </KBCard>
-        <KBCard style={styles.stat} elevated={false}>
-          <Text style={styles.statVal}>{stats?.awaiting_quality_check ?? 0}</Text>
-          <Text style={styles.statLabel}>Awaiting QC</Text>
+        <KBCard style={{ flex: 1, marginBottom: 0 }} elevated={false}>
+          <Text className="text-[22px] font-extrabold text-[#1A4D3E]">{stats?.awaiting_quality_check ?? 0}</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Awaiting QC</Text>
         </KBCard>
       </View>
 
-      <Text style={styles.section}>Pending deliveries (approved tasks)</Text>
+      {pendingQc.length > 0 ? (
+        <View className="mb-4">
+          <Text className="mb-2 text-base font-bold text-[#333333]">Queued QC decisions</Text>
+          {pendingQc.map((item) => (
+            <OutboxCentreQcCard
+              key={item.id}
+              item={item}
+              pushing={pushingId === item.id}
+              onPush={() => handlePush(item)}
+              onDismiss={() => dismissCentreQcOutbox(item.id).then(loadPending)}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      <Text className="mb-2 mt-4 text-base font-bold text-[#333333]">Pending deliveries (approved tasks)</Text>
       {deliveries.length === 0 ? (
-        <Text style={styles.hint}>No approved tasks awaiting delivery. Approve farmer tasks first.</Text>
+        <Text className="mb-3 leading-5 text-[#757575]">No approved tasks awaiting delivery. Approve farmer tasks first.</Text>
       ) : (
         deliveries.map((d) => (
           <KBCard key={d.farmer_task_id} onPress={() => setSelectedDelivery(d)} elevated={selectedDelivery?.farmer_task_id === d.farmer_task_id}>
-            <Text style={styles.itemTitle}>{d.farmer_name}</Text>
-            <Text style={styles.meta}>{d.task_name}</Text>
+            <Text className="text-base font-bold text-[#333333]">{d.farmer_name}</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">{d.task_name}</Text>
           </KBCard>
         ))
       )}
 
       {selectedDelivery ? (
-        <View style={styles.form}>
-          <Text style={styles.section}>Receive: {selectedDelivery.farmer_name}</Text>
-          <TextInput style={styles.input} placeholder="Product name" value={product} onChangeText={setProduct} />
-          <TextInput style={styles.input} placeholder="Quantity (kg)" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" />
-          <Button mode="contained" buttonColor={COLORS.primary} onPress={receive}>Confirm receive</Button>
+        <View className="mb-4 gap-2">
+          <Text className="mb-2 mt-4 text-base font-bold text-[#333333]">Receive: {selectedDelivery.farmer_name}</Text>
+          <TextInput
+            className="rounded-lg border border-[#E0E0E0] bg-white p-3"
+            placeholder="Product name"
+            value={product}
+            onChangeText={setProduct}
+          />
+          <TextInput
+            className="rounded-lg border border-[#E0E0E0] bg-white p-3"
+            placeholder="Quantity (kg)"
+            value={quantity}
+            onChangeText={setQuantity}
+            keyboardType="decimal-pad"
+          />
+          <Button className="h-11 bg-[#1A4D3E]" onPress={receive}>
+            <Text className="text-white">Confirm receive</Text>
+          </Button>
         </View>
       ) : null}
 
-      <Text style={styles.section}>Inventory</Text>
+      <Text className="mb-2 mt-4 text-base font-bold text-[#333333]">Inventory</Text>
       {inventory.map((item) => (
         <KBCard key={item.id} elevated={false}>
-          <Text style={styles.itemTitle}>{item.product_name}</Text>
-          <Text style={styles.meta}>{item.farmer_name} · {item.quantity_received} {item.unit}</Text>
-          <View style={styles.row}>
+          <Text className="text-base font-bold text-[#333333]">{item.product_name}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{item.farmer_name} · {item.quantity_received} {item.unit}</Text>
+          <View className="mt-2 flex-row items-center justify-between">
             <KBStatusChip label={item.quality_status} variant={item.is_marketplace_ready ? 'success' : 'pending'} />
             {item.quality_status === 'pending' ? (
-              <Button compact onPress={() => approveQc(item.id)} textColor={COLORS.success}>Approve QC</Button>
+              <View className="flex-row gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={actingId === item.id}
+                  onPress={() => applyQc(item, 'approve')}
+                >
+                  <Text className="text-[#2E7D5E]">Approve QC</Text>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={actingId === item.id}
+                  onPress={() => applyQc(item, 'reject')}
+                >
+                  <Text className="text-[#D32F2F]">Reject</Text>
+                </Button>
+              </View>
             ) : null}
           </View>
         </KBCard>
@@ -182,21 +302,3 @@ export function AdminCentreScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface, padding: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 26, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
-  centreBtn: { marginBottom: 12, alignSelf: 'flex-start' },
-  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  stat: { flex: 1, marginBottom: 0 },
-  statVal: { fontSize: 22, fontWeight: '800', color: COLORS.primary },
-  statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
-  section: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginTop: 16, marginBottom: 8 },
-  hint: { color: COLORS.muted, marginBottom: 12, lineHeight: 20 },
-  itemTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  meta: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  form: { gap: 8, marginBottom: 16 },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 12, backgroundColor: COLORS.background },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-});

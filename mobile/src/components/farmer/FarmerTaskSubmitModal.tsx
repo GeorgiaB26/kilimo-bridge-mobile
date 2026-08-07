@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import {
-  View, Text, Image, StyleSheet, Modal, TextInput, Pressable, ScrollView, Alert, Platform,
+  View, Text, Image, StyleSheet, Modal, TextInput, Pressable, ScrollView, Platform,
 } from 'react-native';
+import { Check, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
-import { submitFarmerTaskCompletion } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
+import { submitFarmerTaskWithOutbox } from '../../services/submitFarmerTaskOutbox';
 
+/** Client-only quality check — backend does not enforce a notes minimum. */
 const MIN_NOTES_LENGTH = 50;
 
 export interface FarmerTaskSubmitTarget {
@@ -22,7 +24,7 @@ interface Props {
   task: FarmerTaskSubmitTarget | null;
   visible: boolean;
   onClose: () => void;
-  onSubmitted: () => void;
+  onSubmitted: (result: { offline: boolean }) => void;
 }
 
 export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: Props) {
@@ -31,11 +33,15 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const [notesError, setNotesError] = useState('');
 
   const reset = () => {
     setNotes('');
     setPhotoUri(null);
     setPhotoBase64(null);
+    setPhotoError('');
+    setNotesError('');
   };
 
   const close = () => {
@@ -46,12 +52,13 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const pickImage = async (useCamera: boolean) => {
     if (!task) return;
     setPicking(true);
+    setPhotoError('');
     try {
       const permission = useCamera
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow camera or gallery access to upload a photo.');
+        showMessage('Permission needed', 'Please allow camera or gallery access to upload a photo.');
         return;
       }
       const result = useCamera
@@ -79,39 +86,62 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
   const submit = async () => {
     if (!task) return;
-    if (!photoUri && !photoBase64) {
-      Alert.alert('Photo required', 'Please upload a photo (JPEG or PNG) of your completed work.');
-      return;
+    let valid = true;
+    if (!photoUri) {
+      setPhotoError('Please upload a photo (JPEG or PNG) of your completed work.');
+      valid = false;
+    } else {
+      setPhotoError('');
     }
-    if (notes.trim().length < MIN_NOTES_LENGTH) {
-      Alert.alert('Notes required', `Please add at least ${MIN_NOTES_LENGTH} characters describing your work.`);
-      return;
+    const noteLen = notes.trim().length;
+    if (noteLen < MIN_NOTES_LENGTH) {
+      setNotesError(
+        `Notes must be at least ${MIN_NOTES_LENGTH} characters (currently ${noteLen}).`
+      );
+      valid = false;
+    } else {
+      setNotesError('');
     }
+    if (!valid) return;
+
     setSubmitting(true);
     try {
-      const photo_url = photoBase64
-        ? `data:image/jpeg;base64,${photoBase64}`
-        : photoUri ?? undefined;
-      await submitFarmerTaskCompletion(task.id, {
+      const result = await submitFarmerTaskWithOutbox({
+        farmerTaskId: task.id,
+        taskName: task.name,
         notes: notes.trim(),
-        photo_url,
+        photoLocalUri: photoUri!,
+        photoBase64,
       });
       reset();
-      onSubmitted();
-      showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
+      onSubmitted({ offline: result.mode === 'offline' });
+      if (result.mode === 'offline') {
+        showMessage(
+          'Saved offline',
+          'Your evidence is saved on this device. Open Your Tasks when back online to push it, or wait for automatic sync on this screen.'
+        );
+      } else {
+        showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
+      }
     } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not submit task'));
+      showMessage('Error', extractApiError(err, 'Could not submit task'));
     } finally {
       setSubmitting(false);
     }
   };
+
+  const noteLen = notes.trim().length;
+  const notesTooShort = noteLen < MIN_NOTES_LENGTH;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <View style={styles.overlay}>
         <ScrollView style={styles.card} contentContainerStyle={styles.content}>
           <Pressable onPress={close} style={styles.closeRow}>
-            <Text style={styles.close}>✕ Close</Text>
+            <View style={styles.closeContent}>
+              <X size={16} color={COLORS.muted} />
+              <Text style={styles.close}>Close</Text>
+            </View>
           </Pressable>
           {task ? (
             <>
@@ -142,17 +172,30 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
                   </Button>
                 ) : null}
               </View>
+              {photoError ? <Text style={styles.errorText}>{photoError}</Text> : null}
 
               <Text style={styles.label}>Notes * (min {MIN_NOTES_LENGTH} characters)</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, notesError ? styles.inputError : null]}
                 multiline
                 numberOfLines={4}
                 value={notes}
-                onChangeText={setNotes}
+                onChangeText={(text) => {
+                  setNotes(text);
+                  if (notesError && text.trim().length >= MIN_NOTES_LENGTH) {
+                    setNotesError('');
+                  }
+                }}
                 placeholder="Add any notes about your work..."
               />
-              <Text style={styles.charCount}>{notes.trim().length}/{MIN_NOTES_LENGTH}</Text>
+              <View style={styles.charCountRow}>
+                <Text style={[styles.charCount, notesTooShort ? styles.charCountWarn : styles.charCountOk]}>
+                  {noteLen}/{MIN_NOTES_LENGTH} characters
+                  {notesTooShort ? ` — ${MIN_NOTES_LENGTH - noteLen} more needed` : ''}
+                </Text>
+                {!notesTooShort ? <Check size={14} color={COLORS.success} /> : null}
+              </View>
+              {notesError ? <Text style={styles.errorText}>{notesError}</Text> : null}
 
               <Button
                 mode="contained"
@@ -176,6 +219,7 @@ const styles = StyleSheet.create({
   card: { maxHeight: '92%', backgroundColor: COLORS.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   content: { padding: 20, paddingBottom: 40 },
   closeRow: { alignSelf: 'flex-end', marginBottom: 4 },
+  closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 16 },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
   description: { fontSize: 14, color: COLORS.text, marginTop: 8, lineHeight: 20 },
@@ -204,6 +248,11 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
-  charCount: { fontSize: 12, color: COLORS.muted, textAlign: 'right', marginTop: 4 },
+  charCountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 },
+  charCount: { fontSize: 12, color: COLORS.muted },
+  charCountWarn: { color: COLORS.alert, fontWeight: '600' },
+  charCountOk: { color: COLORS.success },
+  errorText: { fontSize: 13, color: COLORS.alert, marginTop: 6, lineHeight: 18 },
+  inputError: { borderColor: COLORS.alert },
   submitBtn: { marginTop: 20 },
 });

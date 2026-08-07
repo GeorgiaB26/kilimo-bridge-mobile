@@ -1,0 +1,6 @@
+user_id,phone_number,name,role,farmer_id,district,status,created_at,updated_at,password_hash,region,aggregation_center
+4c741046-a734-4bf2-93d0-f8c62610826b,+254700000004,"Equity Banking Officer",banking,,,active,"2026-07-29 16:51:14","2026-07-29 16:51:14",$2b$12$caOdBr/Hajws8d.QrS74UO2mnfvVvrsJoQy1a8Z3zzoLUzSNawAGC,,
+9008a10f-73ea-4e44-bf94-3a7b4435bfd9,+254700000003,"Kiambu Agent",agent,,Kiambu,active,"2026-07-29 16:51:14","2026-07-29 16:51:14",,Central,"Kiambu Town Hall"
+833a3370-6824-4d2c-8bd3-0d0021e2c61b,+254700000001,"Super Admin",super_admin,,,active,"2026-07-29 16:51:14","2026-07-29 16:51:14",,,
+2e0b9c94-5abe-44e4-8d71-2dee198dcd63,+254700000002,"Platform Admin",admin,,,active,"2026-07-29 16:51:14","2026-07-29 16:51:14",,,
+e26dcf88-b0c1-40f3-bd8e-8b52c2ef8b0f,+254712345678,"John Doe",farmer,f28e548a-b708-4bba-9725-b8479d27af72,,active,"2026-07-29 16:51:14","2026-07-29 16:51:14",,,

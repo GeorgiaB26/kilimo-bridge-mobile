@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
-import { COLORS } from '../../constants';
+import { View, FlatList, RefreshControl } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { api } from '../../api/client';
-
 import { useCurrency } from '../../context/CurrencyContext';
 
 export function BankingDashboardScreen() {
@@ -24,22 +24,29 @@ export function BankingDashboardScreen() {
 
   return (
     <FlatList
-      style={styles.container}
+      className="flex-1 p-4"
       data={payments}
       keyExtractor={(item) => item.id}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
       ListHeaderComponent={
         <View>
-          <Text style={styles.title}>Banking Dashboard</Text>
-          <Text style={styles.subtitle}>Payment transactions & M-Pesa processing</Text>
+          <Text className="text-[22px] font-bold text-[#1A4D3E]">Banking Dashboard</Text>
+          <Text className="mb-4 text-sm text-[#757575]">Payment transactions & M-Pesa processing</Text>
         </View>
       }
       renderItem={({ item }) => (
-        <View style={styles.card}>
-          <Text style={styles.name}>{item.farmer_name}</Text>
-          <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
-          <Text style={styles.detail}>{item.project_name} · {item.phone_number}</Text>
-          <Text style={[styles.badge, item.payment_status === 'Transferred' ? styles.done : styles.pending]}>
+        <View className="mb-2 rounded-lg bg-[#F9F9F9] p-3.5">
+          <Text className="text-base font-semibold text-[#333333]">{item.farmer_name}</Text>
+          <Text className="mt-1 text-lg font-bold text-[#D4AF6A]">{formatAmount(item.amount)}</Text>
+          <Text className="mt-0.5 text-[13px] text-[#757575]">
+            {item.project_name} · {item.phone_number}
+          </Text>
+          <Text
+            className={cn(
+              'mt-1.5 text-xs font-semibold',
+              item.payment_status === 'Transferred' ? 'text-[#2E7D5E]' : 'text-[#D4AF6A]'
+            )}
+          >
             {item.payment_status}
           </Text>
         </View>
@@ -47,16 +54,3 @@ export function BankingDashboardScreen() {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
-  subtitle: { fontSize: 14, color: COLORS.muted, marginBottom: 16 },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 8 },
-  name: { fontSize: 16, fontWeight: '600', color: COLORS.text },
-  amount: { fontSize: 18, fontWeight: '700', color: COLORS.accent, marginTop: 4 },
-  detail: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
-  badge: { fontSize: 12, fontWeight: '600', marginTop: 6 },
-  done: { color: COLORS.success },
-  pending: { color: COLORS.accent },
-});

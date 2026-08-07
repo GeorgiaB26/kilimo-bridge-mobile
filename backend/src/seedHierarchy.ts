@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from './db/database';
+import { query, queryOne } from './db/database';
 import {
   createSector,
   createProgram,
@@ -11,46 +11,48 @@ import {
 const DEMO_FARMER_PHONE = '+254712345678';
 const DEMO_PROJECT_NAME = 'Tree Planting Project - Nairobi Q3 2026';
 
-function findDemoProjectId(): string | null {
-  const row = db.prepare('SELECT id FROM program_projects WHERE name = ?').get(DEMO_PROJECT_NAME) as
-    | { id: string }
-    | undefined;
+async function findDemoProjectId(): Promise<string | null> {
+  const row = await queryOne<{ id: string }>(
+    'SELECT id FROM program_projects WHERE name = $1',
+    [DEMO_PROJECT_NAME]
+  );
   return row?.id ?? null;
 }
 
-function linkDemoFarmerUser(): string | null {
-  const farmer = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get(DEMO_FARMER_PHONE) as
-    | { farmer_id: string }
-    | undefined;
+async function linkDemoFarmerUser(): Promise<string | null> {
+  const farmer = await queryOne<{ farmer_id: string }>(
+    'SELECT farmer_id FROM farmers WHERE phone_number = $1',
+    [DEMO_FARMER_PHONE]
+  );
   if (!farmer) return null;
 
-  db.prepare('UPDATE users SET farmer_id = ? WHERE phone_number = ? AND farmer_id IS NULL').run(
-    farmer.farmer_id,
-    DEMO_FARMER_PHONE
+  await query(
+    'UPDATE users SET farmer_id = $1 WHERE phone_number = $2 AND farmer_id IS NULL',
+    [farmer.farmer_id, DEMO_FARMER_PHONE]
   );
   return farmer.farmer_id;
 }
 
-function seedFullHierarchy(): string {
+async function seedFullHierarchy(): Promise<string> {
   console.log('Seeding Phase 2 hierarchy (Conservation → Tree Planting → Nairobi)...');
 
-  const sector = createSector({
+  const sector = (await createSector({
     name: 'Conservation',
     description: 'Environmental conservation programs',
     country: 'Kenya',
-  }) as { id: string };
+  })) as { id: string };
 
-  const program = createProgram({
+  const program = (await createProgram({
     name: 'Tree Planting',
     sector_id: sector.id,
     description: 'Planting and nurturing trees in Nairobi region',
-  }) as { id: string };
+  })) as { id: string };
 
-  const admin = db.prepare("SELECT user_id FROM users WHERE role IN ('admin', 'super_admin') LIMIT 1").get() as
-    | { user_id: string }
-    | undefined;
+  const admin = await queryOne<{ user_id: string }>(
+    `SELECT user_id FROM users WHERE role::text IN ('admin', 'super_admin', 'platform_admin') LIMIT 1`
+  );
 
-  const project = createProgramProject({
+  const project = (await createProgramProject({
     name: DEMO_PROJECT_NAME,
     program_id: program.id,
     region: 'Nairobi',
@@ -58,7 +60,7 @@ function seedFullHierarchy(): string {
     start_date: '2026-07-15',
     end_date: '2026-10-15',
     country_manager_id: admin?.user_id,
-  }) as unknown as { id: string };
+  })) as unknown as { id: string };
 
   const taskDefs = [
     { name: 'Farmer Training', order: 1, value: 4000, days: 7 },
@@ -71,7 +73,7 @@ function seedFullHierarchy(): string {
   for (const t of taskDefs) {
     const due = new Date();
     due.setDate(due.getDate() + t.days);
-    createTask({
+    await createTask({
       program_project_id: project.id,
       name: t.name,
       description: `Complete ${t.name}`,
@@ -81,44 +83,127 @@ function seedFullHierarchy(): string {
     });
   }
 
-  db.prepare(`
-    INSERT OR IGNORE INTO aggregation_centres (
+  await query(
+    `INSERT INTO aggregation_centres (
       centre_id, name, country, location_level_1, region, status, manager_name, manager_phone
-    ) VALUES (?, ?, 'Kenya', 'Nairobi', 'Nairobi', 'Active', 'James Kipchoge', ?)
-  `).run(uuidv4(), 'Nairobi Market Hub', DEMO_FARMER_PHONE);
+    ) VALUES ($1, $2, 'Kenya', 'Nairobi', 'Nairobi', 'Active', 'James Kipchoge', $3)
+    ON CONFLICT (centre_id) DO NOTHING`,
+    ['ke-nairobi-market-01', 'Nairobi Market Hub', DEMO_FARMER_PHONE]
+  );
 
   return project.id;
 }
 
-/** Seed hierarchy if missing; always ensure demo farmer John Doe is assigned. */
-export function seedHierarchyIfEmpty(): void {
-  let projectId = findDemoProjectId();
+/** Seed hierarchy if missing; ensure demo farmer John Doe is assigned (idempotent). */
+export async function seedHierarchyIfEmpty(): Promise<void> {
+  let projectId = await findDemoProjectId();
 
-  const sectorCount = db.prepare('SELECT COUNT(*) as c FROM sectors').get() as { c: number };
-  if (sectorCount.c === 0 || !projectId) {
-    projectId = seedFullHierarchy();
+  if (!projectId) {
+    const sectorCount = await queryOne<{ c: number }>('SELECT COUNT(*)::int AS c FROM sectors');
+    if ((sectorCount?.c ?? 0) === 0) {
+      projectId = await seedFullHierarchy();
+    } else {
+      projectId = await ensureDemoProjectWhenHierarchyExists();
+    }
   }
 
-  linkDemoFarmerUser();
-
-  const demoFarmerId = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get(DEMO_FARMER_PHONE) as
-    | { farmer_id: string }
-    | undefined;
-  const farmersToAssign: string[] = [];
-
-  if (demoFarmerId) farmersToAssign.push(demoFarmerId.farmer_id);
-
-  const extras = db.prepare('SELECT farmer_id FROM farmers LIMIT 10').all() as { farmer_id: string }[];
-  for (const f of extras) {
-    if (!farmersToAssign.includes(f.farmer_id)) farmersToAssign.push(f.farmer_id);
+  if (!projectId) {
+    console.log('Hierarchy data exists but demo project missing — could not create demo project');
+    return;
   }
 
-  if (projectId && farmersToAssign.length > 0) {
-    assignFarmersToProject(projectId, farmersToAssign);
-    const fid = demoFarmerId?.farmer_id ?? farmersToAssign[0];
-    const taskCount = db.prepare(`
-      SELECT COUNT(*) as c FROM farmer_tasks WHERE program_project_id = ? AND farmer_id = ?
-    `).get(projectId, fid) as { c: number };
-    console.log(`Hierarchy ready: project ${projectId}, demo farmer tasks: ${taskCount?.c ?? 0}`);
+  const demoFarmerId = await linkDemoFarmerUser();
+  if (!demoFarmerId) return;
+
+  await assignFarmersToProject(projectId, [demoFarmerId]);
+
+  const taskCount = await getDemoFarmerTaskCount();
+  console.log(`Hierarchy ready: project ${projectId}, demo farmer tasks: ${taskCount}`);
+}
+
+/** Create demo program project when sectors already exist (e.g. shared Supabase). */
+async function ensureDemoProjectWhenHierarchyExists(): Promise<string | null> {
+  const existing = await findDemoProjectId();
+  if (existing) return existing;
+
+  let programId: string | null = null;
+  const programRow = await queryOne<{ id: string }>(
+    'SELECT id FROM programs WHERE name = $1 LIMIT 1',
+    ['Tree Planting']
+  );
+  if (programRow) {
+    programId = programRow.id;
+  } else {
+    const sector = await queryOne<{ id: string }>(
+      'SELECT id FROM sectors ORDER BY created_at ASC LIMIT 1'
+    );
+    if (!sector) return null;
+    const program = (await createProgram({
+      name: 'Tree Planting',
+      sector_id: sector.id,
+      description: 'Planting and nurturing trees in Nairobi region',
+    })) as { id: string };
+    programId = program.id;
   }
+
+  const admin = await queryOne<{ user_id: string }>(
+    `SELECT user_id FROM users WHERE role::text IN ('admin', 'super_admin', 'platform_admin') LIMIT 1`
+  );
+
+  const project = (await createProgramProject({
+    name: DEMO_PROJECT_NAME,
+    program_id: programId,
+    region: 'Nairobi',
+    budget_kes: 20000,
+    start_date: '2026-07-15',
+    end_date: '2026-10-15',
+    country_manager_id: admin?.user_id,
+  })) as unknown as { id: string };
+
+  const taskDefs = [
+    { name: 'Farmer Training', order: 1, value: 4000, days: 7 },
+    { name: 'Obtain Seedlings', order: 2, value: 4000, days: 14 },
+    { name: 'Site Preparation', order: 3, value: 4000, days: 21 },
+    { name: 'Plant Trees', order: 4, value: 4000, days: 28 },
+    { name: 'Inspection & Sign-off', order: 5, value: 4000, days: 35 },
+  ];
+
+  for (const t of taskDefs) {
+    const due = new Date();
+    due.setDate(due.getDate() + t.days);
+    await createTask({
+      program_project_id: project.id,
+      name: t.name,
+      description: `Complete ${t.name}`,
+      task_order: t.order,
+      payment_value_kes: t.value,
+      due_date: due.toISOString().split('T')[0],
+    });
+  }
+
+  console.log('Created demo program project for existing hierarchy');
+  return project.id;
+}
+
+export async function getProgramProjectCount(): Promise<number> {
+  const row = await queryOne<{ c: number }>('SELECT COUNT(*)::int AS c FROM program_projects');
+  return row?.c ?? 0;
+}
+
+/** Task rows for demo farmer John Doe on the Tree Planting demo project. */
+export async function getDemoFarmerTaskCount(): Promise<number> {
+  const projectId = await findDemoProjectId();
+  if (!projectId) return 0;
+
+  const farmer = await queryOne<{ farmer_id: string }>(
+    'SELECT farmer_id FROM farmers WHERE phone_number = $1',
+    [DEMO_FARMER_PHONE]
+  );
+  if (!farmer) return 0;
+
+  const taskCount = await queryOne<{ c: number }>(
+    `SELECT COUNT(*)::int AS c FROM farmer_tasks WHERE program_project_id = $1 AND farmer_id = $2`,
+    [projectId, farmer.farmer_id]
+  );
+  return taskCount?.c ?? 0;
 }

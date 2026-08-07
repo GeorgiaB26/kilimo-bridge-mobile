@@ -1,0 +1,2 @@
+id,user_id,user_role,action,category,resource_type,resource_id,details,ip_address,success,created_at
+285ca919-764f-406e-9974-a3a3aaa18434,,,agent.register,agent,agent,fc2738b4-bace-4258-aa37-6bea4e0d8f6b,"{""region"":""Central"",""aggregationCenter"":""Kiambu Town Hall""}",,1,"2026-07-29 16:51:14"

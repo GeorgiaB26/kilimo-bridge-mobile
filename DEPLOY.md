@@ -22,20 +22,39 @@ The script prints a link like `https://abc123.ngrok-free.app` — send that to y
 - **Login:** `+254700000002`
 - **OTP:** `123456`
 - Keep the terminal open while they test
-- Your full farmer database stays on your Mac (2,600+ records)
+- Farmer data comes from your **Supabase Postgres** database (same data whether you run locally or on Render)
 
 ---
 
-## Permanent hosting (Render + Netlify)
+## Permanent hosting (Render + Netlify + Supabase)
 
-You need **two** hosts:
+You need **three** pieces:
 
 | Part | Host | Purpose |
 |------|------|---------|
 | Web app (shareable link) | **Netlify** | Admin login in browser |
-| API + database | **Render** | Farmers, search, imports |
+| API | **Render** | Express backend |
+| Database | **Supabase** | Postgres — farmers, users, tasks, payments |
 
-Netlify alone cannot run the backend or your SQLite database.
+Netlify cannot run the backend. Render does not host the database file — **Supabase** holds all persistent data.
+
+---
+
+## Part 0 — Supabase database (one-time)
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Run the schema migrations (or apply the SQL from your Supabase project setup).
+3. Copy the **connection string** (Settings → Database → Connection string → **Transaction pooler**, port 6543):
+
+```
+postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+```
+
+4. Use this as `DATABASE_URL` locally (`backend/.env`) and on Render.
+
+**Backups:** Supabase handles automated backups on paid plans. There is no local `.db` file to upload or restore — point every environment at the same `DATABASE_URL` (or separate Supabase projects for staging/production).
+
+**Importing farmers:** Use Admin → CSV Import in the app, or connect your local backend to the same Supabase URL and import from your Mac.
 
 ---
 
@@ -68,6 +87,7 @@ Copy the **output values** into Render (not the command text):
 |-----|--------|
 | `NODE_ENV` | `production` |
 | `PILOT_OTP` | `true` |
+| `DATABASE_URL` | Supabase transaction pooler connection string |
 | `JWT_SECRET` | paste 64-char hex from script |
 | `ENCRYPTION_KEY` | paste 64-char hex from script |
 | `CORS_ORIGINS` | `https://YOUR-NETLIFY-SITE.netlify.app` |
@@ -76,7 +96,7 @@ Do **not** set `PORT` manually — Render sets it automatically.
 
 Do **not** paste placeholder text like `<run: openssl rand -hex 32>` — that is an instruction, not a secret.
 
-Do **not** set `DATABASE_PATH` unless you know you need a custom location — the default `backend/data/kilimo.db` works on Render.
+Do **not** set `DATABASE_PATH`, `RESTORE_DB_SECRET`, or `STARTUP_DB_URL` — those were for the old SQLite workflow and are no longer used.
 
 5. Click **Create Web Service**. Note your API URL, e.g.:
 
@@ -88,85 +108,39 @@ Do **not** set `DATABASE_PATH` unless you know you need a custom location — th
 curl https://kilimo-bridge-api.onrender.com/health
 ```
 
+You should see `"status":"ok"` and a farmer count matching your Supabase data.
+
+If deploy fails, check `/health` for diagnostics:
+
+```bash
+curl https://YOUR-SERVICE.onrender.com/health
+```
+
+- `"status":"error"` with `"error":"DATABASE_URL is not set..."` → add `DATABASE_URL` in Render Environment (Supabase pooler URL, port **6543**).
+- Build log `Exited with status 2` → open Render **Logs** tab; usually TypeScript build errors or missing `shared/` (Root Directory must be `backend`, full repo cloned).
+- Service starts then crashes → check **Events** for bootstrap errors (schema FK mismatches are fixed in recent commits).
+
+**Required Render env vars:** `DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`, `NODE_ENV=production`, `PILOT_OTP=true`, `CORS_ORIGINS` (your Netlify URL).
+
 ### Your farmer data (important)
 
-The Netlify link is only the **web app**. Your imported farmers live in **`backend/data/kilimo.db` on your Mac** — Render starts empty.
+The Netlify link is only the **web app**. All farmer records live in **Supabase Postgres**, not on Render's filesystem.
 
-### Permanent farmer data (do this once — fixes wipe/timeouts)
-
-Render free tier **keeps wiping** your uploaded database. Auto-restore on every boot:
-
-**On your Mac:**
-
-```bash
-brew install gh          # if needed
-gh auth login
-cd ~/kilimo-bridge-mobile
-git pull
-bash scripts/publish-db-backup.sh
-```
-
-The script prints two values. Add them in **Render → Environment**:
-
-```
-STARTUP_DB_URL=https://github.com/GeorgiaB26/kilimo-bridge-mobile/releases/download/db-backup/kilimo.db
-STARTUP_DB_TOKEN=<GitHub token — Settings → Developer settings → Personal access tokens → read repo>
-```
-
-Then **Manual Deploy** on Render. Open `https://kilimo-bridge-mobile.onrender.com/health` — should show `"farmers":2617`.
-
-**Also set up UptimeRobot** (free) pinging `/health` every 5 min so clients don't see timeouts.
-
-### Quick re-upload (temporary)
-
-```bash
-RESTORE_DB_SECRET='KilimoPineappleTest123!' bash scripts/push-db-to-render.sh
-```
-
-**Option A — Upload your database (fastest, ~2 min):**
-
-1. Render → Environment → add:
-   ```
-   RESTORE_DB_SECRET=<pick a long random password>
-   ```
-2. Redeploy Render, then on your Mac:
-   ```bash
-   cd ~/kilimo-bridge-mobile
-   git pull
-   export RESTORE_DB_SECRET='same-password-as-render'
-   bash scripts/push-db-to-render.sh
-   ```
-3. Wait ~60s, refresh Netlify — script prints local vs Render farmer counts.
-
-**Important:** On Render **free** tier, redeploys wipe the database. For a stable client demo:
-
-1. **Keep Render awake (free)** — see “Stop Render sleeping” below
-2. **Persistent disk ($7/mo)** — Render → Settings → add disk, set `DATABASE_PATH=/var/data/kilimo.db`, upload once
-3. After any accidental wipe, re-run: `RESTORE_DB_SECRET='…' bash scripts/push-db-to-render.sh`
+- Local dev and Render both use the same `DATABASE_URL` → same data everywhere.
+- Redeploying Render does **not** wipe farmer data.
+- To add farmers on production: CSV import via Admin, or import locally against the same Supabase URL.
 
 ### Stop Render sleeping (free — do this today)
 
-Render sleeps after ~15 min idle → clients see timeouts and empty data.
+Render free tier sleeps after ~15 min idle → clients see timeouts on first request.
 
 1. Go to [uptimerobot.com](https://uptimerobot.com) (free account)
 2. **Add monitor** → type **HTTP(s)**
-3. URL: `https://kilimo-bridge-mobile.onrender.com/health`
+3. URL: `https://kilimo-bridge-api.onrender.com/health`
 4. Interval: **5 minutes**
 5. Save
 
-This pings Render every 5 min so it stays awake for clients. Your laptop can be off.
-
-### Persistent farmer data (recommended for clients)
-
-Render free tier **does not keep** uploaded SQLite across redeploys. Upgrade to **Starter ($7/mo)** and add a **1GB disk**:
-
-1. Render → your service → **Disks** → Add disk → mount `/var/data`
-2. Environment → `DATABASE_PATH=/var/data/kilimo.db`
-3. Redeploy, then run `push-db-to-render.sh` **once** — data survives future redeploys
-
-**Option B — Re-import CSVs** via Admin → Import on the live site (slower).
-
-**Option C — ngrok demo** from your Mac with full data: `bash scripts/share-demo.sh`
+This pings Render every 5 min so it stays awake for clients. Your laptop can be off — Supabase keeps the data.
 
 ### Preview login — all account types
 
@@ -198,7 +172,7 @@ Or use phone OTP: any seeded account + code `123456`.
 4. **Environment variables** (Site settings → Environment variables):
 
 ```
-EXPO_PUBLIC_API_URL=https://kilimo-bridge-mobile.onrender.com/api
+EXPO_PUBLIC_API_URL=https://kilimo-bridge-api.onrender.com/api
 ```
 
 Replace with your real Render URL from Part 1.
@@ -243,13 +217,12 @@ Open the URL `serve` prints.
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
 | **Too many login attempts** | Redeploy latest `main`. Ensure `PILOT_OTP=true`. Use Quick access buttons. |
-| Deploy fails / `better-sqlite3` / NODE_MODULE_VERSION | Render must use **Node 20** (set `NODE_VERSION=20` in env). Clear build cache: Render → Settings → **Clear build cache** → redeploy. |
-| **Deploy fails / env misconfigured** | `JWT_SECRET` and `ENCRYPTION_KEY` must be real random hex (run `openssl rand -hex 32` twice). Remove `PORT` from env — let Render set it. |
-| Empty farmers list | API database is empty — import CSV or copy `kilimo.db` |
-| API crashes: directory does not exist | Remove `DATABASE_PATH` from Render env vars, redeploy latest `main` |
+| **Deploy fails / env misconfigured** | `JWT_SECRET`, `ENCRYPTION_KEY`, and `DATABASE_URL` must be set. Remove `PORT` from env — let Render set it. |
+| Empty farmers list | Check `DATABASE_URL` on Render points to Supabase with data. Import CSV via Admin if empty. |
+| API fails on startup: `DATABASE_URL is not set` | Add Supabase connection string to Render environment and redeploy. |
 | Build fails on Render | Root Directory **backend**, Build `npm run build:render`, Start `npm start`. If Root Directory is blank, use Build `npm run build:render` and Start `npm run start:api` from repo root. |
-| Deploy fails after merge | Open Render **Logs**. Common causes: `STARTUP_DB_URL` token expired (API now continues anyway), or health check blocked. Redeploy after latest `main`. |
 | `tsc` / missing `@types` errors | Render skips devDependencies when `NODE_ENV=production` — use `build:render` script |
+| Connection timeout to Supabase | Use the **transaction pooler** URL (port 6543), not the direct connection (port 5432), from serverless hosts like Render. |
 
 ---
 

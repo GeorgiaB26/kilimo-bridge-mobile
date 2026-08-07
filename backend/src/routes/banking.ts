@@ -1,56 +1,148 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission } from '../middleware/auth';
 import { bankingRateLimiter, webhookRateLimiter } from '../middleware/security';
 import {
   getBankTransactions,
+  getPaymentsWithFarmers,
   processPaymentViaBanking,
   handleEquityWebhook,
+  verifyFarmerIdForBanking,
 } from '../services/bankingService';
 import { getFinancialAuditLogs } from '../services/auditService';
-import { db } from '../db/database';
+import { createUser, getAllUsers } from '../services/userService';
+import { logAudit } from '../services/auditService';
+import { canCreateUserRole, normalizeRole } from '../../../shared/src/roles';
+import type { UserRole } from '../../../shared/src/roles';
 
 const router = Router();
+
+function asyncHandler(
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    fn(req, res, next).catch(next);
+  };
+}
 
 router.use(authenticate);
 router.use(bankingRateLimiter);
 
-/** View all payment transactions — banking & admin only */
-router.get('/transactions', requirePermission('payments.read'), (_req: Request, res: Response) => {
-  const status = _req.query.status as string | undefined;
-  const transactions = getBankTransactions({ status, limit: 200 });
-  res.json({ transactions });
-});
+/** View payment transactions — banking roles & platform_admin */
+router.get(
+  '/transactions',
+  requirePermission('payments.read'),
+  asyncHandler(async (req, res) => {
+    const status = req.query.status as string | undefined;
+    const transactions = await getBankTransactions({ status, limit: 200 });
+    res.json({ transactions });
+  })
+);
 
-/** View all farmer payments with status */
-router.get('/payments', requirePermission('payments.read'), (_req: Request, res: Response) => {
-  const payments = db.prepare(`
-    SELECT p.*, f.name as farmer_name, f.phone_number, f.district
-    FROM payments p
-    JOIN farmers f ON p.farmer_id = f.farmer_id
-    ORDER BY p.created_at DESC LIMIT 200
-  `).all();
-  res.json({ payments });
-});
+/** View payment processing status (minimal farmer identifiers for processing context) */
+router.get(
+  '/payments',
+  requirePermission('payments.read'),
+  asyncHandler(async (_req, res) => {
+    const payments = await getPaymentsWithFarmers(200);
+    res.json({ payments });
+  })
+);
 
-/** Process M-Pesa payment via Equity H2H */
-router.post('/payments/:paymentId/process', requirePermission('payments.process'), async (req: Request, res: Response) => {
-  const result = await processPaymentViaBanking(req.params.paymentId, req.user!.userId);
-  if (!result.success) {
-    res.status(400).json(result);
-    return;
-  }
-  res.json(result);
-});
+/** Process M-Pesa payment via Equity H2H — banking_agent & platform_admin */
+router.post(
+  '/verify-farmer-id',
+  requirePermission('payments.read'),
+  asyncHandler(async (req, res) => {
+    const { id_number, farmer_id } = req.body;
+    if (!id_number || typeof id_number !== 'string') {
+      res.status(400).json({ error: 'id_number is required' });
+      return;
+    }
+    const result = await verifyFarmerIdForBanking(id_number.trim(), farmer_id);
+    logAudit({
+      userId: req.user?.userId,
+      userRole: req.user?.role,
+      action: 'banking.verify_farmer_id',
+      category: 'financial',
+      details: { verified: result.verified, farmer_id: result.farmer_id ?? farmer_id },
+      ipAddress: req.ip,
+      success: result.verified,
+    });
+    res.json(result);
+  })
+);
 
-/** Financial audit trail */
-router.get('/audit', requirePermission('audit.read'), (req: Request, res: Response) => {
-  const category = req.query.category as string | undefined;
-  if (category === 'financial' || req.user?.role === 'banking') {
-    res.json({ logs: getFinancialAuditLogs(200) });
-    return;
-  }
-  res.json({ logs: getFinancialAuditLogs(100) });
-});
+router.post(
+  '/payments/:paymentId/process',
+  requirePermission('payments.process'),
+  asyncHandler(async (req, res) => {
+    const result = await processPaymentViaBanking(req.params.paymentId, req.user!.userId);
+    if (!result.success) {
+      res.status(400).json(result);
+      return;
+    }
+    res.json(result);
+  })
+);
+
+/** Financial audit trail — banking roles only */
+router.get(
+  '/audit',
+  requirePermission('audit.read.financial'),
+  asyncHandler(async (_req, res) => {
+    res.json({ logs: await getFinancialAuditLogs(200) });
+  })
+);
+
+/** List banking_agent accounts — banking_admin & platform_admin */
+router.get(
+  '/users',
+  requirePermission('users.write.banking_agents'),
+  asyncHandler(async (req, res) => {
+    const q = (req.query.q as string) || undefined;
+    const allUsers = await getAllUsers(q);
+    const users = (allUsers as Array<{ role: string }>).filter(
+      (u) => normalizeRole(u.role) === 'banking_agent'
+    );
+    res.json({ users });
+  })
+);
+
+/** Create banking_agent account — banking_admin & platform_admin */
+router.post(
+  '/users',
+  requirePermission('users.write.banking_agents'),
+  asyncHandler(async (req, res) => {
+    const { phoneNumber, name, passwordHash } = req.body;
+    if (!phoneNumber || !name) {
+      res.status(400).json({ error: 'phoneNumber and name are required' });
+      return;
+    }
+
+    const targetRole: UserRole = 'banking_agent';
+    if (!canCreateUserRole(req.user!.role, targetRole)) {
+      res.status(403).json({ error: 'Cannot create banking_agent accounts' });
+      return;
+    }
+
+    try {
+      const userId = await createUser({ phoneNumber, name, role: targetRole, passwordHash });
+      await logAudit({
+        userId: req.user?.userId,
+        userRole: req.user?.role,
+        action: 'user.create',
+        category: 'system',
+        resourceType: 'user',
+        resourceId: userId,
+        details: { role: targetRole, name },
+        success: true,
+      });
+      res.status(201).json({ userId });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to create user' });
+    }
+  })
+);
 
 export default router;
 
@@ -58,19 +150,22 @@ export default router;
 export const equityWebhookRouter = Router();
 equityWebhookRouter.use(webhookRateLimiter);
 
-equityWebhookRouter.post('/equity', (req: Request, res: Response) => {
-  const webhookSecret = process.env.EQUITY_WEBHOOK_SECRET;
-  if (webhookSecret && req.headers['x-equity-signature'] !== webhookSecret) {
-    res.status(401).json({ error: 'Invalid webhook signature' });
-    return;
-  }
+equityWebhookRouter.post(
+  '/equity',
+  asyncHandler(async (req, res) => {
+    const webhookSecret = process.env.EQUITY_WEBHOOK_SECRET;
+    if (webhookSecret && req.headers['x-equity-signature'] !== webhookSecret) {
+      res.status(401).json({ error: 'Invalid webhook signature' });
+      return;
+    }
 
-  const { reference, status, transactionId, message } = req.body;
-  if (!reference || !status) {
-    res.status(400).json({ error: 'reference and status required' });
-    return;
-  }
+    const { reference, status, transactionId, message } = req.body;
+    if (!reference || !status) {
+      res.status(400).json({ error: 'reference and status required' });
+      return;
+    }
 
-  const result = handleEquityWebhook({ reference, status, transactionId, message });
-  res.json(result);
-});
+    const result = await handleEquityWebhook({ reference, status, transactionId, message });
+    res.json(result);
+  })
+);

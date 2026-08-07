@@ -27,7 +27,7 @@ export function useTaskApprovalPolling(
       const prev = prevStatusRef.current[t.id];
       if (prev === 'submitted-for-approval' && t.status === 'approved' && !notifiedRef.current.has(`${t.id}-approved`)) {
         notifiedRef.current.add(`${t.id}-approved`);
-        Alert.alert('✓ Task approved', 'Task approved! Payment pending.');
+        Alert.alert('Task approved', 'Task approved! Payment pending.');
       }
       if (prev === 'submitted-for-approval' && t.status === 'rejected' && !notifiedRef.current.has(`${t.id}-rejected`)) {
         notifiedRef.current.add(`${t.id}-rejected`);
@@ -48,7 +48,7 @@ export function useTaskApprovalPolling(
             const data = await getFarmerTaskStatus(t.id);
             if (data.status === 'approved' && !notifiedRef.current.has(`${t.id}-approved`)) {
               notifiedRef.current.add(`${t.id}-approved`);
-              Alert.alert('✓ Task approved', 'Task approved! Payment pending.');
+              Alert.alert('Task approved', 'Task approved! Payment pending.');
             }
             if (data.status === 'rejected' && !notifiedRef.current.has(`${t.id}-rejected`)) {
               notifiedRef.current.add(`${t.id}-rejected`);

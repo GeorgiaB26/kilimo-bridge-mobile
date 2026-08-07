@@ -1,0 +1,4 @@
+Key,Name,Gender,ID Number,Membership Group,Aggregation center,Phone,Country,District,Sub-County,Parish,Village,Membership Type,Occupation,Size of land,Project 1,Project 2,Project 3,Picture
+NORM-001,Norm Match Test,M,NORMID00001,Test Coop,Kiambu Town Hall,+254799200001,Kenya,Kiambu,Limuru,,,Active,Farmer,1,  water harvesting pilot 2026.  ,,,
+TYPO-001,Typo Warn Test,F,TYPOID00002,Test Coop,Kiambu Town Hall,+254799200002,Kenya,Kiambu,Limuru,,,Active,Farmer,1,Water Harvesting Pilto 2026,,,
+NEW-001,New Project Test,M,NEWID00003,Test Coop,Kiambu Town Hall,+254799200003,Kenya,Kiambu,Limuru,,,Active,Farmer,1,Solar Irrigation Beta 2027,,,

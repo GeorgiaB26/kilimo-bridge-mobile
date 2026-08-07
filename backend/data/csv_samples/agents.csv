@@ -1,0 +1,2 @@
+agent_id,user_id,government_id_encrypted,aggregation_center,region,district,status,verified_by,verified_at,created_at
+fc2738b4-bace-4258-aa37-6bea4e0d8f6b,9008a10f-73ea-4e44-bf94-3a7b4435bfd9,enc:59c1cee7488715e8474f6a061fcfdab5:2cbef7ed0093040de66a50365a5983d8:59a2ee8c445846e942c424cfec,"Kiambu Town Hall",Central,Kiambu,active,,"2026-07-29 16:51:14","2026-07-29 16:51:14"

@@ -1,13 +1,13 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../constants';
+import { Text } from '@/components/ui/text';
 import { useCurrency } from '../../context/CurrencyContext';
 import { KBProgressBar } from '../../components/ui/KBProgressBar';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerProjectTasksSection } from '../../components/farmer/FarmerProjectTasksSection';
-import { formatDueDate, formatProjectStatus } from '../../utils/greeting';
+import { formatCleanDate, formatProjectStatus, formatProjectDate } from '../../utils/greeting';
 import { PROJECT_DESCRIPTIONS } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 
@@ -23,88 +23,52 @@ export function FarmerProjectDetailScreen({ route }: Props) {
     'A Kilimo Bridge cooperative project. Complete the assigned work to receive your payment via M-Pesa.';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.hero}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="leaf" size={36} color={COLORS.primary} />
+    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
+      <View className="mb-4 items-center rounded-2xl bg-white p-6">
+        <View className="mb-3 h-[72px] w-[72px] items-center justify-center rounded-full bg-[#E8F5F0]">
+          <Ionicons name="leaf" size={36} color="#1A4D3E" />
         </View>
-        <Text style={styles.title}>{project.project_name}</Text>
+        <Text className="mb-3 text-center text-2xl font-bold text-[#1A4D3E]">{project.project_name}</Text>
         <KBStatusChip label={statusInfo.label} variant={statusInfo.variant} />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionLabel}>About this project</Text>
-        <Text style={styles.description}>{description}</Text>
+      <View className="mb-3 rounded-xl bg-white p-[18px]">
+        <Text className="mb-2 text-xs font-bold uppercase tracking-wide text-[#757575]">About this project</Text>
+        <Text className="text-[15px] leading-[22px] text-[#333333]">{description}</Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionLabel}>Payment</Text>
-        <Text style={styles.amount}>{formatAmount(project.payment_amount)}</Text>
+      <View className="mb-3 rounded-xl bg-white p-[18px]">
+        <Text className="mb-2 text-xs font-bold uppercase tracking-wide text-[#757575]">Schedule</Text>
+        <Text className="text-[15px] leading-[22px] text-[#333333]">
+          Start: {formatProjectDate(project.start_date)}
+          {' · '}
+          End: {formatProjectDate(project.due_date)}
+        </Text>
+      </View>
+
+      <View className="mb-3 rounded-xl bg-white p-[18px]">
+        <Text className="mb-2 text-xs font-bold uppercase tracking-wide text-[#757575]">Payment</Text>
+        <Text className="text-[32px] font-extrabold leading-10 text-[#D4AF6A]">{formatAmount(project.payment_amount)}</Text>
         {project.payment_status ? (
-          <Text style={styles.meta}>Payment status: {project.payment_status}</Text>
+          <Text className="mt-2.5 text-sm leading-[22px] text-[#757575]">Payment status: {project.payment_status}</Text>
         ) : null}
       </View>
 
       {!isComplete ? (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Your progress</Text>
+        <View className="mb-3 rounded-xl bg-white p-[18px]">
+          <Text className="mb-2 text-xs font-bold uppercase tracking-wide text-[#757575]">Your progress</Text>
           <KBProgressBar
             progress={project.completion_percentage}
             label={`${project.completion_percentage}% complete`}
-            rightLabel={project.due_date ? `Due ${formatDueDate(project.due_date)}` : undefined}
+            rightLabel={project.due_date ? `Due ${formatCleanDate(project.due_date)}` : undefined}
             stacked
           />
         </View>
       ) : null}
 
-      <View style={styles.tasksCard}>
+      <View className="mb-3 rounded-xl bg-white p-[18px]">
         <FarmerProjectTasksSection programProjectId={programProjectId} />
       </View>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { padding: 16, paddingBottom: 40 },
-  hero: {
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 16,
-  },
-  iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#E8F5F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  title: { fontSize: 24, fontWeight: '700', color: COLORS.primary, textAlign: 'center', marginBottom: 12 },
-  card: {
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
-    padding: 18,
-    marginBottom: 12,
-  },
-  tasksCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
-    padding: 18,
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 8,
-  },
-  description: { fontSize: 15, color: COLORS.text, lineHeight: 22 },
-  amount: { fontSize: 32, fontWeight: '800', color: COLORS.accent, lineHeight: 40 },
-  meta: { fontSize: 14, lineHeight: 22, color: COLORS.muted, marginTop: 10 },
-});

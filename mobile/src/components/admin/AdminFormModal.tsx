@@ -3,6 +3,7 @@ import {
   View, Text, Modal, StyleSheet, ScrollView, Pressable, TextInput as RNTextInput,
 } from 'react-native';
 import { Button, Menu } from 'react-native-paper';
+import { X } from 'lucide-react-native';
 import { COLORS } from '../../constants';
 
 export interface FormFieldOption {
@@ -68,7 +69,10 @@ export function AdminFormModal({
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Pressable onPress={onClose} style={styles.closeRow}>
-            <Text style={styles.close}>✕ Close</Text>
+            <View style={styles.closeContent}>
+              <X size={16} color={COLORS.muted} />
+              <Text style={styles.close}>Close</Text>
+            </View>
           </Pressable>
           <Text style={styles.title}>{title}</Text>
           <ScrollView style={styles.fields}>
@@ -127,6 +131,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 },
   card: { backgroundColor: COLORS.background, borderRadius: 12, padding: 20, maxHeight: '85%' },
   closeRow: { alignSelf: 'flex-end' },
+  closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 15 },
   title: { fontSize: 20, fontWeight: '700', color: COLORS.primary, marginBottom: 16 },
   fields: { marginBottom: 16 },

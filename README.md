@@ -51,7 +51,7 @@ React Native (Expo) mobile app with Node.js backend for farmer registration and 
 3. **Membership** — Cooperative group, aggregation center, membership type
 4. **Details** — Occupation, land size
 5. **Projects** — Optional project assignments (1–3)
-6. **Photo** — Camera/gallery upload or initials avatar
+6. **Photo** — Required camera/gallery verification photo (no initials avatars)
 7. **Confirm** — Review summary and submit
 
 ### Admin CSV Import
@@ -94,17 +94,18 @@ The app now has **two platforms in one**:
 | **Farmer** | `+254712345678` | OTP `123456` | Own dashboard, projects, payments, profile only |
 | **Super Admin** | `+254700000001` | OTP `123456` | Full access including user management |
 
-> **First time after update?** Delete `backend/data/kilimo.db` and restart the backend to create new tables.
+> **First time setup?** Copy `backend/.env.example` to `backend/.env` and set `DATABASE_URL` to your Supabase connection string.
 
 ### Backend API (Terminal 1)
 
 ```bash
 cd backend
+cp .env.example .env   # set DATABASE_URL to your Supabase connection string
 npm install
 npm run dev
 ```
 
-You should see: `Kilimo Bridge API running on http://localhost:3001`
+You should see: `Kilimo Bridge API listening on 0.0.0.0:3001`
 
 Test it:
 ```bash
@@ -170,7 +171,7 @@ Uses `backend/data/test-farmers.csv` (5 test rows from spec).
 - **Passwords**: bcrypt hashing (12 rounds), never stored in plaintext
 - **Sensitive fields**: AES-256-GCM encryption for ID numbers and bank accounts (`id_number_encrypted`, `bank_account_encrypted`)
 - **Transport**: HTTPS/TLS enforced in production (helmet HSTS, redirect)
-- **Backups**: `scripts/backup-encrypted.sh` creates OpenSSL-encrypted database backups
+- **Database**: Postgres on Supabase — no local SQLite file. Backups are managed in the Supabase dashboard.
 
 ### Audit trails
 Every financial transaction, agent action, and farmer data access is logged with timestamp and user ID in `audit_logs`.
@@ -182,7 +183,13 @@ Configure in `backend/.env` (see `.env.example`):
 - 30s timeout with graceful fallback (dev mode simulates success when no API key)
 
 ### Environment variables
-Copy `backend/.env.example` to `backend/.env` and set production values for `JWT_SECRET`, `ENCRYPTION_KEY`, and Equity credentials.
+Copy `backend/.env.example` to `backend/.env` and set:
+
+- `DATABASE_URL` — Supabase Postgres connection string (required)
+- `JWT_SECRET`, `ENCRYPTION_KEY` — generate with `openssl rand -hex 32`
+- Equity credentials when enabling H2H (`EQUITY_H2H_URL`, `EQUITY_API_KEY`, etc.)
+
+See [DEPLOY.md](./DEPLOY.md) for Render + Netlify + Supabase production setup.
 
 ## Design
 
@@ -194,7 +201,7 @@ Copy `backend/.env.example` to `backend/.env` and set production values for `JWT
 
 ```
 ├── mobile/          # Expo React Native app
-├── backend/         # Express API + SQLite
+├── backend/         # Express API (Postgres via Supabase)
 ├── shared/          # Validation rules & types
-└── backend/data/    # Test CSV & database
+└── backend/data/    # Test CSV samples
 ```

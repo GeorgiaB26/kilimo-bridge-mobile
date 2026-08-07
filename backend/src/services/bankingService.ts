@@ -1,8 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db/database';
-import { encryptField, decryptField, hashPassword } from './encryptionService';
+import { query, queryOne } from '../db/database';
+import { encryptField, decryptField, hashPassword, hashIdNumber } from './encryptionService';
 import { logAudit } from './auditService';
-import { createUser } from './userService';
 
 const EQUITY_API_URL = process.env.EQUITY_H2H_URL || 'https://api.equitybank.co.ke/h2h/v1';
 const EQUITY_API_KEY = process.env.EQUITY_API_KEY || '';
@@ -21,6 +20,7 @@ interface H2HTransferResult {
   transactionId?: string;
   reference?: string;
   error?: string;
+  /** API response status — DB uses bank_transaction_status enum (no 'timeout'; stored as 'processing'). */
   status: 'pending' | 'completed' | 'failed' | 'timeout';
 }
 
@@ -28,12 +28,14 @@ interface H2HTransferResult {
 export async function initiateH2HTransfer(req: H2HTransferRequest): Promise<H2HTransferResult> {
   const txId = uuidv4();
 
-  db.prepare(`
-    INSERT INTO bank_transactions (id, payment_id, farmer_id, amount, recipient_phone, status, initiated_by)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?)
-  `).run(txId, req.paymentId, req.farmerId, req.amount, req.recipientPhone, req.initiatedBy);
+  await query(
+    `INSERT INTO bank_transactions (
+      id, payment_id, farmer_id, amount, recipient_phone, status, initiated_by
+    ) VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
+    [txId, req.paymentId, req.farmerId, req.amount, req.recipientPhone, req.initiatedBy]
+  );
 
-  logAudit({
+  await logAudit({
     userId: req.initiatedBy,
     action: 'payment.h2h_request',
     category: 'financial',
@@ -43,14 +45,15 @@ export async function initiateH2HTransfer(req: H2HTransferRequest): Promise<H2HT
     success: true,
   });
 
-  // Dev/simulation mode when no API key configured
+  // Dev/simulation mode when no API key configured or non-production
   if (!EQUITY_API_KEY || process.env.NODE_ENV !== 'production') {
     const ref = `EQX${Date.now()}`;
     await simulateBankDelay();
-    db.prepare(`
-      UPDATE bank_transactions SET status = 'completed', equity_reference = ?, completed_at = datetime('now')
-      WHERE id = ?
-    `).run(ref, txId);
+    await query(
+      `UPDATE bank_transactions SET status = 'completed', equity_reference = $1, completed_at = NOW()
+       WHERE id = $2`,
+      [ref, txId]
+    );
     return { success: true, transactionId: txId, reference: ref, status: 'completed' };
   }
 
@@ -62,7 +65,7 @@ export async function initiateH2HTransfer(req: H2HTransferRequest): Promise<H2HT
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${EQUITY_API_KEY}`,
+        Authorization: `Bearer ${EQUITY_API_KEY}`,
         'X-Request-ID': txId,
       },
       body: JSON.stringify({
@@ -76,13 +79,15 @@ export async function initiateH2HTransfer(req: H2HTransferRequest): Promise<H2HT
     });
 
     clearTimeout(timeout);
-    const data = await response.json() as { reference?: string; status?: string; message?: string };
+    const data = (await response.json()) as { reference?: string; status?: string; message?: string };
 
     if (!response.ok) {
       const error = data.message || `Bank API error: ${response.status}`;
-      db.prepare(`UPDATE bank_transactions SET status = 'failed', error_message = ?, equity_response = ? WHERE id = ?`)
-        .run(error, JSON.stringify(data), txId);
-      logAudit({
+      await query(
+        `UPDATE bank_transactions SET status = 'failed', error_message = $1, equity_response = $2 WHERE id = $3`,
+        [error, JSON.stringify(data), txId]
+      );
+      await logAudit({
         userId: req.initiatedBy,
         action: 'payment.h2h_request',
         category: 'financial',
@@ -93,18 +98,24 @@ export async function initiateH2HTransfer(req: H2HTransferRequest): Promise<H2HT
       return { success: false, transactionId: txId, error, status: 'failed' };
     }
 
-    db.prepare(`
-      UPDATE bank_transactions SET status = 'pending', equity_reference = ?, equity_response = ?
-      WHERE id = ?
-    `).run(data.reference ?? null, JSON.stringify(data), txId);
+    await query(
+      `UPDATE bank_transactions SET status = 'pending', equity_reference = $1, equity_response = $2
+       WHERE id = $3`,
+      [data.reference ?? null, JSON.stringify(data), txId]
+    );
 
     return { success: true, transactionId: txId, reference: data.reference, status: 'pending' };
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === 'AbortError';
     const error = isTimeout ? 'Bank API timeout — transaction queued for retry' : String(err);
-    db.prepare(`UPDATE bank_transactions SET status = ?, error_message = ? WHERE id = ?`)
-      .run(isTimeout ? 'timeout' : 'failed', error, txId);
-    logAudit({
+    /** Postgres bank_transaction_status has no 'timeout' — use 'processing' for queued retry. */
+    const dbStatus = isTimeout ? 'processing' : 'failed';
+    await query(`UPDATE bank_transactions SET status = $1, error_message = $2 WHERE id = $3`, [
+      dbStatus,
+      error,
+      txId,
+    ]);
+    await logAudit({
       userId: req.initiatedBy,
       action: 'payment.h2h_request',
       category: 'financial',
@@ -117,20 +128,19 @@ export async function initiateH2HTransfer(req: H2HTransferRequest): Promise<H2HT
 }
 
 /** Process webhook from Equity Bank confirming transaction */
-export function handleEquityWebhook(payload: {
+export async function handleEquityWebhook(payload: {
   reference: string;
   status: 'SUCCESS' | 'FAILED' | 'PENDING';
   transactionId?: string;
   message?: string;
-}): { success: boolean; error?: string } {
-  const tx = db.prepare(`
-    SELECT * FROM bank_transactions WHERE equity_reference = ? OR id = ?
-  `).get(payload.reference, payload.transactionId) as {
-    id: string; payment_id: string; status: string;
-  } | undefined;
+}): Promise<{ success: boolean; error?: string }> {
+  const tx = await queryOne<{ id: string; payment_id: string; status: string }>(
+    `SELECT * FROM bank_transactions WHERE equity_reference = $1 OR id = $2`,
+    [payload.reference, payload.transactionId ?? null]
+  );
 
   if (!tx) {
-    logAudit({
+    await logAudit({
       action: 'payment.h2h_webhook',
       category: 'financial',
       details: { error: 'unknown_reference', payload },
@@ -139,22 +149,25 @@ export function handleEquityWebhook(payload: {
     return { success: false, error: 'Transaction not found' };
   }
 
-  const newStatus = payload.status === 'SUCCESS' ? 'completed' : payload.status === 'FAILED' ? 'failed' : 'pending';
+  const newStatus =
+    payload.status === 'SUCCESS' ? 'completed' : payload.status === 'FAILED' ? 'failed' : 'pending';
 
-  db.prepare(`
-    UPDATE bank_transactions SET status = ?, equity_response = ?, webhook_received_at = datetime('now'),
-    completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
-    WHERE id = ?
-  `).run(newStatus, JSON.stringify(payload), newStatus, tx.id);
+  await query(
+    `UPDATE bank_transactions SET status = $1, equity_response = $2, webhook_received_at = NOW(),
+      completed_at = CASE WHEN $3 THEN NOW() ELSE completed_at END
+     WHERE id = $4`,
+    [newStatus, JSON.stringify(payload), newStatus === 'completed', tx.id]
+  );
 
   if (newStatus === 'completed' && tx.payment_id) {
-    db.prepare(`
-      UPDATE payments SET payment_status = 'Transferred', mpesa_reference = ?, paid_at = datetime('now')
-      WHERE id = ?
-    `).run(payload.reference, tx.payment_id);
+    await query(
+      `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
+       WHERE id = $2`,
+      [payload.reference, tx.payment_id]
+    );
   }
 
-  logAudit({
+  await logAudit({
     action: 'payment.h2h_webhook',
     category: 'financial',
     resourceType: 'bank_transaction',
@@ -166,24 +179,79 @@ export function handleEquityWebhook(payload: {
   return { success: true };
 }
 
-export function getBankTransactions(filters: { status?: string; limit?: number } = {}) {
+export async function getBankTransactions(filters: { status?: string; limit?: number } = {}) {
   const limit = filters.limit ?? 100;
   if (filters.status) {
-    return db.prepare(`SELECT * FROM bank_transactions WHERE status = ? ORDER BY created_at DESC LIMIT ?`)
-      .all(filters.status, limit);
+    return query(
+      `SELECT * FROM bank_transactions WHERE status = $1 ORDER BY created_at DESC LIMIT $2`,
+      [filters.status, limit]
+    );
   }
-  return db.prepare(`SELECT * FROM bank_transactions ORDER BY created_at DESC LIMIT ?`).all(limit);
+  return query(`SELECT * FROM bank_transactions ORDER BY created_at DESC LIMIT $1`, [limit]);
 }
 
-export function processPaymentViaBanking(paymentId: string, initiatedBy: string): Promise<H2HTransferResult> {
-  const payment = db.prepare(`
-    SELECT p.*, f.phone_number FROM payments p
-    JOIN farmers f ON p.farmer_id = f.farmer_id
-    WHERE p.id = ? AND p.payment_status = 'Pending'
-  `).get(paymentId) as { id: string; farmer_id: string; amount: number; phone_number: string } | undefined;
+export async function getPaymentsWithFarmers(limit = 200) {
+  return query(
+    `SELECT p.*, f.name as farmer_name, f.phone_number, f.district
+     FROM payments p
+     JOIN farmers f ON p.farmer_id = f.farmer_id
+     ORDER BY p.created_at DESC LIMIT $1`,
+    [limit]
+  );
+}
+
+/** Banking MVP — verify national ID against id_number_hash (optionally scoped to farmer_id). */
+export async function verifyFarmerIdForBanking(
+  idNumber: string,
+  farmerId?: string
+): Promise<{
+  verified: boolean;
+  farmer_id?: string;
+  name?: string;
+  phone_number?: string;
+}> {
+  const hash = hashIdNumber(idNumber);
+  if (!hash) {
+    return { verified: false };
+  }
+  const row = farmerId
+    ? await queryOne<{ farmer_id: string; name: string; phone_number: string }>(
+        'SELECT farmer_id, name, phone_number FROM farmers WHERE farmer_id = $1 AND id_number_hash = $2',
+        [farmerId, hash]
+      )
+    : await queryOne<{ farmer_id: string; name: string; phone_number: string }>(
+        'SELECT farmer_id, name, phone_number FROM farmers WHERE id_number_hash = $1',
+        [hash]
+      );
+  if (!row) {
+    return { verified: false };
+  }
+  return {
+    verified: true,
+    farmer_id: row.farmer_id,
+    name: row.name,
+    phone_number: row.phone_number,
+  };
+}
+
+export async function processPaymentViaBanking(
+  paymentId: string,
+  initiatedBy: string
+): Promise<H2HTransferResult> {
+  const payment = await queryOne<{
+    id: string;
+    farmer_id: string;
+    amount: number;
+    phone_number: string;
+  }>(
+    `SELECT p.*, f.phone_number FROM payments p
+     JOIN farmers f ON p.farmer_id = f.farmer_id
+     WHERE p.id = $1 AND p.payment_status = 'pending'`,
+    [paymentId]
+  );
 
   if (!payment) {
-    return Promise.resolve({ success: false, error: 'Payment not found or already processed', status: 'failed' });
+    return { success: false, error: 'Payment not found or already processed', status: 'failed' };
   }
 
   return initiateH2HTransfer({
@@ -212,7 +280,10 @@ export function encryptFarmerSensitiveFields(farmer: {
 
 export async function setUserPassword(userId: string, password: string): Promise<void> {
   const hash = await hashPassword(password);
-  db.prepare(`UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE user_id = ?`).run(hash, userId);
+  await query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2`, [
+    hash,
+    userId,
+  ]);
 }
 
 export { encryptField, decryptField };

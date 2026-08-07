@@ -1,8 +1,24 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from './db/database';
+import bcrypt from 'bcryptjs';
+import { query, queryOne } from './db/database';
 import { createUser } from './services/userService';
+import { ensureMembershipGroup } from './services/farmerService';
+import { encryptField, hashIdNumber } from './services/encryptionService';
+import { backfillFarmerSupportLinks } from './services/farmerHelpRequestService';
 
 const DEMO_FARMER_PHONE = '+254712345678';
+const DEMO_AGENT_PHONE = '+254700000003';
+const TEST_SWITCHER_FA_PHONE = '+254745678901';
+const DEMO_BANKING_PHONE = '+254700000004';
+const DEMO_AGGREGATION_CENTRE = 'Kiambu Town Hall';
+
+const DEMO_MEMBERSHIP_GROUPS = [
+  'Gulu Women Economic Dev',
+  'Kiambu Cooperative',
+  'Nairobi Women Coop',
+  'Test Coop',
+];
+
 const DEMO_FARMER = {
   key: 'DEMO-001',
   name: 'John Doe',
@@ -13,79 +29,88 @@ const DEMO_FARMER = {
   subCounty: 'Limuru',
 };
 
-const LEGACY_PROJECTS = [
-  'Coffee Training',
-  'Soil Health',
-  'Baseline Survey',
-  'Water Conservation',
-  'Pest Management',
-];
-
 /** Always ensure demo login accounts + portal data work, even with 2617+ imported farmers. */
-export function ensureDemoFarmerPortal(): void {
-  ensureMembershipGroup(DEMO_FARMER.membershipGroup);
-  const projectIds = ensureLegacyProjects();
-  const farmerId = ensureDemoFarmerRecord();
+export async function ensureDemoFarmerPortal(): Promise<void> {
+  for (const name of DEMO_MEMBERSHIP_GROUPS) {
+    await ensureMembershipGroup(name);
+  }
+  const farmerId = await ensureDemoFarmerRecord();
   if (!farmerId) {
     console.warn('Demo farmer record could not be created');
     return;
   }
 
-  ensureDemoFarmerUser(farmerId);
-  ensureDemoStaffUsers();
-  ensureDemoFarmerLegacyData(farmerId, projectIds);
+  await ensureDemoFarmerUser(farmerId);
+  await ensureDemoStaffUsers();
+  await ensureDemoAgentRecord();
+  await ensureTestSwitcherFieldAgent();
+  await ensureDemoBankingUser();
+  await linkDemoFarmerToAgent();
+  await ensureDemoCentreManagers();
+  await backfillFarmerSupportLinks();
+  await ensureDemoFarmerPayments(farmerId);
   console.log(`Demo farmer portal ready: ${DEMO_FARMER.name} (${farmerId.slice(0, 8)}…)`);
 }
 
-function ensureMembershipGroup(name: string): string {
-  const existing = db.prepare('SELECT id FROM membership_groups WHERE name = ?').get(name) as
-    | { id: string }
-    | undefined;
-  if (existing) return existing.id;
-  const id = uuidv4();
-  db.prepare('INSERT INTO membership_groups (id, name) VALUES (?, ?)').run(id, name);
-  return id;
-}
+async function ensureDemoFarmerRecord(): Promise<string | null> {
+  const existing = await queryOne<{ farmer_id: string }>(
+    'SELECT farmer_id FROM farmers WHERE phone_number = $1',
+    [DEMO_FARMER_PHONE]
+  );
+  const groupId = await ensureMembershipGroup(DEMO_FARMER.membershipGroup);
+  if (!groupId) return null;
 
-function ensureLegacyProjects(): Record<string, string> {
-  const insert = db.prepare('INSERT OR IGNORE INTO projects (id, name) VALUES (?, ?)');
-  for (const name of LEGACY_PROJECTS) {
-    insert.run(uuidv4(), name);
+  if (existing) {
+    await query(
+      `UPDATE farmers SET
+        membership_group_id = $1,
+        aggregation_center = $2,
+        district = $3,
+        sub_county = $4,
+        country = 'Kenya',
+        membership_type = COALESCE(membership_type, 'Active'),
+        status = 'verified'
+       WHERE farmer_id = $5`,
+      [groupId, DEMO_AGGREGATION_CENTRE, DEMO_FARMER.district, DEMO_FARMER.subCounty, existing.farmer_id]
+    );
+    return existing.farmer_id;
   }
-  const rows = db.prepare('SELECT id, name FROM projects').all() as { id: string; name: string }[];
-  const map: Record<string, string> = {};
-  for (const r of rows) map[r.name] = r.id;
-  return map;
-}
-
-function ensureDemoFarmerRecord(): string | null {
-  const existing = db.prepare('SELECT farmer_id FROM farmers WHERE phone_number = ?').get(DEMO_FARMER_PHONE) as
-    | { farmer_id: string }
-    | undefined;
-  if (existing) return existing.farmer_id;
-
-  const groupId = ensureMembershipGroup(DEMO_FARMER.membershipGroup);
   const farmerId = uuidv4();
-  db.prepare(`
-    INSERT INTO farmers (
-      farmer_id, key, name, gender, id_number, membership_group_id,
-      phone_number, country, district, sub_county, membership_type, status, aggregation_center
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Kenya', ?, ?, 'Active', 'Active', 'Kiambu Town Hall')
-  `).run(
-    farmerId, DEMO_FARMER.key, DEMO_FARMER.name, DEMO_FARMER.gender,
-    DEMO_FARMER.idNumber, groupId, DEMO_FARMER_PHONE,
-    DEMO_FARMER.district, DEMO_FARMER.subCounty
+  await query(
+    `INSERT INTO farmers (
+      farmer_id, key, name, gender, id_number_encrypted, id_number_hash, membership_group_id,
+      aggregation_center, phone_number, phone_country_prefix,
+      country, district, sub_county, membership_type, status
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      farmerId,
+      DEMO_FARMER.key,
+      DEMO_FARMER.name,
+      DEMO_FARMER.gender,
+      encryptField(DEMO_FARMER.idNumber),
+      hashIdNumber(DEMO_FARMER.idNumber),
+      groupId,
+      DEMO_AGGREGATION_CENTRE,
+      DEMO_FARMER_PHONE,
+      '+254',
+      'Kenya',
+      DEMO_FARMER.district,
+      DEMO_FARMER.subCounty,
+      'Active',
+      'verified',
+    ]
   );
   return farmerId;
 }
 
-function ensureDemoFarmerUser(farmerId: string): void {
-  const existing = db.prepare('SELECT user_id, farmer_id FROM users WHERE phone_number = ?').get(DEMO_FARMER_PHONE) as
-    | { user_id: string; farmer_id: string | null }
-    | undefined;
+async function ensureDemoFarmerUser(farmerId: string): Promise<void> {
+  const existing = await queryOne<{ user_id: string; farmer_id: string | null }>(
+    'SELECT user_id, farmer_id FROM users WHERE phone_number = $1',
+    [DEMO_FARMER_PHONE]
+  );
 
   if (!existing) {
-    createUser({
+    await createUser({
       phoneNumber: DEMO_FARMER_PHONE,
       name: DEMO_FARMER.name,
       role: 'farmer',
@@ -96,63 +121,221 @@ function ensureDemoFarmerUser(farmerId: string): void {
   }
 
   if (!existing.farmer_id) {
-    db.prepare('UPDATE users SET farmer_id = ? WHERE user_id = ?').run(farmerId, existing.user_id);
+    await query('UPDATE users SET farmer_id = $1 WHERE user_id = $2', [farmerId, existing.user_id]);
   }
 }
 
-function ensureDemoStaffUsers(): void {
+async function ensureDemoStaffUsers(): Promise<void> {
   const staff = [
     { phone: '+254700000001', name: 'Super Admin', role: 'super_admin' as const },
-    { phone: '+254700000002', name: 'Platform Admin', role: 'admin' as const },
-    { phone: '+254700000003', name: 'Kiambu Agent', role: 'agent' as const, district: 'Kiambu', aggregationCenter: 'Kiambu Town Hall' },
+    { phone: '+254700000002', name: 'Platform Admin', role: 'platform_admin' as const },
+    {
+      phone: DEMO_AGENT_PHONE,
+      name: 'Kiambu Agent',
+      role: 'agent' as const,
+      district: 'Kiambu',
+      region: 'Central',
+      aggregationCenter: DEMO_AGGREGATION_CENTRE,
+    },
   ];
   for (const s of staff) {
-    const row = db.prepare('SELECT user_id FROM users WHERE phone_number = ?').get(s.phone);
+    const row = await queryOne<{ user_id: string }>(
+      'SELECT user_id FROM users WHERE phone_number = $1',
+      [s.phone]
+    );
     if (!row) {
-      createUser({
+      await createUser({
         phoneNumber: s.phone,
         name: s.name,
         role: s.role,
         district: 'district' in s ? s.district : undefined,
+        region: 'region' in s ? s.region : undefined,
         aggregationCenter: 'aggregationCenter' in s ? s.aggregationCenter : undefined,
       });
+    } else if (s.role === 'agent') {
+      await query(
+        `UPDATE users SET
+          name = $1,
+          role = 'agent',
+          district = $2,
+          region = $3,
+          aggregation_center = $4
+         WHERE phone_number = $5`,
+        [s.name, s.district, s.region, s.aggregationCenter, s.phone]
+      );
     }
   }
+}
+
+/** Field agent row + scoping for Farmers / Centre tabs (always upserted for demo phone). */
+async function ensureDemoAgentRecord(): Promise<void> {
+  const user = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [DEMO_AGENT_PHONE]
+  );
+  if (!user) return;
+
+  const agent = await queryOne<{ agent_id: string }>(
+    'SELECT agent_id FROM agents WHERE user_id = $1',
+    [user.user_id]
+  );
+
+  if (!agent) {
+    const agentId = uuidv4();
+    const encryptedGovId = encryptField('GOV-AGENT-DEMO-001');
+    await query(
+      `INSERT INTO agents (
+        agent_id, user_id, government_id_encrypted, aggregation_center, region, district, status, verified_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW())`,
+      [agentId, user.user_id, encryptedGovId, DEMO_AGGREGATION_CENTRE, 'Central', 'Kiambu']
+    );
+  } else {
+    await query(
+      `UPDATE agents SET
+        aggregation_center = $1,
+        region = 'Central',
+        district = 'Kiambu',
+        status = 'active',
+        verified_at = COALESCE(verified_at, NOW())
+       WHERE agent_id = $2`,
+      [DEMO_AGGREGATION_CENTRE, agent.agent_id]
+    );
+  }
+}
+
+/** Second field agent for mobile test switcher (+254745678901). */
+async function ensureTestSwitcherFieldAgent(): Promise<void> {
+  const phone = TEST_SWITCHER_FA_PHONE;
+  const row = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [phone]
+  );
+  if (!row) {
+    await createUser({
+      phoneNumber: phone,
+      name: 'Test FieldAgent',
+      role: 'agent',
+      district: 'Kiambu',
+      region: 'Central',
+      aggregationCenter: DEMO_AGGREGATION_CENTRE,
+    });
+  } else {
+    await query(
+      `UPDATE users SET
+        name = 'Test FieldAgent',
+        role = 'agent',
+        district = 'Kiambu',
+        region = 'Central',
+        aggregation_center = $1,
+        status = 'active'
+       WHERE phone_number = $2`,
+      [DEMO_AGGREGATION_CENTRE, phone]
+    );
+  }
+
+  const user = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [phone]
+  );
+  if (!user) return;
+
+  const agent = await queryOne<{ agent_id: string }>(
+    'SELECT agent_id FROM agents WHERE user_id = $1',
+    [user.user_id]
+  );
+  if (!agent) {
+    const agentId = uuidv4();
+    const encryptedGovId = encryptField('GOV-TEST-FA-001');
+    await query(
+      `INSERT INTO agents (
+        agent_id, user_id, government_id_encrypted, aggregation_center, region, district, status, verified_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW())`,
+      [agentId, user.user_id, encryptedGovId, DEMO_AGGREGATION_CENTRE, 'Central', 'Kiambu']
+    );
+  } else {
+    await query(
+      `UPDATE agents SET
+        aggregation_center = $1,
+        region = 'Central',
+        district = 'Kiambu',
+        status = 'active',
+        verified_at = COALESCE(verified_at, NOW())
+       WHERE agent_id = $2`,
+      [DEMO_AGGREGATION_CENTRE, agent.agent_id]
+    );
+  }
+}
+
+/** Banking quick-login account (+254700000004 / Banking@2026). */
+async function ensureDemoBankingUser(): Promise<void> {
+  const existing = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [DEMO_BANKING_PHONE]
+  );
+  const passwordHash = bcrypt.hashSync('Banking@2026', 12);
+  if (!existing) {
+    await createUser({
+      phoneNumber: DEMO_BANKING_PHONE,
+      name: 'Equity Banking Officer',
+      role: 'banking_agent',
+      passwordHash,
+    });
+    return;
+  }
+  await query(
+    `UPDATE users SET name = 'Equity Banking Officer', role = 'banking_agent', password_hash = $1 WHERE phone_number = $2`,
+    [passwordHash, DEMO_BANKING_PHONE]
+  );
+}
+
+async function linkDemoFarmerToAgent(): Promise<void> {
+  const agent = await queryOne<{ agent_id: string }>(
+  `SELECT a.agent_id FROM agents a
+   JOIN users u ON u.user_id = a.user_id
+   WHERE u.phone_number = $1`,
+    [DEMO_AGENT_PHONE]
+  );
+  if (!agent) return;
+  await query(
+    `UPDATE farmers SET registered_by_agent_id = $1 WHERE phone_number = $2`,
+    [agent.agent_id, DEMO_FARMER_PHONE]
+  );
+}
+
+async function ensureDemoCentreManagers(): Promise<void> {
+  await query(
+    `UPDATE aggregation_centres SET
+      manager_name = 'Kiambu Agent',
+      manager_phone = $1
+     WHERE centre_id = 'ke-kiambu-01'`,
+    [DEMO_AGENT_PHONE]
+  );
 }
 
 /** Demo aggregation centre login: +254700000003 / 12345 */
 export async function ensureDemoAgentPassword(): Promise<void> {
   const { hashPassword } = await import('./services/encryptionService');
   const hash = await hashPassword('12345');
-  db.prepare(`UPDATE users SET password_hash = ? WHERE phone_number = ?`).run(hash, '+254700000003');
+  await query('UPDATE users SET password_hash = $1 WHERE phone_number = $2', [hash, '+254700000003']);
 }
 
-function ensureDemoFarmerLegacyData(farmerId: string, projectIds: Record<string, string>): void {
-  const hasProjects = db.prepare('SELECT id FROM farmer_projects WHERE farmer_id = ? LIMIT 1').get(farmerId);
-  if (hasProjects) return;
+/** Demo payments only — legacy farmer_projects enrollment removed pending Phase 2. */
+async function ensureDemoFarmerPayments(farmerId: string): Promise<void> {
+  const hasPayment = await queryOne<{ id: string }>(
+    'SELECT id FROM payments WHERE farmer_id = $1 LIMIT 1',
+    [farmerId]
+  );
+  if (hasPayment) return;
 
-  const coffeeId = projectIds['Coffee Training'];
-  const soilId = projectIds['Soil Health'];
-  if (!coffeeId || !soilId) return;
+  await query(
+    `INSERT INTO payments (id, farmer_id, description, amount, payment_status, payment_method)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [uuidv4(), farmerId, 'Coffee Training', 15000, 'pending', 'M-Pesa']
+  );
 
-  const fp1 = uuidv4();
-  db.prepare(`
-    INSERT INTO farmer_projects (id, farmer_id, project_id, project_name, payment_amount, status, completion_percentage, earnings_amount, payment_status, start_date, due_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(fp1, farmerId, coffeeId, 'Coffee Training', 15000, 'In Progress', 60, 15000, 'Pending', '2026-06-01', '2026-08-01');
-
-  db.prepare(`
-    INSERT INTO farmer_projects (id, farmer_id, project_id, project_name, payment_amount, status, completion_percentage, earnings_amount, payment_status, start_date, due_date, completed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(uuidv4(), farmerId, soilId, 'Soil Health', 8000, 'Completed', 100, 8000, 'Transferred', '2026-03-01', '2026-05-01', '2026-05-15');
-
-  db.prepare(`
-    INSERT INTO payments (id, farmer_id, farmer_project_id, project_name, amount, payment_status, payment_method)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(uuidv4(), farmerId, fp1, 'Coffee Training', 15000, 'Pending', 'M-Pesa');
-
-  db.prepare(`
-    INSERT INTO payments (id, farmer_id, project_name, amount, payment_status, payment_method, mpesa_reference, paid_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', '-30 days'))
-  `).run(uuidv4(), farmerId, 'Soil Health', 8000, 'Transferred', 'M-Pesa', 'MPX123456');
+  await query(
+    `INSERT INTO payments (id, farmer_id, description, amount, payment_status, payment_method, mpesa_reference, paid_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW() - INTERVAL '30 days')`,
+    [uuidv4(), farmerId, 'Soil Health', 8000, 'transferred', 'M-Pesa', 'MPX123456']
+  );
 }

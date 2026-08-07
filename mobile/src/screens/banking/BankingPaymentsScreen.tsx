@@ -1,21 +1,45 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Alert } from 'react-native';
-import { Button } from '../../components/Button';
-import { COLORS } from '../../constants';
-import { api } from '../../api/client';
-
+import { View, FlatList, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { api, verifyFarmerId } from '../../api/client';
 import { useCurrency } from '../../context/CurrencyContext';
 
 export function BankingPaymentsScreen() {
   const { formatAmount, formatPayment } = useCurrency();
   const [payments, setPayments] = useState<Array<{ id: string; farmer_name: string; amount: number; payment_status: string }>>([]);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [idNumber, setIdNumber] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{ verified: boolean; name?: string; farmer_id?: string } | null>(null);
 
   React.useEffect(() => {
     api.get('/banking/payments').then((r) => setPayments(
-      (r.data.payments ?? []).filter((p: { payment_status: string }) => p.payment_status === 'Pending')
+      (r.data.payments ?? []).filter((p: { payment_status: string }) =>
+        (p.payment_status ?? '').toLowerCase() === 'pending'
+      )
     )).catch(() => {});
   }, []);
+
+  const runVerify = async () => {
+    if (!idNumber.trim()) {
+      Alert.alert('Missing ID', 'Enter the farmer national ID number to verify.');
+      return;
+    }
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const result = await verifyFarmerId(idNumber.trim());
+      setVerifyResult(result);
+      if (!result.verified) {
+        Alert.alert('Not verified', 'ID does not match any registered farmer.');
+      }
+    } catch {
+      Alert.alert('Error', 'Could not verify farmer ID');
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const processPayment = async (paymentId: string) => {
     setProcessing(paymentId);
@@ -32,33 +56,52 @@ export function BankingPaymentsScreen() {
 
   return (
     <FlatList
-      style={styles.container}
+      className="flex-1 p-4"
       data={payments}
       keyExtractor={(item) => item.id}
-      ListHeaderComponent={<Text style={styles.title}>Process M-Pesa Payments</Text>}
+      ListHeaderComponent={
+        <View>
+          <Text className="mb-4 text-[22px] font-bold text-[#1A4D3E]">Process M-Pesa Payments</Text>
+          <View className="mb-4 rounded-lg bg-[#F9F9F9] p-3.5">
+            <Text className="mb-2 text-base font-semibold text-[#333333]">Verify farmer ID</Text>
+            <TextInput
+              className="mb-2 rounded-lg border border-[#E0E0E0] bg-white p-2.5"
+              placeholder="National ID number"
+              value={idNumber}
+              onChangeText={setIdNumber}
+              autoCapitalize="none"
+            />
+            <Button className="h-10 bg-[#1A4D3E]" disabled={verifying} onPress={runVerify}>
+              {verifying ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Verify ID</Text>}
+            </Button>
+            {verifyResult?.verified ? (
+              <Text className="mt-2 text-sm text-[#2E7D5E]">
+                Verified: {verifyResult.name} ({verifyResult.farmer_id})
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      }
       renderItem={({ item }) => (
-        <View style={styles.card}>
-          <Text style={styles.name}>{item.farmer_name}</Text>
-          <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
+        <View className="mb-2.5 rounded-lg bg-[#F9F9F9] p-3.5">
+          <Text className="text-base font-semibold text-[#333333]">{item.farmer_name}</Text>
+          <Text className="my-2 text-lg font-bold text-[#D4AF6A]">{formatAmount(item.amount)}</Text>
           <Button
-            title={`Process ${formatPayment(item.amount)}`}
+            className="mt-1 h-12 bg-[#1A4D3E]"
+            disabled={processing === item.id}
             onPress={() => processPayment(item.id)}
-            loading={processing === item.id}
-            style={styles.btn}
-          />
+          >
+            {processing === item.id ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-white">Process {formatPayment(item.amount)}</Text>
+            )}
+          </Button>
         </View>
       )}
-      ListEmptyComponent={<Text style={styles.empty}>No pending payments</Text>}
+      ListEmptyComponent={
+        <Text className="mt-8 text-center text-[#757575]">No pending payments</Text>
+      }
     />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 16 },
-  card: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 14, marginBottom: 10 },
-  name: { fontSize: 16, fontWeight: '600' },
-  amount: { fontSize: 18, color: COLORS.accent, fontWeight: '700', marginVertical: 8 },
-  btn: { marginTop: 4 },
-  empty: { textAlign: 'center', color: COLORS.muted, marginTop: 32 },
-});

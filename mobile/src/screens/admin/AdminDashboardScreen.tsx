@@ -1,13 +1,19 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { extractApiError } from '../../utils/feedback';
-import { COLORS, API_BASE_URL } from '../../constants';
+import { API_BASE_URL } from '../../constants';
 import { getAdminDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 export function AdminDashboardScreen() {
   const user = useAuthStore((s) => s.user);
+  const userScope = useReadCacheUserScope();
   const [stats, setStats] = useState<{
     totalFarmers: number;
     totalUsers: number;
@@ -21,15 +27,22 @@ export function AdminDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await getAdminDashboard();
-      setStats(data);
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.adminDashboard,
+        userScope,
+        fetchLive: () => getAdminDashboard(),
+      });
+      setStats(result.data);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setError(null);
     } catch (err: unknown) {
       const detail = extractApiError(err, '');
       const staleSession = detail.toLowerCase().includes('authentication') || detail.toLowerCase().includes('invalid or expired');
+      setCacheFetchedAt(null);
       setError(
         staleSession
           ? 'Session expired after server update — log out and sign in again.'
@@ -38,7 +51,7 @@ export function AdminDashboardScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -56,29 +69,33 @@ export function AdminDashboardScreen() {
 
   if (loading && !stats) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      <View className="flex-1 items-center justify-center p-6">
+        <ActivityIndicator size="large" color="#1A4D3E" />
+        <Text className="mt-3 text-[#757575]">Loading dashboard...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      className="flex-1 p-4"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <Text style={styles.greeting}>Admin Dashboard</Text>
-      <Text style={styles.role}>{user?.name} · {user?.role?.replace('_', ' ')}</Text>
+      <Text className="text-2xl font-bold text-[#1A4D3E]">Admin Dashboard</Text>
+      <Text className="mb-5 text-sm capitalize text-[#757575]">
+        {user?.name} · {user?.role?.replace('_', ' ')}
+      </Text>
 
-      {error ? (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
-          <Text style={styles.errorApi}>API: {API_BASE_URL}</Text>
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+
+      {error && !stats ? (
+        <View className="mb-4 rounded-lg border-l-4 border-[#D32F2F] bg-[#FFEBEE] p-3">
+          <Text className="text-sm text-[#D32F2F]">{error}</Text>
+          <Text className="mt-1.5 text-xs text-[#757575]">API: {API_BASE_URL}</Text>
         </View>
       ) : null}
 
-      <View style={styles.grid}>
+      <View className="mb-6 flex-row flex-wrap gap-2.5">
         <StatCard label="Farmers" value={stats?.totalFarmers ?? 0} />
         <StatCard label="Users" value={stats?.totalUsers ?? 0} />
         <StatCard label="Active Projects" value={stats?.activeProjects ?? 0} />
@@ -87,14 +104,14 @@ export function AdminDashboardScreen() {
 
       {countryEntries.length > 0 ? (
         <>
-          <Text style={styles.section}>Farmers by Country</Text>
-          <View style={styles.countryCard}>
+          <Text className="mb-3 text-lg font-semibold text-[#1A4D3E]">Farmers by Country</Text>
+          <View className="mb-6 rounded-lg bg-[#F9F9F9] p-3">
             {countryEntries.map(([country, count]) => (
-              <View key={country} style={styles.countryRow}>
-                <Text style={styles.countryName}>{country}</Text>
-                <Text style={styles.countryCount}>{count.toLocaleString()}</Text>
+              <View key={country} className="flex-row items-center border-b border-[#E0E0E0] py-2">
+                <Text className="flex-1 text-[15px] font-medium text-[#333333]">{country}</Text>
+                <Text className="mr-2 text-base font-bold text-[#1A4D3E]">{count.toLocaleString()}</Text>
                 {stats?.centresByCountry?.[country] ? (
-                  <Text style={styles.centreCount}>
+                  <Text className="text-[11px] text-[#757575]">
                     {stats.centresByCountry[country]} centres
                   </Text>
                 ) : null}
@@ -104,17 +121,17 @@ export function AdminDashboardScreen() {
         </>
       ) : null}
 
-      <Text style={styles.section}>Recent Imports</Text>
+      <Text className="mb-3 text-lg font-semibold text-[#1A4D3E]">Recent Imports</Text>
       {(stats?.recentImports ?? []).map((imp, i) => (
-        <View key={i} style={styles.importRow}>
-          <Text style={styles.importStatus}>{imp.status}</Text>
-          <Text style={styles.importDetail}>
+        <View key={i} className="mb-2 rounded-lg bg-[#F9F9F9] p-3">
+          <Text className="font-semibold capitalize text-[#333333]">{imp.status}</Text>
+          <Text className="mt-0.5 text-[13px] text-[#757575]">
             {imp.imported_count}/{imp.total_rows} rows · {imp.created_at?.slice(0, 10)}
           </Text>
         </View>
       ))}
       {(stats?.recentImports ?? []).length === 0 ? (
-        <Text style={styles.empty}>No imports yet</Text>
+        <Text className="italic text-[#757575]">No imports yet</Text>
       ) : null}
     </ScrollView>
   );
@@ -122,48 +139,11 @@ export function AdminDashboardScreen() {
 
 function StatCard({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
-    <View style={styles.statCard}>
-      <Text style={[styles.statValue, accent && styles.accent]}>{value.toLocaleString()}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View className="min-w-[45%] flex-1 items-center rounded-lg bg-[#F9F9F9] p-4">
+      <Text className={cn('text-2xl font-bold text-[#1A4D3E]', accent && 'text-[#D4AF6A]')}>
+        {value.toLocaleString()}
+      </Text>
+      <Text className="mt-1 text-xs text-[#757575]">{label}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loadingText: { marginTop: 12, color: COLORS.muted },
-  greeting: { fontSize: 24, fontWeight: '700', color: COLORS.primary },
-  role: { fontSize: 14, color: COLORS.muted, marginBottom: 20, textTransform: 'capitalize' },
-  errorCard: {
-    backgroundColor: '#FFEBEE',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.alert,
-  },
-  errorText: { color: COLORS.alert, fontSize: 14 },
-  errorApi: { color: COLORS.muted, fontSize: 12, marginTop: 6 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
-  statCard: { flex: 1, minWidth: '45%', backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 16, alignItems: 'center' },
-  statValue: { fontSize: 24, fontWeight: '700', color: COLORS.primary },
-  accent: { color: COLORS.accent },
-  statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
-  section: { fontSize: 18, fontWeight: '600', color: COLORS.primary, marginBottom: 12 },
-  countryCard: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 12, marginBottom: 24 },
-  countryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  countryName: { flex: 1, fontSize: 15, fontWeight: '500', color: COLORS.text },
-  countryCount: { fontSize: 16, fontWeight: '700', color: COLORS.primary, marginRight: 8 },
-  centreCount: { fontSize: 11, color: COLORS.muted },
-  importRow: { backgroundColor: COLORS.cardBg, borderRadius: 8, padding: 12, marginBottom: 8 },
-  importStatus: { fontWeight: '600', color: COLORS.text, textTransform: 'capitalize' },
-  importDetail: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
-  empty: { color: COLORS.muted, fontStyle: 'italic' },
-});

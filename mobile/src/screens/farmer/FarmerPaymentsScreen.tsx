@@ -1,118 +1,140 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
-import { Surface } from 'react-native-paper';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, FlatList, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../constants';
+import { useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
+import { Text } from '@/components/ui/text';
 import { getFarmerPayments } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
+import { PaymentSummaryBreakdown } from '../../components/farmer/PaymentSummaryBreakdown';
+import {
+  FarmerPaymentDetailModal,
+  type FarmerPaymentRow,
+} from '../../components/farmer/FarmerPaymentDetailModal';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
-
 import { useCurrency } from '../../context/CurrencyContext';
+import { formatDisplayDate } from '../../utils/greeting';
+import type { FarmerTabParamList } from '../../navigation/types';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
-export function FarmerPaymentsScreen() {
-  const { formatAmount } = useCurrency();
-  const [payments, setPayments] = useState<Array<{
-    project_name: string;
-    amount: number;
-    payment_status: string;
-    payment_method: string;
-    created_at: string;
-    mpesa_reference?: string;
-  }>>([]);
-  const [total, setTotal] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+type Route = RouteProp<FarmerTabParamList, 'Payments'>;
 
-  useEffect(() => {
-    getFarmerPayments().then((d) => {
-      setPayments(d.payments ?? []);
-      const earned = (d.payments ?? [])
-        .filter((p: { payment_status: string }) => p.payment_status === 'Transferred')
-        .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
-      setTotal(earned);
-      setError(null);
-    }).catch((err: unknown) => {
-      setError(extractApiError(err, 'Could not load payments'));
-    });
-  }, []);
-
-  return (
-    <FlatList
-      style={styles.container}
-      data={payments}
-      keyExtractor={(_, i) => String(i)}
-      ListHeaderComponent={
-        <>
-          {error ? <FarmerOfflineBanner message={error} /> : null}
-          <Surface style={styles.summary} elevation={2}>
-          <Text style={styles.summaryLabel}>Total Earned</Text>
-          <Text style={styles.summaryAmount}>{formatAmount(total)}</Text>
-          <Text style={styles.summarySub}>Lifetime earnings via M-Pesa</Text>
-        </Surface>
-        </>
-      }
-      contentContainerStyle={styles.list}
-      renderItem={({ item }) => (
-        <KBCard>
-          <View style={styles.row}>
-            <View style={styles.iconWrap}>
-              <Ionicons
-                name={item.payment_method === 'M-Pesa' ? 'phone-portrait' : 'card'}
-                size={20}
-                color={COLORS.primary}
-              />
-            </View>
-            <View style={styles.flex}>
-              <Text style={styles.name}>{item.project_name}</Text>
-              <Text style={styles.date}>{item.created_at?.slice(0, 10)}</Text>
-            </View>
-            <Text style={styles.amount}>{formatAmount(item.amount)}</Text>
-          </View>
-          <View style={styles.badgeRow}>
-            <KBStatusChip
-              label={item.payment_status}
-              variant={item.payment_status === 'Transferred' ? 'success' : 'pending'}
-            />
-            {item.mpesa_reference ? (
-              <Text style={styles.ref}>Ref: {item.mpesa_reference}</Text>
-            ) : null}
-          </View>
-        </KBCard>
-      )}
-      ListEmptyComponent={<Text style={styles.empty}>No payments yet</Text>}
-    />
-  );
+function paymentStatusColor(status: string): string {
+  const lower = status.toLowerCase();
+  if (lower === 'transferred' || lower === 'paid') return '#70AD47';
+  if (lower === 'pending' || lower === 'processing') return '#FFC000';
+  return '#999999';
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  list: { padding: 16, paddingBottom: 32 },
-  summary: {
-    padding: 28,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 20,
-    backgroundColor: COLORS.primary,
-  },
-  summaryLabel: { fontSize: 14, color: 'rgba(255,255,255,0.85)' },
-  summaryAmount: { fontSize: 40, fontWeight: '800', color: COLORS.accent, marginVertical: 8 },
-  summarySub: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  flex: { flex: 1 },
-  name: { fontSize: 16, fontWeight: '600', color: COLORS.text },
-  date: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
-  amount: { fontSize: 18, fontWeight: '700', color: COLORS.accent },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
-  ref: { fontSize: 11, color: COLORS.muted },
-  empty: { textAlign: 'center', color: COLORS.muted, marginTop: 40 },
-});
+export function FarmerPaymentsScreen() {
+  const route = useRoute<Route>();
+  const { formatAmount } = useCurrency();
+  const userScope = useReadCacheUserScope();
+  const [payments, setPayments] = useState<FarmerPaymentRow[]>([]);
+  const [summary, setSummary] = useState({
+    transferred: 0,
+    pending: 0,
+    expected: 0,
+    total: 0,
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
+  const [selected, setSelected] = useState<FarmerPaymentRow | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerPayments,
+        userScope,
+        fetchLive: () => getFarmerPayments(),
+      });
+      const d = result.data;
+      setPayments((d.payments ?? []) as FarmerPaymentRow[]);
+      if (d.summary) {
+        setSummary(d.summary);
+      }
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      setError(null);
+    } catch (err: unknown) {
+      setCacheFetchedAt(null);
+      setError(extractApiError(err, 'Could not load payments'));
+    }
+  }, [userScope]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const highlightId = route.params?.highlightPaymentId;
+    if (!highlightId || payments.length === 0) return;
+    const match = payments.find((p) => p.id === highlightId);
+    if (match) setSelected(match);
+  }, [route.params?.highlightPaymentId, payments]);
+
+  return (
+    <View className="flex-1 bg-[#F5F5F5]">
+      <FarmerInboxHeaderBar />
+      <FlatList
+        className="flex-1"
+        data={payments}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={
+          <>
+            {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+            {error && payments.length === 0 ? <FarmerOfflineBanner message={error} /> : null}
+            <PaymentSummaryBreakdown summary={summary} formatAmount={formatAmount} />
+          </>
+        }
+        contentContainerClassName="p-4 pb-8"
+        renderItem={({ item }) => {
+          const borderColor = paymentStatusColor(item.payment_status);
+          return (
+            <Pressable onPress={() => setSelected(item)}>
+              <KBCard style={{ borderLeftWidth: 4, borderLeftColor: borderColor }}>
+                <View className="flex-row items-center">
+                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-[#F5F5F5]">
+                    <Ionicons
+                      name={item.payment_method === 'M-Pesa' ? 'phone-portrait' : 'card'}
+                      size={20}
+                      color={borderColor}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold text-[#333333]">{item.project_name}</Text>
+                    <Text className="mt-0.5 text-xs text-[#757575]">
+                      {formatDisplayDate(item.created_at)}
+                    </Text>
+                  </View>
+                  <Text className="text-lg font-bold text-[#D4AF6A]">{formatAmount(item.amount)}</Text>
+                </View>
+                <View className="mt-3 flex-row items-center justify-between">
+                  <KBStatusChip
+                    label={item.payment_status}
+                    variant={
+                      item.payment_status.toLowerCase() === 'transferred' ? 'success' : 'pending'
+                    }
+                  />
+                  {item.mpesa_reference ? (
+                    <Text className="text-[11px] text-[#757575]">Ref: {item.mpesa_reference}</Text>
+                  ) : null}
+                </View>
+              </KBCard>
+            </Pressable>
+          );
+        }}
+        ListEmptyComponent={<Text className="mt-10 text-center text-[#757575]">No payments yet</Text>}
+      />
+      <FarmerPaymentDetailModal
+        payment={selected}
+        onClose={() => setSelected(null)}
+        formatAmount={formatAmount}
+      />
+    </View>
+  );
+}

@@ -1,41 +1,51 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db/database';
+import { query, queryOne } from '../db/database';
 import type { UserRole } from '../../../shared/src/roles';
 import { getCentreCountByCountry } from './aggregationCentreService';
+import { countActiveProgramProjects } from './farmerProgramService';
 
-export function getAllUsers(search?: string) {
+export type UserListRow = {
+  user_id: string;
+  phone_number: string;
+  name: string;
+  role: string;
+  farmer_id: string | null;
+  district: string | null;
+  region: string | null;
+  aggregation_center: string | null;
+  status: string;
+  created_at: string;
+};
+
+export async function getAllUsers(search?: string): Promise<UserListRow[]> {
   const term = search?.trim();
   if (!term) {
-    return db.prepare(`
+    return query<UserListRow>(`
       SELECT user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, status, created_at
       FROM users ORDER BY created_at DESC
-    `).all();
+    `);
   }
 
   const pattern = `%${term}%`;
   const phoneDigits = term.replace(/\D/g, '');
-  const clauses = [
-    'name LIKE ? COLLATE NOCASE',
-    'role LIKE ? COLLATE NOCASE',
-    "COALESCE(district, '') LIKE ? COLLATE NOCASE",
-  ];
+  const clauses = ['name ILIKE $1', 'role::text ILIKE $2', "COALESCE(district, '') ILIKE $3"];
   const params: string[] = [pattern, pattern, pattern];
 
   if (phoneDigits.length >= 3) {
-    clauses.push('phone_number LIKE ?');
+    clauses.push('phone_number LIKE $4');
     params.push(`%${phoneDigits}%`);
   }
 
-  return db.prepare(`
+  return query<UserListRow>(`
     SELECT user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, status, created_at
     FROM users
     WHERE ${clauses.join(' OR ')}
-    ORDER BY name COLLATE NOCASE
+    ORDER BY LOWER(name)
     LIMIT 100
-  `).all(...params);
+  `, params);
 }
 
-export function createUser(data: {
+export async function createUser(data: {
   phoneNumber: string;
   name: string;
   role: UserRole | string;
@@ -44,69 +54,78 @@ export function createUser(data: {
   region?: string;
   aggregationCenter?: string;
   passwordHash?: string;
-}) {
+}): Promise<string> {
   const id = uuidv4();
-  db.prepare(`
-    INSERT INTO users (user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, password_hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, data.phoneNumber, data.name, data.role,
-    data.farmerId ?? null, data.district ?? null,
-    data.region ?? null, data.aggregationCenter ?? null,
-    data.passwordHash ?? null
+  await query(
+    `INSERT INTO users (
+      user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, password_hash
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      id,
+      data.phoneNumber,
+      data.name,
+      data.role,
+      data.farmerId ?? null,
+      data.district ?? null,
+      data.region ?? null,
+      data.aggregationCenter ?? null,
+      data.passwordHash ?? null,
+    ]
   );
   return id;
 }
 
-export function getAdminStats() {
-  const farmers = db.prepare('SELECT COUNT(*) as count FROM farmers').get() as { count: number };
-  const users = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
-  const agents = db.prepare(`SELECT COUNT(*) as count FROM agents WHERE status = 'active'`).get() as { count: number };
-  const pendingPayments = db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE payment_status = 'Pending'
-  `).get() as { total: number };
-  const activeProjects = db.prepare(`
-    SELECT COUNT(*) as count FROM farmer_projects WHERE status IN ('Assigned', 'In Progress')
-  `).get() as { count: number };
-  const recentImports = db.prepare(`
+export async function getAdminStats() {
+  const farmers = await queryOne<{ count: number }>('SELECT COUNT(*)::int AS count FROM farmers');
+  const users = await queryOne<{ count: number }>('SELECT COUNT(*)::int AS count FROM users');
+  const agents = await queryOne<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM agents WHERE status = 'active'`
+  );
+  const pendingPayments = await queryOne<{ total: number }>(`
+    SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments WHERE payment_status = 'pending'
+  `);
+  const activeProjects = { count: await countActiveProgramProjects() };
+  const recentImports = await query(`
     SELECT id, status, imported_count, total_rows, created_at FROM import_sessions
     ORDER BY created_at DESC LIMIT 5
-  `).all();
-  const pendingBankTx = db.prepare(`
-    SELECT COUNT(*) as count FROM bank_transactions WHERE status IN ('pending', 'timeout')
-  `).get() as { count: number };
+  `);
+  const pendingBankTx = await queryOne<{ count: number }>(`
+    SELECT COUNT(*)::int AS count FROM bank_transactions WHERE status IN ('pending', 'processing')
+  `);
 
-  const farmersByCountry = db
-    .prepare('SELECT country, COUNT(*) as count FROM farmers GROUP BY country ORDER BY count DESC')
-    .all()
-    .reduce<Record<string, number>>((acc, row) => {
-      const r = row as { country: string; count: number };
-      acc[r.country] = r.count;
-      return acc;
-    }, {});
-  const centresByCountry = getCentreCountByCountry();
+  const farmerCountryRows = await query<{ country: string; count: number }>(
+    'SELECT country, COUNT(*)::int AS count FROM farmers GROUP BY country ORDER BY count DESC'
+  );
+  const farmersByCountry = farmerCountryRows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.country] = row.count;
+    return acc;
+  }, {});
+  const centresByCountry = await getCentreCountByCountry();
 
   return {
-    totalFarmers: farmers.count,
-    totalUsers: users.count,
-    activeAgents: agents.count,
-    pendingPaymentsTotal: pendingPayments.total,
-    pendingBankTransactions: pendingBankTx.count,
-    activeProjects: activeProjects.count,
+    totalFarmers: farmers?.count ?? 0,
+    totalUsers: users?.count ?? 0,
+    activeAgents: agents?.count ?? 0,
+    pendingPaymentsTotal: pendingPayments?.total ?? 0,
+    pendingBankTransactions: pendingBankTx?.count ?? 0,
+    activeProjects: activeProjects?.count ?? 0,
     recentImports,
     farmersByCountry,
     centresByCountry,
   };
 }
 
-export function linkFarmerToUser(farmerId: string, phone: string, name: string) {
-  const existing = db.prepare('SELECT user_id FROM users WHERE phone_number = ?').get(phone);
+export async function linkFarmerToUser(farmerId: string, phone: string, name: string): Promise<void> {
+  const existing = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [phone]
+  );
   if (existing) return;
-  createUser({ phoneNumber: phone, name, role: 'farmer', farmerId });
+  await createUser({ phoneNumber: phone, name, role: 'farmer', farmerId });
 }
 
-export function getUserByPhone(phone: string) {
-  return db.prepare(`SELECT * FROM users WHERE phone_number = ?`).get(phone) as {
+export async function getUserByPhone(phone: string) {
+  return queryOne<{
     user_id: string;
     password_hash: string | null;
     role: string;
@@ -114,5 +133,5 @@ export function getUserByPhone(phone: string) {
     farmer_id: string | null;
     district: string | null;
     region: string | null;
-  } | undefined;
+  }>('SELECT * FROM users WHERE phone_number = $1', [phone]);
 }

@@ -4,21 +4,30 @@ import type { FarmerProject } from '../types/farmerProject';
 export type AuthStackParamList = {
   Login: undefined;
   Otp: { phone: string; devCode?: string };
-  AggregationLogin: undefined;
+  Register: undefined;
 };
 
 export type FarmerProjectsStackParamList = {
   ProjectsList: undefined;
   ProjectDetail: { project: FarmerProject; programProjectId?: string };
   HierarchyProjectDetail: { projectId: string; projectName: string };
-  HierarchyTaskDetail: { farmerTaskId: string; taskName: string };
 };
 
 export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
-  Payments: undefined;
+  Tasks: {
+    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed';
+    highlightTaskId?: string;
+  } | undefined;
+  Payments: { highlightPaymentId?: string } | undefined;
   Profile: undefined;
+};
+
+export type FarmerRootStackParamList = {
+  MainTabs: NavigatorScreenParams<FarmerTabParamList> | undefined;
+  MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
+  NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
 };
 
 export type AdminTabParamList = {
@@ -57,7 +66,45 @@ export type AdminFarmersStackParamList = {
   FarmerDetail: { farmerId: string; name: string };
 };
 
+export type AgentFarmersStackParamList = {
+  FarmerList: { statusFilter?: string } | undefined;
+  RegisterPicker: undefined;
+  RegisterFarmerFlow: undefined;
+  RegisterFieldAgent: undefined;
+  FarmerProfile: { farmerId: string; name: string };
+};
+
+export type AgentTabParamList = {
+  Dashboard: undefined;
+  Farmers: NavigatorScreenParams<AgentFarmersStackParamList> | undefined;
+  Tasks: {
+    filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
+    openAdd?: boolean;
+  } | undefined;
+  Audit: undefined;
+  Profile: undefined;
+};
+
+export type AgentRootStackParamList = {
+  MainTabs: NavigatorScreenParams<AgentTabParamList> | undefined;
+  MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
+  NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
+};
+
+export type MessagesStackParamList = {
+  MessagesList: undefined;
+  MessageDetail: { threadId: string };
+};
+
+export type NotificationsStackParamList = {
+  NotificationsList: undefined;
+  NotificationSettings: undefined;
+};
+
 export type RegistrationStackParamList = {
+  UserTypeSelection: undefined;
+  FieldAgentRegistration: undefined;
+  StaffRegistration: { variant: 'admin' | 'project_manager' };
   Country: undefined;
   BasicInfo: undefined;
   Location: undefined;

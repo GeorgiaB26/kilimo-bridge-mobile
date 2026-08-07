@@ -74,7 +74,7 @@ export function RootNavigator() {
       {role === 'farmer' ? <FarmerNavigator />
         : isBankingRole(role) ? <BankingNavigator />
         : isAgentRole(role) ? <AgentNavigator />
-        : isAdminRole(role) || role === 'super_admin' ? <AdminPlatformNavigator />
+        : isAdminRole(role) ? <AdminPlatformNavigator />
         : <AuthNavigator />}
     </View>
   );

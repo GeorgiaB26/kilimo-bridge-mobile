@@ -1,21 +1,31 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Alert, Modal, TextInput,
+  View, ScrollView, RefreshControl, ActivityIndicator, Alert, Modal, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Button, SegmentedButtons } from 'react-native-paper';
-import { COLORS } from '../../constants';
+import { SegmentedButtons } from 'react-native-paper';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import {
   getCentreDashboard,
   getCentreInventory,
   getPendingDeliveries,
   receiveCentreDelivery,
-  approveCentreQuality,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { OutboxCentreQcCard } from '../../components/OutboxCentreQcCard';
+import {
+  CENTRE_QC_EXPECTED_QUALITY_STATUS,
+  dismissCentreQcOutbox,
+  listPendingCentreQc,
+  pushPendingCentreQc,
+  submitCentreQcWithOutbox,
+  syncAllPendingCentreQc,
+  type PendingCentreQcView,
+} from '../../services/submitCentreQcOutbox';
 
 type InvTab = 'awaiting_qc' | 'ready_for_marketplace' | 'all';
 
@@ -63,8 +73,15 @@ export function AggregationCentreDashboardScreen() {
   const [notes, setNotes] = useState('');
   const [qcNotes, setQcNotes] = useState('');
   const [qcPrice, setQcPrice] = useState('500');
+  const [qcActing, setQcActing] = useState(false);
+  const [pendingQc, setPendingQc] = useState<PendingCentreQcView[]>([]);
+  const [pushingId, setPushingId] = useState<string | null>(null);
 
   const resolvedCentreId = centreId || 'self';
+
+  const loadPending = useCallback(async () => {
+    setPendingQc(await listPendingCentreQc());
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -85,11 +102,19 @@ export function AggregationCentreDashboardScreen() {
     }
   }, [centreId, invTab]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        await syncAllPendingCentreQc();
+        await Promise.all([load(), loadPending()]);
+      })();
+    }, [load, loadPending])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await syncAllPendingCentreQc();
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
   };
 
@@ -115,72 +140,133 @@ export function AggregationCentreDashboardScreen() {
     }
   };
 
-  const confirmQc = async () => {
-    if (!qcModal || !qcNotes.trim() || !qcPrice.trim()) return;
+  const applyQc = async (decision: 'approve' | 'reject') => {
+    if (!qcModal) return;
+    if (decision === 'approve' && (!qcNotes.trim() || !qcPrice.trim())) return;
+    if (decision === 'reject' && !qcNotes.trim()) {
+      Alert.alert('Notes required', 'Enter a quality assessment note for rejection.');
+      return;
+    }
+    setQcActing(true);
     try {
-      await approveCentreQuality(centreId || undefined, {
-        inventory_id: qcModal.id,
-        quality_notes: qcNotes.trim(),
-        marketplace_price_per_unit: Number(qcPrice),
+      const result = await submitCentreQcWithOutbox({
+        inventoryId: qcModal.id,
+        productName: qcModal.product_name,
+        decision,
+        expectedQualityStatus: qcModal.quality_status || CENTRE_QC_EXPECTED_QUALITY_STATUS,
+        qualityNotes: qcNotes.trim(),
+        marketplacePricePerUnit:
+          decision === 'approve' ? Number(qcPrice) : undefined,
       });
-      setQcModal(null);
-      setQcNotes('');
-      await load();
-      Alert.alert('Approved', 'Item listed on marketplace. Farmer notified via SMS.');
+      await loadPending();
+      if (result.mode === 'online') {
+        setQcModal(null);
+        setQcNotes('');
+        await load();
+        Alert.alert(
+          decision === 'approve' ? 'Approved' : 'Rejected',
+          decision === 'approve'
+            ? 'Item listed on marketplace. Farmer notified via SMS.'
+            : 'Delivery failed QC.'
+        );
+        return;
+      }
+      if (result.mode === 'offline') {
+        setQcModal(null);
+        setQcNotes('');
+        Alert.alert('Saved offline', 'QC decision queued for sync.');
+        return;
+      }
+      Alert.alert('Needs your review', result.error);
     } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not approve quality'));
+      Alert.alert('Error', extractApiError(err, 'Could not apply quality check'));
+    } finally {
+      setQcActing(false);
+    }
+  };
+
+  const handlePush = async (item: PendingCentreQcView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingCentreQc(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.productName} QC updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error ?? 'Conflict detected');
+      } else {
+        Alert.alert('Push failed', result.error ?? 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
   if (loading && !stats) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color="#1A4D3E" />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      <Text style={styles.title}>Aggregation Centre — {centreName}</Text>
+    <ScrollView className="flex-1 bg-[#F5F5F5] p-4" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+      <Text className="mb-4 text-[22px] font-bold text-[#1A4D3E]">Aggregation Centre — {centreName}</Text>
 
-      <View style={styles.statsRow}>
-        <KBCard style={styles.stat} elevated={false}>
-          <Text style={styles.statVal}>{stats?.total_inventory ?? 0} kg</Text>
-          <Text style={styles.statLabel}>Total Inventory</Text>
+      <View className="mb-2 flex-row gap-2">
+        <KBCard style={{ flex: 1 }} elevated={false}>
+          <Text className="text-xl font-extrabold text-[#D4AF6A]">{stats?.total_inventory ?? 0} kg</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Total Inventory</Text>
         </KBCard>
-        <KBCard style={styles.stat} elevated={false}>
-          <Text style={styles.statVal}>{deliveries.length}</Text>
-          <Text style={styles.statLabel}>Awaiting Delivery</Text>
+        <KBCard style={{ flex: 1 }} elevated={false}>
+          <Text className="text-xl font-extrabold text-[#D4AF6A]">{deliveries.length}</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Awaiting Delivery</Text>
         </KBCard>
       </View>
-      <View style={styles.statsRow}>
-        <KBCard style={styles.stat} elevated={false}>
-          <Text style={styles.statVal}>{stats?.awaiting_quality_check ?? 0}</Text>
-          <Text style={styles.statLabel}>Awaiting QC</Text>
+      <View className="mb-2 flex-row gap-2">
+        <KBCard style={{ flex: 1 }} elevated={false}>
+          <Text className="text-xl font-extrabold text-[#D4AF6A]">{stats?.awaiting_quality_check ?? 0}</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Awaiting QC</Text>
         </KBCard>
-        <KBCard style={styles.stat} elevated={false}>
-          <Text style={styles.statVal}>{stats?.ready_for_marketplace ?? 0}</Text>
-          <Text style={styles.statLabel}>Ready for Sale</Text>
+        <KBCard style={{ flex: 1 }} elevated={false}>
+          <Text className="text-xl font-extrabold text-[#D4AF6A]">{stats?.ready_for_marketplace ?? 0}</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Ready for Sale</Text>
         </KBCard>
       </View>
 
-      <Text style={styles.section}>Pending deliveries</Text>
+      {pendingQc.length > 0 ? (
+        <View className="mb-2 mt-4">
+          <Text className="mb-2 text-[17px] font-bold text-[#333333]">Queued QC decisions</Text>
+          {pendingQc.map((item) => (
+            <OutboxCentreQcCard
+              key={item.id}
+              item={item}
+              pushing={pushingId === item.id}
+              onPush={() => handlePush(item)}
+              onDismiss={() => dismissCentreQcOutbox(item.id).then(loadPending)}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      <Text className="mb-2.5 mt-5 text-[17px] font-bold text-[#333333]">Pending deliveries</Text>
       {deliveries.length === 0 ? (
-        <Text style={styles.hint}>No approved tasks awaiting delivery.</Text>
+        <Text className="mb-3 text-[#757575]">No approved tasks awaiting delivery.</Text>
       ) : (
         deliveries.map((d) => (
           <KBCard key={d.farmer_task_id} elevated={false}>
-            <Text style={styles.itemTitle}>{d.farmer_name}</Text>
-            <Text style={styles.meta}>{d.task_name} · {d.submitted_date?.slice(0, 10) ?? '—'}</Text>
-            <Button mode="contained" buttonColor={COLORS.primary} onPress={() => setReceiveModal(d)} style={styles.itemBtn}>
-              Receive delivery
+            <Text className="text-base font-bold text-[#333333]">{d.farmer_name}</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">{d.task_name} · {d.submitted_date?.slice(0, 10) ?? '—'}</Text>
+            <Button className="mt-2.5 h-10 bg-[#1A4D3E]" onPress={() => setReceiveModal(d)}>
+              <Text className="text-white">Receive delivery</Text>
             </Button>
           </KBCard>
         ))
       )}
 
-      <Text style={styles.section}>Quality check queue</Text>
+      <Text className="mb-2.5 mt-5 text-[17px] font-bold text-[#333333]">Quality check queue</Text>
       <SegmentedButtons
         value={invTab}
         onValueChange={(v) => setInvTab(v as InvTab)}
@@ -189,21 +275,23 @@ export function AggregationCentreDashboardScreen() {
           { value: 'ready_for_marketplace', label: 'Ready' },
           { value: 'all', label: 'All' },
         ]}
-        style={styles.tabs}
+        style={{ marginBottom: 12 }}
       />
       {inventory.length === 0 ? (
-        <Text style={styles.hint}>No inventory in this queue.</Text>
+        <Text className="mb-3 text-[#757575]">No inventory in this queue.</Text>
       ) : (
         inventory.map((item) => (
           <KBCard key={item.id} elevated={false}>
-            <Text style={styles.itemTitle}>{item.product_name}</Text>
-            <Text style={styles.meta}>{item.farmer_name} · {item.quantity_received} {item.unit}</Text>
-            <View style={styles.row}>
+            <Text className="text-base font-bold text-[#333333]">{item.product_name}</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">{item.farmer_name} · {item.quantity_received} {item.unit}</Text>
+            <View className="mt-2 flex-row items-center justify-between">
               <KBStatusChip label={item.is_marketplace_ready ? 'Ready' : item.quality_status} variant={item.is_marketplace_ready ? 'success' : 'pending'} />
               {item.quality_status === 'pending' ? (
-                <Button compact mode="contained" onPress={() => setQcModal(item)}>Approve</Button>
+                <Button size="sm" className="bg-[#1A4D3E]" onPress={() => setQcModal(item)}>
+                  <Text className="text-white">QC</Text>
+                </Button>
               ) : (
-                <Text style={styles.price}>{item.marketplace_price_per_unit ?? 0} KES/unit</Text>
+                <Text className="font-bold text-[#D4AF6A]">{item.marketplace_price_per_unit ?? 0} KES/unit</Text>
               )}
             </View>
           </KBCard>
@@ -211,56 +299,44 @@ export function AggregationCentreDashboardScreen() {
       )}
 
       <Modal visible={!!receiveModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Receive delivery</Text>
-            <Text style={styles.meta}>Farmer: {receiveModal?.farmer_name}</Text>
-            <Text style={styles.meta}>Task: {receiveModal?.task_name}</Text>
-            <TextInput style={styles.input} placeholder="Product name" value={product} onChangeText={setProduct} />
-            <TextInput style={styles.input} placeholder="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" />
-            <TextInput style={styles.input} placeholder="Unit (kg, bags...)" value={unit} onChangeText={setUnit} />
-            <TextInput style={[styles.input, styles.multiline]} placeholder="Notes" value={notes} onChangeText={setNotes} multiline />
-            <Button mode="contained" buttonColor={COLORS.primary} onPress={confirmReceive}>Confirm receive</Button>
-            <Button mode="text" onPress={() => setReceiveModal(null)}>Cancel</Button>
+        <View className="flex-1 justify-center bg-black/50 p-5">
+          <View className="rounded-xl bg-white p-5">
+            <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Receive delivery</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">Farmer: {receiveModal?.farmer_name}</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">Task: {receiveModal?.task_name}</Text>
+            <TextInput className="mb-2.5 mt-2 rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Product name" value={product} onChangeText={setProduct} />
+            <TextInput className="mb-2.5 rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" />
+            <TextInput className="mb-2.5 rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Unit (kg, bags...)" value={unit} onChangeText={setUnit} />
+            <TextInput className="mb-2.5 min-h-[72px] rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Notes" value={notes} onChangeText={setNotes} multiline textAlignVertical="top" />
+            <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={confirmReceive}>
+              <Text className="text-white">Confirm receive</Text>
+            </Button>
+            <Button variant="ghost" onPress={() => setReceiveModal(null)}>
+              <Text>Cancel</Text>
+            </Button>
           </View>
         </View>
       </Modal>
 
       <Modal visible={!!qcModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Quality check</Text>
-            <Text style={styles.meta}>{qcModal?.product_name} · {qcModal?.quantity_received} {qcModal?.unit}</Text>
-            <TextInput style={[styles.input, styles.multiline]} placeholder="Quality assessment (required)" value={qcNotes} onChangeText={setQcNotes} multiline />
-            <TextInput style={styles.input} placeholder="Marketplace price per unit (KES)" value={qcPrice} onChangeText={setQcPrice} keyboardType="decimal-pad" />
-            <Button mode="contained" buttonColor={COLORS.primary} onPress={confirmQc}>Confirm approval</Button>
-            <Button mode="text" onPress={() => setQcModal(null)}>Cancel</Button>
+        <View className="flex-1 justify-center bg-black/50 p-5">
+          <View className="rounded-xl bg-white p-5">
+            <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Quality check</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">{qcModal?.product_name} · {qcModal?.quantity_received} {qcModal?.unit}</Text>
+            <TextInput className="mb-2.5 mt-2 min-h-[72px] rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Quality assessment (required)" value={qcNotes} onChangeText={setQcNotes} multiline textAlignVertical="top" />
+            <TextInput className="mb-2.5 rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Marketplace price per unit (KES)" value={qcPrice} onChangeText={setQcPrice} keyboardType="decimal-pad" />
+            <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={() => applyQc('approve')} disabled={qcActing}>
+              {qcActing ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Confirm approval</Text>}
+            </Button>
+            <Button variant="outline" className="mb-2 h-11" onPress={() => applyQc('reject')} disabled={qcActing}>
+              <Text className="text-[#D32F2F]">Reject QC</Text>
+            </Button>
+            <Button variant="ghost" onPress={() => setQcModal(null)} disabled={qcActing}>
+              <Text>Cancel</Text>
+            </Button>
           </View>
         </View>
       </Modal>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface, padding: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: '700', color: COLORS.primary, marginBottom: 16 },
-  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  stat: { flex: 1 },
-  statVal: { fontSize: 20, fontWeight: '800', color: COLORS.accent },
-  statLabel: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
-  section: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginTop: 20, marginBottom: 10 },
-  hint: { color: COLORS.muted, marginBottom: 12 },
-  itemTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  meta: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
-  itemBtn: { marginTop: 10 },
-  tabs: { marginBottom: 12 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  price: { fontWeight: '700', color: COLORS.accent },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: COLORS.background, borderRadius: 12, padding: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: COLORS.primary, marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: COLORS.surface },
-  multiline: { minHeight: 72, textAlignVertical: 'top' },
-});

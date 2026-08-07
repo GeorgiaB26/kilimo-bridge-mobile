@@ -1,101 +1,227 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
-import { getAllFarmers, getFarmerCount, getFarmerCountByCountry, getFarmerById } from '../services/farmerService';
-import { getCentreCountByCountry } from '../services/aggregationCentreService';
+import { getAllFarmers, getFarmerCount, getFarmerById, advanceFarmerForFieldVerification } from '../services/farmerService';
+import { isFarmerVisibleToAgent } from '../services/agentService';
 import { logAudit } from '../services/auditService';
-import { isAgentRole } from '../../../shared/src/roles';
+import {
+  isAgentRole,
+  isRegionalAdminRole,
+  isBankingAdminRole,
+  isRegionScopedRole,
+  canCreateUserRole,
+  normalizeRole,
+} from '../../../shared/src/roles';
 import type { UserRole } from '../../../shared/src/roles';
 
 const router = Router();
 
+function asyncHandler(
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    fn(req, res, next).catch(next);
+  };
+}
+
 router.use(authenticate);
-router.use(requireRole('super_admin', 'admin', 'agent'));
+router.use(requireRole('platform_admin', 'super_admin', 'admin', 'agent'));
 
-router.get('/dashboard', requirePermission('reports.read'), (_req: Request, res: Response) => {
-  res.json(getAdminStats());
-});
+router.get(
+  '/dashboard',
+  requirePermission('reports.read'),
+  asyncHandler(async (_req, res) => {
+    const stats = await getAdminStats();
+    res.json(stats);
+  })
+);
 
-router.get('/users', requirePermission('users.read'), (req: Request, res: Response) => {
-  const q = (req.query.q as string) || undefined;
-  res.json({ users: getAllUsers(q) });
-});
-
-router.post('/users', requirePermission('users.write'), (req: Request, res: Response) => {
-  const { phoneNumber, name, role, farmerId, district, region } = req.body;
-  if (!phoneNumber || !name || !role) {
-    res.status(400).json({ error: 'phoneNumber, name, and role are required' });
-    return;
+function filterUsersForViewer(
+  users: Array<{ role: string; district?: string | null; region?: string | null }>,
+  viewerRole: UserRole,
+  viewerDistrict?: string,
+  viewerRegion?: string
+) {
+  if (isBankingAdminRole(viewerRole)) {
+    return users.filter((u) => normalizeRole(u.role) === 'banking_agent');
   }
-  try {
-    const userId = createUser({ phoneNumber, name, role: role as UserRole, farmerId, district, region });
-    logAudit({
-      userId: req.user?.userId,
-      userRole: req.user?.role,
-      action: 'user.create',
-      category: 'system',
-      resourceType: 'user',
-      resourceId: userId,
-      details: { role, name },
-      success: true,
-    });
-    res.status(201).json({ userId });
-  } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to create user' });
+  if (isRegionalAdminRole(viewerRole)) {
+    const scope = viewerRegion ?? viewerDistrict;
+    if (!scope) return users;
+    return users.filter(
+      (u) => u.district === scope || u.region === scope || normalizeRole(u.role) === 'farmer'
+    );
   }
-});
+  return users;
+}
 
-router.get('/farmers', requirePermission('farmers.read'), (req: Request, res: Response) => {
-  const limit = parseInt(req.query.limit as string) || 100;
-  const offset = parseInt(req.query.offset as string) || 0;
-  const country = (req.query.country as string) || undefined;
-  const q = (req.query.q as string) || undefined;
-  let farmers = getAllFarmers(limit, offset, country, q);
-
-  if (isAgentRole(req.user!.role) && req.user!.district) {
-    farmers = (farmers as { district: string }[]).filter((f) => f.district === req.user!.district);
+function isOutsideViewerScope(
+  resource: { district?: string; region?: string },
+  viewerRole: UserRole,
+  viewerDistrict?: string,
+  viewerRegion?: string
+): boolean {
+  if (!isRegionScopedRole(viewerRole)) return false;
+  const scope = viewerRegion ?? viewerDistrict;
+  if (!scope) return false;
+  if (isAgentRole(viewerRole)) {
+    if (viewerDistrict) {
+      return resource.district !== viewerDistrict;
+    }
+    if (viewerRegion) {
+      return resource.region !== viewerRegion;
+    }
+    return false;
   }
-
-  logAudit({
-    userId: req.user?.userId,
-    userRole: req.user?.role,
-    action: 'farmer.read',
-    category: 'farmer_data',
-    details: { count: (farmers as unknown[]).length, country, search: q },
-    ipAddress: req.ip,
-    success: true,
-  });
-
-  res.json({ farmers, total: getFarmerCount(country, q) });
-});
-
-router.get('/farmers/:farmerId', requirePermission('farmers.read'), (req: Request, res: Response) => {
-  const farmer = getFarmerById(req.params.farmerId);
-  if (!farmer) {
-    res.status(404).json({ error: 'Farmer not found' });
-    return;
+  if (isRegionalAdminRole(viewerRole)) {
+    return resource.district !== scope && resource.region !== scope;
   }
+  return false;
+}
 
-  if (isAgentRole(req.user!.role) && req.user!.district) {
-    const district = (farmer as { district?: string }).district;
-    if (district !== req.user!.district) {
-      res.status(403).json({ error: 'Farmer is outside your region' });
+router.get(
+  '/users',
+  requirePermission('users.read'),
+  asyncHandler(async (req, res) => {
+    const q = (req.query.q as string) || undefined;
+    const allUsers = await getAllUsers(q);
+    const users = filterUsersForViewer(
+      allUsers as Array<{ role: string; district?: string | null; region?: string | null }>,
+      req.user!.role,
+      req.user!.district,
+      req.user!.region
+    );
+    res.json({ users });
+  })
+);
+
+router.post(
+  '/users',
+  requirePermission('users.write'),
+  asyncHandler(async (req, res) => {
+    const { phoneNumber, name, role, farmerId, district, region } = req.body;
+    if (!phoneNumber || !name || !role) {
+      res.status(400).json({ error: 'phoneNumber, name, and role are required' });
       return;
     }
-  }
 
-  logAudit({
-    userId: req.user?.userId,
-    userRole: req.user?.role,
-    action: 'farmer.read',
-    category: 'farmer_data',
-    resourceType: 'farmer',
-    resourceId: req.params.farmerId,
-    ipAddress: req.ip,
-    success: true,
-  });
+    const targetRole = normalizeRole(role);
+    if (!canCreateUserRole(req.user!.role, targetRole)) {
+      res.status(403).json({ error: `Your role cannot create ${targetRole} accounts` });
+      return;
+    }
 
-  res.json({ farmer });
-});
+    try {
+      const userId = await createUser({
+        phoneNumber,
+        name,
+        role: targetRole,
+        farmerId,
+        district,
+        region,
+      });
+      await logAudit({
+        userId: req.user?.userId,
+        userRole: req.user?.role,
+        action: 'user.create',
+        category: 'system',
+        resourceType: 'user',
+        resourceId: userId,
+        details: { role: targetRole, name },
+        success: true,
+      });
+      res.status(201).json({ userId });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to create user' });
+    }
+  })
+);
+
+router.get(
+  '/farmers',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    const limit = parseInt(req.query.limit as string) || 100;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const country = (req.query.country as string) || undefined;
+    const q = (req.query.q as string) || undefined;
+    let farmers = await getAllFarmers(limit, offset, country, q);
+
+    if (isRegionScopedRole(req.user!.role)) {
+      const scope = req.user!.region ?? req.user!.district;
+      if (scope) {
+        farmers = (farmers as { district: string; region?: string }[]).filter(
+          (f) => f.district === scope || f.region === scope
+        );
+      }
+    }
+
+    void logAudit({
+      userId: req.user?.userId,
+      userRole: req.user?.role,
+      action: 'farmer.read',
+      category: 'farmer_data',
+      details: { count: (farmers as unknown[]).length, country, search: q },
+      ipAddress: req.ip,
+      success: true,
+    });
+
+    res.json({ farmers, total: (farmers as unknown[]).length });
+  })
+);
+
+router.get(
+  '/farmers/:farmerId',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    const farmer = await getFarmerById(req.params.farmerId);
+    if (!farmer) {
+      res.status(404).json({ error: 'Farmer not found' });
+      return;
+    }
+
+    const f = farmer as { district?: string; region?: string };
+    if (isAgentRole(req.user!.role)) {
+      const visible = await isFarmerVisibleToAgent(
+        req.params.farmerId,
+        req.user!.region ?? '',
+        req.user!.district
+      );
+      if (!visible) {
+        res.status(403).json({ error: 'Farmer is outside your assigned region' });
+        return;
+      }
+    } else if (isOutsideViewerScope(f, req.user!.role, req.user!.district, req.user!.region)) {
+      res.status(403).json({ error: 'Farmer is outside your assigned region' });
+      return;
+    }
+
+    void logAudit({
+      userId: req.user?.userId,
+      userRole: req.user?.role,
+      action: 'farmer.read',
+      category: 'farmer_data',
+      resourceType: 'farmer',
+      resourceId: req.params.farmerId,
+      ipAddress: req.ip,
+      success: true,
+    });
+
+    res.json({ farmer });
+  })
+);
+
+router.patch(
+  '/farmers/:farmerId/approve-field-verification',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await advanceFarmerForFieldVerification(req.params.farmerId, req.user!.userId);
+      res.json({ success: true, status: result.status });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Approval failed' });
+    }
+  })
+);
 
 export default router;

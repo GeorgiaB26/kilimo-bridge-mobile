@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
-import { Button } from '../../components/Button';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
@@ -38,7 +39,7 @@ export function BasicInfoScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1">
       <ScreenHeader title="Basic Info" subtitle={`Registering in ${formData.country}`} />
       <FormField
         label="Full Name"
@@ -73,16 +74,14 @@ export function BasicInfoScreen({ navigation }: Props) {
         required
         error={errors.idNumber}
       />
-      <View style={styles.row}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="outline" style={styles.half} />
-        <Button title="Next" onPress={handleNext} style={styles.half} />
+      <View className="mt-2 flex-row gap-3">
+        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
+          <Text>Back</Text>
+        </Button>
+        <Button className="h-12 flex-1 bg-[#1A4D3E]" onPress={handleNext}>
+          <Text className="text-white">Next</Text>
+        </Button>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  half: { flex: 1 },
-});

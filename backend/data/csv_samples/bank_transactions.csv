@@ -1,0 +1,1 @@
+id,payment_id,farmer_id,amount,currency,recipient_phone,status,equity_reference,equity_response,error_message,initiated_by,webhook_received_at,created_at,completed_at

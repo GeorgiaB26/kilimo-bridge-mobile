@@ -20,6 +20,10 @@ export function setAuthToken(token: string | null) {
   }
 }
 
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
 api.interceptors.request.use((config) => {
   if (authToken) {
     config.headers.Authorization = `Bearer ${authToken}`;
@@ -61,6 +65,16 @@ export async function devQuickLogin(phone: string) {
   return data;
 }
 
+export async function devTokenLogin(role: 'farmer' | 'field_agent', phone?: string) {
+  const { data } = await api.post<{
+    status: string;
+    token: string;
+    user: AuthUser;
+    message?: string;
+  }>('/auth/dev-token', { role, phone });
+  return data;
+}
+
 export async function checkBackendHealth(): Promise<boolean> {
   const timeoutMs = API_BASE_URL.includes('onrender.com') ? 90000 : 8000;
   // Use /reference not /health — /health lacks CORS headers for browser requests from Netlify
@@ -81,6 +95,22 @@ export async function checkBackendHealth(): Promise<boolean> {
 export async function loginWithPassword(phone: string, password: string) {
   const { data } = await api.post('/auth/login', { phone, password });
   return data;
+}
+
+export async function selfRegister(body: {
+  userType: 'farmer' | 'field_agent' | 'admin' | 'project_manager';
+  name: string;
+  phone: string;
+  email?: string;
+  password?: string;
+  district?: string;
+  region?: string;
+  aggregationCenter?: string;
+  governmentId?: string;
+  sector?: string;
+}) {
+  const { data } = await api.post('/auth/self-register', body);
+  return data as { success: boolean; message: string; pendingApproval?: boolean };
 }
 
 export async function fetchMe() {
@@ -165,6 +195,12 @@ export async function getFarmerById(farmerId: string) {
   return data;
 }
 
+/** Field agent farmer profile — uses agent-scoped endpoint (avoids region/district scope mismatch). */
+export async function getAgentFarmerById(farmerId: string) {
+  const { data } = await api.get(`/agents/farmers/${farmerId}`);
+  return data;
+}
+
 export async function getAdminDashboard() {
   const { data } = await api.get('/admin/dashboard');
   return data;
@@ -180,6 +216,67 @@ export async function getFarmerDashboard() {
   return data;
 }
 
+export async function submitFarmerHelpRequest(message: string) {
+  const { data } = await api.post('/farmer/help-requests', { message });
+  return data;
+}
+
+export async function getAgentHelpRequests() {
+  const { data } = await api.get('/agents/help-requests');
+  return data;
+}
+
+export async function resolveAgentHelpRequest(requestId: string) {
+  const { data } = await api.post(`/agents/help-requests/${requestId}/resolve`);
+  return data;
+}
+
+export async function getAgentDashboard() {
+  const { data } = await api.get('/agents/dashboard');
+  return data;
+}
+
+export async function getAgentTasks() {
+  const { data } = await api.get('/agents/tasks');
+  return data;
+}
+
+export async function createAgentPersonalTask(body: {
+  name: string;
+  description?: string;
+  due_date: string;
+  priority?: string;
+  assigned_farmers?: string[];
+  reminder_type?: string;
+}) {
+  const { data } = await api.post('/agents/tasks', body);
+  return data;
+}
+
+export async function updateAgentPersonalTask(
+  taskId: string,
+  body: {
+    status?: string;
+    name?: string;
+    description?: string | null;
+    due_date?: string;
+    priority?: string;
+  }
+) {
+  const { data } = await api.patch(`/agents/tasks/${taskId}`, body);
+  return data;
+}
+
+export async function getAgentPersonalTask(taskId: string) {
+  const { data } = await api.get(`/agents/tasks/${taskId}`);
+  return data;
+}
+
+export async function setAgentTaskReminder(taskId: string, reminder_type: string) {
+  const { data } = await api.post(`/agents/tasks/${taskId}/reminder`, { reminder_type });
+  return data;
+}
+
 export async function updateFarmerLocation(body: {
   district: string;
   subCounty: string;
@@ -190,6 +287,11 @@ export async function updateFarmerLocation(body: {
   return data;
 }
 
+export async function updateFarmerProfilePhoto(picture_url: string) {
+  const { data } = await api.patch('/farmer/profile/photo', { picture_url });
+  return data;
+}
+
 export async function getFarmerProjects() {
   const { data } = await api.get('/farmer/projects');
   return data;
@@ -197,7 +299,24 @@ export async function getFarmerProjects() {
 
 export async function getFarmerPayments() {
   const { data } = await api.get('/farmer/payments');
-  return data;
+  return data as {
+    payments: Array<{
+      id: string;
+      project_name: string;
+      amount: number;
+      payment_status: string;
+      payment_method: string;
+      created_at: string;
+      mpesa_reference?: string;
+      description?: string;
+    }>;
+    summary?: {
+      transferred: number;
+      pending: number;
+      expected: number;
+      total: number;
+    };
+  };
 }
 
 export async function claimPayment(paymentId: string) {
@@ -208,6 +327,92 @@ export async function claimPayment(paymentId: string) {
 export async function getFarmerNotifications() {
   const { data } = await api.get('/farmer/notifications');
   return data;
+}
+
+// Messaging & notifications (unified API)
+export async function getMessageThreads(search?: string) {
+  const { data } = await api.get('/messages/threads', {
+    params: search ? { search } : undefined,
+  });
+  return data as { threads: Array<Record<string, unknown>> };
+}
+
+export async function getMessageContacts() {
+  const { data } = await api.get('/messages/contacts');
+  return data as { contacts: Array<{ userId: string; name: string; role: string }> };
+}
+
+export async function startMessageThread(recipientId: string, title?: string) {
+  const { data } = await api.post('/messages/threads', { recipientId, title });
+  return data as { threadId: string };
+}
+
+export async function getThreadMessages(threadId: string) {
+  const { data } = await api.get(`/messages/threads/${threadId}`);
+  return data as {
+    messages: Array<{
+      id: string;
+      content: string;
+      created_at: string;
+      sender_name?: string;
+      is_mine?: boolean;
+    }>;
+    otherUser: { id: string; name: string } | null;
+  };
+}
+
+export async function sendThreadMessage(threadId: string, content: string) {
+  const { data } = await api.post(`/messages/threads/${threadId}/messages`, { content });
+  return data;
+}
+
+export async function getUnreadMessageCount() {
+  const { data } = await api.get('/messages/unread-count');
+  return data as { count: number };
+}
+
+export async function getAppNotifications(unreadOnly = false) {
+  const { data } = await api.get('/notifications', {
+    params: unreadOnly ? { unread: 'true' } : undefined,
+  });
+  return data as {
+    notifications: Array<{
+      id: string;
+      title: string;
+      message: string;
+      type: string;
+      is_read: boolean;
+      created_at: string;
+      context_type?: string | null;
+      context_id?: string | null;
+      action_url?: string | null;
+    }>;
+  };
+}
+
+export async function getUnreadNotificationCount() {
+  const { data } = await api.get('/notifications/unread-count');
+  return data as { count: number };
+}
+
+export async function markNotificationRead(notificationId: string) {
+  const { data } = await api.post(`/notifications/${notificationId}/read`);
+  return data;
+}
+
+export async function markAllNotificationsRead() {
+  const { data } = await api.post('/notifications/read-all');
+  return data;
+}
+
+export async function getNotificationSettings() {
+  const { data } = await api.get('/notifications/settings');
+  return data as { settings: Record<string, boolean | string | null> };
+}
+
+export async function updateNotificationSettings(patch: Record<string, boolean | string | null>) {
+  const { data } = await api.patch('/notifications/settings', patch);
+  return data as { settings: Record<string, boolean | string | null> };
 }
 
 // Phase 2 hierarchy
@@ -368,7 +573,11 @@ export async function getFarmerHierarchyProjects() {
   return data;
 }
 
-export async function getFarmerHierarchyTasks(params?: { status?: string; program_project_id?: string }) {
+export async function getFarmerHierarchyTasks(params?: {
+  status?: string;
+  program_project_id?: string;
+  outstanding?: string;
+}) {
   const { data } = await api.get('/farmer/hierarchy/tasks', { params });
   return data;
 }
@@ -436,10 +645,10 @@ export async function receiveCentreDelivery(centreId: string | 'self', body: {
   unit?: string;
   notes?: string;
 }) {
-  const path = centreId === 'self'
-    ? '/aggregation/centre/receive-delivery'
-    : `/aggregation/centre/${centreId}/receive-delivery`;
-  const { data } = await api.post(path, body);
+  const { data } = await api.post('/aggregation-centres/deliveries', {
+    ...body,
+    centre_id: centreId === 'self' ? undefined : centreId,
+  });
   return data;
 }
 
@@ -447,13 +656,68 @@ export async function approveInventoryQuality(inventoryId: string, body: {
   quality_status: 'approved' | 'rejected';
   quality_notes?: string;
   marketplace_price_per_unit?: number;
+  price_per_unit_applied?: number;
 }) {
-  const { data } = await api.post(`/aggregation/inventory/${inventoryId}/approve-quality`, body);
+  const { data } = await api.patch(`/aggregation-centres/deliveries/${inventoryId}/quality-check`, {
+    quality_status: body.quality_status,
+    quality_notes: body.quality_notes,
+    price_per_unit_applied: body.price_per_unit_applied ?? body.marketplace_price_per_unit,
+  });
+  return data;
+}
+
+/** Single inventory/delivery row for offline QC conflict checks. */
+export async function getCentreInventoryItem(inventoryId: string) {
+  const { data } = await api.get(`/aggregation-centres/deliveries/${inventoryId}`);
+  return data;
+}
+
+/** Bank MVP — pending QC deliveries at a centre (centre_inventory with quality_status = pending). */
+export async function getPendingQcDeliveries(centreId: string) {
+  const { data } = await api.get(`/aggregation-centres/${centreId}/deliveries`);
   return data;
 }
 
 export async function getAggregationCentres() {
   const { data } = await api.get('/aggregation/centres');
+  return data;
+}
+
+/** Fetch aggregation centres for registration dropdown by farmer location. */
+export async function fetchAggregationCentresByLocation(params: {
+  country: string;
+  county: string;
+  subcounty?: string;
+}) {
+  const { data } = await api.get('/aggregation-centres', {
+    params: {
+      country: params.country,
+      county: params.county,
+      subcounty: params.subcounty,
+    },
+  });
+  return data as {
+    centres: Array<{
+      id: string;
+      centre_id: string;
+      name: string;
+      country: string;
+      county: string;
+      subcounty?: string;
+      location?: string;
+    }>;
+  };
+}
+
+export async function verifyFarmerField(
+  farmerId: string,
+  verification_status: 'verified' | 'rejected',
+  verification_notes?: string
+) {
+  const { data } = await api.patch(`/farmers/${farmerId}/verify`, {
+    verification_status,
+    verification_notes,
+  });
   return data;
 }
 
@@ -470,21 +734,25 @@ export async function aggregationCentreLogin(body: { centre_id: string; phone_nu
   return data;
 }
 
-export async function approveCentreQuality(centreId: string | undefined, body: {
+export async function approveCentreQuality(_centreId: string | undefined, body: {
   inventory_id: string;
   quality_notes: string;
   marketplace_price_per_unit: number;
 }) {
-  const payload = {
-    inventory_id: body.inventory_id,
-    quality_status: 'approved' as const,
+  return approveInventoryQuality(body.inventory_id, {
+    quality_status: 'approved',
     quality_notes: body.quality_notes,
-    marketplace_price_per_unit: body.marketplace_price_per_unit,
+    price_per_unit_applied: body.marketplace_price_per_unit,
+  });
+}
+
+/** Bank MVP — verify national ID against farmers.id_number_hash. */
+export async function verifyFarmerId(id_number: string, farmer_id?: string) {
+  const { data } = await api.post('/banking/verify-farmer-id', { id_number, farmer_id });
+  return data as {
+    verified: boolean;
+    farmer_id?: string;
+    name?: string;
+    phone_number?: string;
   };
-  if (centreId) {
-    const { data } = await api.post(`/aggregation/centre/${centreId}/approve-quality`, payload);
-    return data;
-  }
-  const { data } = await api.post(`/aggregation/inventory/${body.inventory_id}/approve-quality`, payload);
-  return data;
 }
