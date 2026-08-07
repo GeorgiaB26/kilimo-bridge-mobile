@@ -229,7 +229,11 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   if (!farmer) {
     return (
       <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-center text-[#D32F2F]">{loadError ?? 'Could not load farmer profile.'}</Text>
+        <View className="mb-4 w-full max-w-sm rounded-lg border border-[#D32F2F] bg-[#FFEBEE] px-4 py-3">
+          <Text className="text-center text-sm leading-5 text-[#D32F2F]">
+            {loadError ?? 'Could not load farmer profile.'}
+          </Text>
+        </View>
         <Button variant="outline" className="mt-4" onPress={() => navigation.goBack()}>
           <Text>Back to farmers</Text>
         </Button>
@@ -264,7 +268,10 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
               label="Verification photo missing — re-register with camera photo"
             />
             {!isUsableFarmerPhotoUrl(farmer.picture_url) ? (
-              <View className="mt-3 rounded-lg border border-[#D32F2F] bg-[#FFEBEE] px-3 py-2">
+              <View
+                className="mt-3 rounded-lg border border-[#D32F2F] bg-[#FFEBEE] px-3 py-2"
+                style={{ zIndex: 10 }}
+              >
                 <Text className="text-center text-xs text-[#D32F2F]">
                   No valid verification photo on file. Farmers must have a real camera/gallery photo — not an avatar.
                 </Text>

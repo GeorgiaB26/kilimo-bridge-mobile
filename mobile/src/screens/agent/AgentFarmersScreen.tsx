@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { View, FlatList, RefreshControl, ActivityIndicator, Alert, Pressable } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import { Sprout } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -39,6 +40,8 @@ type FarmerRow = {
 export function AgentFarmersScreen() {
   const user = useAuthStore((s) => s.user);
   const userScope = useReadCacheUserScope();
+  const route = useRoute<RouteProp<AgentFarmersStackParamList, 'FarmerList'>>();
+  const statusFilter = route.params?.statusFilter ?? 'all';
   const navigation = useNavigation<NativeStackNavigationProp<AgentFarmersStackParamList>>();
   const [farmers, setFarmers] = useState<FarmerRow[]>([]);
   const [pending, setPending] = useState<PendingRegistrationView[]>([]);
@@ -144,10 +147,27 @@ export function AgentFarmersScreen() {
     );
   }
 
+  const filteredFarmers = farmers.filter((f) => {
+    if (!statusFilter || statusFilter === 'all') return true;
+    if (statusFilter === 'pending_verification') {
+      return f.status === 'pending_field_verification' || f.status === 'pending_review';
+    }
+    return f.status === statusFilter;
+  });
+
+  const filterLabel =
+    statusFilter === 'pending_verification'
+      ? 'Pending verification'
+      : statusFilter === 'verified'
+        ? 'Verified'
+        : statusFilter === 'rejected'
+          ? 'Rejected'
+          : null;
+
   return (
     <FlatList
       className="flex-1 p-4"
-      data={farmers}
+      data={filteredFarmers}
       keyExtractor={(item) => item.farmer_id}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       ListHeaderComponent={
@@ -158,6 +178,14 @@ export function AgentFarmersScreen() {
           <Text className="mb-3 text-sm text-[#757575]">
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
+
+          {filterLabel ? (
+            <View className="mb-3 rounded-lg border border-[#1A4D3E] bg-[#E8F5E9] px-3 py-2">
+              <Text className="text-sm font-semibold text-[#1A4D3E]">
+                Filter: {filterLabel} ({filteredFarmers.length})
+              </Text>
+            </View>
+          ) : null}
 
           {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
 
@@ -244,7 +272,9 @@ export function AgentFarmersScreen() {
       )}
       ListEmptyComponent={
         <Text className="text-[#757575]">
-          No farmers in your region yet. Use REGISTER NEW FARMER in the header.
+          {filterLabel
+            ? `No farmers match the “${filterLabel}” filter.`
+            : 'No farmers in your region yet. Use REGISTER NEW FARMER in the header.'}
         </Text>
       }
     />

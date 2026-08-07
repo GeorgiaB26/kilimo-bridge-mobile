@@ -64,15 +64,17 @@ export type AdminFarmersStackParamList = {
 };
 
 export type AgentFarmersStackParamList = {
-  FarmerList: undefined;
-  RegisterFarmer: undefined;
+  FarmerList: { statusFilter?: string } | undefined;
+  RegisterPicker: undefined;
+  RegisterFarmerFlow: undefined;
+  RegisterFieldAgent: undefined;
   FarmerProfile: { farmerId: string; name: string };
 };
 
 export type AgentTabParamList = {
   Dashboard: undefined;
-  Farmers: undefined;
-  Tasks: undefined;
+  Farmers: NavigatorScreenParams<AgentFarmersStackParamList> | undefined;
+  Tasks: { filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed' } | undefined;
   Audit: undefined;
   Profile: undefined;
 };

@@ -5,6 +5,7 @@ import {
   CircleCheck,
   CircleX,
   ClipboardList,
+  LogIn,
   Plus,
   User,
   Users,
@@ -39,7 +40,10 @@ export function formatAgentAuditEntry(entry: {
   let Icon: AuditIcon = ClipboardList;
   let title = entry.action ?? 'Activity';
 
-  if (activityType === 'task_created' || (entry.action === 'agent.action' && name)) {
+  if (activityType === 'view_farmer_profile' || entry.action === 'farmer.read') {
+    Icon = User;
+    title = farmerName ? `Viewed farmer profile: ${farmerName}` : 'Viewed farmer profile';
+  } else if (activityType === 'task_created' || (entry.action === 'agent.action' && name)) {
     Icon = Plus;
     title = `Created task: ${name}`;
   } else if (entry.action === 'farmer.create' || activityType === 'farmer_registered') {
@@ -71,6 +75,9 @@ export function formatAgentAuditEntry(entry: {
   } else if (entry.action === 'agent.register') {
     Icon = User;
     title = 'Agent registration';
+  } else if (entry.action === 'auth.login') {
+    Icon = LogIn;
+    title = 'Signed in';
   } else if (entry.category === 'financial') {
     Icon = Banknote;
     title = 'Payment activity';

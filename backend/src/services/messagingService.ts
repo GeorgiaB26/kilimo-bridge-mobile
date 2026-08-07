@@ -249,7 +249,7 @@ export async function getThreadMessages(
   userId: string
 ): Promise<{ messages: ThreadMessage[]; otherUser: { id: string; name: string } | null }> {
   const participant = await queryOne<{ user_id: string }>(
-    `SELECT user_id FROM message_thread_participants WHERE thread_id = $1 AND user_id = $2`,
+    `SELECT user_id FROM message_thread_participants WHERE thread_id::text = $1::text AND user_id::text = $2::text`,
     [threadId, userId]
   );
   if (!participant) throw new Error('Thread not found');
@@ -277,14 +277,17 @@ export async function getThreadMessages(
   );
 
   return {
-    messages: messages.map((m) => ({ ...m, is_mine: m.sender_id === userId })),
+    messages: messages.map((m) => ({
+      ...m,
+      is_mine: String(m.sender_id) === String(userId),
+    })),
     otherUser: other ? { id: other.user_id, name: other.name } : null,
   };
 }
 
 export async function markThreadRead(threadId: string, userId: string): Promise<void> {
   const participant = await queryOne<{ user_id: string }>(
-    `SELECT user_id FROM message_thread_participants WHERE thread_id = $1 AND user_id = $2`,
+    `SELECT user_id FROM message_thread_participants WHERE thread_id::text = $1::text AND user_id::text = $2::text`,
     [threadId, userId]
   );
   if (!participant) throw new Error('Thread not found');
@@ -293,11 +296,11 @@ export async function markThreadRead(threadId: string, userId: string): Promise<
     `
     SELECT m.id
     FROM message_thread_messages m
-    WHERE m.thread_id = $1
-      AND m.sender_id <> $2
+    WHERE m.thread_id::text = $1::text
+      AND m.sender_id::text <> $2::text
       AND NOT EXISTS (
         SELECT 1 FROM message_read_receipts r
-        WHERE r.message_id = m.id AND r.user_id = $2
+        WHERE r.message_id = m.id AND r.user_id::text = $2::text
       )
     `,
     [threadId, userId]
@@ -322,7 +325,7 @@ export async function sendThreadMessage(
   if (trimmed.length > 2000) throw new Error('Message must be 2000 characters or less');
 
   const participant = await queryOne<{ user_id: string }>(
-    `SELECT user_id FROM message_thread_participants WHERE thread_id = $1 AND user_id = $2`,
+    `SELECT user_id FROM message_thread_participants WHERE thread_id::text = $1::text AND user_id::text = $2::text`,
     [threadId, senderId]
   );
   if (!participant) throw new Error('Thread not found');
@@ -344,7 +347,7 @@ export async function sendThreadMessage(
   );
 
   const recipients = await query<{ user_id: string }>(
-    `SELECT user_id FROM message_thread_participants WHERE thread_id = $1 AND user_id <> $2`,
+    `SELECT user_id FROM message_thread_participants WHERE thread_id::text = $1::text AND user_id::text <> $2::text`,
     [threadId, senderId]
   );
 
@@ -470,11 +473,12 @@ export async function getUnreadMessageCount(userId: string): Promise<number> {
     `
     SELECT COUNT(*)::int AS count
     FROM message_thread_messages m
-    JOIN message_thread_participants p ON p.thread_id = m.thread_id AND p.user_id = $1
-    WHERE m.sender_id <> $1
+    JOIN message_thread_participants p
+      ON p.thread_id::text = m.thread_id::text AND p.user_id::text = $1::text
+    WHERE m.sender_id::text <> $1::text
       AND NOT EXISTS (
         SELECT 1 FROM message_read_receipts r
-        WHERE r.message_id = m.id AND r.user_id = $1
+        WHERE r.message_id = m.id AND r.user_id::text = $1::text
       )
     `,
     [userId]
