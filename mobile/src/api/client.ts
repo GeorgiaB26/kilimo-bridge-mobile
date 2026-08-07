@@ -253,6 +253,25 @@ export async function createAgentPersonalTask(body: {
   return data;
 }
 
+export async function updateAgentPersonalTask(
+  taskId: string,
+  body: {
+    status?: string;
+    name?: string;
+    description?: string | null;
+    due_date?: string;
+    priority?: string;
+  }
+) {
+  const { data } = await api.patch(`/agents/tasks/${taskId}`, body);
+  return data;
+}
+
+export async function getAgentPersonalTask(taskId: string) {
+  const { data } = await api.get(`/agents/tasks/${taskId}`);
+  return data;
+}
+
 export async function setAgentTaskReminder(taskId: string, reminder_type: string) {
   const { data } = await api.post(`/agents/tasks/${taskId}/reminder`, { reminder_type });
   return data;

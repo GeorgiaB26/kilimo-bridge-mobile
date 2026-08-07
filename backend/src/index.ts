@@ -50,7 +50,7 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
-    api_build: 'v2.11.11-agent-task-list-fix',
+    api_build: 'v2.11.12-agent-task-interactions',
     field_agent_features: {
       messaging_restricted: true,
       notification_settings_legacy_sync: true,

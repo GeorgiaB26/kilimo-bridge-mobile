@@ -3,6 +3,7 @@ import { query, queryOne } from '../db/database';
 import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
+import { createNotification } from './notificationService';
 
 export interface AgentPersonalTask {
   id: string;
@@ -13,10 +14,41 @@ export interface AgentPersonalTask {
   priority: string;
   status: string;
   assigned_farmer_ids?: string | null;
+  assigned_farmer_names?: string[];
   reminder_type?: string | null;
   created_at?: string;
   updated_at?: string;
   source?: 'personal';
+}
+
+const AGENT_TASK_STATUSES = new Set(['not_started', 'in_progress', 'completed']);
+
+function parseAssignedFarmerIds(raw?: string | null): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function enrichPersonalTask(row: AgentPersonalTask): Promise<AgentPersonalTask> {
+  const ids = parseAssignedFarmerIds(row.assigned_farmer_ids);
+  if (!ids.length) {
+    return { ...row, assigned_farmer_names: [], source: 'personal' };
+  }
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+  const farmers = await query<{ farmer_id: string; name: string }>(
+    `SELECT farmer_id, name FROM farmers WHERE farmer_id IN (${placeholders})`,
+    ids
+  );
+  const nameById = new Map(farmers.map((f) => [f.farmer_id, f.name]));
+  return {
+    ...row,
+    assigned_farmer_names: ids.map((id) => nameById.get(id) ?? id),
+    source: 'personal',
+  };
 }
 
 export interface RegionFarmerTaskRow {
@@ -106,6 +138,7 @@ export async function listRegionFarmerTasks(region: string, district?: string): 
     farmer_id: string;
     status: string;
     name: string;
+    description?: string | null;
     due_date?: string | null;
     farmer_name?: string;
     program_project_name?: string;
@@ -116,7 +149,7 @@ export async function listRegionFarmerTasks(region: string, district?: string): 
     photo_evidence_url?: string | null;
   }>(
     `
-    SELECT ft.id, ft.farmer_id, ft.status, t.name, t.due_date,
+    SELECT ft.id, ft.farmer_id, ft.status, t.name, t.description, t.due_date,
       f.name AS farmer_name, pp.name AS program_project_name,
       ft.submitted_date, ft.completed_date, t.payment_value_kes,
       ft.notes, ft.photo_evidence_url
@@ -144,7 +177,19 @@ export async function listAgentPersonalTasks(agentUserId: string): Promise<Agent
     `SELECT * FROM agent_tasks WHERE agent_user_id = $1 ORDER BY due_date, name`,
     [agentUserId]
   );
-  return rows.map((row) => ({ ...row, source: 'personal' as const }));
+  return Promise.all(rows.map((row) => enrichPersonalTask(row)));
+}
+
+export async function getAgentPersonalTask(
+  taskId: string,
+  agentUserId: string
+): Promise<AgentPersonalTask | null> {
+  const row = await queryOne<AgentPersonalTask>(
+    'SELECT * FROM agent_tasks WHERE id = $1 AND agent_user_id = $2',
+    [taskId, agentUserId]
+  );
+  if (!row) return null;
+  return enrichPersonalTask(row);
 }
 
 export function normalizeAgentTaskDueDate(input: string): string {
@@ -200,7 +245,77 @@ export async function createAgentPersonalTask(
     ]
   );
   const row = await queryOne<AgentPersonalTask>('SELECT * FROM agent_tasks WHERE id = $1', [id]);
-  return { ...row!, source: 'personal' };
+  const task = await enrichPersonalTask(row!);
+
+  if (data.assigned_farmers?.length) {
+    for (const farmerId of data.assigned_farmers) {
+      const farmerUser = await queryOne<{ user_id: string }>(
+        'SELECT user_id FROM users WHERE farmer_id = $1 LIMIT 1',
+        [farmerId]
+      );
+      if (farmerUser?.user_id) {
+        await createNotification({
+          userId: farmerUser.user_id,
+          title: 'New task from your field agent',
+          message: `Your field agent assigned you a task: ${data.name}. Due ${dueDate}.`,
+          type: 'task',
+          contextType: 'agent_task',
+          contextId: id,
+        });
+      }
+    }
+  }
+
+  return task;
+}
+
+export async function updateAgentPersonalTask(
+  taskId: string,
+  agentUserId: string,
+  data: {
+    status?: string;
+    name?: string;
+    description?: string | null;
+    due_date?: string;
+    priority?: string;
+  }
+): Promise<AgentPersonalTask | null> {
+  const existing = await queryOne<AgentPersonalTask>(
+    'SELECT * FROM agent_tasks WHERE id = $1 AND agent_user_id = $2',
+    [taskId, agentUserId]
+  );
+  if (!existing) return null;
+
+  const status = data.status?.trim();
+  if (status && !AGENT_TASK_STATUSES.has(status)) {
+    throw new Error('Invalid task status');
+  }
+
+  const dueDate = data.due_date ? normalizeAgentTaskDueDate(data.due_date) : undefined;
+
+  await query(
+    `
+    UPDATE agent_tasks SET
+      status = COALESCE($1, status),
+      name = COALESCE($2, name),
+      description = COALESCE($3, description),
+      due_date = COALESCE($4, due_date),
+      priority = COALESCE($5, priority),
+      updated_at = NOW()
+    WHERE id = $6 AND agent_user_id = $7
+    `,
+    [
+      status ?? null,
+      data.name?.trim() ?? null,
+      data.description ?? null,
+      dueDate ?? null,
+      data.priority ?? null,
+      taskId,
+      agentUserId,
+    ]
+  );
+
+  return getAgentPersonalTask(taskId, agentUserId);
 }
 
 export async function updateAgentPersonalTaskReminder(
