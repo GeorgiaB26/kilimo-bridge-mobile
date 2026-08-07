@@ -27,7 +27,13 @@ router.get(
   authenticate,
   asyncHandler(async (req, res) => {
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-    const threads = await listThreadsForUser(req.user!.userId, search);
+    const threads = await listThreadsForUser(
+      req.user!.userId,
+      search,
+      req.user!.role,
+      req.user!.region,
+      req.user!.district
+    );
     res.json({ threads });
   })
 );

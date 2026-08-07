@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard, getNotificationSettings, updateNotificationSettings } from '../../api/client';
+import { APP_BUILD } from '../../constants/build';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
@@ -268,6 +269,7 @@ export function AgentProfileScreen() {
         <Button variant="outline" onPress={logout}>
           <Text>Sign out</Text>
         </Button>
+        <Text className="mt-4 text-center text-[11px] text-[#757575]">Release {APP_BUILD}</Text>
       </ScrollView>
 
       <Modal visible={settingsOpen} animationType="slide" transparent onRequestClose={() => setSettingsOpen(false)}>

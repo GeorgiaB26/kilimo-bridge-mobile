@@ -30,4 +30,11 @@ fi
 export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-http://localhost:3001/api}"
 npx expo export --platform web
 
+BUILD_TAG=$(grep -oE "v[0-9.]+-[a-z0-9-]+" src/constants/build.ts | head -1)
+printf '{"build":"%s","api":"%s","built_at":"%s"}\n' \
+  "$BUILD_TAG" \
+  "$EXPO_PUBLIC_API_URL" \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/version.json
+echo "==> version.json: $(cat dist/version.json)"
+
 echo "==> Done. Publish folder: mobile/dist"
