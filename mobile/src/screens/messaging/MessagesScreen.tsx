@@ -189,7 +189,15 @@ export function MessagesScreen() {
               <Pressable key={c.userId} style={styles.contactRow} onPress={() => startChat(c.userId)}>
                 <Text style={styles.contactName}>{c.name}</Text>
                 <Text style={styles.contactRole}>
-                  {c.role === 'field_agent' ? 'Field Agent' : c.role === 'tech_support' ? 'Tech Support' : c.role}
+                  {c.role === 'field_agent' || c.role === 'agent'
+                    ? 'Field Agent'
+                    : c.role === 'project_manager'
+                      ? 'Project Manager'
+                      : c.role === 'tech_support'
+                        ? 'Tech Support'
+                        : c.role === 'farmer'
+                          ? 'Farmer'
+                          : c.role}
                 </Text>
               </Pressable>
             ))

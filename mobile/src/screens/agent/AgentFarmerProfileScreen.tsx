@@ -265,23 +265,19 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
               name={farmer.name || routeName}
               pictureUrl={farmer.picture_url}
               size="hero"
-              label="Verification photo missing — re-register with camera photo"
             />
-            {!isUsableFarmerPhotoUrl(farmer.picture_url) ? (
-              <View
-                className="mt-3 rounded-lg border border-[#D32F2F] bg-[#FFEBEE] px-3 py-2"
-                style={{ zIndex: 10 }}
-              >
-                <Text className="text-center text-xs text-[#D32F2F]">
-                  No valid verification photo on file. Farmers must have a real camera/gallery photo — not an avatar.
-                </Text>
-              </View>
-            ) : null}
             <Text className="mt-3 text-2xl font-bold text-white">{farmer.name || routeName}</Text>
             <View className="mt-3">
               <FarmerStatusChip status={farmer.status} />
             </View>
             <Text className="mt-2 text-center text-xs text-[#C8E6D9]">{statusInfo.description}</Text>
+            {!isUsableFarmerPhotoUrl(farmer.picture_url) ? (
+              <View className="mt-4 w-full max-w-sm rounded-md border border-[#D32F2F] bg-[#FFEBEE] px-3 py-3">
+                <Text className="text-center text-xs leading-5 text-[#D32F2F]">
+                  No valid verification photo on file. Farmers must have a real camera/gallery photo — not an avatar.
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 

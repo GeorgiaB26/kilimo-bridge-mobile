@@ -34,6 +34,7 @@ import {
 import { api } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { isAgentTaskOverdue, isAgentTaskUpcoming } from '../../utils/agentTaskDue';
+import { formatCleanDate } from '../../utils/greeting';
 import type { AgentTabParamList } from '../../navigation/types';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
@@ -58,9 +59,7 @@ type FilterKey = 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed'
 
 function formatDue(value?: string | null): string {
   if (!value) return 'No due date';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatCleanDate(value);
 }
 
 function isOverdue(due?: string | null, status?: string): boolean {

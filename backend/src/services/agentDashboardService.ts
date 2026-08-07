@@ -193,41 +193,48 @@ export async function updateAgentPersonalTaskReminder(
   );
 }
 
-export async function getProjectManagerForAgent(region?: string, district?: string) {
-  const row = await queryOne<{ name: string; phone_number: string }>(
+export async function getProjectManagerUserForAgent(region?: string, district?: string) {
+  const row = await queryOne<{ user_id: string; name: string; phone_number: string }>(
     `
-    SELECT name, phone_number FROM users
-    WHERE role::text IN ('admin', 'super_admin', 'platform_admin')
+    SELECT user_id::text AS user_id, name, phone_number FROM users
+    WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
       AND phone_number IS NOT NULL
       AND (
         ($1::text IS NOT NULL AND region = $1)
         OR ($2::text IS NOT NULL AND district = $2)
       )
     ORDER BY CASE role::text
-      WHEN 'platform_admin' THEN 0
-      WHEN 'super_admin' THEN 1
-      WHEN 'admin' THEN 2
-      ELSE 3
+      WHEN 'project_manager' THEN 0
+      WHEN 'platform_admin' THEN 1
+      WHEN 'super_admin' THEN 2
+      WHEN 'admin' THEN 3
+      ELSE 4
     END
     LIMIT 1
     `,
     [region ?? null, district ?? null]
   );
   if (row) return row;
-  return queryOne<{ name: string; phone_number: string }>(
+  return queryOne<{ user_id: string; name: string; phone_number: string }>(
     `
-    SELECT name, phone_number FROM users
-    WHERE role::text IN ('admin', 'super_admin', 'platform_admin')
+    SELECT user_id::text AS user_id, name, phone_number FROM users
+    WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
       AND phone_number IS NOT NULL
     ORDER BY CASE role::text
-      WHEN 'platform_admin' THEN 0
-      WHEN 'super_admin' THEN 1
-      WHEN 'admin' THEN 2
-      ELSE 3
+      WHEN 'project_manager' THEN 0
+      WHEN 'platform_admin' THEN 1
+      WHEN 'super_admin' THEN 2
+      WHEN 'admin' THEN 3
+      ELSE 4
     END
     LIMIT 1
     `
   );
+}
+
+export async function getProjectManagerForAgent(region?: string, district?: string) {
+  const pm = await getProjectManagerUserForAgent(region, district);
+  return pm ? { name: pm.name, phone_number: pm.phone_number } : null;
 }
 
 export async function getAgentDashboardSummary(

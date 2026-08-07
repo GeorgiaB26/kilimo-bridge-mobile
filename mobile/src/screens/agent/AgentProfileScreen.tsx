@@ -40,6 +40,7 @@ export function AgentProfileScreen() {
   const [pushOn, setPushOn] = useState(true);
   const [remindersOn, setRemindersOn] = useState(true);
   const [messagesOn, setMessagesOn] = useState(true);
+  const [paymentsOn, setPaymentsOn] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -56,6 +57,7 @@ export function AgentProfileScreen() {
       setPushOn(Boolean(s.push_enabled));
       setRemindersOn(Boolean(s.notify_task_assigned));
       setMessagesOn(Boolean(s.messages_enabled));
+      setPaymentsOn(Boolean(s.notify_payment_updates));
       setSettingsError(null);
     } catch {
       /* keep local defaults */
@@ -63,13 +65,14 @@ export function AgentProfileScreen() {
   }, []);
 
   const toggleSetting = async (
-    key: 'push_enabled' | 'notify_task_assigned' | 'messages_enabled',
+    key: 'push_enabled' | 'notify_task_assigned' | 'messages_enabled' | 'notify_payment_updates',
     next: boolean
   ) => {
-    const snapshot = { push: pushOn, reminders: remindersOn, messages: messagesOn };
+    const snapshot = { push: pushOn, reminders: remindersOn, messages: messagesOn, payments: paymentsOn };
     if (key === 'push_enabled') setPushOn(next);
     if (key === 'notify_task_assigned') setRemindersOn(next);
     if (key === 'messages_enabled') setMessagesOn(next);
+    if (key === 'notify_payment_updates') setPaymentsOn(next);
     setSettingsSaving(true);
     setSettingsError(null);
     try {
@@ -78,10 +81,12 @@ export function AgentProfileScreen() {
       setPushOn(Boolean(s.push_enabled));
       setRemindersOn(Boolean(s.notify_task_assigned));
       setMessagesOn(Boolean(s.messages_enabled));
+      setPaymentsOn(Boolean(s.notify_payment_updates));
     } catch (err) {
       setPushOn(snapshot.push);
       setRemindersOn(snapshot.reminders);
       setMessagesOn(snapshot.messages);
+      setPaymentsOn(snapshot.payments);
       setSettingsError(extractApiError(err, 'Could not save notification setting'));
     } finally {
       setSettingsSaving(false);
@@ -251,6 +256,12 @@ export function AgentProfileScreen() {
             value={messagesOn}
             disabled={settingsSaving}
             onChange={(v) => toggleSetting('messages_enabled', v)}
+          />
+          <ToggleRow
+            label="Payment updates"
+            value={paymentsOn}
+            disabled={settingsSaving}
+            onChange={(v) => toggleSetting('notify_payment_updates', v)}
           />
         </KBCard>
 
