@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Image, ActivityIndicator, Pressable, Platform, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { useRegistrationStore } from '../../store/registrationStore';
+import { showMessage } from '../../utils/feedback';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Photo'>;
@@ -25,7 +25,7 @@ export function PhotoScreen({ navigation }: Props) {
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow camera/gallery access to upload a photo.');
+        showMessage('Permission needed', 'Please allow camera/gallery access to upload a photo.');
         return;
       }
 
@@ -46,7 +46,7 @@ export function PhotoScreen({ navigation }: Props) {
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         if (!asset.base64) {
-          Alert.alert('Photo error', 'Could not read image. Please try again.');
+          showMessage('Photo error', 'Could not read image. Please try again.');
           return;
         }
         updateForm({
@@ -61,7 +61,7 @@ export function PhotoScreen({ navigation }: Props) {
 
   const handleNext = () => {
     if (!formData.pictureBase64) {
-      setError('A real verification photo is required (camera or gallery). Initials avatars are not allowed.');
+      setError('A real verification photo is required (camera or gallery).');
       return;
     }
     setError('');
@@ -89,39 +89,74 @@ export function PhotoScreen({ navigation }: Props) {
           </View>
         )}
       </View>
-      <Button
-        className="mb-2 h-12 bg-[#1A4D3E]"
+      <Pressable
         onPress={() => pickImage(true)}
         disabled={loading}
+        style={({ pressed }) => [styles.primaryBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
       >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Take Photo</Text>}
-      </Button>
-      <Button
-        variant="outline"
-        className="mb-2 h-12"
+        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Take photo</Text>}
+      </Pressable>
+      <Pressable
         onPress={() => pickImage(false)}
         disabled={loading}
+        style={({ pressed }) => [styles.outlineBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
+        className="mt-2"
       >
-        {loading ? <ActivityIndicator color="#1A4D3E" /> : <Text>Choose from Gallery</Text>}
-      </Button>
+        {loading ? <ActivityIndicator color="#1A4D3E" /> : <Text className="font-semibold text-[#333333]">Choose from gallery</Text>}
+      </Pressable>
       {formData.pictureUri ? (
-        <Button
-          variant="outline"
-          className="mb-2 h-12"
+        <Pressable
           onPress={() => updateForm({ pictureUri: undefined, pictureBase64: undefined })}
+          style={({ pressed }) => [styles.outlineBtn, pressed && styles.btnPressed]}
+          className="mt-2"
         >
-          <Text>Retake</Text>
-        </Button>
+          <Text className="font-semibold text-[#333333]">Retake</Text>
+        </Pressable>
       ) : null}
-      {error ? <Text className="mb-2 text-sm text-[#D32F2F]">{error}</Text> : null}
+      {error ? <Text className="mb-2 mt-2 text-sm text-[#D32F2F]">{error}</Text> : null}
       <View className="mt-2 flex-row gap-3">
-        <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
-          <Text>Back</Text>
-        </Button>
-        <Button className="h-12 flex-1 bg-[#1A4D3E]" onPress={handleNext}>
-          <Text className="text-white">Next</Text>
-        </Button>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={({ pressed }) => [styles.outlineBtn, styles.halfBtn, pressed && styles.btnPressed]}
+        >
+          <Text className="font-semibold text-[#333333]">Back</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleNext}
+          style={({ pressed }) => [styles.primaryBtn, styles.halfBtn, pressed && styles.btnPressed]}
+        >
+          <Text className="font-semibold text-white">Next</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  primaryBtn: {
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#1A4D3E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  outlineBtn: {
+    height: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  halfBtn: {
+    flex: 1,
+  },
+  btnDisabled: {
+    opacity: 0.65,
+  },
+  btnPressed: {
+    opacity: 0.9,
+  },
+});
