@@ -515,6 +515,14 @@ export function AgentTasksScreen() {
         contentContainerClassName="p-4 pb-10"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <Pressable
+          onPress={() => setAddModalOpen(true)}
+          className="mb-3 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
+          style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+        >
+          <Text className="font-bold text-black">+ Create task</Text>
+        </Pressable>
+
         <View className="mb-3 flex-row items-center gap-2">
           <Pressable onPress={() => setShowFilter(!showFilter)} className="flex-row items-center gap-1 rounded-lg bg-white px-3 py-2">
             <Text className="text-sm">Filter ▼</Text>
@@ -667,14 +675,6 @@ export function AgentTasksScreen() {
             <Text className="mt-3 text-center text-[#757575]">No tasks match your filters.</Text>
           </View>
         ) : null}
-
-        <Pressable
-          onPress={() => setAddModalOpen(true)}
-          className="mt-4 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
-          style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
-        >
-          <Text className="font-bold text-black">+ Create task</Text>
-        </Pressable>
       </ScrollView>
 
       <AgentTaskDetailModal
