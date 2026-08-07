@@ -11,6 +11,7 @@ import { KBStatusChip } from '../ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from './FarmerTaskSubmitModal';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
 import { formatCleanDate } from '../../utils/greeting';
+import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import {
   listPendingTaskSubmissions,
   pushPendingTaskSubmission,
@@ -39,14 +40,19 @@ interface Props {
   compact?: boolean;
 }
 
+function normalizeTaskStatus(status: string): string {
+  return status.replace(/_/g, '-');
+}
+
 function canOpenTask(status: string, hasPendingOffline: boolean): boolean {
   if (hasPendingOffline) return false;
-  return ['not-started', 'in-progress', 'rejected'].includes(status);
+  return ['not-started', 'in-progress', 'rejected'].includes(normalizeTaskStatus(status));
 }
 
 function displayStatus(status: string): string {
-  if (status === 'submitted-for-approval') return 'Submitted for Approval';
-  return taskStatusLabel(status);
+  const s = normalizeTaskStatus(status);
+  if (s === 'submitted-for-approval') return 'Submitted for Approval';
+  return taskStatusLabel(s);
 }
 
 function evidencePhotoUri(item: FarmerTaskRow): string | null {
@@ -260,7 +266,10 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
                     <Text style={styles.approvedText}>Approved</Text>
                   </View>
                 ) : (
-                  <KBStatusChip label={displayStatus(item.status)} variant={taskStatusVariant(item.status)} />
+                  <KBStatusChip
+                    label={displayStatus(item.status)}
+                    variant={taskStatusVariant(normalizeTaskStatus(item.status))}
+                  />
                 )}
               </View>
             </View>

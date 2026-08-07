@@ -461,8 +461,9 @@ export async function listFarmerTasks(
 
 export async function listFarmerProgramProjects(farmerId: string) {
   return query(`
-    SELECT pp.*, p.name AS program_name,
-      (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1) AS task_count,
+    SELECT pp.id, pp.name, pp.status, pp.start_date, pp.end_date, pp.budget_kes, pp.program_id,
+      p.name AS program_name,
+      (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1) AS assigned_task_count,
       (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1 AND ft.status IN ('approved','completed')) AS completed_task_count
     FROM program_project_farmers pf
     JOIN program_projects pp ON pp.id = pf.program_project_id

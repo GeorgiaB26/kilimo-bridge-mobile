@@ -30,6 +30,7 @@ interface HierarchyProject {
   status: string;
   start_date?: string | null;
   end_date?: string | null;
+  assigned_task_count?: number;
   task_count?: number;
   completed_task_count?: number;
 }
@@ -92,7 +93,9 @@ export function FarmerProjectsScreen() {
         <FarmerInboxHeaderBar />
         <View className="flex-1 p-4">
         <Text className="text-[26px] font-bold text-[#1A4D3E]">Your program projects</Text>
-        <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">Tap a project to see your 5 tasks and mark them complete</Text>
+        <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">
+          Tap a project to see your assigned tasks and mark them complete
+        </Text>
         {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         {hierarchyError && hierarchyProjects.length === 0 ? (
           <FarmerOfflineBanner message={hierarchyError} hint="Restart backend, then log out and use Farmer quick login (+254712345678)." />
@@ -112,9 +115,9 @@ export function FarmerProjectsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerClassName="pb-8"
           renderItem={({ item }) => {
-            const total = Number(item.task_count) || 1;
+            const total = Number(item.assigned_task_count ?? item.task_count) || 0;
             const doneCount = Number(item.completed_task_count) || 0;
-            const progress = Math.round((100 * doneCount) / total);
+            const progress = total > 0 ? Math.round((100 * doneCount) / total) : 0;
             return (
               <KBCard onPress={() => navigation.navigate('HierarchyProjectDetail', { projectId: item.id, projectName: item.name })}>
                 <View className="flex-row items-start justify-between gap-2">
@@ -129,7 +132,11 @@ export function FarmerProjectsScreen() {
                     {item.end_date ? `End: ${formatProjectDate(item.end_date)}` : ''}
                   </Text>
                 ) : null}
-                <KBProgressBar progress={progress} label={`${doneCount}/${total} tasks`} stacked />
+                <KBProgressBar
+                  progress={progress}
+                  label={total > 0 ? `${doneCount}/${total} tasks` : 'No tasks assigned yet'}
+                  stacked
+                />
               </KBCard>
             );
           }}

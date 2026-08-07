@@ -50,7 +50,7 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
-    api_build: 'v2.11.16-agent-overdue-tasks-top',
+    api_build: 'v2.11.17-farmer-projects-tasks-fix',
     field_agent_features: {
       messaging_restricted: true,
       notification_settings_legacy_sync: true,
