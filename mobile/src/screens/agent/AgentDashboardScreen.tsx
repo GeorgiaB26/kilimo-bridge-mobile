@@ -270,7 +270,9 @@ export function AgentDashboardScreen() {
         <Button
           variant="outline"
           className="h-10"
-          onPress={() => navigateNested(navigation, 'Tasks', { filter: 'all' })}
+          onPress={() =>
+            navigateNested(navigation, 'Tasks', { filter: 'all', openAdd: true })
+          }
         >
           <Text>+ Add task</Text>
         </Button>

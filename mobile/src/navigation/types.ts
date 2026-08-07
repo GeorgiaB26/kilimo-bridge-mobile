@@ -74,7 +74,10 @@ export type AgentFarmersStackParamList = {
 export type AgentTabParamList = {
   Dashboard: undefined;
   Farmers: NavigatorScreenParams<AgentFarmersStackParamList> | undefined;
-  Tasks: { filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed' } | undefined;
+  Tasks: {
+    filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
+    openAdd?: boolean;
+  } | undefined;
   Audit: undefined;
   Profile: undefined;
 };
