@@ -40,12 +40,23 @@ function withFarmerLayout<P extends object>(
 ) {
   return function WrappedScreen(props: P) {
     const step = FARMER_STEP_MAP[routeName] ?? 0;
+    const body =
+      routeName === 'Confirm' ? (
+        <Screen {...props} />
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Screen {...props} />
+        </ScrollView>
+      );
+
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         <StepIndicator currentStep={step} totalSteps={8} labels={FARMER_STEP_LABELS} />
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Screen {...props} />
-        </ScrollView>
+        {body}
       </SafeAreaView>
     );
   };
