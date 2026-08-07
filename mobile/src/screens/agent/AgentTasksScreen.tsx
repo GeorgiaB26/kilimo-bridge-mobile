@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   View,
@@ -30,6 +30,7 @@ import {
   rejectFarmerTask,
   resolveAgentHelpRequest,
   setAgentTaskReminder,
+  updateAgentPersonalTask,
 } from '../../api/client';
 import { api } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
@@ -39,6 +40,7 @@ import type { AgentTabParamList } from '../../navigation/types';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { AddAgentTaskModal } from '../../components/agent/AddAgentTaskModal';
+import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
 import { checkAndShowTaskReminders, setTaskReminder, type ReminderType } from '../../utils/taskReminders';
 
 type UnifiedTask = {
@@ -53,6 +55,8 @@ type UnifiedTask = {
   notes?: string;
   photo_evidence_url?: string;
   priority?: string;
+  description?: string | null;
+  assigned_farmer_names?: string[];
 };
 
 type FilterKey = 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
@@ -83,6 +87,7 @@ function TaskSection({
   color,
   tasks,
   onReminder,
+  onTaskPress,
   onExpandApproval,
   expandedId,
   rejectReason,
@@ -96,6 +101,7 @@ function TaskSection({
   color?: string;
   tasks: UnifiedTask[];
   onReminder: (task: UnifiedTask, type: ReminderType) => void;
+  onTaskPress: (task: UnifiedTask) => void;
   onExpandApproval?: (id: string) => void;
   expandedId?: string | null;
   rejectReason?: string;
@@ -118,7 +124,11 @@ function TaskSection({
         const isApproval = item.status === 'submitted-for-approval' || item.status === 'submitted';
         const expanded = expandedId === item.id;
         return (
-          <KBCard key={`${item.source}-${item.id}`} style={{ marginBottom: 8 }}>
+          <KBCard
+            key={`${item.source}-${item.id}`}
+            style={{ marginBottom: 8 }}
+            onPress={() => onTaskPress(item)}
+          >
             <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">
               Due: {formatDue(item.due_date)}
@@ -212,6 +222,9 @@ export function AgentTasksScreen() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<AgentTaskDetail | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [updatingTask, setUpdatingTask] = useState(false);
 
   const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => ({
     id: String(t.id),
@@ -219,8 +232,33 @@ export function AgentTasksScreen() {
     status: String(t.status ?? 'not_started'),
     due_date: t.due_date as string | null,
     priority: t.priority as string | undefined,
+    description: t.description as string | null | undefined,
+    assigned_farmer_names: Array.isArray(t.assigned_farmer_names)
+      ? (t.assigned_farmer_names as string[])
+      : undefined,
     source: 'personal' as const,
   });
+
+  const toTaskDetail = (task: UnifiedTask): AgentTaskDetail => ({
+    id: task.id,
+    name: task.name,
+    status: task.status,
+    due_date: task.due_date,
+    description: task.description,
+    farmer_name: task.farmer_name,
+    program_project_name: task.program_project_name,
+    payment_value_kes: task.payment_value_kes,
+    notes: task.notes,
+    photo_evidence_url: task.photo_evidence_url,
+    priority: task.priority,
+    source: task.source,
+    assigned_farmer_names: task.assigned_farmer_names,
+  });
+
+  const openTaskDetail = (task: UnifiedTask) => {
+    setSelectedTask(toTaskDetail(task));
+    setDetailOpen(true);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -235,6 +273,7 @@ export function AgentTasksScreen() {
         payment_value_kes: t.payment_value_kes as number | undefined,
         notes: t.notes as string | undefined,
         photo_evidence_url: t.photo_evidence_url as string | undefined,
+        description: t.description as string | null | undefined,
         source: 'farmer' as const,
       }));
       const pt = (tasksData.personal_tasks ?? []).map((t: Record<string, unknown>) =>
@@ -399,6 +438,22 @@ export function AgentTasksScreen() {
     return list;
   }, [personalTasks, search]);
 
+  const handleUpdatePersonalStatus = async (taskId: string, status: string) => {
+    setUpdatingTask(true);
+    try {
+      const result = await updateAgentPersonalTask(taskId, { status });
+      const updated = result?.task as Record<string, unknown> | undefined;
+      if (updated) {
+        const mapped = mapPersonalTask(updated);
+        setPersonalTasks((prev) => prev.map((t) => (t.id === taskId ? mapped : t)));
+        setSelectedTask(toTaskDetail(mapped));
+      }
+      await load();
+    } finally {
+      setUpdatingTask(false);
+    }
+  };
+
   const handleCreateTask = async (data: {
     name: string;
     description?: string;
@@ -427,6 +482,7 @@ export function AgentTasksScreen() {
       Alert.alert('Task created', 'Your task is now in the Tasks list.');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not create task'));
+      throw err;
     } finally {
       setCreating(false);
     }
@@ -519,10 +575,21 @@ export function AgentTasksScreen() {
                   borderWidth: highlightTaskId === item.id ? 2 : 0,
                   borderColor: highlightTaskId === item.id ? '#1A4D3E' : undefined,
                 }}
+                onPress={() => openTaskDetail(item)}
               >
                 <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
                 <Text className="mt-1 text-[13px] text-[#757575]">Due: {formatDue(item.due_date)}</Text>
-                <Text className="text-[13px] text-[#757575]">Status: {item.status.replace(/_/g, ' ')}</Text>
+                <Text className="text-[13px] text-[#757575]">
+                  Status: {item.status.replace(/_/g, ' ')}
+                </Text>
+                {item.assigned_farmer_names?.length ? (
+                  <Text className="text-[13px] text-[#757575]">
+                    Farmers: {item.assigned_farmer_names.join(', ')}
+                  </Text>
+                ) : (
+                  <Text className="text-[13px] text-[#757575]">Assigned to: You</Text>
+                )}
+                <Text className="mt-1 text-xs font-semibold text-[#1A4D3E]">Tap to view or update</Text>
               </KBCard>
             ))}
           </View>
@@ -534,6 +601,7 @@ export function AgentTasksScreen() {
           color="#1A4D3E"
           tasks={upcoming}
           onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
           rejectReason={rejectReason}
@@ -548,6 +616,7 @@ export function AgentTasksScreen() {
           color="#EF4444"
           tasks={overdue}
           onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
           rejectReason={rejectReason}
@@ -562,6 +631,7 @@ export function AgentTasksScreen() {
           color="#2563EB"
           tasks={inProgress}
           onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
           rejectReason={rejectReason}
@@ -576,6 +646,7 @@ export function AgentTasksScreen() {
           color="#757575"
           tasks={notStarted}
           onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
         />
         <TaskSection
           TitleIcon={CircleCheck}
@@ -583,6 +654,7 @@ export function AgentTasksScreen() {
           color="#10B981"
           tasks={completed}
           onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
         />
 
         {filtered.length === 0 && personalOnly.length === 0 && helpRequests.length === 0 ? (
@@ -593,9 +665,40 @@ export function AgentTasksScreen() {
         ) : null}
 
         <Button className="mt-4 h-12 bg-[#FFD700]" onPress={() => setAddModalOpen(true)}>
-          <Text className="font-bold text-black">+ Add task to your profile</Text>
+          <Text className="font-bold text-black">+ Create task</Text>
         </Button>
       </ScrollView>
+
+      <AgentTaskDetailModal
+        task={selectedTask}
+        visible={detailOpen}
+        loading={updatingTask}
+        onClose={() => {
+          setDetailOpen(false);
+          setSelectedTask(null);
+        }}
+        onUpdateStatus={handleUpdatePersonalStatus}
+        onApprove={async (id) => {
+          await approve(id);
+          setDetailOpen(false);
+          setSelectedTask(null);
+        }}
+        onReject={async (id, reason) => {
+          setActing(id);
+          try {
+            await rejectFarmerTask(id, reason);
+            await load();
+            Alert.alert('Rejected', 'Farmer can resubmit after rework.');
+            setDetailOpen(false);
+            setSelectedTask(null);
+          } catch (err: unknown) {
+            Alert.alert('Error', extractApiError(err, 'Could not reject'));
+            throw err;
+          } finally {
+            setActing(null);
+          }
+        }}
+      />
 
       <AddAgentTaskModal
         visible={addModalOpen}

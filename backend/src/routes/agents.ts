@@ -20,8 +20,10 @@ import {
 import {
   createAgentPersonalTask,
   getAgentDashboardSummary,
+  getAgentPersonalTask,
   listAgentPersonalTasks,
   listRegionFarmerTasks,
+  updateAgentPersonalTask,
   updateAgentPersonalTaskReminder,
 } from '../services/agentDashboardService';
 import { logAudit } from '../services/auditService';
@@ -304,13 +306,27 @@ router.post(
       res.status(400).json({ error: 'name and due_date are required' });
       return;
     }
+    const region = req.user!.region ?? '';
+    const district = req.user!.district;
+    const farmerIds = Array.isArray(assigned_farmers)
+      ? assigned_farmers.map(String).filter(Boolean)
+      : [];
+    if (farmerIds.length) {
+      for (const farmerId of farmerIds) {
+        const visible = await isFarmerVisibleToAgent(farmerId, region, district);
+        if (!visible) {
+          res.status(400).json({ error: 'One or more selected farmers are outside your region' });
+          return;
+        }
+      }
+    }
     try {
       const task = await createAgentPersonalTask(req.user!.userId, {
         name: name.trim(),
         description,
         due_date,
         priority,
-        assigned_farmers,
+        assigned_farmers: farmerIds.length ? farmerIds : undefined,
         reminder_type,
       });
       await logAudit({
@@ -327,6 +343,66 @@ router.post(
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not create task';
       if (message.includes('DD/MM/YYYY')) {
+        res.status(400).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.get(
+  '/tasks/:taskId',
+  requirePermission('farmers.read'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const task = await getAgentPersonalTask(req.params.taskId, req.user!.userId);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    res.json({ task });
+  })
+);
+
+router.patch(
+  '/tasks/:taskId',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const { status, name, description, due_date, priority } = req.body;
+    try {
+      const task = await updateAgentPersonalTask(req.params.taskId, req.user!.userId, {
+        status,
+        name,
+        description,
+        due_date,
+        priority,
+      });
+      if (!task) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+      }
+      await logAudit({
+        userId: req.user!.userId,
+        userRole: req.user!.role,
+        action: 'agent.action',
+        category: 'agent',
+        resourceType: 'agent_task',
+        resourceId: task.id,
+        details: { activity_type: 'task_updated', status: task.status },
+        success: true,
+      });
+      res.json({ task });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not update task';
+      if (message.includes('DD/MM/YYYY') || message.includes('Invalid task status')) {
         res.status(400).json({ error: message });
         return;
       }
