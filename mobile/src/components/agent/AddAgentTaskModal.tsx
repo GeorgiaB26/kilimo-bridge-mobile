@@ -4,15 +4,17 @@ import {
   Modal,
   ScrollView,
   Pressable,
-  Alert,
   Platform,
   TextInput as RNTextInput,
+  KeyboardAvoidingView,
+  ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
 import { Square, SquareCheck, X } from 'lucide-react-native';
 import { TextInput } from 'react-native-paper';
-import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { maskDdMmYyyyInput, parseAgentTaskDueDateInput } from '../../utils/agentTaskDate';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 
 interface FarmerOption {
@@ -36,6 +38,18 @@ interface Props {
   }) => Promise<void>;
 }
 
+const webOverlay =
+  Platform.OS === 'web'
+    ? ({
+        position: 'fixed' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 10000,
+      })
+    : undefined;
+
 export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit }: Props) {
   const agentName = useAuthStore((s) => s.user?.name) ?? 'You';
   const [name, setName] = useState('');
@@ -45,6 +59,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
   const [assignMode, setAssignMode] = useState<AssignMode>('self');
   const [selectedFarmers, setSelectedFarmers] = useState<string[]>([]);
   const [farmerSearch, setFarmerSearch] = useState('');
+  const [formError, setFormError] = useState('');
 
   const reset = () => {
     setName('');
@@ -54,9 +69,11 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
     setAssignMode('self');
     setSelectedFarmers([]);
     setFarmerSearch('');
+    setFormError('');
   };
 
   const handleClose = () => {
+    if (loading) return;
     reset();
     onClose();
   };
@@ -74,21 +91,34 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
   }, [farmers, farmerSearch]);
 
   const handleSubmit = async () => {
+    setFormError('');
+
     if (!name.trim()) {
-      Alert.alert('Task name required', 'Enter a name for this task.');
+      const msg = 'Enter a name for this task.';
+      setFormError(msg);
+      showMessage('Task name required', msg);
       return;
     }
     if (!dueDate.trim()) {
-      Alert.alert('Due date required', 'Enter a due date as DD/MM/YYYY.');
+      const msg = 'Enter a due date as DD/MM/YYYY (e.g. 20/08/2026).';
+      setFormError(msg);
+      showMessage('Due date required', msg);
       return;
     }
-    const isoDue = parseAgentTaskDueDateInput(dueDate);
+    const normalizedDue = /^\d{8}$/.test(dueDate.replace(/\D/g, ''))
+      ? maskDdMmYyyyInput(dueDate.replace(/\D/g, ''))
+      : dueDate;
+    const isoDue = parseAgentTaskDueDateInput(normalizedDue);
     if (!isoDue) {
-      Alert.alert('Invalid date', 'Enter due date as DD/MM/YYYY (e.g. 15/08/2026).');
+      const msg = 'Use DD/MM/YYYY format, e.g. 20/08/2026 for 20 August 2026.';
+      setFormError(msg);
+      showMessage('Invalid date', msg);
       return;
     }
     if (assignMode === 'farmers' && selectedFarmers.length === 0) {
-      Alert.alert('Select farmers', 'Choose at least one farmer to assign this task to.');
+      const msg = 'Choose at least one farmer, or switch to Myself.';
+      setFormError(msg);
+      showMessage('Select farmers', msg);
       return;
     }
 
@@ -102,26 +132,41 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       });
       reset();
       onClose();
-    } catch {
-      /* parent shows error alert */
+    } catch (err: unknown) {
+      const msg = extractApiError(err, 'Could not create task');
+      setFormError(msg);
+      showMessage('Could not create task', msg);
     }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <View
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={handleClose}
+      statusBarTranslucent
+    >
+      <KeyboardAvoidingView
         className="flex-1 justify-end bg-black/40"
-        style={Platform.OS === 'web' ? { zIndex: 1000 } : undefined}
+        style={webOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View className="max-h-[90%] rounded-t-2xl bg-white p-5">
-          <View className="mb-4 flex-row items-center justify-between">
+        <View className="max-h-[90%] rounded-t-2xl bg-white">
+          <View className="flex-row items-center justify-between border-b border-[#E8E8E8] px-5 py-4">
             <Text className="text-lg font-bold text-[#333333]">Create task</Text>
-            <Pressable onPress={handleClose} hitSlop={12}>
+            <Pressable onPress={handleClose} hitSlop={12} disabled={loading}>
               <X size={24} color="#757575" />
             </Pressable>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            <Text className="mb-1 text-sm font-semibold text-[#333333]">Task name *</Text>
+
+          <ScrollView
+            className="px-5"
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={styles.scrollContent}
+            nestedScrollEnabled
+          >
+            <Text className="mb-1 mt-3 text-sm font-semibold text-[#333333]">Task name *</Text>
             <TextInput
               value={name}
               onChangeText={setName}
@@ -142,12 +187,14 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
             <TextInput
               value={dueDate}
               onChangeText={(text) => setDueDate(maskDdMmYyyyInput(text))}
-              placeholder="15/08/2026"
+              placeholder="20/08/2026"
               keyboardType={Platform.OS === 'web' ? 'default' : 'number-pad'}
               mode="outlined"
               style={{ marginBottom: 4, backgroundColor: '#fff' }}
             />
-            <Text className="mb-3 text-xs text-[#757575]">Example: 15/08/2026 for 15 August 2026</Text>
+            <Text className="mb-3 text-xs text-[#757575]">
+              Example: 20/08/2026 for 20 August 2026
+            </Text>
             <Text className="mb-2 text-sm font-semibold text-[#333333]">Priority</Text>
             <View className="mb-3 flex-row gap-2">
               {(['low', 'medium', 'high'] as const).map((p) => (
@@ -237,21 +284,81 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
               </>
             ) : null}
 
-            <View className="mt-4 flex-row gap-2">
-              <Button
-                className="flex-1 h-11 bg-[#1A4D3E]"
-                disabled={loading}
-                onPress={handleSubmit}
-              >
-                <Text className="text-white">{loading ? 'Creating…' : 'Create task'}</Text>
-              </Button>
-              <Button variant="outline" className="h-11" onPress={handleClose} disabled={loading}>
-                <Text>Cancel</Text>
-              </Button>
-            </View>
+            {formError ? (
+              <Text className="mb-2 text-sm text-[#D32F2F]">{formError}</Text>
+            ) : null}
           </ScrollView>
+
+          <View className="flex-row gap-2 border-t border-[#E8E8E8] bg-white px-5 py-4">
+            <Pressable
+              onPress={handleSubmit}
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.submitBtn,
+                loading && styles.submitBtnDisabled,
+                pressed && !loading && styles.submitBtnPressed,
+              ]}
+              accessibilityRole="button"
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="font-semibold text-white">Create task</Text>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={handleClose}
+              disabled={loading}
+              style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}
+              accessibilityRole="button"
+            >
+              <Text className="font-semibold text-[#333333]">Cancel</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    paddingBottom: 8,
+  },
+  submitBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#1A4D3E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      web: { cursor: 'pointer' as const },
+    }),
+  },
+  submitBtnDisabled: {
+    opacity: 0.65,
+    ...Platform.select({
+      web: { cursor: 'default' as const },
+    }),
+  },
+  submitBtnPressed: {
+    opacity: 0.9,
+  },
+  cancelBtn: {
+    height: 48,
+    minWidth: 96,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    ...Platform.select({
+      web: { cursor: 'pointer' as const },
+    }),
+  },
+  cancelBtnPressed: {
+    backgroundColor: '#F5F5F5',
+  },
+});
