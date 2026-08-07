@@ -26,6 +26,10 @@ export async function getAdminNotifyPhone(): Promise<string | null> {
   return row?.phone_number ?? null;
 }
 
+function unreadNotificationClause(): string {
+  return 'COALESCE(read, is_read, FALSE) = FALSE';
+}
+
 function mapNotificationRow(row: Record<string, unknown>): AppNotification {
   const readVal = row.read ?? row.is_read ?? false;
   return {
@@ -50,7 +54,7 @@ export async function getUserNotifications(
 ): Promise<AppNotification[]> {
   const rows = await query<Record<string, unknown>>(
     unreadOnly
-      ? `SELECT * FROM notifications WHERE user_id = $1 AND COALESCE(read, FALSE) = FALSE
+      ? `SELECT * FROM notifications WHERE user_id = $1 AND ${unreadNotificationClause()}
          ORDER BY created_at DESC LIMIT $2`
       : `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
     [userId, limit]
@@ -61,7 +65,7 @@ export async function getUserNotifications(
 export async function getUnreadNotificationCount(userId: string): Promise<number> {
   const row = await queryOne<{ count: number }>(
     `SELECT COUNT(*)::int AS count FROM notifications
-     WHERE user_id = $1 AND COALESCE(read, FALSE) = FALSE`,
+     WHERE user_id = $1 AND ${unreadNotificationClause()}`,
     [userId]
   );
   return row?.count ?? 0;
@@ -80,8 +84,8 @@ export async function createNotification(input: {
   const id = uuidv4();
   await query(
     `INSERT INTO notifications (
-      id, user_id, title, message, type, context_type, context_id, action_url, priority, read
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE)`,
+      id, user_id, title, message, type, context_type, context_id, action_url, priority, read, is_read
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, FALSE)`,
     [
       id,
       input.userId,
@@ -99,16 +103,18 @@ export async function createNotification(input: {
 
 export async function markNotificationRead(notificationId: string, userId: string): Promise<boolean> {
   const row = await queryOne<{ id: string }>(
-    `UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2 RETURNING id`,
+    `UPDATE notifications SET read = TRUE, is_read = TRUE
+     WHERE id = $1 AND user_id = $2 RETURNING id`,
     [notificationId, userId]
   );
   return Boolean(row);
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<void> {
-  await query(`UPDATE notifications SET read = TRUE WHERE user_id = $1 AND COALESCE(read, FALSE) = FALSE`, [
-    userId,
-  ]);
+  await query(
+    `UPDATE notifications SET read = TRUE, is_read = TRUE WHERE user_id = $1 AND ${unreadNotificationClause()}`,
+    [userId]
+  );
 }
 
 export function sendSms(phone: string, message: string): { sent: boolean; pilot: boolean } {

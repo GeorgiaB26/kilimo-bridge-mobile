@@ -1,4 +1,5 @@
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 
 export type FarmerNotification = {
   id: string;
@@ -39,6 +40,22 @@ function contextId(notification: FarmerNotification): string | undefined {
   );
 }
 
+function navigateMainTab(
+  root: NavigationProp<ParamListBase>,
+  screen: string,
+  params?: Record<string, unknown>
+): void {
+  root.dispatch(
+    CommonActions.navigate({
+      name: 'MainTabs',
+      params: {
+        screen,
+        params,
+      },
+    })
+  );
+}
+
 /** Navigate from a notification tap to the related screen (farmer or field agent app). */
 export function navigateFromFarmerNotification(
   navigation: NavigationProp<ParamListBase>,
@@ -57,10 +74,15 @@ export function navigateFromFarmerNotification(
     contextType === 'message_thread';
 
   if (isMessage) {
-    root.navigate('MessagesFlow', {
-      screen: contextIdValue ? 'MessageDetail' : 'MessagesList',
-      params: contextIdValue ? { threadId: contextIdValue } : undefined,
-    });
+    root.dispatch(
+      CommonActions.navigate({
+        name: 'MessagesFlow',
+        params: {
+          screen: contextIdValue ? 'MessageDetail' : 'MessagesList',
+          params: contextIdValue ? { threadId: contextIdValue } : undefined,
+        },
+      })
+    );
     return;
   }
 
@@ -70,10 +92,7 @@ export function navigateFromFarmerNotification(
     type === 'payment_ready' ||
     type === 'payment_processed'
   ) {
-    root.navigate('MainTabs', {
-      screen: 'Payments',
-      params: contextIdValue ? { highlightPaymentId: contextIdValue } : undefined,
-    });
+    navigateMainTab(root, 'Payments', contextIdValue ? { highlightPaymentId: contextIdValue } : undefined);
     return;
   }
 
@@ -84,15 +103,12 @@ export function navigateFromFarmerNotification(
     type === 'project_assigned'
   ) {
     if (contextIdValue) {
-      root.navigate('MainTabs', {
-        screen: 'Projects',
-        params: {
-          screen: 'HierarchyProjectDetail',
-          params: { projectId: contextIdValue, projectName: 'Your project' },
-        },
+      navigateMainTab(root, 'Projects', {
+        screen: 'HierarchyProjectDetail',
+        params: { projectId: contextIdValue, projectName: 'Your project' },
       });
     } else {
-      root.navigate('MainTabs', { screen: 'Projects' });
+      navigateMainTab(root, 'Projects');
     }
     return;
   }
@@ -102,7 +118,7 @@ export function navigateFromFarmerNotification(
     contextType === 'task' ||
     type === 'task_assigned'
   ) {
-    root.navigate('MainTabs', { screen: 'Tasks' });
+    navigateMainTab(root, 'Tasks');
     return;
   }
 
@@ -111,12 +127,12 @@ export function navigateFromFarmerNotification(
     type.includes('registration') ||
     type === 'help_request_resolved'
   ) {
-    root.navigate('MainTabs', { screen: 'Profile' });
+    navigateMainTab(root, 'Profile');
     return;
   }
 
   if (type.includes('help')) {
-    root.navigate('MainTabs', { screen: 'Profile' });
+    navigateMainTab(root, 'Profile');
   }
 }
 
@@ -133,7 +149,6 @@ export function navigateFromNotification(
 
   const type = notificationType(notification);
   const contextType = (notification.context_type ?? '').toLowerCase();
-  const contextIdValue = contextId(notification);
   const root = getRootNavigation(navigation);
 
   const isMessage =
@@ -144,15 +159,20 @@ export function navigateFromNotification(
     contextType === 'message_thread';
 
   if (isMessage) {
-    root.navigate('MessagesFlow', {
-      screen: contextIdValue ? 'MessageDetail' : 'MessagesList',
-      params: contextIdValue ? { threadId: contextIdValue } : undefined,
-    });
+    root.dispatch(
+      CommonActions.navigate({
+        name: 'MessagesFlow',
+        params: {
+          screen: contextId(notification) ? 'MessageDetail' : 'MessagesList',
+          params: contextId(notification) ? { threadId: contextId(notification) } : undefined,
+        },
+      })
+    );
     return;
   }
 
   if (type.includes('task') || contextType === 'task' || type === 'task_assigned') {
-    root.navigate('MainTabs', { screen: 'Tasks' });
+    navigateMainTab(root, 'Tasks', { filter: 'all' });
     return;
   }
 
@@ -164,14 +184,14 @@ export function navigateFromNotification(
     type.includes('help') ||
     type === 'help_request_resolved'
   ) {
-    root.navigate('MainTabs', { screen: 'Profile' });
+    navigateMainTab(root, 'Profile');
     return;
   }
 
   if (type.includes('farmer')) {
-    root.navigate('MainTabs', { screen: 'Farmers' });
+    navigateMainTab(root, 'Farmers', { screen: 'FarmerList' });
     return;
   }
 
-  root.navigate('MainTabs', { screen: 'Dashboard' });
+  navigateMainTab(root, 'Dashboard');
 }

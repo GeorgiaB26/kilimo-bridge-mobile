@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +41,7 @@ function AgentTabNavigator() {
         headerTitleStyle: { fontWeight: '600' },
         headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
         tabBarActiveTintColor: COLORS.primary,
+        tabBarStyle: Platform.OS === 'web' ? { zIndex: 100, elevation: 100 } : undefined,
         tabBarIcon: ({ color, size }) => {
           const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
             Dashboard: 'stats-chart',
