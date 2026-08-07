@@ -131,6 +131,11 @@ router.get(
       category: 'farmer_data',
       resourceType: 'farmer',
       resourceId: req.params.farmerId,
+      details: {
+        activity_type: 'view_farmer_profile',
+        farmer_name: (farmer as { name?: string }).name ?? 'Farmer',
+        farmer_id: req.params.farmerId,
+      },
       success: true,
     });
     res.json({ farmer });

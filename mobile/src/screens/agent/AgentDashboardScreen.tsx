@@ -30,20 +30,30 @@ function MetricCard({
   label,
   value,
   color,
+  onPress,
 }: {
   Icon: ComponentType<{ size?: number; color?: string }>;
   iconColor?: string;
   label: string;
   value: number;
   color?: string;
+  onPress?: () => void;
 }) {
-  return (
+  const inner = (
     <View className="flex-1 rounded-xl border border-[#E8E8E8] bg-white p-3">
       <Icon size={20} color={iconColor ?? '#757575'} />
       <Text className="mt-1 text-2xl font-bold" style={{ color: color ?? '#333333' }}>{value}</Text>
       <Text className="mt-0.5 text-xs text-[#757575]">{label}</Text>
     </View>
   );
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} className="flex-1 active:opacity-85">
+        {inner}
+      </Pressable>
+    );
+  }
+  return inner;
 }
 
 function SectionHeading({
@@ -139,6 +149,12 @@ export function AgentDashboardScreen() {
           label="Pending verification"
           value={farmers?.pending_verification ?? 0}
           color="#FBBF24"
+          onPress={() =>
+            navigation.navigate('Farmers', {
+              screen: 'FarmerList',
+              params: { statusFilter: 'pending_verification' },
+            })
+          }
         />
         <MetricCard
           Icon={CircleCheck}
@@ -146,6 +162,12 @@ export function AgentDashboardScreen() {
           label="Verified"
           value={farmers?.verified ?? 0}
           color="#10B981"
+          onPress={() =>
+            navigation.navigate('Farmers', {
+              screen: 'FarmerList',
+              params: { statusFilter: 'verified' },
+            })
+          }
         />
       </View>
 
@@ -190,7 +212,10 @@ export function AgentDashboardScreen() {
                 {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
               </Text>
             ))}
-            <Pressable onPress={() => navigation.navigate('Tasks')} className="mt-2 flex-row items-center gap-1">
+            <Pressable
+              onPress={() => navigation.navigate('Tasks', { filter: 'overdue' })}
+              className="mt-2 flex-row items-center gap-1"
+            >
               <Text className="text-sm font-semibold text-[#1A4D3E]">View all</Text>
               <ChevronRight size={16} color="#1A4D3E" />
             </Pressable>

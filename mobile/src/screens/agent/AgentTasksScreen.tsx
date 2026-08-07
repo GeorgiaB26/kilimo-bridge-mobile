@@ -9,7 +9,8 @@ import {
   TextInput,
   Pressable,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   Ban,
@@ -32,6 +33,8 @@ import {
 } from '../../api/client';
 import { api } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
+import { isAgentTaskOverdue, isAgentTaskUpcoming } from '../../utils/agentTaskDue';
+import type { AgentTabParamList } from '../../navigation/types';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { AddAgentTaskModal } from '../../components/agent/AddAgentTaskModal';
@@ -60,26 +63,12 @@ function formatDue(value?: string | null): string {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function isOverdue(due?: string | null): boolean {
-  if (!due) return false;
-  const d = new Date(due);
-  if (Number.isNaN(d.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  d.setHours(0, 0, 0, 0);
-  return d < today;
+function isOverdue(due?: string | null, status?: string): boolean {
+  return isAgentTaskOverdue(due, status);
 }
 
-function isUpcoming(due?: string | null): boolean {
-  if (!due) return false;
-  const d = new Date(due);
-  if (Number.isNaN(d.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const week = new Date(today);
-  week.setDate(week.getDate() + 7);
-  d.setHours(0, 0, 0, 0);
-  return d >= today && d <= week;
+function isUpcoming(due?: string | null, status?: string): boolean {
+  return isAgentTaskUpcoming(due, status);
 }
 
 function normalizeStatus(status: string): string {
@@ -134,7 +123,7 @@ function TaskSection({
             <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">
               Due: {formatDue(item.due_date)}
-              {isOverdue(item.due_date) ? ' (overdue)' : ''}
+              {isOverdue(item.due_date, item.status) ? ' (overdue)' : ''}
             </Text>
             {item.farmer_name ? (
               <Text className="text-[13px] text-[#757575]">Assigned to: {item.farmer_name}</Text>
@@ -205,6 +194,7 @@ function TaskSection({
 }
 
 export function AgentTasksScreen() {
+  const route = useRoute<RouteProp<AgentTabParamList, 'Tasks'>>();
   const [farmerTasks, setFarmerTasks] = useState<UnifiedTask[]>([]);
   const [personalTasks, setPersonalTasks] = useState<UnifiedTask[]>([]);
   const [helpRequests, setHelpRequests] = useState<
@@ -267,9 +257,13 @@ export function AgentTasksScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (route.params?.filter) {
+        setFilter(route.params.filter);
+        setShowFilter(false);
+      }
       load();
       checkAndShowTaskReminders();
-    }, [load])
+    }, [load, route.params?.filter])
   );
 
   const onRefresh = async () => {
@@ -291,7 +285,9 @@ export function AgentTasksScreen() {
       );
     }
     if (filter === 'overdue') {
-      list = list.filter((t) => isOverdue(t.due_date) && normalizeStatus(t.status) !== 'completed');
+      list = list.filter(
+        (t) => isOverdue(t.due_date, t.status) && normalizeStatus(t.status) !== 'completed'
+      );
     } else if (filter !== 'all') {
       list = list.filter((t) => normalizeStatus(t.status) === filter);
     }
@@ -299,23 +295,23 @@ export function AgentTasksScreen() {
   }, [allTasks, search, filter]);
 
   const upcoming = filtered.filter(
-    (t) => isUpcoming(t.due_date) && normalizeStatus(t.status) !== 'completed'
+    (t) => isUpcoming(t.due_date, t.status) && normalizeStatus(t.status) !== 'completed'
   );
   const overdue = filtered.filter(
-    (t) => isOverdue(t.due_date) && normalizeStatus(t.status) !== 'completed'
+    (t) => isOverdue(t.due_date, t.status) && normalizeStatus(t.status) !== 'completed'
   );
   const completed = filtered.filter((t) => normalizeStatus(t.status) === 'completed');
   const inProgress = filtered.filter(
     (t) =>
       normalizeStatus(t.status) === 'in_progress' &&
-      !isOverdue(t.due_date) &&
-      !isUpcoming(t.due_date)
+      !isOverdue(t.due_date, t.status) &&
+      !isUpcoming(t.due_date, t.status)
   );
   const notStarted = filtered.filter(
     (t) =>
       normalizeStatus(t.status) === 'not_started' &&
-      !isOverdue(t.due_date) &&
-      !isUpcoming(t.due_date)
+      !isOverdue(t.due_date, t.status) &&
+      !isUpcoming(t.due_date, t.status)
   );
 
   const markContacted = async (id: string) => {
@@ -387,7 +383,10 @@ export function AgentTasksScreen() {
     setCreating(true);
     try {
       await createAgentPersonalTask(data);
+      setFilter('all');
+      setShowFilter(false);
       await load();
+      setAddModalOpen(false);
       Alert.alert('Task created', 'Personal task added to your profile.');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not create task'));

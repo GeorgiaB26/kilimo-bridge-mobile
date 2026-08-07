@@ -11,12 +11,23 @@ import { AgentProfileScreen } from '../screens/agent/AgentProfileScreen';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
+import { AgentTabScene } from './AgentTabScene';
 import type { AgentRootStackParamList, AgentTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<AgentTabParamList>();
 const RootStack = createNativeStackNavigator<AgentRootStackParamList>();
 
 const HEADER_TITLE = 'Field Agent Platform';
+
+function withAgentTabScene<P extends object>(Component: React.ComponentType<P>) {
+  return function Wrapped(props: P) {
+    return (
+      <AgentTabScene>
+        <Component {...props} />
+      </AgentTabScene>
+    );
+  };
+}
 
 function AgentTabNavigator() {
   return (
@@ -41,15 +52,31 @@ function AgentTabNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Dashboard" component={AgentDashboardScreen} options={{ title: 'Dashboard' }} />
+      <Tab.Screen
+        name="Dashboard"
+        component={withAgentTabScene(AgentDashboardScreen)}
+        options={{ title: 'Dashboard' }}
+      />
       <Tab.Screen
         name="Farmers"
-        component={AgentFarmersStackNavigator}
+        component={withAgentTabScene(AgentFarmersStackNavigator)}
         options={{ title: 'Farmers' }}
       />
-      <Tab.Screen name="Tasks" component={AgentTasksScreen} options={{ title: 'Tasks' }} />
-      <Tab.Screen name="Audit" component={AgentAuditScreen} options={{ title: 'Activity Log' }} />
-      <Tab.Screen name="Profile" component={AgentProfileScreen} options={{ title: 'Profile' }} />
+      <Tab.Screen
+        name="Tasks"
+        component={withAgentTabScene(AgentTasksScreen)}
+        options={{ title: 'Tasks' }}
+      />
+      <Tab.Screen
+        name="Audit"
+        component={withAgentTabScene(AgentAuditScreen)}
+        options={{ title: 'Activity Log' }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={withAgentTabScene(AgentProfileScreen)}
+        options={{ title: 'Profile' }}
+      />
     </Tab.Navigator>
   );
 }

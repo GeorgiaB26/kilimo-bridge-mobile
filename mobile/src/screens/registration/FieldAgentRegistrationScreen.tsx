@@ -38,7 +38,12 @@ export function FieldAgentRegistrationScreen({ navigation }: Props) {
         sector: sector.trim(),
       });
       Alert.alert('Registration submitted', result.message ?? 'Account created.', [
-        { text: 'OK', onPress: () => navigation.getParent()?.goBack() },
+        {
+          text: 'OK',
+          onPress: () => {
+            if (navigation.canGoBack()) navigation.goBack();
+          },
+        },
       ]);
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Registration failed'));

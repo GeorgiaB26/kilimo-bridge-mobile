@@ -17,7 +17,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useAuthStore } from '../../store/authStore';
-import { getAgentDashboard } from '../../api/client';
+import { getAgentDashboard, getNotificationSettings, updateNotificationSettings } from '../../api/client';
+import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 
@@ -39,6 +40,8 @@ export function AgentProfileScreen() {
   const [pushOn, setPushOn] = useState(true);
   const [remindersOn, setRemindersOn] = useState(true);
   const [messagesOn, setMessagesOn] = useState(true);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -47,7 +50,43 @@ export function AgentProfileScreen() {
     } catch {
       setPm(null);
     }
+    try {
+      const notif = await getNotificationSettings();
+      const s = notif.settings;
+      setPushOn(Boolean(s.push_enabled));
+      setRemindersOn(Boolean(s.notify_task_assigned));
+      setMessagesOn(Boolean(s.messages_enabled));
+      setSettingsError(null);
+    } catch {
+      /* keep local defaults */
+    }
   }, []);
+
+  const toggleSetting = async (
+    key: 'push_enabled' | 'notify_task_assigned' | 'messages_enabled',
+    next: boolean
+  ) => {
+    const snapshot = { push: pushOn, reminders: remindersOn, messages: messagesOn };
+    if (key === 'push_enabled') setPushOn(next);
+    if (key === 'notify_task_assigned') setRemindersOn(next);
+    if (key === 'messages_enabled') setMessagesOn(next);
+    setSettingsSaving(true);
+    setSettingsError(null);
+    try {
+      const data = await updateNotificationSettings({ [key]: next });
+      const s = data.settings;
+      setPushOn(Boolean(s.push_enabled));
+      setRemindersOn(Boolean(s.notify_task_assigned));
+      setMessagesOn(Boolean(s.messages_enabled));
+    } catch (err) {
+      setPushOn(snapshot.push);
+      setRemindersOn(snapshot.reminders);
+      setMessagesOn(snapshot.messages);
+      setSettingsError(extractApiError(err, 'Could not save notification setting'));
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -190,9 +229,29 @@ export function AgentProfileScreen() {
           <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
             Notifications
           </Text>
-          <ToggleRow label="Push notifications" value={pushOn} onChange={setPushOn} />
-          <ToggleRow label="Task reminders" value={remindersOn} onChange={setRemindersOn} />
-          <ToggleRow label="Messages" value={messagesOn} onChange={setMessagesOn} />
+          {settingsError ? (
+            <View className="mb-2 rounded-md border border-[#D32F2F] bg-[#FFEBEE] px-3 py-2">
+              <Text className="text-xs text-[#D32F2F]">{settingsError}</Text>
+            </View>
+          ) : null}
+          <ToggleRow
+            label="Push notifications"
+            value={pushOn}
+            disabled={settingsSaving}
+            onChange={(v) => toggleSetting('push_enabled', v)}
+          />
+          <ToggleRow
+            label="Task reminders"
+            value={remindersOn}
+            disabled={settingsSaving}
+            onChange={(v) => toggleSetting('notify_task_assigned', v)}
+          />
+          <ToggleRow
+            label="Messages"
+            value={messagesOn}
+            disabled={settingsSaving}
+            onChange={(v) => toggleSetting('messages_enabled', v)}
+          />
         </KBCard>
 
         <Button variant="outline" onPress={logout}>
@@ -247,15 +306,22 @@ function ToggleRow({
   label,
   value,
   onChange,
+  disabled,
 }: {
   label: string;
   value: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <View className="flex-row items-center justify-between py-2">
       <Text className="text-[#333333]">{label}</Text>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: '#1A4D3E' }} />
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled}
+        trackColor={{ true: '#1A4D3E' }}
+      />
     </View>
   );
 }
