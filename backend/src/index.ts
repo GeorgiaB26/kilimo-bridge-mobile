@@ -50,6 +50,11 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
+    api_build: 'v2.11.9-field-agent-visible',
+    field_agent_features: {
+      messaging_restricted: true,
+      notification_settings_legacy_sync: true,
+    },
     farmers: appReady ? cachedFarmerCount : null,
     hierarchy_projects: appReady ? cachedHierarchyProjects : null,
     demo_farmer_tasks: appReady ? cachedDemoFarmerTasks : null,

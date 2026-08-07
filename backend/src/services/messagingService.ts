@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
 import { getProjectManagerUserForAgent } from './agentDashboardService';
+import { isAgentRole } from '../../../shared/src/roles';
 
 export interface MessageThreadSummary {
   id: string;
@@ -200,7 +201,13 @@ export async function getOrCreateDirectThread(
   return threadId;
 }
 
-export async function listThreadsForUser(userId: string, search?: string): Promise<MessageThreadSummary[]> {
+export async function listThreadsForUser(
+  userId: string,
+  search?: string,
+  role?: string,
+  region?: string,
+  district?: string
+): Promise<MessageThreadSummary[]> {
   const rows = await query<{
     id: string;
     title: string | null;
@@ -250,6 +257,13 @@ export async function listThreadsForUser(userId: string, search?: string): Promi
     `,
     [userId, search?.trim() || null]
   );
+
+  if (isAgentRole(role ?? '')) {
+    const allowed = await listAgentMessageableUsers(userId, region, district);
+    const allowedIds = new Set(allowed.map((u) => u.userId));
+    return rows.filter((r) => allowedIds.has(String(r.other_user_id)));
+  }
+
   return rows;
 }
 
