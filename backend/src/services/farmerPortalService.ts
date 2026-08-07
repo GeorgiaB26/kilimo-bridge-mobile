@@ -9,6 +9,104 @@ import {
 import { getFarmerSupportContacts } from './farmerHelpRequestService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { countTaskCategories } from '../utils/taskCategorization';
+import { listFarmerTasks } from './hierarchyService';
+import { listAgentTasksAssignedToFarmer } from './agentDashboardService';
+
+export type FarmerPortalTaskRow = {
+  id: string;
+  name: string;
+  status: string;
+  due_date?: string | null;
+  description?: string | null;
+  payment_value_kes?: number;
+  program_project_name?: string;
+  assigned_at?: string;
+  assigned_by_name?: string;
+  source: 'hierarchy' | 'agent_assignment';
+  task_order?: number;
+  notes?: string | null;
+  photo_evidence_url?: string | null;
+  rejection_reason?: string | null;
+};
+
+function mapAgentStatusToFarmer(status: string): string {
+  return status.replace(/_/g, '-');
+}
+
+function mapAgentTaskToFarmerRow(
+  row: Awaited<ReturnType<typeof listAgentTasksAssignedToFarmer>>[number]
+): FarmerPortalTaskRow {
+  return {
+    id: row.id,
+    name: row.name,
+    status: mapAgentStatusToFarmer(row.status),
+    due_date: row.due_date,
+    description: row.description ?? null,
+    payment_value_kes: 0,
+    program_project_name: 'Field agent assignment',
+    assigned_at: row.created_at,
+    assigned_by_name: row.assigned_by_name ?? 'Your field agent',
+    source: 'agent_assignment',
+    task_order: 0,
+  };
+}
+
+function mapHierarchyTaskToFarmerRow(row: Record<string, unknown>): FarmerPortalTaskRow {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    status: String(row.status ?? 'not-started'),
+    due_date: row.due_date as string | null | undefined,
+    description: row.description as string | null | undefined,
+    payment_value_kes: Number(row.payment_value_kes ?? 0),
+    program_project_name: row.program_project_name as string | undefined,
+    assigned_at: (row.assigned_at ?? row.created_at) as string | undefined,
+    assigned_by_name: row.assigned_by_name as string | undefined,
+    source: 'hierarchy',
+    task_order: row.task_order as number | undefined,
+    notes: row.notes as string | null | undefined,
+    photo_evidence_url: row.photo_evidence_url as string | null | undefined,
+    rejection_reason: row.rejection_reason as string | null | undefined,
+  };
+}
+
+function sortFarmerPortalTasks(tasks: FarmerPortalTaskRow[]): FarmerPortalTaskRow[] {
+  return [...tasks].sort((a, b) => {
+    const da = a.due_date ? new Date(a.due_date.includes('T') ? a.due_date : `${a.due_date}T12:00:00`) : null;
+    const db = b.due_date ? new Date(b.due_date.includes('T') ? b.due_date : `${b.due_date}T12:00:00`) : null;
+    if (!da && !db) return a.name.localeCompare(b.name);
+    if (!da) return 1;
+    if (!db) return -1;
+    return da.getTime() - db.getTime();
+  });
+}
+
+export async function listAllFarmerAssignedTasks(
+  farmerId: string,
+  filters?: { status?: string; program_project_id?: string; outstanding?: boolean }
+): Promise<FarmerPortalTaskRow[]> {
+  const hierarchyRows = (await listFarmerTasks(farmerId, filters)) as Record<string, unknown>[];
+  const hierarchyTasks = hierarchyRows.map(mapHierarchyTaskToFarmerRow);
+
+  if (filters?.program_project_id) {
+    return sortFarmerPortalTasks(hierarchyTasks);
+  }
+
+  const agentRows = await listAgentTasksAssignedToFarmer(farmerId);
+  let agentTasks = agentRows.map(mapAgentTaskToFarmerRow);
+
+  if (filters?.status) {
+    const want = filters.status.replace(/_/g, '-');
+    agentTasks = agentTasks.filter((t) => t.status.replace(/_/g, '-') === want);
+  }
+  if (filters?.outstanding) {
+    agentTasks = agentTasks.filter(
+      (t) => !['approved', 'completed'].includes(t.status.replace(/_/g, '-'))
+    );
+  }
+
+  return sortFarmerPortalTasks([...hierarchyTasks, ...agentTasks]);
+}
 
 export async function getFarmerDashboard(farmerId: string) {
   const farmer = await queryOne(
@@ -54,6 +152,14 @@ export async function getFarmerDashboard(farmerId: string) {
     typeof farmerRecord.picture_url === 'string' ? farmerRecord.picture_url : null
   );
 
+  const allAssignedTasks = await listAllFarmerAssignedTasks(farmerId);
+  const categoryCounts = countTaskCategories(
+    allAssignedTasks.map((task) => ({
+      status: task.status,
+      due_date: task.due_date,
+    }))
+  );
+
   return {
     farmer: {
       ...farmerRecord,
@@ -74,7 +180,15 @@ export async function getFarmerDashboard(farmerId: string) {
     pendingAmount: pendingPayments?.total ?? 0,
     totalEarnings: totalEarnings?.total ?? 0,
     paymentSummary: await getFarmerPaymentSummary(farmerId),
-    taskStats: await getFarmerTaskSnapshotStats(farmerId),
+    taskStats: {
+      overdue: categoryCounts.overdue,
+      in_progress: categoryCounts.inProgress,
+      not_started: categoryCounts.notStarted,
+      completed: categoryCounts.completed,
+      total: categoryCounts.total,
+    },
+    recentTasks: allAssignedTasks.slice(0, 3),
+    assignedTaskCount: allAssignedTasks.length,
     activeProjects: sortedActive,
     nextProject: sortedActive[0] ?? null,
   };
@@ -154,20 +268,11 @@ export async function getFarmerPaymentSummary(farmerId: string) {
 }
 
 export async function getFarmerTaskSnapshotStats(farmerId: string) {
-  const rows = await query<{ status: string; due_date: string | null }>(
-    `
-    SELECT ft.status, t.due_date::text AS due_date
-    FROM farmer_tasks ft
-    JOIN tasks t ON t.id = ft.task_id
-    WHERE ft.farmer_id = $1
-    `,
-    [farmerId]
-  );
-
+  const tasks = await listAllFarmerAssignedTasks(farmerId);
   const counts = countTaskCategories(
-    rows.map((row) => ({
-      status: row.status,
-      due_date: row.due_date,
+    tasks.map((task) => ({
+      status: task.status,
+      due_date: task.due_date,
     }))
   );
 

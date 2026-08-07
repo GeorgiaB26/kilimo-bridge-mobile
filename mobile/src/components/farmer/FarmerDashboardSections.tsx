@@ -37,6 +37,15 @@ type TaskStats = {
   total?: number;
 };
 
+type RecentTaskRow = {
+  id: string;
+  name: string;
+  due_date?: string | null;
+  assigned_by_name?: string;
+  program_project_name?: string;
+  status?: string;
+};
+
 type PaymentRow = {
   id: string;
   project_name?: string;
@@ -209,6 +218,54 @@ export function FarmerDashboardTaskSnapshots({
       </View>
 
       <Pressable style={styles.viewAllTasks} onPress={() => onTasksPress()}>
+        <Text style={styles.viewAllTasksText}>View all tasks →</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export function FarmerDashboardRecentTasks({
+  tasks,
+  onTasksPress,
+  onTaskPress,
+}: {
+  tasks?: RecentTaskRow[] | null;
+  onTasksPress: () => void;
+  onTaskPress?: (taskId: string) => void;
+}) {
+  const recent = tasks ?? [];
+  if (!recent.length) {
+    return (
+      <View style={styles.snapshotsContainer}>
+        <Text style={styles.snapshotsTitle}>Recent tasks</Text>
+        <Text style={styles.emptyText}>No tasks assigned yet.</Text>
+        <Pressable style={styles.viewAllTasks} onPress={onTasksPress}>
+          <Text style={styles.viewAllTasksText}>View tasks →</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.snapshotsContainer}>
+      <Text style={styles.snapshotsTitle}>Recent tasks</Text>
+      {recent.map((task) => (
+        <Pressable
+          key={task.id}
+          style={styles.recentCard}
+          onPress={() => (onTaskPress ? onTaskPress(task.id) : onTasksPress())}
+        >
+          <Text style={styles.recentTitle}>{task.name}</Text>
+          <Text style={styles.recentMeta}>
+            {task.assigned_by_name ?? 'Program team'}
+            {task.due_date ? ` · Due ${formatProjectDate(task.due_date)}` : ''}
+          </Text>
+          {task.program_project_name ? (
+            <Text style={styles.recentMeta}>{task.program_project_name}</Text>
+          ) : null}
+        </Pressable>
+      ))}
+      <Pressable style={styles.viewAllTasks} onPress={onTasksPress}>
         <Text style={styles.viewAllTasksText}>View all tasks →</Text>
       </Pressable>
     </View>

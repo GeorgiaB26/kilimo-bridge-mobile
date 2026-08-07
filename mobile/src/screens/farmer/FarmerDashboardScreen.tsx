@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, ScrollView, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -24,6 +24,7 @@ import {
   FarmerDashboardProfileCard,
   FarmerDashboardEarningsCard,
   FarmerDashboardTaskSnapshots,
+  FarmerDashboardRecentTasks,
   FarmerDashboardRecentProjects,
   FarmerDashboardRecentPayments,
   FarmerDashboardSupportSection,
@@ -73,6 +74,15 @@ type DashboardData = {
     completed?: number;
     total?: number;
   };
+  recentTasks?: Array<{
+    id: string;
+    name: string;
+    due_date?: string | null;
+    assigned_by_name?: string;
+    program_project_name?: string;
+    status?: string;
+  }>;
+  assignedTaskCount?: number;
 };
 
 export function FarmerDashboardScreen() {
@@ -116,6 +126,12 @@ export function FarmerDashboardScreen() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -161,9 +177,17 @@ export function FarmerDashboardScreen() {
   const goToProfile = () => navigation.navigate('Profile');
   const goToPayments = () => navigation.navigate('Payments');
   const goToTasks = (
-    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed'
+    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed',
+    highlightTaskId?: string
   ) => {
-    navigation.navigate('Tasks', statusFilter ? { statusFilter } : undefined);
+    if (!statusFilter && !highlightTaskId) {
+      navigation.navigate('Tasks');
+      return;
+    }
+    navigation.navigate('Tasks', {
+      ...(statusFilter ? { statusFilter } : {}),
+      ...(highlightTaskId ? { highlightTaskId } : {}),
+    });
   };
 
   return (
@@ -206,7 +230,13 @@ export function FarmerDashboardScreen() {
 
         <FarmerDashboardTaskSnapshots
           taskStats={data?.taskStats}
-          onTasksPress={goToTasks}
+          onTasksPress={(filter) => goToTasks(filter)}
+        />
+
+        <FarmerDashboardRecentTasks
+          tasks={data?.recentTasks}
+          onTasksPress={() => goToTasks()}
+          onTaskPress={(taskId) => goToTasks(undefined, taskId)}
         />
 
         <View style={{ paddingHorizontal: 12, marginVertical: 12 }}>

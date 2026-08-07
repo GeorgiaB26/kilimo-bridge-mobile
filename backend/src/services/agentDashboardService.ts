@@ -181,6 +181,23 @@ export async function listAgentPersonalTasks(agentUserId: string): Promise<Agent
   return Promise.all(rows.map((row) => enrichPersonalTask(row)));
 }
 
+/** Tasks a field agent assigned to this farmer (agent_tasks table, not farmer_tasks). */
+export async function listAgentTasksAssignedToFarmer(farmerId: string): Promise<
+  Array<AgentPersonalTask & { assigned_by_name?: string | null }>
+> {
+  const rows = await query<AgentPersonalTask & { assigned_by_name?: string | null }>(
+    `
+    SELECT at.*, u.name AS assigned_by_name
+    FROM agent_tasks at
+    LEFT JOIN users u ON u.user_id = at.agent_user_id
+    WHERE at.assigned_farmer_ids IS NOT NULL
+      AND TRIM(at.assigned_farmer_ids) != ''
+    ORDER BY at.due_date, at.name
+    `
+  );
+  return rows.filter((row) => parseAssignedFarmerIds(row.assigned_farmer_ids).includes(farmerId));
+}
+
 export async function getAgentPersonalTask(
   taskId: string,
   agentUserId: string

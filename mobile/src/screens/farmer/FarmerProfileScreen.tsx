@@ -10,13 +10,15 @@ import {
   ActionSheetIOS,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Divider, List, Switch } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { APP_BUILD } from '../../constants/build';
-import { getFarmerDashboard, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
+import { getFarmerDashboard, getFarmerHierarchyTasks, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
@@ -25,7 +27,8 @@ import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
-import { getLocalizedGreeting } from '../../utils/greeting';
+import { formatCleanDate } from '../../utils/greeting';
+import type { FarmerTabParamList } from '../../navigation/types';
 import { useCurrency } from '../../context/CurrencyContext';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
@@ -50,7 +53,20 @@ type SupportContacts = {
   } | null;
 };
 
+type ProfileTaskRow = {
+  id: string;
+  name: string;
+  status?: string;
+  due_date?: string | null;
+  assigned_by_name?: string;
+  program_project_name?: string;
+  source?: string;
+};
+
+type ProfileNav = BottomTabNavigationProp<FarmerTabParamList, 'Profile'>;
+
 export function FarmerProfileScreen() {
+  const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { currency, currencyInfo, selectCountry } = useCurrency();
@@ -80,6 +96,8 @@ export function FarmerProfileScreen() {
   const [pendingBase64, setPendingBase64] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
+  const [assignedTasks, setAssignedTasks] = useState<ProfileTaskRow[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
 
   const loadProfile = useCallback(() => {
     getFarmerDashboard()
@@ -92,6 +110,16 @@ export function FarmerProfileScreen() {
       .catch((err: unknown) => {
         setError(extractApiError(err, 'Could not load profile'));
       });
+
+    setTasksLoading(true);
+    getFarmerHierarchyTasks()
+      .then((data) => {
+        setAssignedTasks((data.tasks ?? []) as ProfileTaskRow[]);
+      })
+      .catch(() => {
+        setAssignedTasks([]);
+      })
+      .finally(() => setTasksLoading(false));
   }, [selectCountry]);
 
   useFocusEffect(
@@ -372,6 +400,55 @@ export function FarmerProfileScreen() {
           subValue={bankingPhone}
           hint="Contact for M-Pesa payment queries"
         />
+      </View>
+
+      <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">
+        Assigned tasks ({assignedTasks.length})
+      </Text>
+      <View className="mb-5 overflow-hidden rounded-xl bg-white">
+        {tasksLoading ? (
+          <View className="items-center p-6">
+            <ActivityIndicator color="#1A4D3E" />
+          </View>
+        ) : assignedTasks.length === 0 ? (
+          <Text className="p-4 text-sm text-[#757575]">No tasks assigned yet.</Text>
+        ) : (
+          assignedTasks.slice(0, 5).map((task, index) => (
+            <Pressable
+              key={task.id}
+              onPress={() =>
+                navigation.navigate('Tasks', { highlightTaskId: task.id })
+              }
+              className="p-4"
+              style={
+                index < assignedTasks.slice(0, 5).length - 1
+                  ? { borderBottomWidth: 1, borderBottomColor: '#eee' }
+                  : undefined
+              }
+            >
+              <Text className="text-base font-semibold text-[#333333]">{task.name}</Text>
+              <Text className="mt-1 text-sm text-[#757575]">
+                Assigned by: {task.assigned_by_name ?? 'Program team'}
+              </Text>
+              {task.program_project_name ? (
+                <Text className="text-sm text-[#757575]">{task.program_project_name}</Text>
+              ) : null}
+              <Text className="mt-1 text-sm text-[#1A4D3E]">
+                Due: {task.due_date ? formatCleanDate(task.due_date) : 'No due date'}
+              </Text>
+            </Pressable>
+          ))
+        )}
+        {assignedTasks.length > 0 ? (
+          <Pressable
+            className="border-t border-[#eee] p-4"
+            onPress={() => navigation.navigate('Tasks')}
+          >
+            <Text className="text-center text-sm font-semibold text-[#1A4D3E]">
+              View all tasks →
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Contact</Text>
