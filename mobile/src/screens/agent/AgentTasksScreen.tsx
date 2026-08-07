@@ -9,8 +9,8 @@ import {
   TextInput,
   Pressable,
 } from 'react-native';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
+import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   Ban,
@@ -194,6 +194,7 @@ function TaskSection({
 
 export function AgentTasksScreen() {
   const route = useRoute<RouteProp<AgentTabParamList, 'Tasks'>>();
+  const navigation = useNavigation<NavigationProp<AgentTabParamList>>();
   const [farmerTasks, setFarmerTasks] = useState<UnifiedTask[]>([]);
   const [personalTasks, setPersonalTasks] = useState<UnifiedTask[]>([]);
   const [helpRequests, setHelpRequests] = useState<
@@ -223,11 +224,7 @@ export function AgentTasksScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [tasksData, helpData, farmersRes] = await Promise.all([
-        getAgentTasks(),
-        getAgentHelpRequests(),
-        api.get('/agents/farmers'),
-      ]);
+      const tasksData = await getAgentTasks();
       const ft = (tasksData.farmer_tasks ?? []).map((t: Record<string, unknown>) => ({
         id: String(t.id),
         name: String(t.name ?? ''),
@@ -245,15 +242,25 @@ export function AgentTasksScreen() {
       );
       setFarmerTasks(ft);
       setPersonalTasks(pt);
+    } catch {
+      /* keep existing task lists on partial failure */
+    }
+
+    try {
+      const helpData = await getAgentHelpRequests();
       setHelpRequests(helpData.requests ?? []);
+    } catch {
+      /* keep existing help requests */
+    }
+
+    try {
+      const farmersRes = await api.get('/agents/farmers');
       setFarmers((farmersRes.data.farmers ?? []).map((f: { farmer_id: string; name: string }) => ({
         farmer_id: f.farmer_id,
         name: f.name,
       })));
     } catch {
-      setFarmerTasks([]);
-      setPersonalTasks([]);
-      setHelpRequests([]);
+      /* keep existing farmers list */
     } finally {
       setLoading(false);
     }
@@ -261,13 +268,19 @@ export function AgentTasksScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (route.params?.filter) {
-        setFilter(route.params.filter);
+      const routeFilter = route.params?.filter;
+      if (routeFilter) {
+        setFilter(routeFilter);
         setShowFilter(false);
+        navigation.setParams({ filter: undefined });
+      }
+      if (route.params?.openAdd) {
+        setAddModalOpen(true);
+        navigation.setParams({ openAdd: undefined });
       }
       load();
       checkAndShowTaskReminders();
-    }, [load, route.params?.filter])
+    }, [load, navigation, route.params?.filter, route.params?.openAdd])
   );
 
   const onRefresh = async () => {
@@ -377,10 +390,14 @@ export function AgentTasksScreen() {
     }
   };
 
-  const personalOnly = useMemo(
-    () => filtered.filter((t) => t.source === 'personal'),
-    [filtered]
-  );
+  const personalOnly = useMemo(() => {
+    let list = personalTasks;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((t) => t.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [personalTasks, search]);
 
   const handleCreateTask = async (data: {
     name: string;
@@ -404,6 +421,7 @@ export function AgentTasksScreen() {
       setFilter('all');
       setShowFilter(false);
       setSearch('');
+      navigation.setParams({ filter: undefined });
       await load();
       setAddModalOpen(false);
       Alert.alert('Task created', 'Your task is now in the Tasks list.');
@@ -567,7 +585,7 @@ export function AgentTasksScreen() {
           onReminder={handleReminder}
         />
 
-        {filtered.length === 0 && helpRequests.length === 0 ? (
+        {filtered.length === 0 && personalOnly.length === 0 && helpRequests.length === 0 ? (
           <View className="items-center rounded-xl bg-white p-6">
             <Ionicons name="checkmark-circle-outline" size={48} color="#2E7D5E" />
             <Text className="mt-3 text-center text-[#757575]">No tasks match your filters.</Text>
