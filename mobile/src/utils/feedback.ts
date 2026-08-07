@@ -1,4 +1,5 @@
 import { Alert, Platform } from 'react-native';
+import { API_BASE_URL } from '../constants';
 
 type ApiErrorBody = {
   error?: string;
@@ -39,7 +40,7 @@ export function extractApiError(err: unknown, fallback: string): string {
     if ('message' in err && typeof (err as { message: unknown }).message === 'string') {
       const msg = (err as { message: string }).message;
       if (msg.includes('Network Error') || msg.includes('ECONNREFUSED')) {
-        return 'Cannot reach backend. Is it running on http://localhost:3001?';
+        return `Cannot reach API at ${API_BASE_URL}. If this is the test site, wait ~30s for Render to wake up and try again.`;
       }
       return msg;
     }

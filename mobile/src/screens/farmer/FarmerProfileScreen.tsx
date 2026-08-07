@@ -27,7 +27,7 @@ import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
-import { formatCleanDate } from '../../utils/greeting';
+import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
 import { useCurrency } from '../../context/CurrencyContext';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';

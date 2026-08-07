@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.11.19-farmer-tasks-visibility-fix';
+export const APP_BUILD = 'v2.11.20-netlify-api-url-fix';
