@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
+import { isAgentRole } from '../../../shared/src/roles';
 import {
   getOrCreateDirectThread,
   listThreadsForUser,
@@ -7,6 +8,7 @@ import {
   markThreadRead,
   sendThreadMessage,
   listMessageableUsers,
+  agentCanMessageRecipient,
   getUnreadMessageCount,
 } from '../services/messagingService';
 
@@ -62,6 +64,20 @@ router.post(
     if (!recipientId) {
       res.status(400).json({ error: 'recipientId is required' });
       return;
+    }
+    if (isAgentRole(req.user!.role)) {
+      const allowed = await agentCanMessageRecipient(
+        req.user!.userId,
+        recipientId,
+        req.user!.region,
+        req.user!.district
+      );
+      if (!allowed) {
+        res.status(403).json({
+          error: 'You can only message your project manager or farmers you registered',
+        });
+        return;
+      }
     }
     try {
       const threadId = await getOrCreateDirectThread(req.user!.userId, recipientId, title);

@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
+import { getProjectManagerUserForAgent } from './agentDashboardService';
 
 export interface MessageThreadSummary {
   id: string;
@@ -111,6 +112,14 @@ export async function ensureMessagingTables(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS push_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS sms_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS notify_help_requests BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS notify_payment_updates BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS messages_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS task_assignments_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS payment_updates_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS verification_updates_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
 
   // Extend notifications table if columns missing (safe on Postgres)
   await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS context_type TEXT`);
@@ -379,6 +388,59 @@ export async function sendThreadMessage(
   return { ...row!, is_mine: true };
 }
 
+/** Field agents may only message their project manager and farmers they registered. */
+export async function listAgentMessageableUsers(
+  agentUserId: string,
+  region?: string,
+  district?: string
+): Promise<Array<{ userId: string; name: string; role: string }>> {
+  const users: Array<{ userId: string; name: string; role: string }> = [];
+
+  const pm = await getProjectManagerUserForAgent(region, district);
+  if (pm) {
+    users.push({
+      userId: pm.user_id,
+      name: `${pm.name} (Project Manager)`,
+      role: 'project_manager',
+    });
+  }
+
+  const agent = await queryOne<{ agent_id: string }>(
+    `SELECT agent_id::text AS agent_id FROM agents WHERE user_id::text = $1`,
+    [agentUserId]
+  );
+  if (agent?.agent_id) {
+    const farmerRows = await query<{ user_id: string; name: string }>(
+      `
+      SELECT DISTINCT u.user_id::text AS user_id, f.name
+      FROM farmers f
+      JOIN users u ON u.farmer_id::text = f.farmer_id::text
+      WHERE f.registered_by_agent_id::text = $1
+      ORDER BY f.name
+      `,
+      [agent.agent_id]
+    );
+    for (const f of farmerRows) {
+      if (!users.some((u) => u.userId === f.user_id)) {
+        users.push({ userId: f.user_id, name: f.name, role: 'farmer' });
+      }
+    }
+  }
+
+  return users;
+}
+
+export async function agentCanMessageRecipient(
+  agentUserId: string,
+  recipientId: string,
+  region?: string,
+  district?: string
+): Promise<boolean> {
+  const resolved = await resolveMessagingUserId(recipientId);
+  const allowed = await listAgentMessageableUsers(agentUserId, region, district);
+  return allowed.some((u) => u.userId === resolved);
+}
+
 export async function listMessageableUsers(
   userId: string,
   role: string,
@@ -416,49 +478,7 @@ export async function listMessageableUsers(
   }
 
   if (role === 'agent' || role === 'field_officer') {
-    const farmerRows = await query<{ user_id: string; name: string }>(
-      district
-        ? `
-          SELECT DISTINCT u.user_id, f.name
-          FROM farmers f
-          JOIN users u ON u.farmer_id = f.farmer_id
-          WHERE f.district = $1
-          ORDER BY f.name
-          LIMIT 50
-          `
-        : region
-          ? `
-          SELECT DISTINCT u.user_id, f.name
-          FROM farmers f
-          JOIN users u ON u.farmer_id = f.farmer_id
-          WHERE f.district IN (SELECT DISTINCT district FROM agents WHERE region = $1)
-          ORDER BY f.name
-          LIMIT 50
-          `
-          : `
-          SELECT DISTINCT u.user_id, f.name
-          FROM farmers f
-          JOIN users u ON u.farmer_id = f.farmer_id
-          ORDER BY f.name
-          LIMIT 50
-          `,
-      district ? [district] : region ? [region] : []
-    );
-    for (const f of farmerRows) {
-      users.push({ userId: f.user_id, name: f.name, role: 'farmer' });
-    }
-
-    const admins = await query<{ user_id: string; name: string; role: string }>(
-      `SELECT user_id, name, role::text AS role FROM users
-       WHERE role::text IN ('admin', 'super_admin', 'platform_admin', 'project_manager')
-       ORDER BY name LIMIT 15`
-    );
-    for (const a of admins) {
-      if (!users.some((u) => u.userId === a.user_id)) {
-        users.push({ userId: a.user_id, name: a.name, role: a.role });
-      }
-    }
-    return users;
+    return listAgentMessageableUsers(userId, region, district);
   }
 
   const all = await query<{ user_id: string; name: string; role: string }>(
@@ -487,18 +507,45 @@ export async function getUnreadMessageCount(userId: string): Promise<number> {
 }
 
 export async function getNotificationSettings(userId: string): Promise<NotificationSettings> {
-  let row = await queryOne<NotificationSettings>(
+  let row = await queryOne<Record<string, unknown>>(
     'SELECT * FROM notification_settings WHERE user_id = $1',
     [userId]
   );
   if (!row) {
     await query('INSERT INTO notification_settings (user_id) VALUES ($1)', [userId]);
-    row = await queryOne<NotificationSettings>(
+    row = await queryOne<Record<string, unknown>>(
       'SELECT * FROM notification_settings WHERE user_id = $1',
       [userId]
     );
   }
-  return row!;
+  return normalizeNotificationSettings(row ?? { user_id: userId });
+}
+
+function normalizeNotificationSettings(row: Record<string, unknown>): NotificationSettings {
+  const payment =
+    row.notify_payment_updates ?? row.notify_payment_ready ?? row.payment_updates_enabled ?? true;
+  const verification =
+    row.verification_updates_enabled ?? row.notify_verification_updates ?? true;
+  const messages = row.messages_enabled ?? row.notify_messages ?? true;
+
+  return {
+    user_id: String(row.user_id ?? ''),
+    push_enabled: Boolean(row.push_enabled ?? true),
+    sms_enabled: Boolean(row.sms_enabled ?? false),
+    email_enabled: Boolean(row.email_enabled ?? false),
+    notify_task_assigned: Boolean(row.notify_task_assigned ?? true),
+    notify_farmer_registered: Boolean(row.notify_farmer_registered ?? true),
+    notify_help_requests: Boolean(row.notify_help_requests ?? true),
+    notify_payment_updates: Boolean(payment),
+    notify_messages: Boolean(messages),
+    messages_enabled: Boolean(messages),
+    task_assignments_enabled: Boolean(row.task_assignments_enabled ?? row.notify_task_assigned ?? true),
+    payment_updates_enabled: Boolean(payment),
+    verification_updates_enabled: Boolean(verification),
+    quiet_hours_start: (row.quiet_hours_start as string | null) ?? null,
+    quiet_hours_end: (row.quiet_hours_end as string | null) ?? null,
+    quiet_hours_enabled: Boolean(row.quiet_hours_enabled ?? false),
+  };
 }
 
 export async function updateNotificationSettings(
@@ -533,6 +580,28 @@ export async function updateNotificationSettings(
       fields.push(`${key} = $${idx}`);
       values.push(patch[key]);
       idx += 1;
+      // Keep legacy Supabase/Lovable columns in sync when present
+      if (key === 'notify_payment_updates' || key === 'payment_updates_enabled') {
+        fields.push(`notify_payment_ready = $${idx}`);
+        values.push(patch[key]);
+        idx += 1;
+      }
+      if (key === 'verification_updates_enabled') {
+        fields.push(`notify_verification_updates = $${idx}`);
+        values.push(patch[key]);
+        idx += 1;
+      }
+      if (key === 'messages_enabled' || key === 'notify_messages') {
+        if (key === 'messages_enabled') {
+          fields.push(`notify_messages = $${idx}`);
+          values.push(patch[key]);
+          idx += 1;
+        } else {
+          fields.push(`messages_enabled = $${idx}`);
+          values.push(patch[key]);
+          idx += 1;
+        }
+      }
     }
   }
 

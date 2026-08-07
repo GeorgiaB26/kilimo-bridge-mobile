@@ -72,9 +72,9 @@ export function NotificationSettingsScreen() {
     try {
       const data = await updateNotificationSettings({ [key]: value });
       setSettings(data.settings as Settings);
-    } catch {
+    } catch (err) {
       setSettings({ ...settings, [key]: prev as boolean });
-      setError('Could not save setting');
+      setError(extractApiError(err, 'Could not save notification settings'));
     }
   };
 

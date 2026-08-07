@@ -19,7 +19,8 @@ import {
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { NOTIFICATION_CONFIG, formatTimeAgo } from '../../constants/notifications';
-import { navigateFromFarmerNotification } from '../../utils/farmerNotificationNavigation';
+import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
+import { useAuthStore } from '../../store/authStore';
 import type { NotificationsStackParamList } from '../../navigation/types';
 
 type NotificationRow = {
@@ -40,6 +41,8 @@ const POLL_MS = 10000;
 
 export function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
+  const user = useAuthStore((s) => s.user);
+  const isAgent = user?.role === 'agent' || user?.role === 'field_officer';
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
@@ -76,7 +79,9 @@ export function NotificationsScreen() {
     try {
       await markNotificationRead(id);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+        filter === 'unread'
+          ? prev.filter((n) => n.id !== id)
+          : prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
     } catch {
       await load();
@@ -87,7 +92,7 @@ export function NotificationsScreen() {
     if (!item.is_read) {
       await handleMarkRead(item.id);
     }
-    navigateFromFarmerNotification(navigation, item);
+    navigateFromNotification(navigation, item, { isAgent });
   };
 
   const handleClearAll = async () => {

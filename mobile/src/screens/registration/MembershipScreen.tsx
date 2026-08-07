@@ -6,7 +6,7 @@ import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { MEMBERSHIP_TYPES, CURRENCY_OPTIONS } from '../../constants';
+import { MEMBERSHIP_TYPES } from '../../constants';
 import { fetchReferenceData, fetchAggregationCentresByLocation } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
@@ -154,14 +154,18 @@ export function MembershipScreen({ navigation }: Props) {
         required
         error={errors.membershipType}
       />
-      <PickerField
-        label="Currency Preference"
-        value={formData.currency ?? ''}
-        options={CURRENCY_OPTIONS}
-        onSelect={(currency) => updateForm({ currency })}
-        required
-        error={errors.currency}
-      />
+      <View className="mb-4">
+        <Text className="mb-1 text-sm font-semibold text-[#333333]">Currency preference</Text>
+        <View className="rounded-lg border border-[#E0E0E0] bg-[#E0E0E0] px-3 py-3 opacity-90">
+          <Text className="text-[15px] text-[#757575]">
+            {formData.currency ?? (formData.country ? getCurrencyForCountry(formData.country).code : '—')}
+          </Text>
+        </View>
+        <Text className="mt-1 text-xs text-[#757575]">
+          Currency automatically set based on selected country
+        </Text>
+        {errors.currency ? <Text className="mt-1 text-xs text-[#D32F2F]">{errors.currency}</Text> : null}
+      </View>
       <View className="mt-2 flex-row gap-3">
         <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
           <Text>Back</Text>
