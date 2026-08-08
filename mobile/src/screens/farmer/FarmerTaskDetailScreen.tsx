@@ -5,26 +5,26 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
-  TextInput,
   Pressable,
-  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import * as ImagePicker from 'expo-image-picker';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
-import { getFarmerAssignedTasks, getFarmerHierarchyTask, submitFarmerHierarchyTask } from '../../api/client';
-import { extractApiError, showMessage } from '../../utils/feedback';
+import { getFarmerAssignedTasks, getFarmerHierarchyTask } from '../../api/client';
+import { extractApiError } from '../../utils/feedback';
 import { formatCleanDate } from '../../utils/greeting';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import {
+  FarmerTaskSubmitModal,
+  type FarmerTaskSubmitTarget,
+} from '../../components/farmer/FarmerTaskSubmitModal';
+import {
   listPendingTaskSubmissions,
-  submitFarmerTaskWithOutbox,
   type PendingTaskSubmissionView,
 } from '../../services/submitFarmerTaskOutbox';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
@@ -51,13 +51,6 @@ type TaskDetail = {
   submitted_date?: string | null;
   approved_date?: string | null;
   source?: 'hierarchy' | 'agent_assignment';
-  /** Program farmer_tasks row — supports photo evidence submit flow. */
-  submittable?: boolean;
-};
-
-type SelectedImage = {
-  uri: string;
-  base64?: string | null;
 };
 
 type SubmissionHistoryEntry = {
@@ -70,18 +63,18 @@ type SubmissionHistoryEntry = {
   reviewNotes?: string | null;
 };
 
-const MIN_NOTES_ONLY_LENGTH = 1;
-
 function normalizeTaskStatus(status: string): string {
   return status.replace(/_/g, '-');
 }
 
-/** Allow submit for actionable program tasks (not completed/approved/pending review). */
-function canSubmitTask(status: string): boolean {
-  const s = normalizeTaskStatus(status);
-  if (s === 'completed' || s === 'approved') return false;
-  if (s === 'submitted-for-approval' || s === 'submitted') return false;
-  return true;
+/** Same gate as FarmerProjectTasksSection — only hierarchy tasks use the shared submit modal. */
+function canOpenForSubmit(
+  task: TaskDetail,
+  hasPendingOffline: boolean
+): boolean {
+  if (task.source === 'agent_assignment') return false;
+  if (hasPendingOffline) return false;
+  return ['not-started', 'in-progress', 'rejected'].includes(normalizeTaskStatus(task.status));
 }
 
 function evidencePhotoUri(task: TaskDetail): string | null {
@@ -136,22 +129,13 @@ export function FarmerTaskDetailScreen() {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [picking, setPicking] = useState(false);
-  const [photoError, setPhotoError] = useState('');
-  const [notesError, setNotesError] = useState('');
   const [pendingSubmission, setPendingSubmission] = useState<PendingTaskSubmissionView | null>(null);
+  const [submitTarget, setSubmitTarget] = useState<FarmerTaskSubmitTarget | null>(null);
 
-  const isReadOnlyAgentTask = task != null && !task.submittable;
+  const isAgentAssignment = task?.source === 'agent_assignment';
   const taskIsCompleted =
     task != null && ['approved', 'completed'].includes(normalizeTaskStatus(task.status));
-  const showSubmitForm =
-    task != null &&
-    task.submittable &&
-    canSubmitTask(task.status) &&
-    !pendingSubmission;
+  const openable = task != null && canOpenForSubmit(task, !!pendingSubmission);
 
   const submissionHistory = useMemo(
     () => (task ? buildSubmissionHistory(task) : []),
@@ -173,7 +157,6 @@ export function FarmerTaskDetailScreen() {
       const list = (listRes.tasks ?? []) as TaskDetail[];
       const fromList = list.find((row) => row.id === taskId);
 
-      // Always try program hierarchy detail first — fixes "view only" on admin-assigned tasks.
       try {
         const detail = await getFarmerHierarchyTask(taskId);
         loaded = {
@@ -185,7 +168,6 @@ export function FarmerTaskDetailScreen() {
           assigned_by_name: fromList?.assigned_by_name ?? detail.assigned_by_name,
           program_project_name: fromList?.program_project_name ?? detail.program_project_name,
           source: 'hierarchy',
-          submittable: true,
         };
       } catch (err: unknown) {
         const status = (err as { response?: { status?: number } })?.response?.status;
@@ -193,10 +175,7 @@ export function FarmerTaskDetailScreen() {
       }
 
       if (!loaded && fromList) {
-        loaded = {
-          ...fromList,
-          submittable: fromList.source !== 'agent_assignment',
-        };
+        loaded = { ...fromList };
       }
 
       if (!loaded) {
@@ -226,116 +205,21 @@ export function FarmerTaskDetailScreen() {
     }, [load, task?.id])
   );
 
-  useEffect(() => {
-    (async () => {
-      try {
-        await ImagePicker.requestCameraPermissionsAsync();
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      } catch {
-        // Permissions requested on first photo action as fallback.
-      }
-    })();
-  }, []);
-
-  useTaskApprovalPolling(task?.submittable ? [task] : [], load);
+  useTaskApprovalPolling(task && !isAgentAssignment ? [task] : [], load);
 
   const goBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('MainTabs', { screen: 'Tasks' });
   };
 
-  const pickImage = async (useCamera: boolean) => {
-    setPicking(true);
-    setPhotoError('');
-    try {
-      const permission = useCamera
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        showMessage('Permission needed', 'Please allow camera or gallery access to upload a photo.');
-        return;
-      }
-
-      const result = useCamera
-        ? await ImagePicker.launchCameraAsync({
-            allowsEditing: false,
-            aspect: [4, 3],
-            quality: 0.8,
-            base64: true,
-          })
-        : await ImagePicker.launchImageLibraryAsync({
-            allowsMultipleSelection: true,
-            selectionLimit: 6,
-            aspect: [4, 3],
-            quality: 0.8,
-            base64: true,
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          });
-
-      if (!result.canceled && result.assets.length > 0) {
-        const newImages = result.assets.map((asset) => ({
-          uri: asset.uri,
-          base64: asset.base64 ?? null,
-        }));
-        setSelectedImages((prev) => [...prev, ...newImages].slice(0, 6));
-      }
-    } finally {
-      setPicking(false);
-    }
-  };
-
-  const removeImage = (index: number) => {
-    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const submitTask = async () => {
-    if (!task || !showSubmitForm) return;
-
-    const trimmedNotes = notes.trim();
-    const hasPhotos = selectedImages.length > 0;
-    const hasNotes = trimmedNotes.length >= MIN_NOTES_ONLY_LENGTH;
-
-    if (!hasPhotos && !hasNotes) {
-      setPhotoError('Add at least one photo or a note to submit.');
-      setNotesError('Add at least one photo or a note to submit.');
-      return;
-    }
-
-    setPhotoError('');
-    setNotesError('');
-
-    setSubmitting(true);
-    try {
-      if (hasPhotos) {
-        const primaryImage = selectedImages[0];
-        const result = await submitFarmerTaskWithOutbox({
-          farmerTaskId: task.id,
-          taskName: task.name,
-          notes: trimmedNotes,
-          photoLocalUri: primaryImage.uri,
-          photoBase64: primaryImage.base64,
-        });
-        if (result.mode === 'offline') {
-          showMessage(
-            'Saved offline',
-            'Your evidence is saved on this device. Open Your Tasks when back online to push it.'
-          );
-        } else {
-          showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
-        }
-      } else {
-        await submitFarmerHierarchyTask(task.id, { notes: trimmedNotes });
-        showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
-      }
-
-      setNotes('');
-      setSelectedImages([]);
-      await load();
-    } catch (err: unknown) {
-      showMessage('Error', extractApiError(err, 'Could not submit task'));
-    } finally {
-      setSubmitting(false);
-    }
+  const openSubmitModal = () => {
+    if (!task || !openable) return;
+    setSubmitTarget({
+      id: task.id,
+      name: task.name,
+      description: task.description ?? undefined,
+      payment_value_kes: task.payment_value_kes,
+    });
   };
 
   if (loading) {
@@ -358,218 +242,177 @@ export function FarmerTaskDetailScreen() {
     );
   }
 
-  const notesHint = selectedImages.length > 0 ? 'Optional with photos' : 'Required without photos';
-
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Pressable onPress={goBack} style={styles.backRow}>
-          <Text className="text-sm font-semibold text-[#4472C4]">← Back</Text>
-        </Pressable>
-        <Text className="text-xl font-bold text-foreground">{task.name}</Text>
-        {isReadOnlyAgentTask ? (
-          <Text className="mt-1 text-xs font-semibold text-muted-foreground">
-            Field agent assignment · view only
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Status</Text>
-          <KBStatusChip
-            label={taskStatusLabel(normalizeTaskStatus(task.status))}
-            variant={taskStatusVariant(normalizeTaskStatus(task.status))}
-          />
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Project</Text>
-          <Text style={styles.value}>
-            {task.program_project_name ?? (isReadOnlyAgentTask ? 'Field agent assignment' : '—')}
-          </Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Assigned by</Text>
-          <Text style={styles.value}>{task.assigned_by_name?.trim() || 'Program team'}</Text>
-        </View>
-
-        {task.start_date ? (
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Start date</Text>
-            <Text style={styles.value}>{formatCleanDate(task.start_date)}</Text>
-          </View>
-        ) : null}
-
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Due date</Text>
-          <Text style={styles.value}>
-            {task.due_date ? formatCleanDate(task.due_date) : 'No deadline set'}
-          </Text>
-        </View>
-
-        {task.payment_value_kes != null && task.payment_value_kes > 0 ? (
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Payment</Text>
-            <Text style={[styles.value, styles.payValue]}>
-              KES {task.payment_value_kes.toLocaleString()}
+    <>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Pressable onPress={goBack} style={styles.backRow}>
+            <Text className="text-sm font-semibold text-[#4472C4]">← Back</Text>
+          </Pressable>
+          <Text className="text-xl font-bold text-foreground">{task.name}</Text>
+          {isAgentAssignment ? (
+            <Text className="mt-1 text-xs font-semibold text-muted-foreground">
+              Field agent assignment · view only
             </Text>
-          </View>
-        ) : null}
-
-        {task.description?.trim() ? (
-          <View style={styles.descriptionBlock}>
-            <Text style={styles.label}>Description</Text>
-            <Text style={styles.descriptionText}>{task.description.trim()}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {pendingSubmission ? (
-        <View style={styles.pendingBanner}>
-          <Ionicons name="cloud-upload-outline" size={20} color={COLORS.info} />
-          <View style={styles.pendingTextWrap}>
-            <Text style={styles.pendingTitle}>Waiting to sync</Text>
-            <Text style={styles.pendingBody}>
-              Evidence saved on this device. It will upload when you are back online.
-            </Text>
-          </View>
+          ) : null}
         </View>
-      ) : null}
 
-      {showSubmitForm ? (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Submit work</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.label}>Status</Text>
+            <KBStatusChip
+              label={taskStatusLabel(normalizeTaskStatus(task.status))}
+              variant={taskStatusVariant(normalizeTaskStatus(task.status))}
+            />
+          </View>
 
-          <Text style={styles.label}>Notes ({notesHint})</Text>
-          <TextInput
-            style={[styles.noteInput, notesError ? styles.inputError : null]}
-            placeholder="Add any notes about this task..."
-            placeholderTextColor="#999"
-            multiline
-            numberOfLines={4}
-            value={notes}
-            onChangeText={(text) => {
-              setNotes(text);
-              if (notesError) setNotesError('');
-            }}
-            editable={!submitting}
-          />
-          <Text style={styles.charCount}>
-            {notes.trim().length} characters
-            {selectedImages.length === 0 && !notes.trim()
-              ? ' — add a note or photo to submit'
-              : ''}
-          </Text>
-          {notesError ? <Text style={styles.errorText}>{notesError}</Text> : null}
+          <View style={styles.detailRow}>
+            <Text style={styles.label}>Project</Text>
+            <Text style={styles.value}>
+              {task.program_project_name ?? (isAgentAssignment ? 'Field agent assignment' : '—')}
+            </Text>
+          </View>
 
-          <Text style={[styles.label, styles.labelSpaced]}>Upload photos</Text>
-          <Text style={styles.subLabel}>
-            Add evidence of completed work. Photos optional if you add notes instead.
-          </Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.label}>Assigned by</Text>
+            <Text style={styles.value}>{task.assigned_by_name?.trim() || 'Program team'}</Text>
+          </View>
 
-          {selectedImages.length > 0 ? (
-            <View style={styles.imageGrid}>
-              {selectedImages.map((image, index) => (
-                <View key={`${image.uri}-${index}`} style={styles.imageContainer}>
-                  <Image source={{ uri: image.uri }} style={styles.thumbnailImage} />
-                  <Pressable style={styles.removeImageButton} onPress={() => removeImage(index)}>
-                    <Text style={styles.removeImageButtonText}>✕</Text>
-                  </Pressable>
-                </View>
-              ))}
+          {task.start_date ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.label}>Start date</Text>
+              <Text style={styles.value}>{formatCleanDate(task.start_date)}</Text>
             </View>
           ) : null}
 
-          <View style={styles.uploadButtonsContainer}>
+          <View style={styles.detailRow}>
+            <Text style={styles.label}>Due date</Text>
+            <Text style={styles.value}>
+              {task.due_date ? formatCleanDate(task.due_date) : 'No deadline set'}
+            </Text>
+          </View>
+
+          {task.payment_value_kes != null && task.payment_value_kes > 0 ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.label}>Payment</Text>
+              <Text style={[styles.value, styles.payValue]}>
+                KES {task.payment_value_kes.toLocaleString()}
+              </Text>
+            </View>
+          ) : null}
+
+          {task.description?.trim() ? (
+            <View style={styles.descriptionBlock}>
+              <Text style={styles.label}>Description</Text>
+              <Text style={styles.descriptionText}>{task.description.trim()}</Text>
+            </View>
+          ) : null}
+
+          {task.rejection_reason?.trim() && normalizeTaskStatus(task.status) === 'rejected' ? (
+            <View style={styles.rejectionBlock}>
+              <Text style={styles.rejectionLabel}>Rejection reason</Text>
+              <Text style={styles.rejectionText}>{task.rejection_reason.trim()}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {pendingSubmission ? (
+          <View style={styles.pendingBanner}>
+            <Ionicons name="cloud-upload-outline" size={20} color={COLORS.info} />
+            <View style={styles.pendingTextWrap}>
+              <Text style={styles.pendingTitle}>Waiting to sync</Text>
+              <Text style={styles.pendingBody}>
+                Evidence saved on this device. It will upload when you are back online.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {openable ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Submit work</Text>
+            <Text style={styles.submitHint}>
+              Photo evidence and notes are required to submit for review.
+            </Text>
             <Button
-              mode="outlined"
-              onPress={() => pickImage(true)}
-              loading={picking}
-              style={styles.uploadButton}
-              icon="camera"
+              mode="contained"
+              buttonColor={
+                normalizeTaskStatus(task.status) === 'rejected' ? COLORS.warning : COLORS.primary
+              }
+              onPress={openSubmitModal}
+              style={styles.submitButton}
             >
-              {Platform.OS === 'web' ? 'Upload photo' : 'Take photo'}
+              {normalizeTaskStatus(task.status) === 'rejected' ? 'Resubmit' : 'Open submit form'}
             </Button>
-            {Platform.OS !== 'web' ? (
-              <Button
-                mode="outlined"
-                onPress={() => pickImage(false)}
-                loading={picking}
-                style={styles.uploadButton}
-                icon="image"
-              >
-                Choose photo
-              </Button>
-            ) : null}
           </View>
-          {selectedImages.length > 0 ? (
-            <Text style={styles.imageCountText}>
-              {selectedImages.length} photo{selectedImages.length > 1 ? 's' : ''} selected
-            </Text>
-          ) : null}
-          {photoError ? <Text style={styles.errorText}>{photoError}</Text> : null}
+        ) : null}
 
-          <Button
-            mode="contained"
-            onPress={submitTask}
-            loading={submitting}
-            buttonColor={COLORS.success}
-            style={styles.submitButton}
-          >
-            Submit for review
-          </Button>
-        </View>
-      ) : null}
-
-      {submissionHistory.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Submission history</Text>
-          {submissionHistory.map((entry) => (
-            <View key={entry.id} style={styles.submissionCard}>
-              <View style={styles.submissionHeader}>
-                <Text style={styles.submissionDate}>{formatCleanDate(entry.submittedAt)}</Text>
-                <KBStatusChip label={entry.statusLabel} variant={entry.statusVariant} />
-              </View>
-              {entry.notes?.trim() ? (
-                <Text style={styles.submissionContent}>{entry.notes.trim()}</Text>
-              ) : null}
-              {entry.photoUrl ? (
-                <Image source={{ uri: entry.photoUrl }} style={styles.submissionImage} resizeMode="cover" />
-              ) : null}
-              {entry.reviewNotes?.trim() ? (
-                <View style={styles.reviewNotesContainer}>
-                  <Text style={styles.reviewNotesLabel}>Reviewer notes</Text>
-                  <Text style={styles.reviewNotesText}>{entry.reviewNotes.trim()}</Text>
+        {submissionHistory.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Submission history</Text>
+            {submissionHistory.map((entry) => (
+              <View key={entry.id} style={styles.submissionCard}>
+                <View style={styles.submissionHeader}>
+                  <Text style={styles.submissionDate}>{formatCleanDate(entry.submittedAt)}</Text>
+                  <KBStatusChip label={entry.statusLabel} variant={entry.statusVariant} />
                 </View>
-              ) : null}
-            </View>
-          ))}
-        </View>
-      ) : null}
+                {entry.notes?.trim() ? (
+                  <Text style={styles.submissionContent}>{entry.notes.trim()}</Text>
+                ) : null}
+                {entry.photoUrl ? (
+                  <Image
+                    source={{ uri: entry.photoUrl }}
+                    style={styles.submissionImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                {entry.reviewNotes?.trim() ? (
+                  <View style={styles.reviewNotesContainer}>
+                    <Text style={styles.reviewNotesLabel}>Reviewer notes</Text>
+                    <Text style={styles.reviewNotesText}>{entry.reviewNotes.trim()}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
 
-      {!showSubmitForm && !taskIsCompleted && submissionHistory.length === 0 ? (
-        <View style={styles.emptySubmission}>
-          <Text style={styles.emptySubmissionText}>No submissions yet</Text>
-          {isReadOnlyAgentTask ? (
-            <Text style={styles.emptySubmissionSubText}>
-              This assignment was created by your field agent.
-            </Text>
-          ) : (
-            <Text style={styles.emptySubmissionSubText}>
-              Your submission is pending review, or add photos and notes above when available.
-            </Text>
-          )}
-        </View>
-      ) : null}
+        {!openable && !taskIsCompleted && submissionHistory.length === 0 ? (
+          <View style={styles.emptySubmission}>
+            <Text style={styles.emptySubmissionText}>No submissions yet</Text>
+            {isAgentAssignment ? (
+              <Text style={styles.emptySubmissionSubText}>
+                This assignment was created by your field agent.
+              </Text>
+            ) : pendingSubmission ? (
+              <Text style={styles.emptySubmissionSubText}>
+                Evidence is queued offline and will sync when you reconnect.
+              </Text>
+            ) : (
+              <Text style={styles.emptySubmissionSubText}>
+                This task is not open for submission right now.
+              </Text>
+            )}
+          </View>
+        ) : null}
 
-      {taskIsCompleted ? (
-        <View style={styles.completedSection}>
-          <Text style={styles.completedText}>✓ Task completed</Text>
-        </View>
-      ) : null}
-    </ScrollView>
+        {taskIsCompleted ? (
+          <View style={styles.completedSection}>
+            <Text style={styles.completedText}>✓ Task completed</Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <FarmerTaskSubmitModal
+        task={submitTarget}
+        visible={!!submitTarget}
+        onClose={() => setSubmitTarget(null)}
+        onSubmitted={async () => {
+          setSubmitTarget(null);
+          await load();
+        }}
+      />
+    </>
   );
 }
 
@@ -629,9 +472,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#666666',
   },
-  labelSpaced: {
-    marginTop: 12,
-  },
   value: {
     fontSize: 13,
     color: '#1A1A1A',
@@ -655,94 +495,31 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
-  subLabel: {
-    fontSize: 12,
-    color: '#999999',
-    marginTop: 4,
-  },
-  noteInput: {
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+  rejectionBlock: {
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: '#FFEBEE',
     borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  },
+  rejectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.alert,
+  },
+  rejectionText: {
     fontSize: 13,
     color: '#1A1A1A',
-    textAlignVertical: 'top',
-    backgroundColor: '#FAFAFA',
-    marginTop: 8,
-    minHeight: 100,
-  },
-  inputError: {
-    borderColor: COLORS.alert,
-  },
-  charCount: {
-    fontSize: 12,
     marginTop: 4,
-    textAlign: 'right',
-  },
-  charCountWarn: {
-    color: COLORS.alert,
-    fontWeight: '600',
-  },
-  charCountOk: {
-    color: COLORS.success,
-  },
-  errorText: {
-    fontSize: 13,
-    color: COLORS.alert,
-    marginTop: 6,
     lineHeight: 18,
   },
-  imageGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginVertical: 12,
-  },
-  imageContainer: {
-    position: 'relative',
-    width: '30%',
-    aspectRatio: 1,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  thumbnailImage: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#F0F0F0',
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  removeImageButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  uploadButtonsContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  uploadButton: {
-    flex: 1,
-  },
-  imageCountText: {
+  submitHint: {
     fontSize: 12,
     color: '#666666',
-    marginTop: 8,
-    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 12,
   },
   submitButton: {
-    marginTop: 16,
+    marginTop: 4,
   },
   pendingBanner: {
     flexDirection: 'row',
