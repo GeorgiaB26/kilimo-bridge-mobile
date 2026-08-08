@@ -48,6 +48,9 @@ function mapAgentTaskToFarmerRow(
     assigned_by_name: row.assigned_by_name ?? 'Your field agent',
     source: 'agent_assignment',
     task_order: 0,
+    notes: row.notes ?? null,
+    photo_evidence_url: row.photo_evidence_url ?? null,
+    rejection_reason: row.rejection_reason ?? null,
   };
 }
 

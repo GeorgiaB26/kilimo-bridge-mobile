@@ -69,6 +69,7 @@ export async function submitFarmerTaskWithOutbox(params: {
   notes: string;
   photoLocalUri: string;
   photoBase64?: string | null;
+  source?: 'hierarchy' | 'agent_assignment';
 }): Promise<{ mode: 'online' } | { mode: 'offline'; pendingId: string }> {
   const photoLocalUri = params.photoLocalUri.trim();
   const photoBase64 = params.photoBase64?.trim() || null;
@@ -82,6 +83,7 @@ export async function submitFarmerTaskWithOutbox(params: {
       farmerTaskId: params.farmerTaskId,
       notes: params.notes.trim(),
       taskName: params.taskName,
+      source: params.source ?? 'hierarchy',
     },
     photoLocalUri: photoLocalUri || null,
     photoBase64,

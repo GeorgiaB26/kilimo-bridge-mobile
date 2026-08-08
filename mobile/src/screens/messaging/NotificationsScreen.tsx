@@ -20,7 +20,7 @@ import {
 import { extractApiError } from '../../utils/feedback';
 import { NOTIFICATION_CONFIG, formatTimeAgo } from '../../constants/notifications';
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore, isAgentRole } from '../../store/authStore';
 import { useUnreadInboxCounts } from '../../hooks/useUnreadInboxCounts';
 import type { NotificationsStackParamList } from '../../navigation/types';
 
@@ -43,7 +43,7 @@ const POLL_MS = 10000;
 export function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
   const user = useAuthStore((s) => s.user);
-  const isAgent = user?.role === 'agent' || user?.role === 'field_officer';
+  const isAgent = user != null && isAgentRole(user.role);
   const { refresh: refreshUnreadCounts } = useUnreadInboxCounts();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');

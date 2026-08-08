@@ -10,7 +10,7 @@ import { COLORS } from '../../constants';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { submitFarmerTaskWithOutbox } from '../../services/submitFarmerTaskOutbox';
 
-/** Client-only quality check — backend does not enforce a notes minimum. */
+/** Client-side quality check — agent_assignment also enforces ≥50 on the API. */
 const MIN_NOTES_LENGTH = 50;
 
 export interface FarmerTaskSubmitTarget {
@@ -18,6 +18,7 @@ export interface FarmerTaskSubmitTarget {
   name: string;
   description?: string;
   payment_value_kes?: number;
+  source?: 'hierarchy' | 'agent_assignment';
 }
 
 interface Props {
@@ -112,6 +113,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
         notes: notes.trim(),
         photoLocalUri: photoUri!,
         photoBase64,
+        source: task.source ?? 'hierarchy',
       });
       reset();
       onSubmitted({ offline: result.mode === 'offline' });

@@ -295,6 +295,18 @@ export async function setAgentTaskReminder(taskId: string, reminder_type: string
   return data;
 }
 
+/** Field agent approves farmer evidence on an agent-assigned (personal) task. */
+export async function approveAgentPersonalTask(taskId: string, notes?: string) {
+  const { data } = await api.post(`/agents/tasks/${taskId}/approve`, notes ? { notes } : {});
+  return data;
+}
+
+/** Field agent rejects farmer evidence on an agent-assigned (personal) task. */
+export async function rejectAgentPersonalTask(taskId: string, rejection_reason: string) {
+  const { data } = await api.post(`/agents/tasks/${taskId}/reject`, { rejection_reason });
+  return data;
+}
+
 export async function updateFarmerLocation(body: {
   district: string;
   subCounty: string;
@@ -635,6 +647,20 @@ export async function submitFarmerTaskCompletion(
 
 export async function submitFarmerHierarchyTask(farmerTaskId: string, body: { photo_url?: string; notes?: string }) {
   const { data } = await api.post(`/farmer/hierarchy/tasks/${farmerTaskId}/submit`, body);
+  return data;
+}
+
+/** Farmer submits evidence on a field-agent-assigned agent_tasks row. */
+export async function submitAgentAssignedTask(
+  taskId: string,
+  body: { photo_url?: string; notes?: string }
+) {
+  const { data } = await api.post(`/farmer/agent-tasks/${taskId}/submit`, body);
+  return data;
+}
+
+export async function getFarmerAgentAssignedTask(taskId: string) {
+  const { data } = await api.get(`/farmer/agent-tasks/${taskId}`);
   return data;
 }
 

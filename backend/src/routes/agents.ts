@@ -18,11 +18,13 @@ import {
   resolveFarmerHelpRequest,
 } from '../services/farmerHelpRequestService';
 import {
+  approveAgentTaskByAgent,
   createAgentPersonalTask,
   getAgentDashboardSummary,
   getAgentPersonalTask,
   listAgentPersonalTasks,
   listRegionFarmerTasks,
+  rejectAgentTaskByAgent,
   updateAgentPersonalTask,
   updateAgentPersonalTaskReminder,
 } from '../services/agentDashboardService';
@@ -404,6 +406,89 @@ router.patch(
       const message = err instanceof Error ? err.message : 'Could not update task';
       if (message.includes('DD/MM/YYYY') || message.includes('Invalid task status')) {
         res.status(400).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  '/tasks/:taskId/approve',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    try {
+      const notes = typeof req.body?.notes === 'string' ? req.body.notes : undefined;
+      const task = await approveAgentTaskByAgent(req.params.taskId, req.user!.userId, notes);
+      await logAudit({
+        userId: req.user!.userId,
+        userRole: req.user!.role,
+        action: 'agent.action',
+        category: 'agent',
+        resourceType: 'agent_task',
+        resourceId: task.id,
+        details: { activity_type: 'task_approved' },
+        success: true,
+      });
+      res.json({ task });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not approve task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  '/tasks/:taskId/reject',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const rejection_reason =
+      typeof req.body?.rejection_reason === 'string'
+        ? req.body.rejection_reason
+        : typeof req.body?.reason === 'string'
+          ? req.body.reason
+          : '';
+    try {
+      const task = await rejectAgentTaskByAgent(
+        req.params.taskId,
+        req.user!.userId,
+        rejection_reason
+      );
+      await logAudit({
+        userId: req.user!.userId,
+        userRole: req.user!.role,
+        action: 'agent.action',
+        category: 'agent',
+        resourceType: 'agent_task',
+        resourceId: task.id,
+        details: { activity_type: 'task_rejected' },
+        success: true,
+      });
+      res.json({ task });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not reject task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
         return;
       }
       throw err;

@@ -7,6 +7,10 @@ import {
   submitFarmerTask,
 } from '../services/hierarchyService';
 import { listAllFarmerAssignedTasks } from '../services/farmerPortalService';
+import {
+  getAgentTaskAssignedToFarmer,
+  submitAgentTaskByFarmer,
+} from '../services/agentDashboardService';
 import { getAdminNotifyPhone, sendSms } from '../services/notificationService';
 import { resolvePhotoUrlForDisplay } from '../services/r2StorageService';
 
@@ -292,6 +296,55 @@ router.post(
         : null
     );
     res.json({ ...(updated as object), photo_evidence_url });
+  })
+);
+
+/** Farmer submits photo + notes on a field-agent-assigned agent_tasks row. */
+router.post(
+  '/agent-tasks/:taskId/submit',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+
+    const { photo_url, notes } = req.body ?? {};
+    try {
+      const updated = await submitAgentTaskByFarmer(req.params.taskId, farmerId, {
+        photo_url,
+        notes,
+      });
+      res.json({
+        ...updated,
+        source: 'agent_assignment',
+        photo_evidence_url: updated.photo_evidence_url,
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not submit task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.get(
+  '/agent-tasks/:taskId',
+  requirePermission('hierarchy.read.own'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = await getAgentTaskAssignedToFarmer(req.params.taskId, farmerId);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    res.json({ ...task, source: 'agent_assignment' });
   })
 );
 

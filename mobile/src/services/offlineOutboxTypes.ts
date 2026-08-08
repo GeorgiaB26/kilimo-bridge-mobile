@@ -8,6 +8,7 @@ export type OutboxActionType =
   | 'farmer_registration'
   | 'task_submission'
   | 'task_approval'
+  | 'agent_task_approval'
   | 'farmer_verification'
   | 'centre_qc'
   | 'project_assign';

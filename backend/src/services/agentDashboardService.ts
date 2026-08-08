@@ -17,14 +17,38 @@ export interface AgentPersonalTask {
   assigned_farmer_ids?: string | null;
   assigned_farmer_names?: string[];
   reminder_type?: string | null;
+  photo_evidence_url?: string | null;
+  notes?: string | null;
+  submitted_at?: string | null;
+  rejection_reason?: string | null;
+  reviewed_at?: string | null;
   created_at?: string;
   updated_at?: string;
   source?: 'personal';
 }
 
-const AGENT_TASK_STATUSES = new Set(['not_started', 'in_progress', 'completed']);
+/** Full lifecycle for agent-assigned farmer work (stored with underscores). */
+export const AGENT_TASK_WORKFLOW_STATUSES = new Set([
+  'not_started',
+  'in_progress',
+  'submitted_for_approval',
+  'approved',
+  'rejected',
+  // Legacy agent-only personal todos (no farmer assignment)
+  'completed',
+]);
 
-function parseAssignedFarmerIds(raw?: string | null): string[] {
+/** Statuses an agent may set via the generic PATCH (not farmer submit / review). */
+const AGENT_TASK_AGENT_EDITABLE_STATUSES = new Set([
+  'not_started',
+  'in_progress',
+  'completed',
+]);
+
+/** @deprecated Use AGENT_TASK_WORKFLOW_STATUSES */
+const AGENT_TASK_STATUSES = AGENT_TASK_WORKFLOW_STATUSES;
+
+export function parseAssignedFarmerIds(raw?: string | null): string[] {
   if (!raw?.trim()) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -34,10 +58,28 @@ function parseAssignedFarmerIds(raw?: string | null): string[] {
   }
 }
 
+export function normalizeAgentTaskStatus(status: string): string {
+  return status.trim().replace(/-/g, '_');
+}
+
+export function agentTaskStatusToApi(status: string): string {
+  const s = normalizeAgentTaskStatus(status);
+  // Match farmer hierarchy display: hyphens + submitted-for-approval naming
+  if (s === 'submitted_for_approval') return 'submitted-for-approval';
+  return s.replace(/_/g, '-');
+}
+
 async function enrichPersonalTask(row: AgentPersonalTask): Promise<AgentPersonalTask> {
   const ids = parseAssignedFarmerIds(row.assigned_farmer_ids);
+  const photo_evidence_url = await resolvePhotoUrlForDisplay(row.photo_evidence_url ?? null);
   if (!ids.length) {
-    return { ...row, assigned_farmer_names: [], source: 'personal' };
+    return {
+      ...row,
+      photo_evidence_url,
+      assigned_farmer_names: [],
+      source: 'personal',
+      status: agentTaskStatusToApi(row.status),
+    };
   }
   const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
   const farmers = await query<{ farmer_id: string; name: string }>(
@@ -47,8 +89,10 @@ async function enrichPersonalTask(row: AgentPersonalTask): Promise<AgentPersonal
   const nameById = new Map(farmers.map((f) => [f.farmer_id, f.name]));
   return {
     ...row,
+    photo_evidence_url,
     assigned_farmer_names: ids.map((id) => nameById.get(id) ?? id),
     source: 'personal',
+    status: agentTaskStatusToApi(row.status),
   };
 }
 
@@ -127,8 +171,17 @@ export async function ensureAgentTasksTable(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Farmer evidence + agent review (parity with farmer_tasks submit/approve flow)
+  await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS photo_evidence_url TEXT`);
+  await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
+  await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
   await query('CREATE INDEX IF NOT EXISTS idx_agent_tasks_agent ON agent_tasks(agent_user_id)');
   await query('CREATE INDEX IF NOT EXISTS idx_agent_tasks_due ON agent_tasks(due_date)');
+  await query(
+    `CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status)`
+  );
 }
 
 export async function listRegionFarmerTasks(region: string, district?: string): Promise<RegionFarmerTaskRow[]> {
@@ -208,6 +261,103 @@ export async function getAgentPersonalTask(
   );
   if (!row) return null;
   return enrichPersonalTask(row);
+}
+
+/** Load an agent_tasks row if this farmer is in assigned_farmer_ids. */
+export async function getAgentTaskAssignedToFarmer(
+  taskId: string,
+  farmerId: string
+): Promise<AgentPersonalTask | null> {
+  const row = await queryOne<AgentPersonalTask>('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
+  if (!row) return null;
+  if (!parseAssignedFarmerIds(row.assigned_farmer_ids).includes(farmerId)) return null;
+  return enrichPersonalTask(row);
+}
+
+const FARMER_SUBMIT_MIN_NOTES = 50;
+const FARMER_SUBMITTABLE_STATUSES = new Set(['not_started', 'in_progress', 'rejected']);
+
+/**
+ * Farmer submits photo + notes evidence on an agent-assigned task.
+ * Sets status to submitted_for_approval for field-agent review.
+ */
+export async function submitAgentTaskByFarmer(
+  taskId: string,
+  farmerId: string,
+  data: { photo_url?: string; notes?: string }
+): Promise<AgentPersonalTask> {
+  const row = await queryOne<AgentPersonalTask>('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
+  if (!row) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  if (!parseAssignedFarmerIds(row.assigned_farmer_ids).includes(farmerId)) {
+    throw Object.assign(new Error('Not your task'), { statusCode: 403 });
+  }
+
+  const photo = typeof data.photo_url === 'string' ? data.photo_url.trim() : '';
+  if (!photo) {
+    throw Object.assign(new Error('A photo is required before submitting this task'), {
+      statusCode: 400,
+    });
+  }
+
+  const notes = typeof data.notes === 'string' ? data.notes.trim() : '';
+  if (notes.length < FARMER_SUBMIT_MIN_NOTES) {
+    throw Object.assign(
+      new Error(
+        `Notes must be at least ${FARMER_SUBMIT_MIN_NOTES} characters (currently ${notes.length})`
+      ),
+      { statusCode: 400 }
+    );
+  }
+
+  const current = normalizeAgentTaskStatus(row.status);
+  if (!FARMER_SUBMITTABLE_STATUSES.has(current)) {
+    throw Object.assign(
+      new Error('This task is not open for submission (already submitted or completed)'),
+      { statusCode: 409 }
+    );
+  }
+
+  await query(
+    `
+    UPDATE agent_tasks SET
+      photo_evidence_url = $1,
+      notes = $2,
+      status = 'submitted_for_approval',
+      submitted_at = NOW(),
+      rejection_reason = NULL,
+      reviewed_at = NULL,
+      updated_at = NOW()
+    WHERE id = $3
+    `,
+    [photo, notes, taskId]
+  );
+
+  const farmer = await queryOne<{ name: string }>(
+    'SELECT name FROM farmers WHERE farmer_id = $1',
+    [farmerId]
+  );
+
+  try {
+    await createNotification({
+      userId: row.agent_user_id,
+      title: 'Task evidence submitted',
+      message: `${farmer?.name ?? 'A farmer'} submitted evidence for "${row.name}". Review in your Tasks tab.`,
+      type: 'task',
+      contextType: 'agent_task',
+      contextId: taskId,
+      priority: 'high',
+    });
+  } catch {
+    // Notification failure must not roll back a successful submit
+  }
+
+  const updated = await getAgentTaskAssignedToFarmer(taskId, farmerId);
+  if (!updated) {
+    throw Object.assign(new Error('Task not found after submit'), { statusCode: 500 });
+  }
+  return updated;
 }
 
 export function normalizeAgentTaskDueDate(input: string): string {
@@ -304,9 +454,11 @@ export async function updateAgentPersonalTask(
   );
   if (!existing) return null;
 
-  const status = data.status?.trim();
-  if (status && !AGENT_TASK_STATUSES.has(status)) {
-    throw new Error('Invalid task status');
+  const status = data.status ? normalizeAgentTaskStatus(data.status) : undefined;
+  if (status && !AGENT_TASK_AGENT_EDITABLE_STATUSES.has(status)) {
+    throw new Error(
+      'Invalid task status — use approve/reject for farmer submissions, or not_started/in_progress/completed for personal todos'
+    );
   }
 
   const dueDate = data.due_date ? normalizeAgentTaskDueDate(data.due_date) : undefined;
@@ -346,6 +498,137 @@ export async function updateAgentPersonalTaskReminder(
      WHERE id = $2 AND agent_user_id = $3`,
     [reminderType, taskId, agentUserId]
   );
+}
+
+async function notifyAssignedFarmers(
+  task: AgentPersonalTask,
+  title: string,
+  message: string
+): Promise<void> {
+  const farmerIds = parseAssignedFarmerIds(task.assigned_farmer_ids);
+  for (const farmerId of farmerIds) {
+    const farmerUser = await queryOne<{ user_id: string }>(
+      'SELECT user_id FROM users WHERE farmer_id = $1 LIMIT 1',
+      [farmerId]
+    );
+    if (!farmerUser?.user_id) continue;
+    try {
+      await createNotification({
+        userId: farmerUser.user_id,
+        title,
+        message,
+        type: 'task',
+        contextType: 'agent_task',
+        contextId: task.id,
+        priority: 'high',
+      });
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+/** Field agent approves farmer evidence on an agent-assigned task. */
+export async function approveAgentTaskByAgent(
+  taskId: string,
+  agentUserId: string,
+  notes?: string
+): Promise<AgentPersonalTask> {
+  const existing = await queryOne<AgentPersonalTask>(
+    'SELECT * FROM agent_tasks WHERE id = $1 AND agent_user_id = $2',
+    [taskId, agentUserId]
+  );
+  if (!existing) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  const current = normalizeAgentTaskStatus(existing.status);
+  if (current !== 'submitted_for_approval') {
+    throw Object.assign(
+      new Error('Only tasks submitted for approval can be approved'),
+      { statusCode: 409 }
+    );
+  }
+
+  const reviewNotes =
+    typeof notes === 'string' && notes.trim()
+      ? notes.trim()
+      : existing.notes ?? null;
+
+  await query(
+    `
+    UPDATE agent_tasks SET
+      status = 'approved',
+      reviewed_at = NOW(),
+      rejection_reason = NULL,
+      notes = COALESCE($1, notes),
+      updated_at = NOW()
+    WHERE id = $2 AND agent_user_id = $3
+    `,
+    [reviewNotes, taskId, agentUserId]
+  );
+
+  const updated = await getAgentPersonalTask(taskId, agentUserId);
+  if (!updated) {
+    throw Object.assign(new Error('Task not found after approve'), { statusCode: 500 });
+  }
+
+  await notifyAssignedFarmers(
+    updated,
+    'Task approved',
+    `Your field agent approved "${updated.name}".`
+  );
+  return updated;
+}
+
+/** Field agent rejects farmer evidence — farmer can resubmit. */
+export async function rejectAgentTaskByAgent(
+  taskId: string,
+  agentUserId: string,
+  rejectionReason: string
+): Promise<AgentPersonalTask> {
+  const reason = rejectionReason.trim();
+  if (!reason) {
+    throw Object.assign(new Error('Rejection reason is required'), { statusCode: 400 });
+  }
+
+  const existing = await queryOne<AgentPersonalTask>(
+    'SELECT * FROM agent_tasks WHERE id = $1 AND agent_user_id = $2',
+    [taskId, agentUserId]
+  );
+  if (!existing) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  const current = normalizeAgentTaskStatus(existing.status);
+  if (current !== 'submitted_for_approval') {
+    throw Object.assign(
+      new Error('Only tasks submitted for approval can be rejected'),
+      { statusCode: 409 }
+    );
+  }
+
+  await query(
+    `
+    UPDATE agent_tasks SET
+      status = 'rejected',
+      rejection_reason = $1,
+      reviewed_at = NOW(),
+      updated_at = NOW()
+    WHERE id = $2 AND agent_user_id = $3
+    `,
+    [reason, taskId, agentUserId]
+  );
+
+  const updated = await getAgentPersonalTask(taskId, agentUserId);
+  if (!updated) {
+    throw Object.assign(new Error('Task not found after reject'), { statusCode: 500 });
+  }
+
+  await notifyAssignedFarmers(
+    updated,
+    'Task rejected',
+    `Your field agent rejected "${updated.name}". Reason: ${reason}. Please resubmit.`
+  );
+  return updated;
 }
 
 export async function getProjectManagerUserForAgent(region?: string, district?: string) {

@@ -9,6 +9,7 @@ import {
   TextInput,
   Pressable,
   Platform,
+  Image,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -23,11 +24,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import {
-  approveFarmerTask,
   createAgentPersonalTask,
   getAgentHelpRequests,
   getAgentTasks,
-  rejectFarmerTask,
   resolveAgentHelpRequest,
   setAgentTaskReminder,
   updateAgentPersonalTask,
@@ -37,12 +36,31 @@ import { extractApiError, showMessage } from '../../utils/feedback';
 import { isTaskOverdue } from '../../utils/taskCategorization';
 import { categorizeTasks, pickCategorizedTasks } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
+import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { AddAgentTaskModal } from '../../components/agent/AddAgentTaskModal';
 import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
+import { OutboxAgentTaskApprovalCard } from '../../components/OutboxAgentTaskApprovalCard';
+import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
 import { checkAndShowTaskReminders, setTaskReminder, type ReminderType } from '../../utils/taskReminders';
+import {
+  dismissAgentTaskApprovalOutbox,
+  listPendingAgentTaskApprovals,
+  pushPendingAgentTaskApproval,
+  submitAgentTaskDecisionWithOutbox,
+  syncAllPendingAgentTaskApprovals,
+  type PendingAgentTaskApprovalView,
+} from '../../services/submitAgentTaskApprovalOutbox';
+import {
+  dismissTaskApprovalOutbox,
+  listPendingTaskApprovals,
+  pushPendingTaskApproval,
+  submitTaskDecisionWithOutbox,
+  syncAllPendingTaskApprovals,
+  type PendingTaskApprovalView,
+} from '../../services/submitTaskApprovalOutbox';
 
 type UnifiedTask = {
   id: string;
@@ -92,13 +110,13 @@ function TaskSection({
   tasks: UnifiedTask[];
   onReminder: (task: UnifiedTask, type: ReminderType) => void;
   onTaskPress: (task: UnifiedTask) => void;
-  onExpandApproval?: (id: string) => void;
+  onExpandApproval?: (id: string | null) => void;
   expandedId?: string | null;
   rejectReason?: string;
   setRejectReason?: (v: string) => void;
   acting?: string | null;
-  approve?: (id: string) => void;
-  reject?: (id: string) => void;
+  approve?: (id: string) => void | Promise<void>;
+  reject?: (id: string) => void | Promise<void>;
 }) {
   if (!tasks.length) return null;
   const titleColor = color ?? '#757575';
@@ -111,8 +129,9 @@ function TaskSection({
         </Text>
       </View>
       {tasks.map((item) => {
-        const isApproval = item.status === 'submitted-for-approval' || item.status === 'submitted';
+        const isApproval = isSubmittedForApprovalStatus(item.status);
         const expanded = expandedId === item.id;
+        const photoUrl = item.photo_evidence_url?.trim() || '';
         return (
           <KBCard
             key={`${item.source}-${item.id}`}
@@ -130,7 +149,7 @@ function TaskSection({
             {item.program_project_name ? (
               <Text className="text-[13px] text-[#757575]">{item.program_project_name}</Text>
             ) : null}
-            {item.source === 'personal' ? (
+            {item.source === 'personal' && !isApproval ? (
               <View className="mt-2 flex-row flex-wrap gap-2">
                 <Pressable
                   onPress={() => onReminder(item, '1_day_before')}
@@ -162,14 +181,37 @@ function TaskSection({
               </View>
             ) : null}
             {isApproval && onExpandApproval ? (
-              <Pressable onPress={() => onExpandApproval(item.id)} className="mt-2">
+              <Pressable
+                onPress={() => onExpandApproval(expanded ? null : item.id)}
+                className="mt-2"
+              >
                 <KBStatusChip label="Submitted for approval" variant="pending" />
               </Pressable>
             ) : null}
             {expanded && isApproval && approve && reject ? (
               <View className="mt-3 gap-2">
-                {item.notes ? <Text className="text-sm">Notes: {item.notes}</Text> : null}
-                <Button className="h-11 bg-[#2E7D5E]" onPress={() => approve(item.id)} disabled={acting === item.id}>
+                {item.notes ? (
+                  <Text className="text-sm leading-5 text-[#333333]">Notes: {item.notes}</Text>
+                ) : (
+                  <Text className="text-sm text-[#757575]">No notes provided.</Text>
+                )}
+                {photoUrl ? (
+                  <Image
+                    source={{ uri: photoUrl }}
+                    className="h-40 w-full rounded-xl bg-[#F0F0F0]"
+                    resizeMode="cover"
+                    accessibilityLabel="Task photo evidence"
+                  />
+                ) : (
+                  <Text className="text-sm font-semibold text-[#D32F2F]">Photo required</Text>
+                )}
+                <Button
+                  className="h-11 bg-[#2E7D5E]"
+                  onPress={() => {
+                    void Promise.resolve(approve(item.id)).catch(() => undefined);
+                  }}
+                  disabled={acting === item.id}
+                >
                   <Text className="text-white">Approve</Text>
                 </Button>
                 {setRejectReason ? (
@@ -180,7 +222,14 @@ function TaskSection({
                     onChangeText={setRejectReason}
                   />
                 ) : null}
-                <Button variant="outline" className="h-11" onPress={() => reject(item.id)} disabled={acting === item.id}>
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  onPress={() => {
+                    void Promise.resolve(reject(item.id)).catch(() => undefined);
+                  }}
+                  disabled={acting === item.id}
+                >
                   <Text className="text-[#D32F2F]">Reject</Text>
                 </Button>
               </View>
@@ -216,19 +265,34 @@ export function AgentTasksScreen() {
   const [selectedTask, setSelectedTask] = useState<AgentTaskDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [updatingTask, setUpdatingTask] = useState(false);
+  const [pendingAgentApprovals, setPendingAgentApprovals] = useState<
+    PendingAgentTaskApprovalView[]
+  >([]);
+  const [pendingFarmerApprovals, setPendingFarmerApprovals] = useState<PendingTaskApprovalView[]>(
+    []
+  );
+  const [pushingId, setPushingId] = useState<string | null>(null);
 
-  const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => ({
-    id: String(t.id),
-    name: String(t.name ?? ''),
-    status: String(t.status ?? 'not_started'),
-    due_date: t.due_date as string | null,
-    priority: t.priority as string | undefined,
-    description: t.description as string | null | undefined,
-    assigned_farmer_names: Array.isArray(t.assigned_farmer_names)
+  const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => {
+    const assignedNames = Array.isArray(t.assigned_farmer_names)
       ? (t.assigned_farmer_names as string[])
-      : undefined,
-    source: 'personal' as const,
-  });
+      : undefined;
+    return {
+      id: String(t.id),
+      name: String(t.name ?? ''),
+      status: String(t.status ?? 'not_started'),
+      due_date: t.due_date as string | null,
+      priority: t.priority as string | undefined,
+      description: t.description as string | null | undefined,
+      assigned_farmer_names: assignedNames,
+      farmer_name: assignedNames?.length
+        ? assignedNames.join(', ')
+        : (t.farmer_name as string | undefined),
+      notes: t.notes as string | undefined,
+      photo_evidence_url: t.photo_evidence_url as string | undefined,
+      source: 'personal' as const,
+    };
+  };
 
   const toTaskDetail = (task: UnifiedTask): AgentTaskDetail => ({
     id: task.id,
@@ -250,6 +314,19 @@ export function AgentTasksScreen() {
     setSelectedTask(toTaskDetail(task));
     setDetailOpen(true);
   };
+
+  const loadPending = useCallback(async () => {
+    try {
+      const [agentPending, farmerPending] = await Promise.all([
+        listPendingAgentTaskApprovals(),
+        listPendingTaskApprovals(),
+      ]);
+      setPendingAgentApprovals(agentPending);
+      setPendingFarmerApprovals(farmerPending);
+    } catch {
+      /* keep existing pending lists */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -308,14 +385,24 @@ export function AgentTasksScreen() {
         setAddModalOpen(true);
         navigation.setParams({ openAdd: undefined });
       }
-      load();
-      checkAndShowTaskReminders();
-    }, [load, navigation, route.params?.filter, route.params?.openAdd])
+      void (async () => {
+        await Promise.all([
+          syncAllPendingAgentTaskApprovals(),
+          syncAllPendingTaskApprovals(),
+        ]);
+        await Promise.all([load(), loadPending()]);
+        checkAndShowTaskReminders();
+      })();
+    }, [load, loadPending, navigation, route.params?.filter, route.params?.openAdd])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await Promise.all([
+      syncAllPendingAgentTaskApprovals(),
+      syncAllPendingTaskApprovals(),
+    ]);
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
   };
 
@@ -364,34 +451,147 @@ export function AgentTasksScreen() {
     }
   };
 
+  const findTask = (id: string): UnifiedTask | undefined =>
+    allTasks.find((t) => t.id === id);
+
+  const handleDecisionResult = async (
+    result:
+      | Awaited<ReturnType<typeof submitAgentTaskDecisionWithOutbox>>
+      | Awaited<ReturnType<typeof submitTaskDecisionWithOutbox>>,
+    decision: 'approve' | 'reject'
+  ) => {
+    await loadPending();
+    if (result.mode === 'online') {
+      setRejectReason('');
+      setExpandedId(null);
+      await load();
+      Alert.alert(
+        decision === 'approve' ? 'Approved' : 'Rejected',
+        decision === 'approve'
+          ? 'Task approved.'
+          : 'Farmer can resubmit after rework.'
+      );
+      return;
+    }
+    if (result.mode === 'offline') {
+      setRejectReason('');
+      setExpandedId(null);
+      Alert.alert(
+        'Saved offline',
+        `${decision === 'approve' ? 'Approval' : 'Rejection'} queued for sync.`
+      );
+      return;
+    }
+    Alert.alert('Needs your review', result.error);
+  };
+
   const approve = async (id: string) => {
+    const task = findTask(id) ?? (selectedTask?.id === id ? selectedTask : undefined);
+    if (!task) {
+      Alert.alert('Error', 'Task not found');
+      throw new Error('Task not found');
+    }
     setActing(id);
     try {
-      await approveFarmerTask(id);
-      await load();
-      Alert.alert('Approved', 'Task approved.');
+      if (task.source === 'personal') {
+        const result = await submitAgentTaskDecisionWithOutbox({
+          agentTaskId: id,
+          taskName: task.name,
+          decision: 'approve',
+          expectedStatus: task.status || 'submitted-for-approval',
+        });
+        await handleDecisionResult(result, 'approve');
+      } else {
+        const result = await submitTaskDecisionWithOutbox({
+          farmerTaskId: id,
+          taskName: task.name,
+          decision: 'approve',
+          expectedStatus: task.status || 'submitted-for-approval',
+        });
+        await handleDecisionResult(result, 'approve');
+      }
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not approve'));
+      throw err;
     } finally {
       setActing(null);
     }
   };
 
-  const reject = async (id: string) => {
-    if (!rejectReason.trim()) {
+  const reject = async (id: string, reasonOverride?: string) => {
+    const reason = (reasonOverride ?? rejectReason).trim();
+    if (!reason) {
       Alert.alert('Reason required', 'Enter a rejection reason.');
-      return;
+      throw new Error('Rejection reason required');
+    }
+    const task = findTask(id) ?? (selectedTask?.id === id ? selectedTask : undefined);
+    if (!task) {
+      Alert.alert('Error', 'Task not found');
+      throw new Error('Task not found');
     }
     setActing(id);
     try {
-      await rejectFarmerTask(id, rejectReason.trim());
-      setRejectReason('');
-      setExpandedId(null);
-      await load();
+      if (task.source === 'personal') {
+        const result = await submitAgentTaskDecisionWithOutbox({
+          agentTaskId: id,
+          taskName: task.name,
+          decision: 'reject',
+          expectedStatus: task.status || 'submitted-for-approval',
+          rejectionReason: reason,
+        });
+        await handleDecisionResult(result, 'reject');
+      } else {
+        const result = await submitTaskDecisionWithOutbox({
+          farmerTaskId: id,
+          taskName: task.name,
+          decision: 'reject',
+          expectedStatus: task.status || 'submitted-for-approval',
+          rejectionReason: reason,
+        });
+        await handleDecisionResult(result, 'reject');
+      }
     } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'Rejection reason required') throw err;
       Alert.alert('Error', extractApiError(err, 'Could not reject'));
+      throw err;
     } finally {
       setActing(null);
+    }
+  };
+
+  const handlePushAgentApproval = async (item: PendingAgentTaskApprovalView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingAgentTaskApproval(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.taskName} updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error || 'Conflict detected');
+      } else {
+        Alert.alert('Sync failed', result.error || 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
+    }
+  };
+
+  const handlePushFarmerApproval = async (item: PendingTaskApprovalView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingTaskApproval(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.taskName} updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error || 'Conflict detected');
+      } else {
+        Alert.alert('Sync failed', result.error || 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -525,6 +725,32 @@ export function AgentTasksScreen() {
           </View>
         ) : null}
 
+        {pendingAgentApprovals.length + pendingFarmerApprovals.length > 0 ? (
+          <View className="mb-5">
+            <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
+              Queued decisions
+            </Text>
+            {pendingAgentApprovals.map((item) => (
+              <OutboxAgentTaskApprovalCard
+                key={item.id}
+                item={item}
+                pushing={pushingId === item.id}
+                onPush={() => handlePushAgentApproval(item)}
+                onDismiss={() => dismissAgentTaskApprovalOutbox(item.id).then(loadPending)}
+              />
+            ))}
+            {pendingFarmerApprovals.map((item) => (
+              <OutboxTaskApprovalCard
+                key={item.id}
+                item={item}
+                pushing={pushingId === item.id}
+                onPush={() => handlePushFarmerApproval(item)}
+                onDismiss={() => dismissTaskApprovalOutbox(item.id).then(loadPending)}
+              />
+            ))}
+          </View>
+        ) : null}
+
         <TaskSection
           TitleIcon={TriangleAlert}
           title={`Overdue (${overdue.length})`}
@@ -613,19 +839,9 @@ export function AgentTasksScreen() {
           setSelectedTask(null);
         }}
         onReject={async (id, reason) => {
-          setActing(id);
-          try {
-            await rejectFarmerTask(id, reason);
-            await load();
-            Alert.alert('Rejected', 'Farmer can resubmit after rework.');
-            setDetailOpen(false);
-            setSelectedTask(null);
-          } catch (err: unknown) {
-            Alert.alert('Error', extractApiError(err, 'Could not reject'));
-            throw err;
-          } finally {
-            setActing(null);
-          }
+          await reject(id, reason);
+          setDetailOpen(false);
+          setSelectedTask(null);
         }}
       />
 

@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
-import { View, Modal, ScrollView, Pressable, Alert, Platform, TextInput } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Modal, ScrollView, Pressable, Alert, Platform, TextInput, Image } from 'react-native';
 import { Bell, X } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { KBCard } from '../ui/KBCard';
 import { KBStatusChip } from '../ui/KBStatusChip';
 import { formatCleanDate } from '../../utils/greeting';
-import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
+import {
+  isSubmittedForApprovalStatus,
+  taskStatusLabel,
+  taskStatusVariant,
+} from '../../utils/taskStatus';
 import { extractApiError } from '../../utils/feedback';
 import { setTaskReminder, type ReminderType } from '../../utils/taskReminders';
 import { setAgentTaskReminder } from '../../api/client';
@@ -55,12 +59,17 @@ export function AgentTaskDetailModal({
   const [rejectReason, setRejectReason] = useState('');
   const [acting, setActing] = useState(false);
 
+  useEffect(() => {
+    if (!visible) setRejectReason('');
+  }, [visible]);
+
   if (!task) return null;
 
-  const isApproval =
-    task.source === 'farmer' &&
-    (task.status === 'submitted-for-approval' || task.status === 'submitted');
+  const isApproval = isSubmittedForApprovalStatus(task.status);
   const normalizedPersonalStatus = task.status.replace(/-/g, '_');
+  const canEditPersonalStatus =
+    task.source === 'personal' && !isApproval && Boolean(onUpdateStatus);
+  const photoUrl = task.photo_evidence_url?.trim() || '';
 
   const handleReminder = async (type: ReminderType) => {
     if (!task.due_date) {
@@ -97,8 +106,8 @@ export function AgentTaskDetailModal({
     try {
       await onApprove(task.id);
       onClose();
-    } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not approve'));
+    } catch {
+      /* parent surfaces the error */
     } finally {
       setActing(false);
     }
@@ -115,8 +124,8 @@ export function AgentTaskDetailModal({
       await onReject(task.id, rejectReason.trim());
       setRejectReason('');
       onClose();
-    } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not reject'));
+    } catch {
+      /* parent surfaces the error */
     } finally {
       setActing(false);
     }
@@ -134,20 +143,8 @@ export function AgentTaskDetailModal({
               <Text className="text-lg font-bold text-[#333333]">{task.name}</Text>
               <View className="mt-2">
                 <KBStatusChip
-                  label={
-                    task.source === 'personal'
-                      ? normalizedPersonalStatus.replace(/_/g, ' ')
-                      : taskStatusLabel(task.status)
-                  }
-                  variant={
-                    task.source === 'personal'
-                      ? normalizedPersonalStatus === 'completed'
-                        ? 'success'
-                        : normalizedPersonalStatus === 'in_progress'
-                          ? 'warning'
-                          : 'pending'
-                      : taskStatusVariant(task.status)
-                  }
+                  label={taskStatusLabel(task.status)}
+                  variant={taskStatusVariant(task.status)}
                 />
               </View>
             </View>
@@ -194,7 +191,7 @@ export function AgentTaskDetailModal({
                   </Text>
                 </>
               ) : null}
-              {task.source === 'personal' && !task.assigned_farmer_names?.length ? (
+              {task.source === 'personal' && !task.assigned_farmer_names?.length && !task.farmer_name ? (
                 <>
                   <Text className="mt-3 text-xs font-semibold text-[#757575]">Assigned to</Text>
                   <Text className="mt-1 text-base text-[#333333]">You (field agent)</Text>
@@ -202,14 +199,36 @@ export function AgentTaskDetailModal({
               ) : null}
             </KBCard>
 
-            {task.notes ? (
+            {isApproval || task.notes || photoUrl ? (
               <View className="mb-3">
-                <Text className="text-xs font-semibold text-[#757575]">Submission notes</Text>
-                <Text className="mt-1 text-sm text-[#333333]">{task.notes}</Text>
+                <Text className="mb-2 text-sm font-semibold text-[#333333]">
+                  {isApproval ? 'Farmer submission' : 'Evidence'}
+                </Text>
+                {task.notes ? (
+                  <View className="mb-3">
+                    <Text className="text-xs font-semibold text-[#757575]">Notes</Text>
+                    <Text className="mt-1 text-sm leading-5 text-[#333333]">{task.notes}</Text>
+                  </View>
+                ) : isApproval ? (
+                  <Text className="mb-3 text-sm text-[#757575]">No notes provided.</Text>
+                ) : null}
+                {photoUrl ? (
+                  <View>
+                    <Text className="mb-2 text-xs font-semibold text-[#757575]">Photo evidence</Text>
+                    <Image
+                      source={{ uri: photoUrl }}
+                      className="h-52 w-full rounded-xl bg-[#F0F0F0]"
+                      resizeMode="cover"
+                      accessibilityLabel="Task photo evidence"
+                    />
+                  </View>
+                ) : isApproval ? (
+                  <Text className="text-sm font-semibold text-[#D32F2F]">Photo required</Text>
+                ) : null}
               </View>
             ) : null}
 
-            {task.source === 'personal' && onUpdateStatus ? (
+            {canEditPersonalStatus ? (
               <View className="mb-4">
                 <Text className="mb-2 text-sm font-semibold text-[#333333]">Update status</Text>
                 <View className="flex-row flex-wrap gap-2">
@@ -235,7 +254,7 @@ export function AgentTaskDetailModal({
               </View>
             ) : null}
 
-            {task.source === 'personal' && task.due_date ? (
+            {task.source === 'personal' && task.due_date && !isApproval ? (
               <View className="mb-4">
                 <Text className="mb-2 text-sm font-semibold text-[#333333]">Reminders</Text>
                 <View className="flex-row flex-wrap gap-2">
