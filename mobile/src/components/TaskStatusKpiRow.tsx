@@ -6,23 +6,33 @@ export type TaskStatusKpiKey =
   | 'overdue'
   | 'in_progress'
   | 'not_started'
+  | 'submitted_for_approval'
   | 'rejected'
   | 'completed';
 
-const BASE_KPI_CARDS: Array<{
-  key: Exclude<TaskStatusKpiKey, 'rejected'>;
+type KpiCardDef = {
+  key: TaskStatusKpiKey;
   label: string;
   badgeBg: string;
   countColor: string;
-}> = [
+};
+
+const BASE_KPI_CARDS: KpiCardDef[] = [
   { key: 'overdue', label: 'OVERDUE', badgeBg: '#FFEBEE', countColor: '#C62828' },
   { key: 'in_progress', label: 'IN PROGRESS', badgeBg: '#FFF3E0', countColor: '#EF6C00' },
   { key: 'not_started', label: 'NOT STARTED', badgeBg: '#F5F5F5', countColor: '#37474F' },
   { key: 'completed', label: 'COMPLETED', badgeBg: '#E8F5E9', countColor: '#2E7D32' },
 ];
 
-const REJECTED_KPI = {
-  key: 'rejected' as const,
+const SUBMITTED_KPI: KpiCardDef = {
+  key: 'submitted_for_approval',
+  label: 'SUBMITTED FOR APPROVAL',
+  badgeBg: '#E3F2FD',
+  countColor: '#1565C0',
+};
+
+const REJECTED_KPI: KpiCardDef = {
+  key: 'rejected',
   label: 'REJECTED',
   badgeBg: '#FFEBEE',
   countColor: '#C62828',
@@ -55,23 +65,30 @@ type Props = {
 
 /**
  * Status KPI cards for Tasks screens.
- * REJECTED is omitted entirely when its count is 0 so the row stays at 4 cards.
+ * SUBMITTED FOR APPROVAL and REJECTED are omitted when count is 0.
  */
 export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
   const [kpiLabelWidth, setKpiLabelWidth] = useState(0);
 
   const visibleCards = useMemo(() => {
-    if (counts.rejected > 0) {
-      return [...BASE_KPI_CARDS, REJECTED_KPI];
+    const cards = [...BASE_KPI_CARDS];
+    if (counts.submitted_for_approval > 0) {
+      // After in-progress / before not-started visually: insert before completed.
+      const completedIdx = cards.findIndex((c) => c.key === 'completed');
+      cards.splice(completedIdx, 0, SUBMITTED_KPI);
     }
-    return BASE_KPI_CARDS;
-  }, [counts.rejected]);
+    if (counts.rejected > 0) {
+      cards.push(REJECTED_KPI);
+    }
+    return cards;
+  }, [counts.rejected, counts.submitted_for_approval]);
 
   const kpiLabelFontSize = useMemo(
-    () => kpiLabelFontSizeForWidth(
-      kpiLabelWidth,
-      visibleCards.map((c) => c.label)
-    ),
+    () =>
+      kpiLabelFontSizeForWidth(
+        kpiLabelWidth,
+        visibleCards.map((c) => c.label)
+      ),
     [kpiLabelWidth, visibleCards]
   );
 

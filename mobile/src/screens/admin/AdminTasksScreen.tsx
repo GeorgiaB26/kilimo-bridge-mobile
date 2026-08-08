@@ -284,6 +284,10 @@ export function AdminTasksScreen() {
       { title: `OVERDUE (${categorized.overdue.length})`, data: categorized.overdue },
       { title: `IN PROGRESS (${categorized.inProgress.length})`, data: categorized.inProgress },
       { title: `NOT STARTED (${categorized.notStarted.length})`, data: categorized.notStarted },
+      {
+        title: `SUBMITTED FOR APPROVAL (${categorized.submittedForApproval.length})`,
+        data: categorized.submittedForApproval,
+      },
       { title: `REJECTED (${categorized.rejected.length})`, data: categorized.rejected },
       { title: `COMPLETED (${categorized.completed.length})`, data: categorized.completed },
     ].filter((section) => section.data.length > 0);

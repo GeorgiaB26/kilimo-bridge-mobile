@@ -682,6 +682,33 @@ export async function recallAgentAssignedTask(taskId: string) {
   return data;
 }
 
+/** Farmer starts a hierarchy task (not-started → in-progress + farmer_started_at). */
+export async function startFarmerHierarchyTask(
+  farmerTaskId: string,
+  body: { start_date: string }
+) {
+  const { data } = await api.post(`/farmer/hierarchy/tasks/${farmerTaskId}/start`, body);
+  return data;
+}
+
+/** Spec alias: POST /api/farmer/tasks/:id/start */
+export async function startFarmerTaskCompletion(
+  farmerTaskId: string,
+  body: { start_date: string }
+) {
+  const { data } = await api.post(`/farmer/tasks/${farmerTaskId}/start`, body);
+  return data;
+}
+
+/** Farmer starts an agent-assigned task (not-started → in-progress + farmer_started_at). */
+export async function startAgentAssignedTask(
+  taskId: string,
+  body: { start_date: string }
+) {
+  const { data } = await api.post(`/farmer/agent-tasks/${taskId}/start`, body);
+  return data;
+}
+
 export async function getFarmerPaymentPending() {
   const { data } = await api.get('/farmer/hierarchy/payment-pending');
   return data;

@@ -29,6 +29,8 @@ export type FarmerPortalTaskRow = {
   /** Unresolved storage key / data URL for resubmit without re-upload. */
   photo_evidence_key?: string | null;
   rejection_reason?: string | null;
+  /** Farmer-picked start date (YYYY-MM-DD) after Start Task. */
+  farmer_started_at?: string | null;
 };
 
 function mapAgentStatusToFarmer(status: string): string {
@@ -53,6 +55,9 @@ function mapAgentTaskToFarmerRow(
     notes: row.notes ?? null,
     photo_evidence_url: row.photo_evidence_url ?? null,
     rejection_reason: row.rejection_reason ?? null,
+    farmer_started_at: row.farmer_started_at
+      ? String(row.farmer_started_at).slice(0, 10)
+      : null,
   };
 }
 
@@ -72,6 +77,9 @@ function mapHierarchyTaskToFarmerRow(row: Record<string, unknown>): FarmerPortal
     notes: row.notes as string | null | undefined,
     photo_evidence_url: row.photo_evidence_url as string | null | undefined,
     rejection_reason: row.rejection_reason as string | null | undefined,
+    farmer_started_at: row.farmer_started_at
+      ? String(row.farmer_started_at).slice(0, 10)
+      : null,
   };
 }
 
@@ -205,6 +213,8 @@ export async function getFarmerDashboard(farmerId: string) {
       overdue: categoryCounts.overdue,
       in_progress: categoryCounts.inProgress,
       not_started: categoryCounts.notStarted,
+      submitted_for_approval: categoryCounts.submittedForApproval,
+      rejected: categoryCounts.rejected,
       completed: categoryCounts.completed,
       total: categoryCounts.total,
     },
@@ -302,6 +312,8 @@ export async function getFarmerTaskSnapshotStats(farmerId: string) {
     overdue: counts.overdue,
     in_progress: counts.inProgress,
     not_started: counts.notStarted,
+    submitted_for_approval: counts.submittedForApproval,
+    rejected: counts.rejected,
     completed: counts.completed,
     total: counts.total,
   };

@@ -24,6 +24,8 @@ import {
   registerFarmer,
   rejectAgentPersonalTask,
   rejectFarmerTask,
+  startAgentAssignedTask,
+  startFarmerHierarchyTask,
   submitFarmerTaskCompletion,
   submitAgentAssignedTask,
   verifyFarmerField,
@@ -77,6 +79,19 @@ export interface TaskRecallOutboxPayload {
   taskId: string;
   taskName: string;
   source: 'hierarchy' | 'agent_assignment';
+  expected: { status: string };
+}
+
+/**
+ * Farmer starts a not-started task (hierarchy or agent_assignment).
+ * Authoritative pin: status must still be not-started.
+ * On success → in-progress + farmer_started_at.
+ */
+export interface TaskStartOutboxPayload {
+  taskId: string;
+  taskName: string;
+  source: 'hierarchy' | 'agent_assignment';
+  startDate: string;
   expected: { status: string };
 }
 
@@ -267,6 +282,40 @@ function asTaskRecallPayload(payload: Record<string, unknown>): TaskRecallOutbox
     taskId,
     taskName: typeof payload.taskName === 'string' ? payload.taskName : 'Task',
     source,
+    expected: { status: expectedStatus },
+  };
+}
+
+function asTaskStartPayload(payload: Record<string, unknown>): TaskStartOutboxPayload {
+  const taskId = typeof payload.taskId === 'string' ? payload.taskId.trim() : '';
+  const sourceRaw = payload.source;
+  const source =
+    sourceRaw === 'agent_assignment' || sourceRaw === 'hierarchy' ? sourceRaw : null;
+  const startDate = typeof payload.startDate === 'string' ? payload.startDate.trim() : '';
+  const expectedRaw = payload.expected;
+  const expectedStatus =
+    expectedRaw &&
+    typeof expectedRaw === 'object' &&
+    typeof (expectedRaw as { status?: unknown }).status === 'string'
+      ? (expectedRaw as { status: string }).status.trim()
+      : '';
+  if (!taskId) {
+    throw new Error('Invalid task_start payload: taskId is required');
+  }
+  if (!source) {
+    throw new Error('Invalid task_start payload: source must be hierarchy or agent_assignment');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+    throw new Error('Invalid task_start payload: startDate must be YYYY-MM-DD');
+  }
+  if (!expectedStatus) {
+    throw new Error('Invalid task_start payload: expected.status is required');
+  }
+  return {
+    taskId,
+    taskName: typeof payload.taskName === 'string' ? payload.taskName : 'Task',
+    source,
+    startDate,
     expected: { status: expectedStatus },
   };
 }
@@ -560,6 +609,49 @@ async function handleTaskRecall(item: OutboxItem): Promise<OutboxHandlerResult> 
   return recallFarmerHierarchyTask(payload.taskId);
 }
 
+async function handleTaskStart(item: OutboxItem): Promise<OutboxHandlerResult> {
+  const payload = asTaskStartPayload(item.payload);
+  let currentStatus: string | undefined;
+  let currentName: string | undefined;
+  try {
+    if (payload.source === 'agent_assignment') {
+      const data = await getFarmerAgentAssignedTask(payload.taskId);
+      currentStatus = typeof data?.status === 'string' ? data.status : undefined;
+      currentName = typeof data?.name === 'string' ? data.name : undefined;
+    } else {
+      const data = await getFarmerHierarchyTask(payload.taskId);
+      currentStatus = typeof data?.status === 'string' ? data.status : undefined;
+      currentName = typeof data?.name === 'string' ? data.name : undefined;
+    }
+  } catch (err: unknown) {
+    const msg = extractApiError(err, '');
+    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('404')) {
+      throw new OutboxNeedsReviewError(
+        `Task "${payload.taskName}" no longer exists on the server. Dismiss this queued start.`
+      );
+    }
+    throw err;
+  }
+
+  if (!currentStatus) {
+    throw new OutboxNeedsReviewError(
+      `Task "${payload.taskName}" no longer exists on the server. Dismiss this queued start.`
+    );
+  }
+
+  assertExpected(
+    { status: normalizePinnedTaskStatus(currentStatus) },
+    { status: normalizePinnedTaskStatus(payload.expected.status) },
+    { label: `Task "${payload.taskName || currentName || payload.taskId}"` }
+  );
+
+  const body = { start_date: payload.startDate };
+  if (payload.source === 'agent_assignment') {
+    return startAgentAssignedTask(payload.taskId, body);
+  }
+  return startFarmerHierarchyTask(payload.taskId, body);
+}
+
 async function handleFarmerVerification(item: OutboxItem): Promise<OutboxHandlerResult> {
   const payload = asFarmerVerificationPayload(item.payload);
   let farmer: { status?: string; name?: string } | null = null;
@@ -681,6 +773,7 @@ export function ensureOutboxHandlersRegistered(): void {
   registerOutboxHandler('task_approval', handleTaskApproval);
   registerOutboxHandler('agent_task_approval', handleAgentTaskApproval);
   registerOutboxHandler('task_recall', handleTaskRecall);
+  registerOutboxHandler('task_start', handleTaskStart);
   registerOutboxHandler('farmer_verification', handleFarmerVerification);
   registerOutboxHandler('centre_qc', handleCentreQc);
   registerOutboxHandler('project_assign', handleProjectAssign);

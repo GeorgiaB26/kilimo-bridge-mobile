@@ -1,19 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
-  SectionList,
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
   Image,
   Alert,
-  useWindowDimensions,
+  Modal,
+  Pressable,
+  ScrollView,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { COLORS } from '../../constants';
 import { getFarmerAssignedTasks } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
@@ -23,6 +26,7 @@ import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
 import { OutboxTaskRecallCard } from '../../components/OutboxTaskRecallCard';
+import { OutboxTaskStartCard } from '../../components/OutboxTaskStartCard';
 import {
   TaskStatusKpiRow,
   type TaskStatusKpiKey,
@@ -47,12 +51,20 @@ import {
   syncAllPendingTaskRecalls,
   type PendingTaskRecallView,
 } from '../../services/submitTaskRecallOutbox';
+import {
+  dismissTaskStartOutbox,
+  listPendingTaskStarts,
+  pushPendingTaskStart,
+  startFarmerTaskWithOutbox,
+  syncAllPendingTaskStarts,
+  type PendingTaskStartView,
+} from '../../services/submitTaskStartOutbox';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 type StatusFilterKey = TaskStatusKpiKey;
 
-/** Show Project / Start / End as collapsed columns at this width and above. */
-const WIDE_TABLE_MIN_WIDTH = 600;
+/** Minimum content width so columns (incl. Actions) are not truncated; scroll horizontally on narrow phones. */
+const TABLE_MIN_WIDTH = 720;
 
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
@@ -61,6 +73,7 @@ type ExtendedTaskRow = FarmerTaskRow & {
   source?: 'hierarchy' | 'agent_assignment';
   notes?: string | null;
   photo_evidence_key?: string | null;
+  farmer_started_at?: string | null;
 };
 
 function evidencePhotoUri(item: ExtendedTaskRow): string | null {
@@ -70,7 +83,6 @@ function evidencePhotoUri(item: ExtendedTaskRow): string | null {
   return null;
 }
 
-/** Show read-only notes + photo after the farmer has submitted (or after review). */
 function shouldShowSubmissionEvidence(status: string): boolean {
   const s = normalizeTaskStatus(status);
   return (
@@ -90,15 +102,14 @@ function normalizeTaskStatus(status: string): string {
   return status.replace(/_/g, '-');
 }
 
-function canOpenTask(status: string): boolean {
-  const s = normalizeTaskStatus(status);
-  return ['not-started', 'in-progress', 'rejected'].includes(s);
+function canStartTask(status: string): boolean {
+  return normalizeTaskStatus(status) === 'not-started';
 }
 
-/** Edit is available until the task is locked by approval/completion. */
+/** Edit (evidence) for in-progress / rejected; recall+edit for submitted. */
 function canEditTask(status: string): boolean {
   const s = normalizeTaskStatus(status);
-  return !['approved', 'completed'].includes(s);
+  return s === 'in-progress' || s === 'rejected' || isSubmittedForApproval(s);
 }
 
 function isSubmittedForApproval(status: string): boolean {
@@ -126,27 +137,47 @@ function projectLabel(item: ExtendedTaskRow): string {
   return '—';
 }
 
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function isValidYmd(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const probe = new Date(`${value}T12:00:00`);
+  return !Number.isNaN(probe.getTime());
+}
+
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
-  const { width } = useWindowDimensions();
-  const wide = width >= WIDE_TABLE_MIN_WIDTH;
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
-  const listRef = useRef<SectionList>(null);
   const { formatAmount } = useCurrency();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [detailTask, setDetailTask] = useState<ExtendedTaskRow | null>(null);
+  const [startTask, setStartTask] = useState<ExtendedTaskRow | null>(null);
+  const [startDateInput, setStartDateInput] = useState(todayYmd());
   const [pendingRecalls, setPendingRecalls] = useState<PendingTaskRecallView[]>([]);
+  const [pendingStarts, setPendingStarts] = useState<PendingTaskStartView[]>([]);
   const [pushingRecallId, setPushingRecallId] = useState<string | null>(null);
+  const [pushingStartId, setPushingStartId] = useState<string | null>(null);
   const [recallingId, setRecallingId] = useState<string | null>(null);
+  const [startingId, setStartingId] = useState<string | null>(null);
 
   const loadPendingRecalls = useCallback(async () => {
     setPendingRecalls(await listPendingTaskRecalls());
+  }, []);
+
+  const loadPendingStarts = useCallback(async () => {
+    setPendingStarts(await listPendingTaskStarts());
   }, []);
 
   const load = useCallback(async () => {
@@ -168,16 +199,19 @@ export function FarmerTasksScreen() {
     useCallback(() => {
       setLoading(tasks.length === 0);
       void (async () => {
+        await syncAllPendingTaskStarts();
         await syncAllPendingTaskRecalls();
+        await loadPendingStarts();
         await loadPendingRecalls();
         await load();
       })();
       const interval = setInterval(() => {
         void load();
         void loadPendingRecalls();
+        void loadPendingStarts();
       }, 30000);
       return () => clearInterval(interval);
-    }, [load, loadPendingRecalls, tasks.length])
+    }, [load, loadPendingRecalls, loadPendingStarts, tasks.length])
   );
 
   useTaskApprovalPolling(tasks, load);
@@ -185,7 +219,9 @@ export function FarmerTasksScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     void (async () => {
+      await syncAllPendingTaskStarts();
       await syncAllPendingTaskRecalls();
+      await loadPendingStarts();
       await loadPendingRecalls();
       await load();
     })();
@@ -207,6 +243,7 @@ export function FarmerTasksScreen() {
           'Your photo and notes are still saved. Edit and resubmit when ready.'
         );
         await load();
+        setDetailTask(null);
         setSubmitTask({ ...item, status: 'in-progress' });
         return;
       }
@@ -215,6 +252,7 @@ export function FarmerTasksScreen() {
           'Recall saved offline',
           'We will push your recall when you are back online. Open Your Tasks to push manually.'
         );
+        setDetailTask(null);
         return;
       }
       showMessage('Needs your review', result.error);
@@ -246,7 +284,60 @@ export function FarmerTasksScreen() {
       confirmAndRecall(item);
       return;
     }
+    setDetailTask(null);
     setSubmitTask(item);
+  };
+
+  const openStartModal = (item: ExtendedTaskRow) => {
+    setStartDateInput(todayYmd());
+    setStartTask(item);
+  };
+
+  const handleConfirmStart = async () => {
+    if (!startTask) return;
+    const date = startDateInput.trim();
+    if (!isValidYmd(date)) {
+      showMessage('Invalid date', 'Enter start date as YYYY-MM-DD.');
+      return;
+    }
+    const today = todayYmd();
+    if (date > today) {
+      showMessage('Invalid date', 'Start date cannot be in the future.');
+      return;
+    }
+
+    setStartingId(startTask.id);
+    try {
+      const result = await startFarmerTaskWithOutbox({
+        taskId: startTask.id,
+        taskName: startTask.name,
+        source: startTask.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
+        startDate: date,
+        expectedStatus: startTask.status || 'not-started',
+      });
+      await loadPendingStarts();
+      if (result.mode === 'online') {
+        showMessage('Task started', `Start date set to ${date}.`);
+        setStartTask(null);
+        setDetailTask(null);
+        await load();
+        return;
+      }
+      if (result.mode === 'offline') {
+        showMessage(
+          'Start saved offline',
+          'We will push your start when you are back online. Open Your Tasks to push manually.'
+        );
+        setStartTask(null);
+        setDetailTask(null);
+        return;
+      }
+      showMessage('Needs your review', result.error);
+    } catch (err: unknown) {
+      showMessage('Error', extractApiError(err, 'Could not start task'));
+    } finally {
+      setStartingId(null);
+    }
   };
 
   const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
@@ -258,11 +349,24 @@ export function FarmerTasksScreen() {
     [categorized, statusFilter]
   );
 
+  const flatTasks = useMemo(
+    () => [
+      ...displayCategories.overdue,
+      ...displayCategories.inProgress,
+      ...displayCategories.notStarted,
+      ...displayCategories.submittedForApproval,
+      ...displayCategories.rejected,
+      ...displayCategories.completed,
+    ],
+    [displayCategories]
+  );
+
   const categoryCounts = useMemo(
     () => ({
       overdue: categorized.overdue.length,
       in_progress: categorized.inProgress.length,
       not_started: categorized.notStarted.length,
+      submitted_for_approval: categorized.submittedForApproval.length,
       rejected: categorized.rejected.length,
       completed: categorized.completed.length,
     }),
@@ -273,100 +377,88 @@ export function FarmerTasksScreen() {
     if (statusFilter === 'rejected' && categoryCounts.rejected === 0) {
       navigation.setParams({ statusFilter: undefined });
     }
-  }, [statusFilter, categoryCounts.rejected, navigation]);
+    if (
+      statusFilter === 'submitted_for_approval' &&
+      categoryCounts.submitted_for_approval === 0
+    ) {
+      navigation.setParams({ statusFilter: undefined });
+    }
+  }, [
+    statusFilter,
+    categoryCounts.rejected,
+    categoryCounts.submitted_for_approval,
+    navigation,
+  ]);
 
   const toggleStatusFilter = (key: StatusFilterKey) => {
-    setExpandedTaskId(null);
     navigation.setParams({
       statusFilter: statusFilter === key ? undefined : key,
     });
   };
-
-  const sections = useMemo(() => {
-    const list: Array<{ title: string; data: ExtendedTaskRow[] }> = [];
-    if (displayCategories.overdue.length > 0) {
-      list.push({
-        title: `OVERDUE (${displayCategories.overdue.length})`,
-        data: displayCategories.overdue,
-      });
-    }
-    if (displayCategories.inProgress.length > 0) {
-      list.push({
-        title: `IN PROGRESS (${displayCategories.inProgress.length})`,
-        data: displayCategories.inProgress,
-      });
-    }
-    if (displayCategories.notStarted.length > 0) {
-      list.push({
-        title: `NOT STARTED (${displayCategories.notStarted.length})`,
-        data: displayCategories.notStarted,
-      });
-    }
-    if (displayCategories.rejected.length > 0) {
-      list.push({
-        title: `REJECTED (${displayCategories.rejected.length})`,
-        data: displayCategories.rejected,
-      });
-    }
-    if (displayCategories.completed.length > 0) {
-      list.push({
-        title: `COMPLETED (${displayCategories.completed.length})`,
-        data: displayCategories.completed,
-      });
-    }
-    return list;
-  }, [displayCategories]);
 
   useEffect(() => {
     if (!scrollTargetId || loading || tasks.length === 0) return;
     const task = tasks.find((t) => t.id === scrollTargetId);
     if (!task) return;
 
-    if (sections.length > 0) {
-      for (let si = 0; si < sections.length; si++) {
-        const ti = sections[si].data.findIndex((t) => t.id === scrollTargetId);
-        if (ti >= 0) {
-          setTimeout(() => {
-            listRef.current?.scrollToLocation({
-              sectionIndex: si,
-              itemIndex: ti,
-              viewOffset: 80,
-            });
-          }, 400);
-          break;
-        }
-      }
-    }
-
-    if (canOpenTask(task.status)) {
-      setSubmitTask(task);
-    }
-    setExpandedTaskId(task.id);
+    setDetailTask(task);
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
-  }, [scrollTargetId, tasks, loading, navigation, sections]);
+  }, [scrollTargetId, tasks, loading, navigation]);
 
-  const toggleExpanded = (taskId: string) => {
-    setExpandedTaskId((prev) => (prev === taskId ? null : taskId));
+  const renderActionButton = (item: ExtendedTaskRow, compact = true) => {
+    if (canStartTask(item.status)) {
+      return (
+        <Button
+          mode={compact ? 'outlined' : 'contained'}
+          compact={compact}
+          buttonColor={compact ? undefined : COLORS.primary}
+          textColor={compact ? COLORS.primary : '#FFFFFF'}
+          loading={startingId === item.id}
+          disabled={startingId === item.id}
+          onPress={() => openStartModal(item)}
+          style={compact ? styles.actionBtn : styles.openBtn}
+          labelStyle={compact ? styles.actionBtnLabel : undefined}
+        >
+          Start Task
+        </Button>
+      );
+    }
+    if (canEditTask(item.status)) {
+      return (
+        <Button
+          mode={compact ? 'outlined' : 'contained'}
+          compact={compact}
+          buttonColor={compact ? undefined : COLORS.primary}
+          textColor={compact ? COLORS.primary : '#FFFFFF'}
+          loading={recallingId === item.id}
+          disabled={recallingId === item.id}
+          onPress={() => handleEdit(item)}
+          style={compact ? styles.actionBtn : styles.openBtn}
+          labelStyle={compact ? styles.actionBtnLabel : undefined}
+        >
+          Edit
+        </Button>
+      );
+    }
+    return compact ? <Text style={styles.actionsMuted}>—</Text> : (
+      <Text className="mt-3 text-sm text-muted-foreground">Task locked — no further edits</Text>
+    );
   };
 
   const renderTableHeader = () => (
-    <View style={[styles.tableHeader, wide ? styles.tableHeaderWide : null]}>
+    <View style={styles.tableHeader}>
       <Text style={[styles.th, styles.colTask]} numberOfLines={1}>
         Task
       </Text>
-      {wide ? (
-        <>
-          <Text style={[styles.th, styles.colProject]} numberOfLines={1}>
-            Project
-          </Text>
-          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
-            Start date
-          </Text>
-          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
-            End date
-          </Text>
-        </>
-      ) : null}
+      <Text style={[styles.th, styles.colProject]} numberOfLines={1}>
+        Project
+      </Text>
+      <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+        Start date
+      </Text>
+      <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+        End date
+      </Text>
       <Text style={[styles.th, styles.colStatus]} numberOfLines={1}>
         Status
       </Text>
@@ -376,220 +468,65 @@ export function FarmerTasksScreen() {
     </View>
   );
 
-  const renderTask = (item: ExtendedTaskRow) => {
-    const agentTask = isAgentAssignment(item);
+  const renderTask = ({ item }: { item: ExtendedTaskRow }) => {
     const overdue = isOverdue(item.due_date, item.status);
-    const assignedWhen = formatDisplayDate(item.assigned_at);
-    const startDate = item.assigned_at ? formatCleanDate(item.assigned_at) : '—';
+    const startDate = item.farmer_started_at
+      ? formatCleanDate(item.farmer_started_at)
+      : '—';
     const endDate = item.due_date ? formatCleanDate(item.due_date) : '—';
-    const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
-    const assigner =
-      item.assigned_by_name?.trim() || (agentTask ? 'Your field agent' : 'Program team');
     const highlighted = scrollTargetId === item.id;
-    const expanded = expandedTaskId === item.id;
-    const statusNorm = normalizeTaskStatus(item.status);
-    const editable = canEditTask(item.status);
-    const showEvidence = shouldShowSubmissionEvidence(item.status);
-    const photoUri = evidencePhotoUri(item);
-    const submissionNotes = item.notes?.trim() || '';
     const project = projectLabel(item);
 
     return (
       <KBCard
         elevated={false}
-        onPress={() => toggleExpanded(item.id)}
+        onPress={() => setDetailTask(item)}
         style={
           highlighted
             ? { ...styles.card, borderWidth: 2, borderColor: COLORS.primary }
             : styles.card
         }
       >
-        <View style={[styles.tableRow, wide ? styles.tableRowWide : null]}>
+        <View style={styles.tableRow}>
           <View style={[styles.colTask, styles.taskCell]}>
-            <View style={styles.taskTitleRow}>
-              <Text style={styles.taskName} numberOfLines={2}>
-                {item.name}
-              </Text>
-              {expanded ? (
-                <ChevronUp size={16} color="#757575" />
-              ) : (
-                <ChevronDown size={16} color="#757575" />
-              )}
-            </View>
-            {!wide ? (
-              <Text style={styles.taskProjectMuted} numberOfLines={1}>
-                {project}
-              </Text>
-            ) : null}
+            <Text style={styles.taskName} numberOfLines={2}>
+              {item.name}
+            </Text>
           </View>
-
-          {wide ? (
-            <>
-              <Text style={[styles.td, styles.colProject]} numberOfLines={2}>
-                {project}
-              </Text>
-              <Text style={[styles.td, styles.colDate]} numberOfLines={1}>
-                {startDate}
-              </Text>
-              <Text
-                style={[
-                  styles.td,
-                  styles.colDate,
-                  overdue ? styles.dateOverdue : null,
-                ]}
-                numberOfLines={1}
-              >
-                {endDate}
-              </Text>
-            </>
-          ) : null}
-
+          <Text style={[styles.td, styles.colProject]} numberOfLines={2}>
+            {project}
+          </Text>
+          <Text style={[styles.td, styles.colDate]} numberOfLines={1}>
+            {startDate}
+          </Text>
+          <Text
+            style={[styles.td, styles.colDate, overdue ? styles.dateOverdue : null]}
+            numberOfLines={1}
+          >
+            {endDate}
+          </Text>
           <View style={[styles.colStatus, styles.statusCell]}>
             <KBStatusChip
               label={displayStatus(item.status)}
               variant={statusVariant(item.status)}
             />
           </View>
-
           <View style={[styles.colActions, styles.actionsCell]}>
-            {editable ? (
-              <Button
-                mode="outlined"
-                compact
-                textColor={COLORS.primary}
-                loading={recallingId === item.id}
-                disabled={recallingId === item.id}
-                onPress={() => handleEdit(item)}
-                style={styles.editBtn}
-                labelStyle={styles.editBtnLabel}
-              >
-                Edit
-              </Button>
-            ) : (
-              <Text style={styles.actionsMuted}>—</Text>
-            )}
+            {renderActionButton(item, true)}
           </View>
         </View>
-
-        {expanded ? (
-          <View style={styles.expandedBody}>
-            {!wide ? (
-              <View style={styles.metaGrid}>
-                <View style={styles.metaItem}>
-                  <Text className="text-xs font-semibold text-muted-foreground">Project</Text>
-                  <Text className="text-sm text-foreground">{project}</Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <Text className="text-xs font-semibold text-muted-foreground">Start date</Text>
-                  <Text className="text-sm text-foreground">{startDate}</Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <Text className="text-xs font-semibold text-muted-foreground">End date</Text>
-                  <Text
-                    className="text-sm"
-                    style={{ color: overdue ? COLORS.alert : COLORS.text }}
-                  >
-                    {endDate}
-                    {overdue ? ' · Overdue' : ''}
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-
-            <View style={[styles.metaGrid, !wide ? styles.metaGridSpaced : null]}>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Assigned</Text>
-                <Text className="text-sm text-foreground">{assignedWhen}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">By</Text>
-                <Text className="text-sm text-foreground">{assigner}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Deadline</Text>
-                <Text className="text-sm" style={{ color: overdue ? COLORS.alert : COLORS.text }}>
-                  {deadline}
-                  {overdue ? ' · Overdue' : ''}
-                </Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Payment</Text>
-                <Text className="text-sm font-semibold" style={{ color: COLORS.accent }}>
-                  {agentTask ? '—' : formatAmount(item.payment_value_kes ?? 0)}
-                </Text>
-              </View>
-            </View>
-
-            {item.description ? (
-              <Text className="mt-3 text-sm leading-5 text-foreground">{item.description}</Text>
-            ) : null}
-
-            {agentTask ? (
-              <Text className="mt-2 text-sm text-muted-foreground">Field agent assignment</Text>
-            ) : null}
-
-            {showEvidence ? (
-              <View style={styles.evidenceBlock}>
-                <Text className="mb-2 text-sm font-semibold text-foreground">Your submission</Text>
-                {submissionNotes ? (
-                  <View style={styles.metaItem}>
-                    <Text className="text-xs font-semibold text-muted-foreground">Notes</Text>
-                    <Text className="mt-1 text-sm leading-5 text-foreground">{submissionNotes}</Text>
-                  </View>
-                ) : (
-                  <Text className="text-sm text-muted-foreground">No notes provided.</Text>
-                )}
-                {photoUri ? (
-                  <View style={styles.evidencePhotoWrap}>
-                    <Text className="mb-2 text-xs font-semibold text-muted-foreground">
-                      Photo evidence
-                    </Text>
-                    <Image
-                      source={{ uri: photoUri }}
-                      style={styles.evidenceImage}
-                      resizeMode="cover"
-                      accessibilityLabel={`Evidence photo for ${item.name}`}
-                    />
-                  </View>
-                ) : (
-                  <Text className="mt-2 text-sm font-semibold text-destructive">Photo required</Text>
-                )}
-              </View>
-            ) : null}
-
-            {statusNorm === 'rejected' && item.rejection_reason ? (
-              <Text className="mt-2 text-sm text-destructive">{item.rejection_reason}</Text>
-            ) : null}
-
-            {statusNorm === 'submitted-for-approval' ? (
-              <Text className="mt-2 text-sm italic text-blue-600">
-                Awaiting approval — we check status every 30 seconds
-              </Text>
-            ) : null}
-
-            {editable ? (
-              <Button
-                mode="contained"
-                buttonColor={COLORS.primary}
-                loading={recallingId === item.id}
-                disabled={recallingId === item.id}
-                onPress={() => handleEdit(item)}
-                style={styles.openBtn}
-              >
-                Edit
-              </Button>
-            ) : (
-              <Text className="mt-3 text-sm text-muted-foreground">
-                Task locked — no further edits
-              </Text>
-            )}
-          </View>
-        ) : (
-          <Text style={styles.expandHint}>Tap row for details</Text>
-        )}
       </KBCard>
     );
   };
+
+  const detail = detailTask;
+  const detailOverdue = detail ? isOverdue(detail.due_date, detail.status) : false;
+  const detailStart = detail?.farmer_started_at
+    ? formatCleanDate(detail.farmer_started_at)
+    : '—';
+  const detailEnd = detail?.due_date ? formatCleanDate(detail.due_date) : '—';
+  const detailPhoto = detail ? evidencePhotoUri(detail) : null;
+  const detailNotes = detail?.notes?.trim() || '';
 
   if (loading && tasks.length === 0) {
     return (
@@ -606,72 +543,106 @@ export function FarmerTasksScreen() {
   return (
     <View style={styles.root}>
       <FarmerInboxHeaderBar />
-      <SectionList
-        ref={listRef}
-        sections={sections}
-        keyExtractor={(item) => item.id}
+      <ScrollView
         contentContainerStyle={styles.listContent}
-        stickySectionHeadersEnabled={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <Text className="text-2xl font-bold text-foreground">Your Tasks</Text>
-            <TaskStatusKpiRow
-              counts={categoryCounts}
-              selected={statusFilter ?? null}
-              onSelect={toggleStatusFilter}
-            />
-            {statusFilter ? (
-              <Text style={styles.filterHint}>Tap the selected card again to show all tasks</Text>
-            ) : (
-              <Text style={styles.filterHint}>Updates every 30s</Text>
-            )}
-            {error ? <FarmerOfflineBanner message={error} /> : null}
-            {pendingRecalls.length > 0 ? (
-              <View style={styles.pendingRecalls}>
-                <Text className="mb-2 text-sm font-semibold text-foreground">
-                  Queued recalls ({pendingRecalls.length})
-                </Text>
-                {pendingRecalls.map((item) => (
-                  <OutboxTaskRecallCard
-                    key={item.id}
-                    item={item}
-                    pushing={pushingRecallId === item.id}
-                    onPush={() => {
-                      void (async () => {
-                        setPushingRecallId(item.id);
-                        try {
-                          const result = await pushPendingTaskRecall(item.id);
-                          if (result.success) {
-                            showMessage('Recall synced', 'You can edit and resubmit when ready.');
-                            await load();
-                          } else if (result.needsReview) {
-                            showMessage('Needs your review', result.error || 'Conflict detected');
-                          } else {
-                            showMessage('Sync failed', result.error || 'Could not push recall');
-                          }
-                          await loadPendingRecalls();
-                        } finally {
-                          setPushingRecallId(null);
+      >
+        <View style={styles.header}>
+          <Text className="text-2xl font-bold text-foreground">Your Tasks</Text>
+          <TaskStatusKpiRow
+            counts={categoryCounts}
+            selected={statusFilter ?? null}
+            onSelect={toggleStatusFilter}
+          />
+          {statusFilter ? (
+            <Text style={styles.filterHint}>Tap the selected card again to show all tasks</Text>
+          ) : (
+            <Text style={styles.filterHint}>Updates every 30s</Text>
+          )}
+          {error ? <FarmerOfflineBanner message={error} /> : null}
+          {pendingStarts.length > 0 ? (
+            <View style={styles.pendingQueue}>
+              <Text className="mb-2 text-sm font-semibold text-foreground">
+                Queued starts ({pendingStarts.length})
+              </Text>
+              {pendingStarts.map((item) => (
+                <OutboxTaskStartCard
+                  key={item.id}
+                  item={item}
+                  pushing={pushingStartId === item.id}
+                  onPush={() => {
+                    void (async () => {
+                      setPushingStartId(item.id);
+                      try {
+                        const result = await pushPendingTaskStart(item.id);
+                        if (result.success) {
+                          showMessage('Start synced', 'Your start date is saved on the server.');
+                          await load();
+                        } else if (result.needsReview) {
+                          showMessage('Needs your review', result.error || 'Conflict detected');
+                        } else {
+                          showMessage('Sync failed', result.error || 'Could not push start');
                         }
-                      })();
-                    }}
-                    onDismiss={() => {
-                      void (async () => {
-                        await dismissTaskRecallOutbox(item.id);
+                        await loadPendingStarts();
+                      } finally {
+                        setPushingStartId(null);
+                      }
+                    })();
+                  }}
+                  onDismiss={() => {
+                    void (async () => {
+                      await dismissTaskStartOutbox(item.id);
+                      await loadPendingStarts();
+                    })();
+                  }}
+                />
+              ))}
+            </View>
+          ) : null}
+          {pendingRecalls.length > 0 ? (
+            <View style={styles.pendingQueue}>
+              <Text className="mb-2 text-sm font-semibold text-foreground">
+                Queued recalls ({pendingRecalls.length})
+              </Text>
+              {pendingRecalls.map((item) => (
+                <OutboxTaskRecallCard
+                  key={item.id}
+                  item={item}
+                  pushing={pushingRecallId === item.id}
+                  onPush={() => {
+                    void (async () => {
+                      setPushingRecallId(item.id);
+                      try {
+                        const result = await pushPendingTaskRecall(item.id);
+                        if (result.success) {
+                          showMessage('Recall synced', 'You can edit and resubmit when ready.');
+                          await load();
+                        } else if (result.needsReview) {
+                          showMessage('Needs your review', result.error || 'Conflict detected');
+                        } else {
+                          showMessage('Sync failed', result.error || 'Could not push recall');
+                        }
                         await loadPendingRecalls();
-                      })();
-                    }}
-                  />
-                ))}
-              </View>
-            ) : null}
-            {sections.length > 0 ? renderTableHeader() : null}
-          </View>
-        }
-        ListEmptyComponent={
+                      } finally {
+                        setPushingRecallId(null);
+                      }
+                    })();
+                  }}
+                  onDismiss={() => {
+                    void (async () => {
+                      await dismissTaskRecallOutbox(item.id);
+                      await loadPendingRecalls();
+                    })();
+                  }}
+                />
+              ))}
+            </View>
+          ) : null}
+        </View>
+
+        {flatTasks.length === 0 ? (
           !error ? (
             <KBCard elevated={false}>
               <Text className="text-base text-muted-foreground text-center">
@@ -681,14 +652,169 @@ export function FarmerTasksScreen() {
               </Text>
             </KBCard>
           ) : null
-        }
-        renderSectionHeader={({ section: { title } }) => (
-          <Text className="mb-2 mt-3 text-sm font-bold uppercase tracking-wide text-[#757575]">
-            {title}
-          </Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
+            <View style={styles.tableCanvas}>
+              {renderTableHeader()}
+              {flatTasks.map((item) => (
+                <React.Fragment key={item.id}>{renderTask({ item })}</React.Fragment>
+              ))}
+            </View>
+          </ScrollView>
         )}
-        renderItem={({ item }) => renderTask(item)}
-      />
+      </ScrollView>
+
+      <Modal
+        visible={!!detail}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setDetailTask(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <ScrollView contentContainerStyle={styles.modalBody}>
+              <Text className="text-xl font-bold text-foreground">{detail?.name}</Text>
+              <Text className="mt-1 text-sm text-muted-foreground">
+                {detail ? projectLabel(detail) : ''}
+              </Text>
+              <View style={styles.modalChipRow}>
+                {detail ? (
+                  <KBStatusChip
+                    label={displayStatus(detail.status)}
+                    variant={statusVariant(detail.status)}
+                  />
+                ) : null}
+              </View>
+
+              <View style={styles.metaGrid}>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">Start date</Text>
+                  <Text className="text-sm text-foreground">{detailStart}</Text>
+                </View>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">End date</Text>
+                  <Text
+                    className="text-sm"
+                    style={{ color: detailOverdue ? COLORS.alert : COLORS.text }}
+                  >
+                    {detailEnd}
+                    {detailOverdue ? ' · Overdue' : ''}
+                  </Text>
+                </View>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">Assigned</Text>
+                  <Text className="text-sm text-foreground">
+                    {detail ? formatDisplayDate(detail.assigned_at) : '—'}
+                  </Text>
+                </View>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">By</Text>
+                  <Text className="text-sm text-foreground">
+                    {detail?.assigned_by_name?.trim() ||
+                      (detail && isAgentAssignment(detail)
+                        ? 'Your field agent'
+                        : 'Program team')}
+                  </Text>
+                </View>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">Payment</Text>
+                  <Text className="text-sm font-semibold" style={{ color: COLORS.accent }}>
+                    {detail && isAgentAssignment(detail)
+                      ? '—'
+                      : formatAmount(detail?.payment_value_kes ?? 0)}
+                  </Text>
+                </View>
+              </View>
+
+              {detail?.description ? (
+                <Text className="mt-3 text-sm leading-5 text-foreground">{detail.description}</Text>
+              ) : null}
+
+              {detail && shouldShowSubmissionEvidence(detail.status) ? (
+                <View style={styles.evidenceBlock}>
+                  <Text className="mb-2 text-sm font-semibold text-foreground">Your submission</Text>
+                  {detailNotes ? (
+                    <Text className="text-sm leading-5 text-foreground">{detailNotes}</Text>
+                  ) : (
+                    <Text className="text-sm text-muted-foreground">No notes provided.</Text>
+                  )}
+                  {detailPhoto ? (
+                    <Image
+                      source={{ uri: detailPhoto }}
+                      style={styles.evidenceImage}
+                      resizeMode="cover"
+                      accessibilityLabel={`Evidence photo for ${detail.name}`}
+                    />
+                  ) : (
+                    <Text className="mt-2 text-sm font-semibold text-destructive">Photo required</Text>
+                  )}
+                </View>
+              ) : null}
+
+              {detail &&
+              normalizeTaskStatus(detail.status) === 'rejected' &&
+              detail.rejection_reason ? (
+                <Text className="mt-2 text-sm text-destructive">{detail.rejection_reason}</Text>
+              ) : null}
+
+              {detail && isSubmittedForApproval(detail.status) ? (
+                <Text className="mt-2 text-sm italic text-blue-600">
+                  Awaiting approval — we check status every 30 seconds
+                </Text>
+              ) : null}
+
+              {detail ? renderActionButton(detail, false) : null}
+
+              <Button mode="text" onPress={() => setDetailTask(null)} style={styles.closeBtn}>
+                Close
+              </Button>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!startTask}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setStartTask(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setStartTask(null)} />
+          <View style={styles.startModalCard}>
+            <Text className="text-lg font-bold text-foreground">Start Task</Text>
+            <Text className="mt-1 text-sm text-muted-foreground">{startTask?.name}</Text>
+            <Text className="mt-4 text-xs font-semibold text-muted-foreground">
+              When did you start? (YYYY-MM-DD)
+            </Text>
+            <TextInput
+              value={startDateInput}
+              onChangeText={setStartDateInput}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="numbers-and-punctuation"
+              style={styles.dateInput}
+            />
+            <Button
+              mode="contained"
+              buttonColor={COLORS.primary}
+              loading={!!startingId}
+              disabled={!!startingId}
+              onPress={() => void handleConfirmStart()}
+              style={styles.openBtn}
+            >
+              Confirm start
+            </Button>
+            <Button mode="text" onPress={() => setStartTask(null)} disabled={!!startingId}>
+              Cancel
+            </Button>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <FarmerTaskSubmitModal
         task={
@@ -735,7 +861,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 4,
   },
-  pendingRecalls: {
+  pendingQueue: {
     marginTop: 12,
   },
   filterHint: {
@@ -743,15 +869,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#757575',
   },
+  tableCanvas: {
+    minWidth: TABLE_MIN_WIDTH,
+    width: TABLE_MIN_WIDTH,
+  },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 16,
     marginBottom: 6,
     paddingHorizontal: 10,
-    gap: 8,
-  },
-  tableHeaderWide: {
     gap: 10,
   },
   th: {
@@ -764,29 +891,26 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  tableRowWide: {
     gap: 10,
   },
   colTask: {
-    flex: 1.4,
-    minWidth: 0,
+    width: 160,
+    flexShrink: 0,
   },
   colProject: {
-    flex: 1.1,
-    minWidth: 0,
+    width: 130,
+    flexShrink: 0,
   },
   colDate: {
-    flex: 0.85,
-    minWidth: 0,
+    width: 96,
+    flexShrink: 0,
   },
   colStatus: {
-    flex: 1.05,
-    minWidth: 72,
+    width: 130,
+    flexShrink: 0,
   },
   colActions: {
-    width: 72,
+    width: 110,
     flexShrink: 0,
   },
   td: {
@@ -800,21 +924,10 @@ const styles = StyleSheet.create({
   taskCell: {
     justifyContent: 'center',
   },
-  taskTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 4,
-  },
   taskName: {
-    flex: 1,
     fontSize: 15,
     fontWeight: '700',
     color: '#1A1A1A',
-  },
-  taskProjectMuted: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#757575',
   },
   statusCell: {
     alignItems: 'flex-start',
@@ -824,14 +937,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
-  editBtn: {
-    minWidth: 64,
+  actionBtn: {
+    minWidth: 96,
     borderColor: COLORS.primary,
   },
-  editBtnLabel: {
-    fontSize: 12,
+  actionBtnLabel: {
+    fontSize: 11,
     marginVertical: 2,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
   },
   actionsMuted: {
     fontSize: 13,
@@ -842,43 +955,67 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 10,
   },
-  expandedBody: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E0E0E0',
-  },
-  expandHint: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1A4D3E',
-  },
   evidenceBlock: {
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#E0E0E0',
   },
-  evidencePhotoWrap: {
-    marginTop: 10,
-  },
   evidenceImage: {
     width: '100%',
     height: 200,
     borderRadius: 12,
     backgroundColor: '#F0F0F0',
+    marginTop: 10,
   },
   metaGrid: {
     gap: 10,
-  },
-  metaGridSpaced: {
-    marginTop: 12,
+    marginTop: 16,
   },
   metaItem: {
     gap: 2,
   },
   openBtn: {
     marginTop: 12,
+  },
+  closeBtn: {
+    marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    maxHeight: '88%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 24,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalChipRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+  },
+  startModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  dateInput: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#1A1A1A',
+    backgroundColor: '#FAFAFA',
   },
 });

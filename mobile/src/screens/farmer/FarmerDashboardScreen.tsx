@@ -192,7 +192,13 @@ export function FarmerDashboardScreen() {
   const goToProfile = () => navigation.navigate('Profile');
   const goToPayments = () => navigation.navigate('Payments');
   const goToTasks = (
-    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'rejected' | 'completed',
+    statusFilter?:
+      | 'overdue'
+      | 'in_progress'
+      | 'not_started'
+      | 'submitted_for_approval'
+      | 'rejected'
+      | 'completed',
     taskId?: string
   ) => {
     if (!statusFilter && !taskId) {

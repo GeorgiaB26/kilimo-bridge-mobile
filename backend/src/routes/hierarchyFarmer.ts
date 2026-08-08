@@ -6,12 +6,14 @@ import {
   getFarmerTask,
   submitFarmerTask,
   recallFarmerTask,
+  startFarmerTask,
 } from '../services/hierarchyService';
 import { listAllFarmerAssignedTasks } from '../services/farmerPortalService';
 import {
   getAgentTaskAssignedToFarmer,
   submitAgentTaskByFarmer,
   recallAgentTaskByFarmer,
+  startAgentTaskByFarmer,
 } from '../services/agentDashboardService';
 import { getAdminNotifyPhone, sendSms } from '../services/notificationService';
 import { resolvePhotoUrlForDisplay } from '../services/r2StorageService';
@@ -59,6 +61,7 @@ async function mapFarmerTaskRow(row: Record<string, unknown>) {
     assigned_at: row.assigned_at ?? row.created_at,
     assigned_by_name: row.assigned_by_name,
     assigned_by_user_id: row.assigned_by_user_id,
+    farmer_started_at: row.farmer_started_at ?? null,
   };
 }
 
@@ -234,6 +237,36 @@ router.post(
   })
 );
 
+router.post(
+  '/tasks/:farmerTaskId/start',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const start_date =
+      typeof req.body?.start_date === 'string' ? req.body.start_date : '';
+    try {
+      const updated = await startFarmerTask(req.params.farmerTaskId, farmerId, start_date);
+      res.json({
+        status: 'in-progress',
+        message: 'Task started',
+        task: await mapFarmerTaskRow(updated as Record<string, unknown>),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not start task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
 router.get(
   '/hierarchy/projects',
   requirePermission('hierarchy.read.own'),
@@ -362,6 +395,40 @@ router.post(
   })
 );
 
+router.post(
+  '/hierarchy/tasks/:farmerTaskId/start',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const start_date =
+      typeof req.body?.start_date === 'string' ? req.body.start_date : '';
+    try {
+      const updated = await startFarmerTask(req.params.farmerTaskId, farmerId, start_date);
+      const stored =
+        typeof (updated as { photo_evidence_url?: string })?.photo_evidence_url === 'string'
+          ? (updated as { photo_evidence_url: string }).photo_evidence_url
+          : null;
+      res.json({
+        ...(updated as object),
+        photo_evidence_key: stored,
+        photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not start task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
 /** Farmer submits photo + notes on a field-agent-assigned agent_tasks row. */
 router.post(
   '/agent-tasks/:taskId/submit',
@@ -417,6 +484,37 @@ router.post(
           ? Number((err as { statusCode: number }).statusCode)
           : 500;
       const message = err instanceof Error ? err.message : 'Could not recall task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+/** Farmer starts a not-started agent-assigned task (picks start date). */
+router.post(
+  '/agent-tasks/:taskId/start',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const start_date =
+      typeof req.body?.start_date === 'string' ? req.body.start_date : '';
+    try {
+      const updated = await startAgentTaskByFarmer(req.params.taskId, farmerId, start_date);
+      res.json({
+        ...updated,
+        source: 'agent_assignment',
+        photo_evidence_url: updated.photo_evidence_url,
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not start task';
       if (statusCode >= 400 && statusCode < 600) {
         res.status(statusCode).json({ error: message });
         return;

@@ -84,7 +84,14 @@ type UnifiedTask = {
   assigned_farmer_names?: string[];
 };
 
-type FilterKey = 'all' | 'overdue' | 'not_started' | 'in_progress' | 'rejected' | 'completed';
+type FilterKey =
+  | 'all'
+  | 'overdue'
+  | 'not_started'
+  | 'in_progress'
+  | 'submitted_for_approval'
+  | 'rejected'
+  | 'completed';
 
 function isRejectedStatus(status: string): boolean {
   return status.toLowerCase().replace(/_/g, '-') === 'rejected';
@@ -479,6 +486,7 @@ export function AgentTasksScreen() {
       overdue: categorized.overdue.length,
       in_progress: categorized.inProgress.length,
       not_started: categorized.notStarted.length,
+      submitted_for_approval: categorized.submittedForApproval.length,
       rejected: categorized.rejected.length,
       completed: categorized.completed.length,
     }),
@@ -493,7 +501,13 @@ export function AgentTasksScreen() {
     if (filter === 'rejected' && categoryCounts.rejected === 0) {
       setFilter('all');
     }
-  }, [filter, categoryCounts.rejected]);
+    if (
+      filter === 'submitted_for_approval' &&
+      categoryCounts.submitted_for_approval === 0
+    ) {
+      setFilter('all');
+    }
+  }, [filter, categoryCounts.rejected, categoryCounts.submitted_for_approval]);
 
   const toggleKpiFilter = (key: TaskStatusKpiKey) => {
     setFilter((prev) => (prev === key ? 'all' : key));
@@ -503,12 +517,14 @@ export function AgentTasksScreen() {
   const overdue = displayCategories.overdue;
   const inProgress = displayCategories.inProgress;
   const notStarted = displayCategories.notStarted;
+  const submittedForApproval = displayCategories.submittedForApproval;
   const rejected = displayCategories.rejected;
   const completed = displayCategories.completed;
   const hasVisibleTasks =
     overdue.length +
       inProgress.length +
       notStarted.length +
+      submittedForApproval.length +
       rejected.length +
       completed.length >
     0;
@@ -748,6 +764,7 @@ export function AgentTasksScreen() {
     overdue: 'Overdue',
     not_started: 'Not started',
     in_progress: 'In progress',
+    submitted_for_approval: 'Submitted for approval',
     rejected: 'Rejected',
     completed: 'Completed',
   };
@@ -799,7 +816,12 @@ export function AgentTasksScreen() {
         {showFilter ? (
           <View className="mb-3 flex-row flex-wrap gap-2">
             {(Object.keys(filterLabels) as FilterKey[])
-              .filter((key) => key !== 'rejected' || categoryCounts.rejected > 0)
+              .filter(
+                (key) =>
+                  (key !== 'rejected' || categoryCounts.rejected > 0) &&
+                  (key !== 'submitted_for_approval' ||
+                    categoryCounts.submitted_for_approval > 0)
+              )
               .map((key) => (
               <Pressable
                 key={key}
@@ -898,6 +920,21 @@ export function AgentTasksScreen() {
           tasks={notStarted}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
+        />
+        <TaskSection
+          TitleIcon={Hourglass}
+          title={`Submitted for approval (${submittedForApproval.length})`}
+          color="#1565C0"
+          tasks={submittedForApproval}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+          onExpandApproval={setExpandedId}
+          expandedId={expandedId}
+          rejectReason={rejectReason}
+          setRejectReason={setRejectReason}
+          acting={acting}
+          approve={approve}
+          reject={reject}
         />
         <TaskSection
           TitleIcon={CircleX}

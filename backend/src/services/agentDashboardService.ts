@@ -22,6 +22,7 @@ export interface AgentPersonalTask {
   submitted_at?: string | null;
   rejection_reason?: string | null;
   reviewed_at?: string | null;
+  farmer_started_at?: string | null;
   created_at?: string;
   updated_at?: string;
   source?: 'personal';
@@ -179,6 +180,7 @@ export async function ensureAgentTasksTable(): Promise<void> {
   await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
   await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
   await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS farmer_started_at DATE`);
   await query('CREATE INDEX IF NOT EXISTS idx_agent_tasks_agent ON agent_tasks(agent_user_id)');
   await query('CREATE INDEX IF NOT EXISTS idx_agent_tasks_due ON agent_tasks(due_date)');
   await query(
@@ -362,6 +364,64 @@ export async function submitAgentTaskByFarmer(
   const updated = await getAgentTaskAssignedToFarmer(taskId, farmerId);
   if (!updated) {
     throw Object.assign(new Error('Task not found after submit'), { statusCode: 500 });
+  }
+  return updated;
+}
+
+function parseFarmerStartDate(raw: string): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw Object.assign(new Error('Start date must be YYYY-MM-DD'), { statusCode: 400 });
+  }
+  const probe = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(probe.getTime())) {
+    throw Object.assign(new Error('Start date must be a valid calendar day'), { statusCode: 400 });
+  }
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  if (probe.getTime() > today.getTime()) {
+    throw Object.assign(new Error('Start date cannot be in the future'), { statusCode: 400 });
+  }
+  return trimmed;
+}
+
+/**
+ * Farmer starts a not-started agent-assigned task.
+ * Status → in_progress; sets farmer_started_at (farmer-picked date).
+ */
+export async function startAgentTaskByFarmer(
+  taskId: string,
+  farmerId: string,
+  startDate: string
+): Promise<AgentPersonalTask> {
+  const day = parseFarmerStartDate(startDate);
+  const row = await queryOne<AgentPersonalTask>('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
+  if (!row) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  if (!parseAssignedFarmerIds(row.assigned_farmer_ids).includes(farmerId)) {
+    throw Object.assign(new Error('Not your task'), { statusCode: 403 });
+  }
+
+  const current = normalizeAgentTaskStatus(row.status);
+  if (current !== 'not_started') {
+    throw Object.assign(new Error('Only not-started tasks can be started'), { statusCode: 409 });
+  }
+
+  await query(
+    `
+    UPDATE agent_tasks SET
+      status = 'in_progress',
+      farmer_started_at = $1::date,
+      updated_at = NOW()
+    WHERE id = $2
+    `,
+    [day, taskId]
+  );
+
+  const updated = await getAgentTaskAssignedToFarmer(taskId, farmerId);
+  if (!updated) {
+    throw Object.assign(new Error('Task not found after start'), { statusCode: 500 });
   }
   return updated;
 }
@@ -830,6 +890,7 @@ export async function getAgentDashboardSummary(
       overdue_count: categoryCounts.overdue,
       in_progress_count: categoryCounts.inProgress,
       not_started_count: categoryCounts.notStarted,
+      submitted_for_approval_count: categoryCounts.submittedForApproval,
       completed_count: categoryCounts.completed,
       rejected_count: categoryCounts.rejected,
       total_count: categoryCounts.total,

@@ -10,6 +10,7 @@ export type OutboxActionType =
   | 'task_approval'
   | 'agent_task_approval'
   | 'task_recall'
+  | 'task_start'
   | 'farmer_verification'
   | 'centre_qc'
   | 'project_assign';

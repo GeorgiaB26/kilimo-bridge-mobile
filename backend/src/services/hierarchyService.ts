@@ -9,6 +9,15 @@ export async function ensureFarmerTaskAssignerColumn(): Promise<void> {
     ADD COLUMN IF NOT EXISTS assigned_by_user_id TEXT
   `);
   await ensureFarmerTaskInProgressStatus();
+  await ensureFarmerTaskStartedAtColumn();
+}
+
+/** Farmer-picked start date when they start a not-started task. */
+export async function ensureFarmerTaskStartedAtColumn(): Promise<void> {
+  await query(`
+    ALTER TABLE farmer_tasks
+    ADD COLUMN IF NOT EXISTS farmer_started_at DATE
+  `);
 }
 
 /**
@@ -593,6 +602,64 @@ export async function submitFarmerTask(farmerTaskId: string, data: { photo_url?:
   const updated = await getFarmerTask(farmerTaskId);
   await notifyAgentsOfFarmerTaskSubmission(farmerTaskId, { resubmitted });
   return updated;
+}
+
+function parseFarmerStartDate(raw: string): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw Object.assign(new Error('Start date must be YYYY-MM-DD'), { statusCode: 400 });
+  }
+  const probe = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(probe.getTime())) {
+    throw Object.assign(new Error('Start date must be a valid calendar day'), { statusCode: 400 });
+  }
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  if (probe.getTime() > today.getTime()) {
+    throw Object.assign(new Error('Start date cannot be in the future'), { statusCode: 400 });
+  }
+  return trimmed;
+}
+
+/**
+ * Farmer starts a not-started hierarchy task: status → in-progress, sets farmer_started_at.
+ */
+export async function startFarmerTask(
+  farmerTaskId: string,
+  farmerId: string,
+  startDate: string
+) {
+  const day = parseFarmerStartDate(startDate);
+  const existing = await queryOne<{ status: string; farmer_id: string }>(
+    'SELECT status, farmer_id FROM farmer_tasks WHERE id = $1',
+    [farmerTaskId]
+  );
+  if (!existing) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  if (existing.farmer_id !== farmerId) {
+    throw Object.assign(new Error('Not your task'), { statusCode: 403 });
+  }
+  const prior = (existing.status ?? '').toLowerCase().replace(/_/g, '-');
+  if (prior !== 'not-started') {
+    throw Object.assign(
+      new Error('Only not-started tasks can be started'),
+      { statusCode: 409 }
+    );
+  }
+
+  await query(
+    `
+    UPDATE farmer_tasks SET
+      status = 'in-progress',
+      farmer_started_at = $1::date,
+      updated_at = NOW()
+    WHERE id = $2 AND farmer_id = $3
+    `,
+    [day, farmerTaskId, farmerId]
+  );
+
+  return getFarmerTask(farmerTaskId);
 }
 
 /**

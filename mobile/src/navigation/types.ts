@@ -17,7 +17,13 @@ export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
   Tasks: {
-    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'rejected' | 'completed';
+    statusFilter?:
+      | 'overdue'
+      | 'in_progress'
+      | 'not_started'
+      | 'submitted_for_approval'
+      | 'rejected'
+      | 'completed';
     highlightTaskId?: string;
     taskId?: string;
   } | undefined;
@@ -79,7 +85,14 @@ export type AgentTabParamList = {
   Dashboard: undefined;
   Farmers: NavigatorScreenParams<AgentFarmersStackParamList> | undefined;
   Tasks: {
-    filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'rejected' | 'completed';
+    filter?:
+      | 'all'
+      | 'overdue'
+      | 'not_started'
+      | 'in_progress'
+      | 'submitted_for_approval'
+      | 'rejected'
+      | 'completed';
     openAdd?: boolean;
     /** Deep-link from notification — open this task in the detail modal. */
     taskId?: string;
