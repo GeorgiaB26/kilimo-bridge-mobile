@@ -18,6 +18,8 @@ export type FarmerTabParamList = {
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
   Tasks: {
     statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed';
+    highlightTaskId?: string;
+    taskId?: string;
   } | undefined;
   Payments: { highlightPaymentId?: string } | undefined;
   Profile: undefined;

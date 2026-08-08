@@ -5,6 +5,9 @@
   command = "bash scripts/build-web.sh"
   publish = "mobile/dist"
 
+[build.environment]
+  EXPO_PUBLIC_API_URL = "https://kilimo-bridge-mobile.onrender.com/api"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

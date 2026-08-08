@@ -1,17 +1,18 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   SectionList,
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
+  Alert,
 } from 'react-native';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
 import { COLORS } from '../../constants';
-import { getFarmerHierarchyTasks } from '../../api/client';
+import { getFarmerAssignedTasks } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
@@ -37,7 +38,12 @@ type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
   assigned_at?: string;
   assigned_by_name?: string;
+  source?: 'hierarchy' | 'agent_assignment';
 };
+
+function isAgentAssignment(task: ExtendedTaskRow): boolean {
+  return task.source === 'agent_assignment';
+}
 
 function normalizeTaskStatus(status: string): string {
   return status.replace(/_/g, '-');
@@ -64,7 +70,10 @@ function isOverdue(due?: string | null, status?: string): boolean {
 
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
+  const navigation = useNavigation();
   const statusFilter = route.params?.statusFilter;
+  const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
+  const listRef = useRef<SectionList>(null);
   const { formatAmount } = useCurrency();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +83,7 @@ export function FarmerTasksScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await getFarmerHierarchyTasks();
+      const data = await getFarmerAssignedTasks();
       const list = (data.tasks ?? []) as ExtendedTaskRow[];
       setTasks(list);
       setError(null);
@@ -91,10 +100,29 @@ export function FarmerTasksScreen() {
     useCallback(() => {
       setLoading(tasks.length === 0);
       load();
+      const interval = setInterval(load, 30000);
+      return () => clearInterval(interval);
     }, [load, tasks.length])
   );
 
-  useTaskApprovalPolling(tasks, load);
+  useTaskApprovalPolling(
+    tasks.filter((t) => !isAgentAssignment(t)),
+    load
+  );
+
+  const showAgentTaskDetail = (item: ExtendedTaskRow) => {
+    const assigner = item.assigned_by_name?.trim() || 'Your field agent';
+    const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
+    Alert.alert(
+      item.name,
+      [
+        item.description?.trim() || 'No description provided.',
+        `Assigned by: ${assigner}`,
+        `Due: ${deadline}`,
+        `Status: ${displayStatus(item.status)}`,
+      ].join('\n\n')
+    );
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -146,6 +174,35 @@ export function FarmerTasksScreen() {
     return list;
   }, [displayCategories]);
 
+  useEffect(() => {
+    if (!scrollTargetId || loading || tasks.length === 0) return;
+    const task = tasks.find((t) => t.id === scrollTargetId);
+    if (!task) return;
+
+    if (sections.length > 0) {
+      for (let si = 0; si < sections.length; si++) {
+        const ti = sections[si].data.findIndex((t) => t.id === scrollTargetId);
+        if (ti >= 0) {
+          setTimeout(() => {
+            listRef.current?.scrollToLocation({
+              sectionIndex: si,
+              itemIndex: ti,
+              viewOffset: 80,
+            });
+          }, 400);
+          break;
+        }
+      }
+    }
+
+    if (isAgentAssignment(task)) {
+      showAgentTaskDetail(task);
+    } else if (canOpenTask(task.status)) {
+      setSubmitTask(task);
+    }
+    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
+  }, [scrollTargetId, tasks, loading, navigation, sections]);
+
   const filterLabel =
     statusFilter === 'overdue'
       ? 'Overdue tasks'
@@ -158,17 +215,28 @@ export function FarmerTasksScreen() {
             : null;
 
   const renderTask = (item: ExtendedTaskRow) => {
-    const openable = canOpenTask(item.status);
+    const agentTask = isAgentAssignment(item);
+    const openable = !agentTask && canOpenTask(item.status);
     const overdue = isOverdue(item.due_date, item.status);
     const assignedWhen = formatDisplayDate(item.assigned_at);
     const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
     const assigner = item.assigned_by_name?.trim() || 'Program team';
+    const highlighted = scrollTargetId === item.id;
 
     return (
       <KBCard
         elevated={false}
-        onPress={openable ? () => setSubmitTask(item) : undefined}
-        style={styles.card}
+        onPress={
+          agentTask
+            ? () => showAgentTaskDetail(item)
+            : openable
+              ? () => setSubmitTask(item)
+              : undefined
+        }
+        style={[
+          styles.card,
+          highlighted ? { borderWidth: 2, borderColor: COLORS.primary } : null,
+        ]}
       >
         <View style={styles.row}>
           <View style={styles.titleCol}>
@@ -203,10 +271,16 @@ export function FarmerTasksScreen() {
           <View style={styles.metaItem}>
             <Text className="text-xs font-semibold text-muted-foreground">Payment</Text>
             <Text className="text-sm font-semibold" style={{ color: COLORS.accent }}>
-              {formatAmount(item.payment_value_kes ?? 0)}
+              {agentTask ? '—' : formatAmount(item.payment_value_kes ?? 0)}
             </Text>
           </View>
         </View>
+
+        {agentTask ? (
+          <Text className="mt-2 text-sm text-muted-foreground">
+            Assigned by your field agent — tap for details
+          </Text>
+        ) : null}
 
         {normalizeTaskStatus(item.status) === 'rejected' && item.rejection_reason ? (
           <Text className="mt-2 text-sm text-destructive">{item.rejection_reason}</Text>
@@ -250,6 +324,7 @@ export function FarmerTasksScreen() {
     <View style={styles.root}>
       <FarmerInboxHeaderBar />
       <SectionList
+        ref={listRef}
         sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -290,7 +365,7 @@ export function FarmerTasksScreen() {
       />
 
       <FarmerTaskSubmitModal
-        task={submitTask}
+        task={submitTask && !isAgentAssignment(submitTask) ? submitTask : null}
         visible={!!submitTask}
         onClose={() => setSubmitTask(null)}
         onSubmitted={async () => {

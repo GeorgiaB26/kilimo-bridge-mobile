@@ -27,7 +27,7 @@ export interface TaskCategoryCounts {
 }
 
 function normalizeStatusForCategory(status: string): string {
-  const s = status.toLowerCase().replace(/_/g, '-');
+  const s = (status || 'not-started').toLowerCase().replace(/_/g, '-');
   if (s === 'submitted-for-approval' || s === 'submitted') return 'in-progress';
   if (s === 'approved') return 'completed';
   return s;

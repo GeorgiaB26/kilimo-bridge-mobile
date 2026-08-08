@@ -10,6 +10,8 @@ import {
   ActionSheetIOS,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Divider, List, Switch } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,8 +26,11 @@ import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
+import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
-import { getLocalizedGreeting } from '../../utils/greeting';
+import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
+import type { FarmerTabParamList } from '../../navigation/types';
 import { useCurrency } from '../../context/CurrencyContext';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
@@ -50,7 +55,24 @@ type SupportContacts = {
   } | null;
 };
 
+type ProfileTaskRow = {
+  id: string;
+  name: string;
+  status?: string;
+  due_date?: string | null;
+  assigned_by_name?: string;
+  program_project_name?: string;
+  source?: string;
+};
+
+function profileTaskStatus(status?: string): string {
+  return (status ?? 'not-started').replace(/_/g, '-');
+}
+
+type ProfileNav = BottomTabNavigationProp<FarmerTabParamList, 'Profile'>;
+
 export function FarmerProfileScreen() {
+  const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { currency, currencyInfo, selectCountry } = useCurrency();
@@ -80,23 +102,38 @@ export function FarmerProfileScreen() {
   const [pendingBase64, setPendingBase64] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
+  const [assignedTasks, setAssignedTasks] = useState<ProfileTaskRow[]>([]);
+  const [assignedTaskCount, setAssignedTaskCount] = useState(0);
+  const [tasksLoading, setTasksLoading] = useState(true);
 
   const loadProfile = useCallback(() => {
     getFarmerDashboard()
       .then((d) => {
         setFarmer(d.farmer);
         setContacts(d.contacts ?? null);
+        setAssignedTasks((d.assignedTasks ?? d.recentTasks ?? []) as ProfileTaskRow[]);
+        setAssignedTaskCount(
+          typeof d.assignedTaskCount === 'number'
+            ? d.assignedTaskCount
+            : (d.assignedTasks ?? d.recentTasks ?? []).length
+        );
         if (d.farmer?.country) selectCountry(d.farmer.country);
         setError(null);
+        setTasksLoading(false);
       })
       .catch((err: unknown) => {
         setError(extractApiError(err, 'Could not load profile'));
+        setAssignedTasks([]);
+        setTasksLoading(false);
       });
   }, [selectCountry]);
 
   useFocusEffect(
     useCallback(() => {
+      setTasksLoading(true);
       loadProfile();
+      const interval = setInterval(loadProfile, 30000);
+      return () => clearInterval(interval);
     }, [loadProfile])
   );
 
@@ -372,6 +409,66 @@ export function FarmerProfileScreen() {
           subValue={bankingPhone}
           hint="Contact for M-Pesa payment queries"
         />
+      </View>
+
+      <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">
+        Assigned tasks ({assignedTaskCount})
+      </Text>
+      <View className="mb-5 overflow-hidden rounded-xl bg-white">
+        {tasksLoading ? (
+          <View className="items-center p-6">
+            <ActivityIndicator color="#1A4D3E" />
+          </View>
+        ) : assignedTasks.length === 0 ? (
+          <Text className="p-4 text-sm text-[#757575]">No tasks assigned yet.</Text>
+        ) : (
+          assignedTasks.slice(0, 5).map((task, index) => (
+            <Pressable
+              key={task.id}
+              onPress={() =>
+                navigation.navigate('Tasks', {
+                  taskId: task.id,
+                  highlightTaskId: task.id,
+                })
+              }
+              className="p-4"
+              style={
+                index < assignedTasks.slice(0, 5).length - 1
+                  ? { borderBottomWidth: 1, borderBottomColor: '#eee' }
+                  : undefined
+              }
+            >
+              <View className="flex-row items-start justify-between gap-2">
+                <Text className="flex-1 text-base font-semibold text-[#333333]">{task.name}</Text>
+                {task.status ? (
+                  <KBStatusChip
+                    label={taskStatusLabel(profileTaskStatus(task.status))}
+                    variant={taskStatusVariant(profileTaskStatus(task.status))}
+                  />
+                ) : null}
+              </View>
+              <Text className="mt-1 text-sm text-[#757575]">
+                Assigned by: {task.assigned_by_name ?? 'Program team'}
+              </Text>
+              {task.program_project_name ? (
+                <Text className="text-sm text-[#757575]">{task.program_project_name}</Text>
+              ) : null}
+              <Text className="mt-1 text-sm text-[#1A4D3E]">
+                Due: {task.due_date ? formatCleanDate(task.due_date) : 'No due date'}
+              </Text>
+            </Pressable>
+          ))
+        )}
+        {assignedTasks.length > 0 ? (
+          <Pressable
+            className="border-t border-[#eee] p-4"
+            onPress={() => navigation.navigate('Tasks')}
+          >
+            <Text className="text-center text-sm font-semibold text-[#1A4D3E]">
+              View all tasks →
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Contact</Text>

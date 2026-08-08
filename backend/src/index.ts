@@ -50,7 +50,7 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
-    api_build: 'v2.11.18-task-categorization-fix',
+    api_build: 'v2.11.22-portal-dashboard-fix',
     field_agent_features: {
       messaging_restricted: true,
       notification_settings_legacy_sync: true,

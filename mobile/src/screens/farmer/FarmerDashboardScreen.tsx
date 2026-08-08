@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, ScrollView, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,6 +10,7 @@ import {
   getFarmerDashboard,
   getFarmerPayments,
   getFarmerHierarchyProjects,
+  getFarmerAssignedTasks,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
@@ -24,6 +25,7 @@ import {
   FarmerDashboardProfileCard,
   FarmerDashboardEarningsCard,
   FarmerDashboardTaskSnapshots,
+  FarmerDashboardRecentTasks,
   FarmerDashboardRecentProjects,
   FarmerDashboardRecentPayments,
   FarmerDashboardSupportSection,
@@ -73,6 +75,15 @@ type DashboardData = {
     completed?: number;
     total?: number;
   };
+  recentTasks?: Array<{
+    id: string;
+    name: string;
+    due_date?: string | null;
+    assigned_by_name?: string;
+    program_project_name?: string;
+    status?: string;
+  }>;
+  assignedTaskCount?: number;
 };
 
 export function FarmerDashboardScreen() {
@@ -92,7 +103,19 @@ export function FarmerDashboardScreen() {
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerDashboard,
         userScope,
-        fetchLive: () => getFarmerDashboard(),
+        fetchLive: async () => {
+          const dashboard = await getFarmerDashboard();
+          let recentTasks = dashboard.recentTasks ?? dashboard.assignedTasks ?? [];
+          if (!recentTasks.length) {
+            try {
+              const tasksRes = await getFarmerAssignedTasks();
+              recentTasks = (tasksRes.tasks ?? []).slice(0, 3);
+            } catch {
+              /* keep dashboard-only data */
+            }
+          }
+          return { ...dashboard, recentTasks };
+        },
       });
       setData(result.data as DashboardData);
       setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
@@ -116,6 +139,14 @@ export function FarmerDashboardScreen() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      const interval = setInterval(load, 30000);
+      return () => clearInterval(interval);
+    }, [load])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -161,9 +192,17 @@ export function FarmerDashboardScreen() {
   const goToProfile = () => navigation.navigate('Profile');
   const goToPayments = () => navigation.navigate('Payments');
   const goToTasks = (
-    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed'
+    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed',
+    taskId?: string
   ) => {
-    navigation.navigate('Tasks', statusFilter ? { statusFilter } : undefined);
+    if (!statusFilter && !taskId) {
+      navigation.navigate('Tasks');
+      return;
+    }
+    navigation.navigate('Tasks', {
+      ...(statusFilter ? { statusFilter } : {}),
+      ...(taskId ? { taskId, highlightTaskId: taskId } : {}),
+    });
   };
 
   return (
@@ -206,7 +245,13 @@ export function FarmerDashboardScreen() {
 
         <FarmerDashboardTaskSnapshots
           taskStats={data?.taskStats}
-          onTasksPress={goToTasks}
+          onTasksPress={(filter) => goToTasks(filter)}
+        />
+
+        <FarmerDashboardRecentTasks
+          tasks={data?.recentTasks}
+          onTasksPress={() => goToTasks()}
+          onTaskPress={(taskId) => goToTasks(undefined, taskId)}
         />
 
         <View style={{ paddingHorizontal: 12, marginVertical: 12 }}>

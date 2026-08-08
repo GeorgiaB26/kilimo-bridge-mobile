@@ -6,6 +6,7 @@ import {
   getFarmerTask,
   submitFarmerTask,
 } from '../services/hierarchyService';
+import { listAllFarmerAssignedTasks } from '../services/farmerPortalService';
 import { getAdminNotifyPhone, sendSms } from '../services/notificationService';
 import { resolvePhotoUrlForDisplay } from '../services/r2StorageService';
 
@@ -65,6 +66,23 @@ router.get(
     const status = req.query.status as string | undefined;
     const outstanding =
       req.query.outstanding === 'true' || req.query.outstanding === '1';
+    if (!project_id) {
+      const portalTasks = await listAllFarmerAssignedTasks(farmerId, {
+        status,
+        outstanding,
+      });
+      res.json({
+        tasks: await Promise.all(
+          portalTasks.map(async (row) => ({
+            ...row,
+            photo_evidence_url: await resolvePhotoUrlForDisplay(
+              typeof row.photo_evidence_url === 'string' ? row.photo_evidence_url : null
+            ),
+          }))
+        ),
+      });
+      return;
+    }
     const rows = (await listFarmerTasks(farmerId, {
       program_project_id: project_id,
       status,
@@ -207,16 +225,13 @@ router.get(
     const program_project_id = req.query.program_project_id as string | undefined;
     const outstanding =
       req.query.outstanding === 'true' || req.query.outstanding === '1';
-    const rows = (await listFarmerTasks(farmerId, {
+    const portalTasks = await listAllFarmerAssignedTasks(farmerId, {
       status,
       program_project_id,
       outstanding,
-    })) as Record<
-      string,
-      unknown
-    >[];
+    });
     const tasks = await Promise.all(
-      rows.map(async (row) => ({
+      portalTasks.map(async (row) => ({
         ...row,
         photo_evidence_url: await resolvePhotoUrlForDisplay(
           typeof row.photo_evidence_url === 'string' ? row.photo_evidence_url : null

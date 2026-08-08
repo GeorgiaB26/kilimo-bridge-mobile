@@ -116,9 +116,14 @@ export function navigateFromFarmerNotification(
   if (
     type.includes('task') ||
     contextType === 'task' ||
+    contextType === 'agent_task' ||
     type === 'task_assigned'
   ) {
-    navigateMainTab(root, 'Tasks');
+    navigateMainTab(
+      root,
+      'Tasks',
+      contextIdValue ? { taskId: contextIdValue, highlightTaskId: contextIdValue } : undefined
+    );
     return;
   }
 

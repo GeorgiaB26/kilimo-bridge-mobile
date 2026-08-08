@@ -216,6 +216,24 @@ export async function getFarmerDashboard() {
   return data;
 }
 
+/** All tasks for this farmer (program hierarchy + field agent assignments). */
+export async function getFarmerAssignedTasks(params?: {
+  status?: string;
+  outstanding?: string;
+}) {
+  try {
+    const { data } = await api.get('/farmer/assigned-tasks', { params });
+    return data;
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      const { data } = await api.get('/farmer/hierarchy/tasks', { params });
+      return data;
+    }
+    throw err;
+  }
+}
+
 export async function submitFarmerHelpRequest(message: string) {
   const { data } = await api.post('/farmer/help-requests', { message });
   return data;

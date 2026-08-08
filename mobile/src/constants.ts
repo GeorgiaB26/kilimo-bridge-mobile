@@ -49,7 +49,29 @@ export const PROJECTS = [
   'Coffee Training', 'Soil Health', 'Baseline Survey', 'Water Conservation', 'Pest Management',
 ];
 
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api';
+const DEFAULT_LOCAL_API = 'http://localhost:3001/api';
+const PRODUCTION_API = 'https://kilimo-bridge-mobile.onrender.com/api';
+
+function resolveApiBaseUrl(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (fromEnv && !fromEnv.includes('localhost') && !fromEnv.includes('127.0.0.1')) {
+    return fromEnv.replace(/\/$/, '');
+  }
+
+  // Hosted web (Netlify, etc.) must not call localhost — works even if build omitted env.
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.location?.hostname === 'string' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1'
+  ) {
+    return PRODUCTION_API;
+  }
+
+  return fromEnv || DEFAULT_LOCAL_API;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const IS_LIVE_WEB =
   typeof window !== 'undefined' &&

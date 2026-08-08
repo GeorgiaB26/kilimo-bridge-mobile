@@ -18,16 +18,11 @@ fi
 echo "==> Building web export..."
 cd mobile
 if [ -n "${NETLIFY:-}" ] || [ -n "${CI:-}" ]; then
-  if [ -z "${EXPO_PUBLIC_API_URL:-}" ] || [[ "${EXPO_PUBLIC_API_URL}" == *localhost* ]]; then
-    echo ""
-    echo "ERROR: Set EXPO_PUBLIC_API_URL in Netlify to:"
-    echo "  https://kilimo-bridge-mobile.onrender.com/api"
-    echo ""
-    exit 1
-  fi
+  export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-https://kilimo-bridge-mobile.onrender.com/api}"
   echo "API URL: ${EXPO_PUBLIC_API_URL}"
+else
+  export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-http://localhost:3001/api}"
 fi
-export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-http://localhost:3001/api}"
 npx expo export --platform web
 
 BUILD_TAG=$(grep -oE "v[0-9.]+-[a-z0-9-]+" src/constants/build.ts | head -1)
