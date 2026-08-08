@@ -56,6 +56,20 @@ function kpiLabelFontSizeForWidth(labelWidth: number, labels: string[]): number 
   return KPI_LABEL_MIN_FONT;
 }
 
+/**
+ * Chunk visible KPIs into rows:
+ * 1–4 → one row; 5 → 3+2; 6 → 3+3; more → wrap every 3.
+ */
+export function chunkKpiRows<T>(cards: T[]): T[][] {
+  const n = cards.length;
+  if (n <= 4) return n === 0 ? [] : [cards];
+  const rows: T[][] = [];
+  for (let i = 0; i < n; i += 3) {
+    rows.push(cards.slice(i, i + 3));
+  }
+  return rows;
+}
+
 type Props = {
   counts: Record<TaskStatusKpiKey, number>;
   /** Active filter key, or null/undefined when showing all. */
@@ -66,6 +80,7 @@ type Props = {
 /**
  * Status KPI cards for Tasks screens.
  * SUBMITTED FOR APPROVAL and REJECTED are omitted when count is 0.
+ * Layout wraps by visible count: 4 on one line; 5 → 3+2; 6 → 3+3.
  */
 export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
   const [kpiLabelWidth, setKpiLabelWidth] = useState(0);
@@ -73,7 +88,6 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
   const visibleCards = useMemo(() => {
     const cards = [...BASE_KPI_CARDS];
     if (counts.submitted_for_approval > 0) {
-      // After in-progress / before not-started visually: insert before completed.
       const completedIdx = cards.findIndex((c) => c.key === 'completed');
       cards.splice(completedIdx, 0, SUBMITTED_KPI);
     }
@@ -82,6 +96,9 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
     }
     return cards;
   }, [counts.rejected, counts.submitted_for_approval]);
+
+  const rows = useMemo(() => chunkKpiRows(visibleCards), [visibleCards]);
+  const columnsPerRow = visibleCards.length <= 4 ? visibleCards.length : 3;
 
   const kpiLabelFontSize = useMemo(
     () =>
@@ -98,54 +115,67 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
   }, []);
 
   return (
-    <View style={styles.kpiRow}>
-      {visibleCards.map((kpi) => {
-        const selectedCard = selected === kpi.key;
-        const count = counts[kpi.key];
-        return (
-          <Pressable
-            key={kpi.key}
-            accessibilityRole="button"
-            accessibilityState={{ selected: selectedCard }}
-            accessibilityLabel={`${kpi.label}: ${count}. ${
-              selectedCard ? 'Filter active, tap to show all tasks' : 'Tap to filter'
-            }`}
-            onPress={() => onSelect(kpi.key)}
-            style={[
-              styles.kpiCard,
-              selectedCard ? styles.kpiCardSelected : null,
-              Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
-            ]}
-          >
-            <View
-              style={styles.kpiLabelWrap}
-              onLayout={(e) => onKpiLabelLayout(e.nativeEvent.layout.width)}
-            >
-              <Text
-                style={[styles.kpiLabel, { fontSize: kpiLabelFontSize }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={KPI_LABEL_MIN_FONT / KPI_LABEL_MAX_FONT}
-                allowFontScaling={false}
+    <View style={styles.kpiStack}>
+      {rows.map((row, rowIndex) => (
+        <View key={`kpi-row-${rowIndex}`} style={styles.kpiRow}>
+          {row.map((kpi) => {
+            const selectedCard = selected === kpi.key;
+            const count = counts[kpi.key];
+            return (
+              <Pressable
+                key={kpi.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedCard }}
+                accessibilityLabel={`${kpi.label}: ${count}. ${
+                  selectedCard ? 'Filter active, tap to show all tasks' : 'Tap to filter'
+                }`}
+                onPress={() => onSelect(kpi.key)}
+                style={[
+                  styles.kpiCard,
+                  selectedCard ? styles.kpiCardSelected : null,
+                  Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
+                ]}
               >
-                {kpi.label}
-              </Text>
-            </View>
-            <View style={[styles.kpiBadge, { backgroundColor: kpi.badgeBg }]}>
-              <Text style={[styles.kpiCount, { color: kpi.countColor }]}>{count}</Text>
-            </View>
-          </Pressable>
-        );
-      })}
+                <View
+                  style={styles.kpiLabelWrap}
+                  onLayout={(e) => onKpiLabelLayout(e.nativeEvent.layout.width)}
+                >
+                  <Text
+                    style={[styles.kpiLabel, { fontSize: kpiLabelFontSize }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={KPI_LABEL_MIN_FONT / KPI_LABEL_MAX_FONT}
+                    allowFontScaling={false}
+                  >
+                    {kpi.label}
+                  </Text>
+                </View>
+                <View style={[styles.kpiBadge, { backgroundColor: kpi.badgeBg }]}>
+                  <Text style={[styles.kpiCount, { color: kpi.countColor }]}>{count}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          {/* Keep card widths aligned when the last row is shorter (e.g. 3+2). */}
+          {row.length < columnsPerRow
+            ? Array.from({ length: columnsPerRow - row.length }).map((_, i) => (
+                <View key={`kpi-spacer-${rowIndex}-${i}`} style={styles.kpiSpacer} />
+              ))
+            : null}
+        </View>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  kpiStack: {
+    marginTop: 12,
+    gap: 8,
+  },
   kpiRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
   },
   kpiCard: {
     flex: 1,
@@ -162,6 +192,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 3,
     elevation: 2,
+  },
+  kpiSpacer: {
+    flex: 1,
+    minWidth: 0,
   },
   kpiCardSelected: {
     borderColor: '#1A4D3E',

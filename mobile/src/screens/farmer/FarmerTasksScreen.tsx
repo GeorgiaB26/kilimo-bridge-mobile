@@ -12,6 +12,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -63,8 +64,8 @@ import {
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 type StatusFilterKey = TaskStatusKpiKey;
 
-/** Minimum content width so columns (incl. Actions) are not truncated; scroll horizontally on narrow phones. */
-const TABLE_MIN_WIDTH = 720;
+/** Show Project / Start / End columns at this width and above. */
+const WIDE_TABLE_MIN_WIDTH = 600;
 
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
@@ -154,6 +155,8 @@ function isValidYmd(value: string): boolean {
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
+  const { width } = useWindowDimensions();
+  const wide = width >= WIDE_TABLE_MIN_WIDTH;
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
   const { formatAmount } = useCurrency();
@@ -407,68 +410,122 @@ export function FarmerTasksScreen() {
 
   const renderActionButton = (item: ExtendedTaskRow, compact = true) => {
     if (canStartTask(item.status)) {
+      if (!compact) {
+        return (
+          <Button
+            mode="contained"
+            buttonColor={COLORS.primary}
+            loading={startingId === item.id}
+            disabled={startingId === item.id}
+            onPress={() => openStartModal(item)}
+            style={styles.openBtn}
+          >
+            Start Task
+          </Button>
+        );
+      }
       return (
-        <Button
-          mode={compact ? 'outlined' : 'contained'}
-          compact={compact}
-          buttonColor={compact ? undefined : COLORS.primary}
-          textColor={compact ? COLORS.primary : '#FFFFFF'}
-          loading={startingId === item.id}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Start task ${item.name}`}
           disabled={startingId === item.id}
-          onPress={() => openStartModal(item)}
-          style={compact ? styles.actionBtn : styles.openBtn}
-          labelStyle={compact ? styles.actionBtnLabel : undefined}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            openStartModal(item);
+          }}
+          style={({ pressed }) => [
+            styles.actionChip,
+            startingId === item.id || pressed ? styles.actionChipPressed : null,
+          ]}
         >
-          Start Task
-        </Button>
+          {startingId === item.id ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          ) : (
+            <Text style={styles.actionChipLabel} numberOfLines={1}>
+              Start Task
+            </Text>
+          )}
+        </Pressable>
       );
     }
     if (canEditTask(item.status)) {
+      if (!compact) {
+        return (
+          <Button
+            mode="contained"
+            buttonColor={COLORS.primary}
+            loading={recallingId === item.id}
+            disabled={recallingId === item.id}
+            onPress={() => handleEdit(item)}
+            style={styles.openBtn}
+          >
+            Edit
+          </Button>
+        );
+      }
       return (
-        <Button
-          mode={compact ? 'outlined' : 'contained'}
-          compact={compact}
-          buttonColor={compact ? undefined : COLORS.primary}
-          textColor={compact ? COLORS.primary : '#FFFFFF'}
-          loading={recallingId === item.id}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Edit task ${item.name}`}
           disabled={recallingId === item.id}
-          onPress={() => handleEdit(item)}
-          style={compact ? styles.actionBtn : styles.openBtn}
-          labelStyle={compact ? styles.actionBtnLabel : undefined}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            handleEdit(item);
+          }}
+          style={({ pressed }) => [
+            styles.actionChip,
+            recallingId === item.id || pressed ? styles.actionChipPressed : null,
+          ]}
         >
-          Edit
-        </Button>
+          {recallingId === item.id ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          ) : (
+            <Text style={styles.actionChipLabel} numberOfLines={1}>
+              Edit
+            </Text>
+          )}
+        </Pressable>
       );
     }
-    return compact ? <Text style={styles.actionsMuted}>—</Text> : (
+    return compact ? (
+      <Text style={styles.actionsMuted}>—</Text>
+    ) : (
       <Text className="mt-3 text-sm text-muted-foreground">Task locked — no further edits</Text>
     );
   };
 
+  const colTask = wide ? styles.colTaskWide : styles.colTaskNarrow;
+  const colStatus = wide ? styles.colStatusWide : styles.colStatusNarrow;
+  const colActions = wide ? styles.colActionsWide : styles.colActionsNarrow;
+
   const renderTableHeader = () => (
-    <View style={styles.tableHeader}>
-      <Text style={[styles.th, styles.colTask]} numberOfLines={1}>
+    <View style={[styles.tableHeader, wide ? styles.tableHeaderWide : null]}>
+      <Text style={[styles.th, colTask]} numberOfLines={1}>
         Task
       </Text>
-      <Text style={[styles.th, styles.colProject]} numberOfLines={1}>
-        Project
-      </Text>
-      <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
-        Start date
-      </Text>
-      <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
-        End date
-      </Text>
-      <Text style={[styles.th, styles.colStatus]} numberOfLines={1}>
+      {wide ? (
+        <>
+          <Text style={[styles.th, styles.colProject]} numberOfLines={1}>
+            Project
+          </Text>
+          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+            Start
+          </Text>
+          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+            End
+          </Text>
+        </>
+      ) : null}
+      <Text style={[styles.th, colStatus]} numberOfLines={1}>
         Status
       </Text>
-      <Text style={[styles.th, styles.colActions]} numberOfLines={1}>
+      <Text style={[styles.th, colActions]} numberOfLines={1}>
         Actions
       </Text>
     </View>
   );
 
-  const renderTask = ({ item }: { item: ExtendedTaskRow }) => {
+  const renderTask = (item: ExtendedTaskRow, index: number, total: number) => {
     const overdue = isOverdue(item.due_date, item.status);
     const startDate = item.farmer_started_at
       ? formatCleanDate(item.farmer_started_at)
@@ -476,46 +533,61 @@ export function FarmerTasksScreen() {
     const endDate = item.due_date ? formatCleanDate(item.due_date) : '—';
     const highlighted = scrollTargetId === item.id;
     const project = projectLabel(item);
+    const last = index === total - 1;
 
     return (
-      <KBCard
-        elevated={false}
+      <Pressable
+        key={item.id}
+        accessibilityRole="button"
+        accessibilityLabel={`Open details for ${item.name}`}
         onPress={() => setDetailTask(item)}
-        style={
-          highlighted
-            ? { ...styles.card, borderWidth: 2, borderColor: COLORS.primary }
-            : styles.card
-        }
+        style={({ pressed }) => [
+          styles.tableRow,
+          wide ? styles.tableRowWide : null,
+          !last ? styles.tableRowBorder : null,
+          highlighted ? styles.tableRowHighlighted : null,
+          pressed ? styles.tableRowPressed : null,
+        ]}
       >
-        <View style={styles.tableRow}>
-          <View style={[styles.colTask, styles.taskCell]}>
-            <Text style={styles.taskName} numberOfLines={2}>
-              {item.name}
+        <View style={[colTask, styles.taskCell]}>
+          <Text style={styles.taskName} numberOfLines={2}>
+            {item.name}
+          </Text>
+          {!wide ? (
+            <Text style={styles.taskProjectMuted} numberOfLines={1}>
+              {project}
             </Text>
-          </View>
-          <Text style={[styles.td, styles.colProject]} numberOfLines={2}>
-            {project}
-          </Text>
-          <Text style={[styles.td, styles.colDate]} numberOfLines={1}>
-            {startDate}
-          </Text>
-          <Text
-            style={[styles.td, styles.colDate, overdue ? styles.dateOverdue : null]}
-            numberOfLines={1}
-          >
-            {endDate}
-          </Text>
-          <View style={[styles.colStatus, styles.statusCell]}>
-            <KBStatusChip
-              label={displayStatus(item.status)}
-              variant={statusVariant(item.status)}
-            />
-          </View>
-          <View style={[styles.colActions, styles.actionsCell]}>
-            {renderActionButton(item, true)}
-          </View>
+          ) : null}
         </View>
-      </KBCard>
+
+        {wide ? (
+          <>
+            <Text style={[styles.td, styles.colProject]} numberOfLines={2}>
+              {project}
+            </Text>
+            <Text style={[styles.td, styles.colDate]} numberOfLines={1}>
+              {startDate}
+            </Text>
+            <Text
+              style={[styles.td, styles.colDate, overdue ? styles.dateOverdue : null]}
+              numberOfLines={1}
+            >
+              {endDate}
+            </Text>
+          </>
+        ) : null}
+
+        <View style={[colStatus, styles.statusCell]}>
+          <KBStatusChip
+            label={displayStatus(item.status)}
+            variant={statusVariant(item.status)}
+          />
+        </View>
+
+        <View style={[colActions, styles.actionsCell]}>
+          {renderActionButton(item, true)}
+        </View>
+      </Pressable>
     );
   };
 
@@ -653,14 +725,10 @@ export function FarmerTasksScreen() {
             </KBCard>
           ) : null
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
-            <View style={styles.tableCanvas}>
-              {renderTableHeader()}
-              {flatTasks.map((item) => (
-                <React.Fragment key={item.id}>{renderTask({ item })}</React.Fragment>
-              ))}
-            </View>
-          </ScrollView>
+          <View style={styles.tableShell}>
+            {renderTableHeader()}
+            {flatTasks.map((item, index) => renderTask(item, index, flatTasks.length))}
+          </View>
         )}
       </ScrollView>
 
@@ -869,48 +937,87 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#757575',
   },
-  tableCanvas: {
-    minWidth: TABLE_MIN_WIDTH,
-    width: TABLE_MIN_WIDTH,
+  tableShell: {
+    marginTop: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    overflow: 'hidden',
   },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5E5',
+    backgroundColor: '#FAFAFA',
+  },
+  tableHeaderWide: {
     gap: 10,
+    paddingHorizontal: 16,
   },
   th: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#757575',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    color: '#616161',
+    letterSpacing: 0.2,
   },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 8,
+    minHeight: 64,
+    backgroundColor: '#FFFFFF',
   },
-  colTask: {
-    width: 160,
-    flexShrink: 0,
+  tableRowWide: {
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  tableRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EEEEEE',
+  },
+  tableRowHighlighted: {
+    backgroundColor: '#F1F7F4',
+  },
+  tableRowPressed: {
+    backgroundColor: '#F7F7F7',
+  },
+  colTaskNarrow: {
+    flex: 1.35,
+    minWidth: 0,
+  },
+  colTaskWide: {
+    flex: 1.4,
+    minWidth: 0,
   },
   colProject: {
-    width: 130,
-    flexShrink: 0,
+    flex: 1.1,
+    minWidth: 0,
   },
   colDate: {
-    width: 96,
+    flex: 0.75,
+    minWidth: 72,
+  },
+  colStatusNarrow: {
+    width: 108,
     flexShrink: 0,
   },
-  colStatus: {
-    width: 130,
+  colStatusWide: {
+    flex: 1.05,
+    minWidth: 100,
+  },
+  colActionsNarrow: {
+    width: 100,
     flexShrink: 0,
   },
-  colActions: {
-    width: 110,
+  colActionsWide: {
+    width: 108,
     flexShrink: 0,
   },
   td: {
@@ -925,35 +1032,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   taskName: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#1A1A1A',
+  },
+  taskProjectMuted: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#757575',
   },
   statusCell: {
     alignItems: 'flex-start',
     justifyContent: 'center',
   },
   actionsCell: {
-    alignItems: 'flex-end',
+    alignItems: 'stretch',
     justifyContent: 'center',
   },
-  actionBtn: {
-    minWidth: 96,
+  actionChip: {
+    minHeight: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
     borderColor: COLORS.primary,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  actionBtnLabel: {
-    fontSize: 11,
-    marginVertical: 2,
-    marginHorizontal: 2,
+  actionChipPressed: {
+    opacity: 0.7,
+  },
+  actionChipLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   actionsMuted: {
     fontSize: 13,
     color: '#BDBDBD',
-    textAlign: 'right',
+    textAlign: 'center',
     width: '100%',
-  },
-  card: {
-    marginBottom: 10,
   },
   evidenceBlock: {
     marginTop: 12,
