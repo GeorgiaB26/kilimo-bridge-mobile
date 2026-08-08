@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../constants';
 import { FarmerDashboardScreen } from '../screens/farmer/FarmerDashboardScreen';
@@ -75,6 +77,9 @@ export function FarmerNavigator() {
   useEffect(() => {
     void ImagePicker.requestCameraPermissionsAsync();
     void ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (Platform.OS === 'web') {
+      void AsyncStorage.removeItem('kilimo_read_cache_v1');
+    }
   }, []);
 
   return (

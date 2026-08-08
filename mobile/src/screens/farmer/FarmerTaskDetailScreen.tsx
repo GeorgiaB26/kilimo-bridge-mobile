@@ -25,7 +25,6 @@ import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import {
   listPendingTaskSubmissions,
   submitFarmerTaskWithOutbox,
-  syncAllPendingTaskSubmissions,
   type PendingTaskSubmissionView,
 } from '../../services/submitFarmerTaskOutbox';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';

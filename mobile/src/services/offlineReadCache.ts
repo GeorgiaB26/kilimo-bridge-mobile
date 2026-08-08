@@ -80,7 +80,11 @@ async function loadAsyncStore(): Promise<StoreMap> {
 }
 
 async function saveAsyncStore(store: StoreMap): Promise<void> {
-  await AsyncStorage.setItem(ASYNC_FALLBACK_KEY, JSON.stringify(store));
+  try {
+    await AsyncStorage.setItem(ASYNC_FALLBACK_KEY, JSON.stringify(store));
+  } catch {
+    await AsyncStorage.removeItem(ASYNC_FALLBACK_KEY);
+  }
 }
 
 function rowToEntry<T>(row: CacheRow): ReadCacheEntry<T> {

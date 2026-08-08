@@ -29,6 +29,7 @@ import { TasksSummaryCards } from '../../components/tasks/TasksSummaryCards';
 import { TasksTableView, farmerTaskColumns, type TaskTableRow } from '../../components/tasks/TasksTableView';
 import { TasksSearchToolbar } from '../../components/tasks/TasksSearchToolbar';
 import { navigateFarmerRootScreen } from '../../utils/farmerRootNavigation';
+import { syncAllPendingTaskSubmissions } from '../../services/submitFarmerTaskOutbox';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 
@@ -76,7 +77,11 @@ export function FarmerTasksScreen() {
 
   const load = useCallback(async () => {
     try {
-      await syncAllPendingTaskSubmissions();
+      try {
+        await syncAllPendingTaskSubmissions();
+      } catch {
+        // Pending sync is best-effort — never block the task list.
+      }
       const data = await getFarmerAssignedTasks();
       const list = (data.tasks ?? []) as ExtendedTaskRow[];
       setTasks(list);

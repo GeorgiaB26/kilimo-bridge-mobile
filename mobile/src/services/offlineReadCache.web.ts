@@ -1,6 +1,6 @@
 /**
- * Offline read cache (web) — AsyncStorage.
- * Same public API as the native SQLite implementation.
+ * Offline read cache (web) — live API only.
+ * Avoids localStorage quota errors from kilimo_read_cache_v1 on Netlify.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -16,108 +16,56 @@ export {
   readCacheCompositeKey,
 } from './offlineReadCacheTypes';
 
-const ASYNC_KEY = 'kilimo_read_cache_v1';
+const LEGACY_CACHE_KEY = 'kilimo_read_cache_v1';
 
-type StoreMap = Record<
-  string,
-  { cacheKey: string; userScope: string; payload_json: string; fetched_at: string }
->;
+let legacyCachePurged = false;
 
-async function loadStore(): Promise<StoreMap> {
-  const raw = await AsyncStorage.getItem(ASYNC_KEY);
-  if (!raw) return {};
+async function purgeLegacyWebCache(): Promise<void> {
+  if (legacyCachePurged) return;
+  legacyCachePurged = true;
   try {
-    return JSON.parse(raw) as StoreMap;
+    await AsyncStorage.removeItem(LEGACY_CACHE_KEY);
   } catch {
-    return {};
+    // ignore
   }
 }
 
-async function saveStore(store: StoreMap): Promise<void> {
-  await AsyncStorage.setItem(ASYNC_KEY, JSON.stringify(store));
-}
-
+/** Web does not persist read cache — prevents localStorage quota exceeded errors. */
 export async function putReadCache<T>(
   cacheKey: string,
   payload: T,
   userScope: string
 ): Promise<ReadCacheEntry<T>> {
+  await purgeLegacyWebCache();
   const fetchedAt = new Date().toISOString();
   const scope = userScope.trim() || 'anon';
-  const key = readCacheCompositeKey(scope, cacheKey);
-  const store = await loadStore();
-  store[key] = {
-    cacheKey,
-    userScope: scope,
-    payload_json: JSON.stringify(payload ?? null),
-    fetched_at: fetchedAt,
-  };
-  await saveStore(store);
   return { cacheKey, userScope: scope, payload, fetchedAt };
 }
 
 export async function getReadCache<T>(
-  cacheKey: string,
-  userScope: string
+  _cacheKey: string,
+  _userScope: string
 ): Promise<ReadCacheEntry<T> | null> {
-  const scope = userScope.trim() || 'anon';
-  const key = readCacheCompositeKey(scope, cacheKey);
-  const store = await loadStore();
-  const row = store[key];
-  if (!row) return null;
-  try {
-    return {
-      cacheKey: row.cacheKey,
-      userScope: row.userScope,
-      payload: JSON.parse(row.payload_json) as T,
-      fetchedAt: row.fetched_at,
-    };
-  } catch {
-    return null;
-  }
+  await purgeLegacyWebCache();
+  return null;
 }
 
-export async function deleteReadCache(cacheKey: string, userScope: string): Promise<void> {
-  const key = readCacheCompositeKey(userScope.trim() || 'anon', cacheKey);
-  const store = await loadStore();
-  if (!(key in store)) return;
-  delete store[key];
-  await saveStore(store);
+export async function deleteReadCache(_cacheKey: string, _userScope: string): Promise<void> {
+  await purgeLegacyWebCache();
 }
 
-export async function clearReadCacheForUser(userScope: string): Promise<number> {
-  const scope = userScope.trim() || 'anon';
-  const prefix = `${scope}::`;
-  const store = await loadStore();
-  let removed = 0;
-  for (const key of Object.keys(store)) {
-    if (key.startsWith(prefix)) {
-      delete store[key];
-      removed += 1;
-    }
-  }
-  if (removed > 0) await saveStore(store);
-  return removed;
+export async function clearReadCacheForUser(_userScope: string): Promise<number> {
+  await purgeLegacyWebCache();
+  return 0;
 }
 
-/**
- * Try live fetch; on success write cache.
- * On failure, return last cache for this key/scope if present.
- */
+/** Direct live fetch on web — no localStorage caching. */
 export async function loadWithReadCache<T>(options: {
   cacheKey: string;
   userScope: string;
   fetchLive: () => Promise<T>;
 }): Promise<{ data: T; fromCache: boolean; fetchedAt: string | null }> {
-  try {
-    const data = await options.fetchLive();
-    const saved = await putReadCache(options.cacheKey, data, options.userScope);
-    return { data, fromCache: false, fetchedAt: saved.fetchedAt };
-  } catch (err) {
-    const cached = await getReadCache<T>(options.cacheKey, options.userScope);
-    if (cached) {
-      return { data: cached.payload, fromCache: true, fetchedAt: cached.fetchedAt };
-    }
-    throw err;
-  }
+  await purgeLegacyWebCache();
+  const data = await options.fetchLive();
+  return { data, fromCache: false, fetchedAt: null };
 }
