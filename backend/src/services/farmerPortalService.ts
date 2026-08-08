@@ -8,7 +8,7 @@ import {
 } from './farmerProgramService';
 import { getFarmerSupportContacts } from './farmerHelpRequestService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
-import { countTaskCategories } from '../utils/taskCategorization';
+import { countTaskCategories, compareDueDates } from '../utils/taskCategorization';
 import { listFarmerTasks } from './hierarchyService';
 import { listAgentTasksAssignedToFarmer } from './agentDashboardService';
 
@@ -72,12 +72,9 @@ function mapHierarchyTaskToFarmerRow(row: Record<string, unknown>): FarmerPortal
 
 function sortFarmerPortalTasks(tasks: FarmerPortalTaskRow[]): FarmerPortalTaskRow[] {
   return [...tasks].sort((a, b) => {
-    const da = a.due_date ? new Date(a.due_date.includes('T') ? a.due_date : `${a.due_date}T12:00:00`) : null;
-    const db = b.due_date ? new Date(b.due_date.includes('T') ? b.due_date : `${b.due_date}T12:00:00`) : null;
-    if (!da && !db) return a.name.localeCompare(b.name);
-    if (!da) return 1;
-    if (!db) return -1;
-    return da.getTime() - db.getTime();
+    const byDue = compareDueDates(a.due_date, b.due_date);
+    if (byDue !== 0) return byDue;
+    return a.name.localeCompare(b.name);
   });
 }
 

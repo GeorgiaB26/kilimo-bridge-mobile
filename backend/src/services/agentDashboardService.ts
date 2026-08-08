@@ -4,7 +4,7 @@ import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { createNotification } from './notificationService';
-import { countTaskCategories } from '../utils/taskCategorization';
+import { countTaskCategories, compareDueDates } from '../utils/taskCategorization';
 
 export interface AgentPersonalTask {
   id: string;
@@ -442,14 +442,7 @@ export async function getAgentDashboardSummary(
       farmer_name: t.assigned_farmer_names?.join(', ') || 'You',
       source: 'personal' as const,
     })),
-  ].sort((a, b) => {
-    const da = a.due_date ? new Date(a.due_date.includes('T') ? a.due_date : `${a.due_date}T12:00:00`) : null;
-    const db = b.due_date ? new Date(b.due_date.includes('T') ? b.due_date : `${b.due_date}T12:00:00`) : null;
-    if (!da && !db) return 0;
-    if (!da) return 1;
-    if (!db) return -1;
-    return da.getTime() - db.getTime();
-  });
+  ].sort((a, b) => compareDueDates(a.due_date, b.due_date));
 
   const overdueTasks = [
     ...farmerTasks.filter(

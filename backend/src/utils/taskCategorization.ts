@@ -1,8 +1,10 @@
 /** Shared task categorization: OVERDUE → IN PROGRESS → NOT STARTED → COMPLETED */
 
+export type DueDateInput = string | Date | null | undefined;
+
 export interface CategorizableTaskRow {
   status: string;
-  due_date?: string | null;
+  due_date?: DueDateInput;
 }
 
 export interface TaskCategoryCounts {
@@ -28,15 +30,38 @@ function isInProgressStatus(status?: string | null): boolean {
   return normalizeStatusForCategory(status) === 'in-progress';
 }
 
-function parseDueDay(due?: string | null): Date | null {
-  if (!due?.trim()) return null;
-  const d = new Date(due.includes('T') ? due : `${due}T12:00:00`);
+export function normalizeDueDateInput(due?: DueDateInput): string | null {
+  if (due == null) return null;
+  if (typeof due === 'string') {
+    const trimmed = due.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  if (due instanceof Date && !Number.isNaN(due.getTime())) {
+    return due.toISOString();
+  }
+  const asString = String(due).trim();
+  return asString.length ? asString : null;
+}
+
+export function parseDueDay(due?: DueDateInput): Date | null {
+  const normalized = normalizeDueDateInput(due);
+  if (!normalized) return null;
+  const d = new Date(normalized.includes('T') ? normalized : `${normalized}T12:00:00`);
   if (Number.isNaN(d.getTime())) return null;
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function isOverdue(due?: string | null, status?: string | null): boolean {
+export function compareDueDates(a?: DueDateInput, b?: DueDateInput): number {
+  const da = parseDueDay(a);
+  const db = parseDueDay(b);
+  if (!da && !db) return 0;
+  if (!da) return 1;
+  if (!db) return -1;
+  return da.getTime() - db.getTime();
+}
+
+function isOverdue(due?: DueDateInput, status?: string | null): boolean {
   if (status && isCompletedStatus(status)) return false;
   const dueDay = parseDueDay(due);
   if (!dueDay) return false;
