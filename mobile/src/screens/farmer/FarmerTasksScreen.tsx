@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Pressable,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp, ParamListBase } from '@react-navigation/native';
@@ -75,6 +76,7 @@ export function FarmerTasksScreen() {
 
   const load = useCallback(async () => {
     try {
+      await syncAllPendingTaskSubmissions();
       const data = await getFarmerAssignedTasks();
       const list = (data.tasks ?? []) as ExtendedTaskRow[];
       setTasks(list);
@@ -95,7 +97,7 @@ export function FarmerTasksScreen() {
       }
       setLoading(tasks.length === 0);
       load();
-      const interval = setInterval(load, 30000);
+      const interval = setInterval(load, 15000);
       return () => clearInterval(interval);
     }, [load, statusFilterFromRoute, tasks.length])
   );
@@ -146,7 +148,11 @@ export function FarmerTasksScreen() {
   );
 
   useEffect(() => {
-    if (!scrollTargetId || loading || tasks.length === 0) return;
+    if (!scrollTargetId) {
+      handledDeepLinkRef.current = null;
+      return;
+    }
+    if (loading || tasks.length === 0) return;
     if (handledDeepLinkRef.current === scrollTargetId) return;
 
     const task = tasks.find((t) => t.id === scrollTargetId);
@@ -209,7 +215,7 @@ export function FarmerTasksScreen() {
             <Text className="mt-1 text-sm font-semibold text-[#4472C4]">{filterLabel}</Text>
           ) : null}
           <Text className="mt-1 text-sm text-muted-foreground">
-            Updates every 30 seconds · overdue tasks shown first
+            Updates every 15 seconds · overdue tasks shown first
           </Text>
           {error ? <FarmerOfflineBanner message={error} /> : null}
         </View>

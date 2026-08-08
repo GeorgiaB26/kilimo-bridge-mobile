@@ -168,57 +168,70 @@ export function TasksTableView({
     );
   }
 
-  return (
-    <View style={styles.tableOuter}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={Platform.OS === 'web'}
-        contentContainerStyle={{ flexGrow: 1 }}
-      >
-        <View style={[styles.table, { minWidth: tableWidth }]}>
-          <View style={styles.headerRow}>
+  const tableBody = (
+    <>
+      <View style={styles.headerRow}>
+        {columns.map((col) => (
+          <Text
+            key={col.key}
+            style={[
+              styles.headerCell,
+              { flex: col.flex },
+              col.align === 'right' && styles.alignRight,
+            ]}
+          >
+            {col.label}
+          </Text>
+        ))}
+      </View>
+      {rows.map((row) => {
+        const highlighted = highlightId === row.id;
+        return (
+          <Pressable
+            key={row.id}
+            onPress={() => onRowPress(row)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open task ${row.name}`}
+            style={[
+              styles.dataRow,
+              highlighted && styles.dataRowHighlight,
+              webPressable,
+            ]}
+          >
             {columns.map((col) => (
-              <Text
+              <View
                 key={col.key}
                 style={[
-                  styles.headerCell,
+                  styles.cellWrap,
                   { flex: col.flex },
                   col.align === 'right' && styles.alignRight,
                 ]}
               >
-                {col.label}
-              </Text>
+                {col.render(row)}
+              </View>
             ))}
-          </View>
-          {rows.map((row) => {
-            const highlighted = highlightId === row.id;
-            return (
-              <Pressable
-                key={row.id}
-                onPress={() => onRowPress(row)}
-                style={[
-                  styles.dataRow,
-                  highlighted && styles.dataRowHighlight,
-                  webPressable,
-                ]}
-              >
-                {columns.map((col) => (
-                  <View
-                    key={col.key}
-                    style={[
-                      styles.cellWrap,
-                      { flex: col.flex },
-                      col.align === 'right' && styles.alignRight,
-                    ]}
-                  >
-                    {col.render(row)}
-                  </View>
-                ))}
-              </Pressable>
-            );
-          })}
+          </Pressable>
+        );
+      })}
+    </>
+  );
+
+  return (
+    <View style={styles.tableOuter}>
+      {Platform.OS === 'web' ? (
+        <View style={styles.webScroll}>
+          <View style={[styles.table, { minWidth: tableWidth }]}>{tableBody}</View>
         </View>
-      </ScrollView>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ flexGrow: 1 }}
+        >
+          <View style={[styles.table, { minWidth: tableWidth }]}>{tableBody}</View>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -236,6 +249,10 @@ const styles = StyleSheet.create({
   table: {
     width: '100%',
   },
+  webScroll: Platform.select({
+    web: { overflow: 'auto' as const },
+    default: {},
+  }),
   headerRow: {
     flexDirection: 'row',
     backgroundColor: '#F5F5F5',

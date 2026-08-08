@@ -121,7 +121,7 @@ export function navigateFromFarmerNotification(
     type === 'task_assigned'
   ) {
     if (contextIdValue) {
-      navigateFarmerRootScreen(root, 'TaskDetail', { taskId: contextIdValue });
+      navigateFarmerRootScreen(navigation, 'TaskDetail', { taskId: contextIdValue });
     } else {
       navigateMainTab(root, 'Tasks');
     }

@@ -9,7 +9,7 @@ import {
   Pressable,
   Platform,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,6 +25,7 @@ import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import {
   listPendingTaskSubmissions,
   submitFarmerTaskWithOutbox,
+  syncAllPendingTaskSubmissions,
   type PendingTaskSubmissionView,
 } from '../../services/submitFarmerTaskOutbox';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
@@ -77,7 +78,10 @@ function normalizeTaskStatus(status: string): string {
 function canSubmitTask(status: string, isAgentAssignment: boolean): boolean {
   if (isAgentAssignment) return false;
   const s = normalizeTaskStatus(status);
-  return ['not-started', 'in-progress', 'rejected'].includes(s);
+  if (['approved', 'completed', 'submitted-for-approval', 'submitted'].includes(s)) {
+    return false;
+  }
+  return true;
 }
 
 function evidencePhotoUri(task: TaskDetail): string | null {
@@ -143,7 +147,11 @@ export function FarmerTaskDetailScreen() {
   const isAgentAssignment = task?.source === 'agent_assignment';
   const taskIsCompleted =
     task != null && ['approved', 'completed'].includes(normalizeTaskStatus(task.status));
-  const showSubmitForm = task != null && canSubmitTask(task.status, isAgentAssignment) && !pendingSubmission;
+  const showSubmitForm =
+    task != null &&
+    !taskIsCompleted &&
+    canSubmitTask(task.status, isAgentAssignment) &&
+    !pendingSubmission;
 
   const submissionHistory = useMemo(
     () => (task ? buildSubmissionHistory(task) : []),
@@ -208,6 +216,13 @@ export function FarmerTaskDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!task) return;
+      load();
+    }, [load, task?.id])
+  );
 
   useEffect(() => {
     (async () => {
