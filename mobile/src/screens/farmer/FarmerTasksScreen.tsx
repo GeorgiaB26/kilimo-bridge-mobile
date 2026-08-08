@@ -6,6 +6,8 @@ import {
   ActivityIndicator,
   StyleSheet,
   Image,
+  Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -49,6 +51,9 @@ import {
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 type StatusFilterKey = TaskStatusKpiKey;
 
+/** Show Project / Start / End as collapsed columns at this width and above. */
+const WIDE_TABLE_MIN_WIDTH = 600;
+
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
   assigned_at?: string;
@@ -90,6 +95,17 @@ function canOpenTask(status: string): boolean {
   return ['not-started', 'in-progress', 'rejected'].includes(s);
 }
 
+/** Edit is available until the task is locked by approval/completion. */
+function canEditTask(status: string): boolean {
+  const s = normalizeTaskStatus(status);
+  return !['approved', 'completed'].includes(s);
+}
+
+function isSubmittedForApproval(status: string): boolean {
+  const s = normalizeTaskStatus(status);
+  return s === 'submitted-for-approval' || s === 'submitted';
+}
+
 function displayStatus(status: string): string {
   const s = normalizeTaskStatus(status);
   if (s === 'submitted-for-approval') return 'Submitted for Approval';
@@ -104,9 +120,17 @@ function isOverdue(due?: string | null, status?: string): boolean {
   return isTaskOverdue(due, status);
 }
 
+function projectLabel(item: ExtendedTaskRow): string {
+  if (item.program_project_name?.trim()) return item.program_project_name.trim();
+  if (isAgentAssignment(item)) return 'Field agent assignment';
+  return '—';
+}
+
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
+  const { width } = useWindowDimensions();
+  const wide = width >= WIDE_TABLE_MIN_WIDTH;
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
   const listRef = useRef<SectionList>(null);
@@ -199,6 +223,30 @@ export function FarmerTasksScreen() {
     } finally {
       setRecallingId(null);
     }
+  };
+
+  const confirmAndRecall = (item: ExtendedTaskRow) => {
+    Alert.alert(
+      'Withdraw submission?',
+      'This will withdraw your submission from review so you can edit it — continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => void handleRecall(item),
+        },
+      ]
+    );
+  };
+
+  const handleEdit = (item: ExtendedTaskRow) => {
+    if (!canEditTask(item.status)) return;
+    if (isSubmittedForApproval(item.status)) {
+      confirmAndRecall(item);
+      return;
+    }
+    setSubmitTask(item);
   };
 
   const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
@@ -301,22 +349,50 @@ export function FarmerTasksScreen() {
     setExpandedTaskId((prev) => (prev === taskId ? null : taskId));
   };
 
+  const renderTableHeader = () => (
+    <View style={[styles.tableHeader, wide ? styles.tableHeaderWide : null]}>
+      <Text style={[styles.th, styles.colTask]} numberOfLines={1}>
+        Task
+      </Text>
+      {wide ? (
+        <>
+          <Text style={[styles.th, styles.colProject]} numberOfLines={1}>
+            Project
+          </Text>
+          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+            Start date
+          </Text>
+          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+            End date
+          </Text>
+        </>
+      ) : null}
+      <Text style={[styles.th, styles.colStatus]} numberOfLines={1}>
+        Status
+      </Text>
+      <Text style={[styles.th, styles.colActions]} numberOfLines={1}>
+        Actions
+      </Text>
+    </View>
+  );
+
   const renderTask = (item: ExtendedTaskRow) => {
     const agentTask = isAgentAssignment(item);
-    const openable = canOpenTask(item.status);
     const overdue = isOverdue(item.due_date, item.status);
     const assignedWhen = formatDisplayDate(item.assigned_at);
+    const startDate = item.assigned_at ? formatCleanDate(item.assigned_at) : '—';
+    const endDate = item.due_date ? formatCleanDate(item.due_date) : '—';
     const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
     const assigner =
       item.assigned_by_name?.trim() || (agentTask ? 'Your field agent' : 'Program team');
     const highlighted = scrollTargetId === item.id;
     const expanded = expandedTaskId === item.id;
     const statusNorm = normalizeTaskStatus(item.status);
-    const openLabel = statusNorm === 'rejected' ? 'Resubmit task' : 'Open task';
-    const openButtonColor = statusNorm === 'rejected' ? COLORS.warning : COLORS.primary;
+    const editable = canEditTask(item.status);
     const showEvidence = shouldShowSubmissionEvidence(item.status);
     const photoUri = evidencePhotoUri(item);
     const submissionNotes = item.notes?.trim() || '';
+    const project = projectLabel(item);
 
     return (
       <KBCard
@@ -328,42 +404,99 @@ export function FarmerTasksScreen() {
             : styles.card
         }
       >
-        <View style={styles.row}>
-          <View style={styles.titleCol}>
-            <Text className="text-lg font-bold text-foreground">{item.name}</Text>
+        <View style={[styles.tableRow, wide ? styles.tableRowWide : null]}>
+          <View style={[styles.colTask, styles.taskCell]}>
+            <View style={styles.taskTitleRow}>
+              <Text style={styles.taskName} numberOfLines={2}>
+                {item.name}
+              </Text>
+              {expanded ? (
+                <ChevronUp size={16} color="#757575" />
+              ) : (
+                <ChevronDown size={16} color="#757575" />
+              )}
+            </View>
+            {!wide ? (
+              <Text style={styles.taskProjectMuted} numberOfLines={1}>
+                {project}
+              </Text>
+            ) : null}
           </View>
-          <View style={styles.headerRight}>
-            <KBStatusChip label={displayStatus(item.status)} variant={statusVariant(item.status)} />
-            {expanded ? (
-              <ChevronUp size={18} color="#757575" />
+
+          {wide ? (
+            <>
+              <Text style={[styles.td, styles.colProject]} numberOfLines={2}>
+                {project}
+              </Text>
+              <Text style={[styles.td, styles.colDate]} numberOfLines={1}>
+                {startDate}
+              </Text>
+              <Text
+                style={[
+                  styles.td,
+                  styles.colDate,
+                  overdue ? styles.dateOverdue : null,
+                ]}
+                numberOfLines={1}
+              >
+                {endDate}
+              </Text>
+            </>
+          ) : null}
+
+          <View style={[styles.colStatus, styles.statusCell]}>
+            <KBStatusChip
+              label={displayStatus(item.status)}
+              variant={statusVariant(item.status)}
+            />
+          </View>
+
+          <View style={[styles.colActions, styles.actionsCell]}>
+            {editable ? (
+              <Button
+                mode="outlined"
+                compact
+                textColor={COLORS.primary}
+                loading={recallingId === item.id}
+                disabled={recallingId === item.id}
+                onPress={() => handleEdit(item)}
+                style={styles.editBtn}
+                labelStyle={styles.editBtnLabel}
+              >
+                Edit
+              </Button>
             ) : (
-              <ChevronDown size={18} color="#757575" />
+              <Text style={styles.actionsMuted}>—</Text>
             )}
           </View>
         </View>
 
-        {item.program_project_name ? (
-          <Text className="mt-1 text-sm text-muted-foreground">{item.program_project_name}</Text>
-        ) : null}
-
-        {item.description ? (
-          <Text className="mt-2 text-sm text-foreground leading-5">{item.description}</Text>
-        ) : null}
-
-        {!expanded && openable ? (
-          <Button
-            mode="contained"
-            buttonColor={openButtonColor}
-            onPress={() => setSubmitTask(item)}
-            style={styles.openBtn}
-          >
-            {openLabel}
-          </Button>
-        ) : null}
-
         {expanded ? (
           <View style={styles.expandedBody}>
-            <View style={styles.metaGrid}>
+            {!wide ? (
+              <View style={styles.metaGrid}>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">Project</Text>
+                  <Text className="text-sm text-foreground">{project}</Text>
+                </View>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">Start date</Text>
+                  <Text className="text-sm text-foreground">{startDate}</Text>
+                </View>
+                <View style={styles.metaItem}>
+                  <Text className="text-xs font-semibold text-muted-foreground">End date</Text>
+                  <Text
+                    className="text-sm"
+                    style={{ color: overdue ? COLORS.alert : COLORS.text }}
+                  >
+                    {endDate}
+                    {overdue ? ' · Overdue' : ''}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            <View style={[styles.metaGrid, !wide ? styles.metaGridSpaced : null]}>
               <View style={styles.metaItem}>
                 <Text className="text-xs font-semibold text-muted-foreground">Assigned</Text>
                 <Text className="text-sm text-foreground">{assignedWhen}</Text>
@@ -386,6 +519,10 @@ export function FarmerTasksScreen() {
                 </Text>
               </View>
             </View>
+
+            {item.description ? (
+              <Text className="mt-3 text-sm leading-5 text-foreground">{item.description}</Text>
+            ) : null}
 
             {agentTask ? (
               <Text className="mt-2 text-sm text-muted-foreground">Field agent assignment</Text>
@@ -430,38 +567,25 @@ export function FarmerTasksScreen() {
               </Text>
             ) : null}
 
-            {statusNorm === 'submitted-for-approval' ? (
-              <Button
-                mode="outlined"
-                textColor={COLORS.primary}
-                loading={recallingId === item.id}
-                disabled={recallingId === item.id}
-                onPress={() => void handleRecall(item)}
-                style={styles.openBtn}
-              >
-                Recall submission
-              </Button>
-            ) : null}
-
-            {openable ? (
+            {editable ? (
               <Button
                 mode="contained"
-                buttonColor={openButtonColor}
-                onPress={() => setSubmitTask(item)}
+                buttonColor={COLORS.primary}
+                loading={recallingId === item.id}
+                disabled={recallingId === item.id}
+                onPress={() => handleEdit(item)}
                 style={styles.openBtn}
               >
-                {openLabel}
+                Edit
               </Button>
-            ) : null}
+            ) : (
+              <Text className="mt-3 text-sm text-muted-foreground">
+                Task locked — no further edits
+              </Text>
+            )}
           </View>
         ) : (
-          <Text style={styles.expandHint}>
-            {openable
-              ? 'Tap card for more details'
-              : showEvidence
-                ? 'Tap to view your submission'
-                : 'Tap for details'}
-          </Text>
+          <Text style={styles.expandHint}>Tap row for details</Text>
         )}
       </KBCard>
     );
@@ -544,6 +668,7 @@ export function FarmerTasksScreen() {
                 ))}
               </View>
             ) : null}
+            {sections.length > 0 ? renderTableHeader() : null}
           </View>
         }
         ListEmptyComponent={
@@ -607,7 +732,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   header: {
-    marginBottom: 12,
+    marginBottom: 8,
     marginTop: 4,
   },
   pendingRecalls: {
@@ -618,22 +743,104 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#757575',
   },
-  card: {
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  titleCol: {
-    flex: 1,
-  },
-  headerRight: {
+  tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginTop: 16,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    gap: 8,
+  },
+  tableHeaderWide: {
+    gap: 10,
+  },
+  th: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#757575',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tableRowWide: {
+    gap: 10,
+  },
+  colTask: {
+    flex: 1.4,
+    minWidth: 0,
+  },
+  colProject: {
+    flex: 1.1,
+    minWidth: 0,
+  },
+  colDate: {
+    flex: 0.85,
+    minWidth: 0,
+  },
+  colStatus: {
+    flex: 1.05,
+    minWidth: 72,
+  },
+  colActions: {
+    width: 72,
+    flexShrink: 0,
+  },
+  td: {
+    fontSize: 13,
+    color: '#333333',
+  },
+  dateOverdue: {
+    color: COLORS.alert,
+    fontWeight: '600',
+  },
+  taskCell: {
+    justifyContent: 'center',
+  },
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  taskName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  taskProjectMuted: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#757575',
+  },
+  statusCell: {
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  actionsCell: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  editBtn: {
+    minWidth: 64,
+    borderColor: COLORS.primary,
+  },
+  editBtnLabel: {
+    fontSize: 12,
+    marginVertical: 2,
+    marginHorizontal: 4,
+  },
+  actionsMuted: {
+    fontSize: 13,
+    color: '#BDBDBD',
+    textAlign: 'right',
+    width: '100%',
+  },
+  card: {
+    marginBottom: 10,
   },
   expandedBody: {
     marginTop: 12,
@@ -664,6 +871,9 @@ const styles = StyleSheet.create({
   },
   metaGrid: {
     gap: 10,
+  },
+  metaGridSpaced: {
+    marginTop: 12,
   },
   metaItem: {
     gap: 2,
