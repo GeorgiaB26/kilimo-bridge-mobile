@@ -12,7 +12,6 @@ import { getUserNotifications } from '../services/notificationService';
 import { updateFarmerLocation, updateFarmerPicture } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
 import { createFarmerHelpRequest } from '../services/farmerHelpRequestService';
-import { createFarmerPersonalTask } from '../services/agentDashboardService';
 import hierarchyFarmerRoutes from './hierarchyFarmer';
 
 const router = Router();
@@ -181,46 +180,6 @@ router.patch(
       res.json(data);
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Could not update photo' });
-    }
-  })
-);
-
-router.post(
-  '/personal-tasks',
-  asyncHandler(async (req, res) => {
-    if (!req.user?.farmerId || !req.user?.userId) {
-      res.status(400).json({ error: 'No farmer profile' });
-      return;
-    }
-    const { name, description, due_date, priority, assign_to_self } = req.body as {
-      name?: string;
-      description?: string;
-      due_date?: string;
-      priority?: string;
-      assign_to_self?: boolean;
-    };
-    if (!name?.trim()) {
-      res.status(400).json({ error: 'Task title is required' });
-      return;
-    }
-    if (!due_date?.trim()) {
-      res.status(400).json({ error: 'Due date is required (DD/MM/YYYY)' });
-      return;
-    }
-    try {
-      const task = await createFarmerPersonalTask(req.user.farmerId, req.user.userId, {
-        name: name.trim(),
-        description,
-        due_date: due_date.trim(),
-        priority,
-        assign_to_self,
-      });
-      logFarmerDataAccess(req, 'personal_task', req.user.farmerId);
-      res.status(201).json({ task });
-    } catch (err) {
-      res.status(400).json({
-        error: err instanceof Error ? err.message : 'Could not create task',
-      });
     }
   })
 );

@@ -1,6 +1,5 @@
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
-import { navigateFarmerRootScreen } from './farmerRootNavigation';
 
 export type FarmerNotification = {
   id: string;
@@ -120,11 +119,11 @@ export function navigateFromFarmerNotification(
     contextType === 'agent_task' ||
     type === 'task_assigned'
   ) {
-    if (contextIdValue) {
-      navigateFarmerRootScreen(navigation, 'TaskDetail', { taskId: contextIdValue });
-    } else {
-      navigateMainTab(root, 'Tasks');
-    }
+    navigateMainTab(
+      root,
+      'Tasks',
+      contextIdValue ? { taskId: contextIdValue, highlightTaskId: contextIdValue } : undefined
+    );
     return;
   }
 
