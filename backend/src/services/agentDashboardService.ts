@@ -4,7 +4,7 @@ import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { createNotification } from './notificationService';
-import { countTaskCategories } from '../utils/taskCategorization';
+import { countTaskCategories, compareDueDates } from '../utils/taskCategorization';
 
 export interface AgentPersonalTask {
   id: string;
@@ -189,7 +189,7 @@ export async function listAgentTasksAssignedToFarmer(farmerId: string): Promise<
     `
     SELECT at.*, u.name AS assigned_by_name
     FROM agent_tasks at
-    LEFT JOIN users u ON u.user_id = at.agent_user_id
+    LEFT JOIN users u ON u.user_id::text = at.agent_user_id
     WHERE at.assigned_farmer_ids IS NOT NULL
       AND TRIM(at.assigned_farmer_ids) != ''
     ORDER BY at.due_date, at.name
@@ -349,42 +349,47 @@ export async function updateAgentPersonalTaskReminder(
 }
 
 export async function getProjectManagerUserForAgent(region?: string, district?: string) {
-  const row = await queryOne<{ user_id: string; name: string; phone_number: string }>(
-    `
-    SELECT user_id::text AS user_id, name, phone_number FROM users
-    WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
-      AND phone_number IS NOT NULL
-      AND (
-        ($1::text IS NOT NULL AND region = $1)
-        OR ($2::text IS NOT NULL AND district = $2)
-      )
-    ORDER BY CASE role::text
-      WHEN 'project_manager' THEN 0
-      WHEN 'platform_admin' THEN 1
-      WHEN 'super_admin' THEN 2
-      WHEN 'admin' THEN 3
-      ELSE 4
-    END
-    LIMIT 1
-    `,
-    [region ?? null, district ?? null]
-  );
-  if (row) return row;
-  return queryOne<{ user_id: string; name: string; phone_number: string }>(
-    `
-    SELECT user_id::text AS user_id, name, phone_number FROM users
-    WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
-      AND phone_number IS NOT NULL
-    ORDER BY CASE role::text
-      WHEN 'project_manager' THEN 0
-      WHEN 'platform_admin' THEN 1
-      WHEN 'super_admin' THEN 2
-      WHEN 'admin' THEN 3
-      ELSE 4
-    END
-    LIMIT 1
-    `
-  );
+  try {
+    const row = await queryOne<{ user_id: string; name: string; phone_number: string }>(
+      `
+      SELECT user_id::text AS user_id, name, phone_number FROM users
+      WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
+        AND phone_number IS NOT NULL
+        AND (
+          ($1::text IS NOT NULL AND region = $1)
+          OR ($2::text IS NOT NULL AND district = $2)
+        )
+      ORDER BY CASE role::text
+        WHEN 'project_manager' THEN 0
+        WHEN 'platform_admin' THEN 1
+        WHEN 'super_admin' THEN 2
+        WHEN 'admin' THEN 3
+        ELSE 4
+      END
+      LIMIT 1
+      `,
+      [region ?? null, district ?? null]
+    );
+    if (row) return row;
+
+    return await queryOne<{ user_id: string; name: string; phone_number: string }>(
+      `
+      SELECT user_id::text AS user_id, name, phone_number FROM users
+      WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
+        AND phone_number IS NOT NULL
+      ORDER BY CASE role::text
+        WHEN 'project_manager' THEN 0
+        WHEN 'platform_admin' THEN 1
+        WHEN 'super_admin' THEN 2
+        WHEN 'admin' THEN 3
+        ELSE 4
+      END
+      LIMIT 1
+      `
+    );
+  } catch {
+    return null;
+  }
 }
 
 export async function getProjectManagerForAgent(region?: string, district?: string) {
@@ -409,14 +414,41 @@ export async function getAgentDashboardSummary(
   const personalTasks = await listAgentPersonalTasks(agentUserId);
 
   const allTasksForCounts = [
-    ...farmerTasks.map((t) => ({ status: t.status, due_date: t.due_date })),
-    ...personalTasks.map((t) => ({ status: t.status, due_date: t.due_date })),
+    ...farmerTasks.map((t) => ({
+      status: t.status ?? 'not-started',
+      due_date: t.due_date,
+    })),
+    ...personalTasks.map((t) => ({
+      status: t.status ?? 'not_started',
+      due_date: t.due_date,
+    })),
   ];
   const categoryCounts = countTaskCategories(allTasksForCounts);
 
+  const allRecentTasks = [
+    ...farmerTasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: t.status ?? 'not-started',
+      due_date: t.due_date,
+      farmer_name: t.farmer_name,
+      source: 'farmer' as const,
+    })),
+    ...personalTasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: (t.status ?? 'not_started').replace(/_/g, '-'),
+      due_date: t.due_date,
+      farmer_name: t.assigned_farmer_names?.join(', ') || 'You',
+      source: 'personal' as const,
+    })),
+  ].sort((a, b) => compareDueDates(a.due_date, b.due_date));
+
   const overdueTasks = [
     ...farmerTasks.filter(
-      (t) => classifyTaskDue(t.due_date).overdue && !['approved', 'completed'].includes(t.status)
+      (t) =>
+        classifyTaskDue(t.due_date).overdue &&
+        !['approved', 'completed'].includes(String(t.status ?? '').replace(/_/g, '-'))
     ),
     ...personalTasks.filter(
       (t) => classifyTaskDue(t.due_date).overdue && t.status !== 'completed'
@@ -450,7 +482,16 @@ export async function getAgentDashboardSummary(
       completed_count: categoryCounts.completed,
       total_count: categoryCounts.total,
       overdue: overdueTasks.slice(0, 5),
+      recent: allRecentTasks.slice(0, 5),
     },
+    recent_farmers: farmers.slice(0, 5).map((f) => ({
+      farmer_id: f.farmer_id,
+      name: f.name,
+      phone_number: f.phone_number,
+      district: f.district,
+      sub_county: f.sub_county,
+      status: f.status,
+    })),
     project_manager: pm
       ? { name: pm.name, phone: pm.phone_number }
       : null,
