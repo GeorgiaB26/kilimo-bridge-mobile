@@ -50,7 +50,7 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
-    api_build: 'v2.11.22-portal-dashboard-fix',
+    api_build: 'v2.11.23-portal-api-fix',
     field_agent_features: {
       messaging_restricted: true,
       notification_settings_legacy_sync: true,
@@ -175,6 +175,14 @@ function mountApiRoutes(): void {
       centresByCountry: stats.centresByCountry,
       recentImports: stats.recentImports,
     });
+  });
+
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[api] unhandled error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: message || 'Internal Server Error' });
+    }
   });
 
   appReady = true;
