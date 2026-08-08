@@ -1,16 +1,11 @@
-import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../constants';
 import { FarmerDashboardScreen } from '../screens/farmer/FarmerDashboardScreen';
 import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
-import { FarmerTaskDetailScreen } from '../screens/farmer/FarmerTaskDetailScreen';
-import { FarmerCreateTaskScreen } from '../screens/farmer/FarmerCreateTaskScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
@@ -74,14 +69,6 @@ function FarmerTabNavigator() {
 }
 
 export function FarmerNavigator() {
-  useEffect(() => {
-    void ImagePicker.requestCameraPermissionsAsync();
-    void ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (Platform.OS === 'web') {
-      void AsyncStorage.removeItem('kilimo_read_cache_v1');
-    }
-  }, []);
-
   return (
     <>
       <FarmerCurrencySync />
@@ -89,8 +76,6 @@ export function FarmerNavigator() {
         <RootStack.Screen name="MainTabs" component={FarmerTabNavigator} />
         <RootStack.Screen name="MessagesFlow" component={MessagesStackNavigator} />
         <RootStack.Screen name="NotificationsFlow" component={NotificationsStackNavigator} />
-        <RootStack.Screen name="TaskDetail" component={FarmerTaskDetailScreen} />
-        <RootStack.Screen name="CreateTask" component={FarmerCreateTaskScreen} />
       </RootStack.Navigator>
     </>
   );

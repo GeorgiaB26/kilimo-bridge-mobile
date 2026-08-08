@@ -21,8 +21,6 @@ import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerTabParamList, FarmerProjectsStackParamList } from '../../navigation/types';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
-import { navigateFarmerRootScreen } from '../../utils/farmerRootNavigation';
-import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import {
   FarmerDashboardProfileCard,
   FarmerDashboardEarningsCard,
@@ -253,11 +251,7 @@ export function FarmerDashboardScreen() {
         <FarmerDashboardRecentTasks
           tasks={data?.recentTasks}
           onTasksPress={() => goToTasks()}
-          onTaskPress={(taskId) =>
-            navigateFarmerRootScreen(navigation as NavigationProp<ParamListBase>, 'TaskDetail', {
-              taskId,
-            })
-          }
+          onTaskPress={(taskId) => goToTasks(undefined, taskId)}
         />
 
         <View style={{ paddingHorizontal: 12, marginVertical: 12 }}>

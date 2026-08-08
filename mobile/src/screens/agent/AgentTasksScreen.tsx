@@ -1,17 +1,25 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
 import {
   View,
   ScrollView,
   RefreshControl,
   ActivityIndicator,
   Alert,
+  TextInput,
   Pressable,
   Platform,
-  Modal,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  Ban,
+  Bell,
+  CircleCheck,
+  Hourglass,
+  TriangleAlert,
+} from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import {
@@ -21,31 +29,26 @@ import {
   getAgentTasks,
   rejectFarmerTask,
   resolveAgentHelpRequest,
+  setAgentTaskReminder,
   updateAgentPersonalTask,
 } from '../../api/client';
 import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
-import {
-  categorizeTasks,
-  flattenCategorizedBuckets,
-  pickCategorizedTasks,
-  type TaskCategoryFilter,
-} from '../../utils/taskCategorization';
+import { isTaskOverdue } from '../../utils/taskCategorization';
+import { categorizeTasks, pickCategorizedTasks } from '../../utils/taskCategorization';
+import { formatCleanDate } from '../../utils/greeting';
 import type { AgentTabParamList } from '../../navigation/types';
 import { KBCard } from '../../components/ui/KBCard';
+import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { AddAgentTaskModal } from '../../components/agent/AddAgentTaskModal';
 import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
-import { checkAndShowTaskReminders } from '../../utils/taskReminders';
-import { TasksSummaryCards } from '../../components/tasks/TasksSummaryCards';
-import { TasksTableView, type TaskTableRow } from '../../components/tasks/TasksTableView';
-import { TasksSearchToolbar } from '../../components/tasks/TasksSearchToolbar';
+import { checkAndShowTaskReminders, setTaskReminder, type ReminderType } from '../../utils/taskReminders';
 
 type UnifiedTask = {
   id: string;
   name: string;
   status: string;
   due_date?: string | null;
-  farmer_id?: string;
   farmer_name?: string;
   program_project_name?: string;
   source: 'farmer' | 'personal';
@@ -55,11 +58,141 @@ type UnifiedTask = {
   priority?: string;
   description?: string | null;
   assigned_farmer_names?: string[];
-  assigned_farmer_ids?: string[];
 };
 
-type FilterKey = 'all' | TaskCategoryFilter;
-type AssigneeFilter = 'all' | 'me' | string;
+type FilterKey = 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
+
+function formatDue(value?: string | null): string {
+  if (!value) return 'No due date';
+  return formatCleanDate(value);
+}
+
+function isOverdue(due?: string | null, status?: string): boolean {
+  return isTaskOverdue(due, status);
+}
+
+function TaskSection({
+  TitleIcon,
+  title,
+  color,
+  tasks,
+  onReminder,
+  onTaskPress,
+  onExpandApproval,
+  expandedId,
+  rejectReason,
+  setRejectReason,
+  acting,
+  approve,
+  reject,
+}: {
+  TitleIcon?: ComponentType<{ size?: number; color?: string }>;
+  title: string;
+  color?: string;
+  tasks: UnifiedTask[];
+  onReminder: (task: UnifiedTask, type: ReminderType) => void;
+  onTaskPress: (task: UnifiedTask) => void;
+  onExpandApproval?: (id: string) => void;
+  expandedId?: string | null;
+  rejectReason?: string;
+  setRejectReason?: (v: string) => void;
+  acting?: string | null;
+  approve?: (id: string) => void;
+  reject?: (id: string) => void;
+}) {
+  if (!tasks.length) return null;
+  const titleColor = color ?? '#757575';
+  return (
+    <View className="mb-5">
+      <View className="mb-2 flex-row items-center gap-1.5">
+        {TitleIcon ? <TitleIcon size={16} color={titleColor} /> : null}
+        <Text className="text-sm font-bold uppercase tracking-wide" style={{ color: titleColor }}>
+          {title}
+        </Text>
+      </View>
+      {tasks.map((item) => {
+        const isApproval = item.status === 'submitted-for-approval' || item.status === 'submitted';
+        const expanded = expandedId === item.id;
+        return (
+          <KBCard
+            key={`${item.source}-${item.id}`}
+            style={{ marginBottom: 8 }}
+            onPress={() => onTaskPress(item)}
+          >
+            <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">
+              Due: {formatDue(item.due_date)}
+              {isOverdue(item.due_date, item.status) ? ' (overdue)' : ''}
+            </Text>
+            {item.farmer_name ? (
+              <Text className="text-[13px] text-[#757575]">Assigned to: {item.farmer_name}</Text>
+            ) : null}
+            {item.program_project_name ? (
+              <Text className="text-[13px] text-[#757575]">{item.program_project_name}</Text>
+            ) : null}
+            {item.source === 'personal' ? (
+              <View className="mt-2 flex-row flex-wrap gap-2">
+                <Pressable
+                  onPress={() => onReminder(item, '1_day_before')}
+                  className="rounded-md bg-[#F0F0F0] px-2 py-1"
+                >
+                  <View className="flex-row items-center gap-1">
+                    <Bell size={12} color="#333333" />
+                    <Text className="text-xs">1 day before</Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  onPress={() => onReminder(item, '3_days_before')}
+                  className="rounded-md bg-[#F0F0F0] px-2 py-1"
+                >
+                  <View className="flex-row items-center gap-1">
+                    <Bell size={12} color="#333333" />
+                    <Text className="text-xs">3 days before</Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  onPress={() => onReminder(item, 'on_due_date')}
+                  className="rounded-md bg-[#F0F0F0] px-2 py-1"
+                >
+                  <View className="flex-row items-center gap-1">
+                    <Bell size={12} color="#333333" />
+                    <Text className="text-xs">On due date</Text>
+                  </View>
+                </Pressable>
+              </View>
+            ) : null}
+            {isApproval && onExpandApproval ? (
+              <Pressable onPress={() => onExpandApproval(item.id)} className="mt-2">
+                <KBStatusChip label="Submitted for approval" variant="pending" />
+              </Pressable>
+            ) : null}
+            {expanded && isApproval && approve && reject ? (
+              <View className="mt-3 gap-2">
+                {item.notes ? <Text className="text-sm">Notes: {item.notes}</Text> : null}
+                <Button className="h-11 bg-[#2E7D5E]" onPress={() => approve(item.id)} disabled={acting === item.id}>
+                  <Text className="text-white">Approve</Text>
+                </Button>
+                {setRejectReason ? (
+                  <TextInput
+                    className="rounded-lg border border-[#E0E0E0] bg-white p-2.5"
+                    placeholder="Rejection reason"
+                    value={rejectReason ?? ''}
+                    onChangeText={setRejectReason}
+                  />
+                ) : null}
+                <Button variant="outline" className="h-11" onPress={() => reject(item.id)} disabled={acting === item.id}>
+                  <Text className="text-[#D32F2F]">Reject</Text>
+                </Button>
+              </View>
+            ) : (
+              <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view details</Text>
+            )}
+          </KBCard>
+        );
+      })}
+    </View>
+  );
+}
 
 export function AgentTasksScreen() {
   const route = useRoute<RouteProp<AgentTabParamList, 'Tasks'>>();
@@ -73,45 +206,29 @@ export function AgentTasksScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
-  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
-  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [showFilter, setShowFilter] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedTask, setSelectedTask] = useState<AgentTaskDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [updatingTask, setUpdatingTask] = useState(false);
 
-  const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => {
-    const ids = Array.isArray(t.assigned_farmer_ids)
-      ? (t.assigned_farmer_ids as string[])
-      : typeof t.assigned_farmer_ids === 'string'
-        ? tryParseIds(t.assigned_farmer_ids as string)
-        : [];
-    return {
-      id: String(t.id),
-      name: String(t.name ?? ''),
-      status: String(t.status ?? 'not_started'),
-      due_date: t.due_date as string | null,
-      priority: t.priority as string | undefined,
-      description: t.description as string | null | undefined,
-      assigned_farmer_names: Array.isArray(t.assigned_farmer_names)
-        ? (t.assigned_farmer_names as string[])
-        : undefined,
-      assigned_farmer_ids: ids.length ? ids : undefined,
-      source: 'personal' as const,
-    };
-  };
-
-  function tryParseIds(raw: string): string[] {
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.map(String) : [];
-    } catch {
-      return [];
-    }
-  }
+  const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => ({
+    id: String(t.id),
+    name: String(t.name ?? ''),
+    status: String(t.status ?? 'not_started'),
+    due_date: t.due_date as string | null,
+    priority: t.priority as string | undefined,
+    description: t.description as string | null | undefined,
+    assigned_farmer_names: Array.isArray(t.assigned_farmer_names)
+      ? (t.assigned_farmer_names as string[])
+      : undefined,
+    source: 'personal' as const,
+  });
 
   const toTaskDetail = (task: UnifiedTask): AgentTaskDetail => ({
     id: task.id,
@@ -119,7 +236,7 @@ export function AgentTasksScreen() {
     status: task.status,
     due_date: task.due_date,
     description: task.description,
-    farmer_name: task.farmer_name ?? task.assigned_farmer_names?.join(', '),
+    farmer_name: task.farmer_name,
     program_project_name: task.program_project_name,
     payment_value_kes: task.payment_value_kes,
     notes: task.notes,
@@ -142,7 +259,6 @@ export function AgentTasksScreen() {
         name: String(t.name ?? ''),
         status: String(t.status ?? 'not_started'),
         due_date: t.due_date as string | null,
-        farmer_id: t.farmer_id as string | undefined,
         farmer_name: t.farmer_name as string | undefined,
         program_project_name: t.program_project_name as string | undefined,
         payment_value_kes: t.payment_value_kes as number | undefined,
@@ -157,14 +273,14 @@ export function AgentTasksScreen() {
       setFarmerTasks(ft);
       setPersonalTasks(pt);
     } catch {
-      /* keep existing */
+      /* keep existing task lists on partial failure */
     }
 
     try {
       const helpData = await getAgentHelpRequests();
       setHelpRequests(helpData.requests ?? []);
     } catch {
-      /* keep */
+      /* keep existing help requests */
     }
 
     try {
@@ -174,7 +290,7 @@ export function AgentTasksScreen() {
         name: f.name,
       })));
     } catch {
-      /* keep */
+      /* keep existing farmers list */
     } finally {
       setLoading(false);
     }
@@ -184,7 +300,8 @@ export function AgentTasksScreen() {
     useCallback(() => {
       const routeFilter = route.params?.filter;
       if (routeFilter) {
-        setStatusFilter(routeFilter);
+        setFilter(routeFilter);
+        setShowFilter(false);
         navigation.setParams({ filter: undefined });
       }
       if (route.params?.openAdd) {
@@ -193,8 +310,6 @@ export function AgentTasksScreen() {
       }
       load();
       checkAndShowTaskReminders();
-      const interval = setInterval(load, 30000);
-      return () => clearInterval(interval);
     }, [load, navigation, route.params?.filter, route.params?.openAdd])
   );
 
@@ -207,68 +322,47 @@ export function AgentTasksScreen() {
   const allTasks = useMemo(() => [...farmerTasks, ...personalTasks], [farmerTasks, personalTasks]);
 
   const searchFiltered = useMemo(() => {
+    let list = allTasks;
     const q = search.trim().toLowerCase();
-    if (!q) return allTasks;
-    return allTasks.filter(
-      (t) =>
-        t.name.toLowerCase().includes(q) ||
-        (t.farmer_name?.toLowerCase().includes(q) ?? false) ||
-        (t.program_project_name?.toLowerCase().includes(q) ?? false) ||
-        (t.assigned_farmer_names?.some((n) => n.toLowerCase().includes(q)) ?? false)
-    );
+    if (q) {
+      list = list.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          (t.farmer_name?.toLowerCase().includes(q) ?? false)
+      );
+    }
+    return list;
   }, [allTasks, search]);
 
-  const assigneeFiltered = useMemo(() => {
-    if (assigneeFilter === 'all') return searchFiltered;
-    if (assigneeFilter === 'me') {
-      return searchFiltered.filter((t) => t.source === 'personal');
-    }
-    return searchFiltered.filter(
-      (t) =>
-        t.farmer_id === assigneeFilter ||
-        (t.assigned_farmer_ids?.includes(assigneeFilter) ?? false)
-    );
-  }, [searchFiltered, assigneeFilter]);
-
-  const categorized = useMemo(() => categorizeTasks(assigneeFiltered), [assigneeFiltered]);
+  const categorized = useMemo(() => categorizeTasks(searchFiltered), [searchFiltered]);
   const displayCategories = useMemo(
-    () => pickCategorizedTasks(categorized, statusFilter),
-    [categorized, statusFilter]
+    () => pickCategorizedTasks(categorized, filter),
+    [categorized, filter]
   );
 
-  const tableTasks = useMemo(
-    () => flattenCategorizedBuckets(displayCategories),
-    [displayCategories]
-  );
+  const overdue = displayCategories.overdue;
+  const inProgress = displayCategories.inProgress;
+  const notStarted = displayCategories.notStarted;
+  const completed = displayCategories.completed;
+  const hasVisibleTasks =
+    overdue.length +
+      inProgress.length +
+      notStarted.length +
+      completed.length >
+    0;
 
-  const tableRows: TaskTableRow[] = useMemo(
-    () =>
-      tableTasks.map((t) => ({
-        id: t.id,
-        name: t.name,
-        status: t.status,
-        due_date: t.due_date,
-        assigneeLabel:
-          t.source === 'personal'
-            ? t.assigned_farmer_names?.join(', ') || 'You'
-            : t.farmer_name ?? '—',
-        projectLabel:
-          t.program_project_name ??
-          (t.source === 'personal' ? 'Personal task' : '—'),
-      })),
-    [tableTasks]
-  );
-
-  const assigneeLabel = useMemo(() => {
-    if (assigneeFilter === 'all') return 'All assignees';
-    if (assigneeFilter === 'me') return 'My tasks';
-    return farmers.find((f) => f.farmer_id === assigneeFilter)?.name ?? 'Farmer';
-  }, [assigneeFilter, farmers]);
-
-  const statusFilterLabel = useMemo(() => {
-    if (statusFilter === 'all') return 'All statuses';
-    return statusFilter.replace(/_/g, ' ').toUpperCase();
-  }, [statusFilter]);
+  const markContacted = async (id: string) => {
+    setActing(id);
+    try {
+      await resolveAgentHelpRequest(id);
+      await load();
+      Alert.alert('Done', 'Marked as contacted.');
+    } catch (err: unknown) {
+      Alert.alert('Error', extractApiError(err, 'Could not update'));
+    } finally {
+      setActing(null);
+    }
+  };
 
   const approve = async (id: string) => {
     setActing(id);
@@ -280,6 +374,39 @@ export function AgentTasksScreen() {
       Alert.alert('Error', extractApiError(err, 'Could not approve'));
     } finally {
       setActing(null);
+    }
+  };
+
+  const reject = async (id: string) => {
+    if (!rejectReason.trim()) {
+      Alert.alert('Reason required', 'Enter a rejection reason.');
+      return;
+    }
+    setActing(id);
+    try {
+      await rejectFarmerTask(id, rejectReason.trim());
+      setRejectReason('');
+      setExpandedId(null);
+      await load();
+    } catch (err: unknown) {
+      Alert.alert('Error', extractApiError(err, 'Could not reject'));
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleReminder = async (task: UnifiedTask, type: ReminderType) => {
+    if (!task.due_date) {
+      Alert.alert('No due date', 'This task has no due date for reminders.');
+      return;
+    }
+    await setTaskReminder(task.id, task.name, task.due_date, type);
+    if (task.source === 'personal') {
+      try {
+        await setAgentTaskReminder(task.id, type);
+      } catch {
+        /* local reminder still set */
+      }
     }
   };
 
@@ -308,35 +435,30 @@ export function AgentTasksScreen() {
   }) => {
     setCreating(true);
     try {
-      await createAgentPersonalTask(data);
-      setStatusFilter('all');
-      setAssigneeFilter('all');
+      const result = await createAgentPersonalTask(data);
+      const created = result?.task as Record<string, unknown> | undefined;
+      if (created?.id) {
+        const mapped = mapPersonalTask(created);
+        setPersonalTasks((prev) => {
+          if (prev.some((t) => t.id === mapped.id)) return prev;
+          return [...prev, mapped];
+        });
+      }
+      setFilter('all');
+      setShowFilter(false);
       setSearch('');
+      navigation.setParams({ filter: undefined });
       await load();
       setAddModalOpen(false);
       showMessage('Task created', 'Your task is now in the Tasks list.');
     } catch (err: unknown) {
-      showMessage('Could not create task', extractApiError(err, 'Could not create task'));
+      const msg = extractApiError(err, 'Could not create task');
+      showMessage('Could not create task', msg);
       throw err;
     } finally {
       setCreating(false);
     }
   };
-
-  const markContacted = async (id: string) => {
-    setActing(id);
-    try {
-      await resolveAgentHelpRequest(id);
-      await load();
-      Alert.alert('Done', 'Marked as contacted.');
-    } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not update'));
-    } finally {
-      setActing(null);
-    }
-  };
-
-  const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
   if (loading) {
     return (
@@ -346,59 +468,81 @@ export function AgentTasksScreen() {
     );
   }
 
+  const filterLabels: Record<FilterKey, string> = {
+    all: 'All tasks',
+    overdue: 'Overdue',
+    not_started: 'Not started',
+    in_progress: 'In progress',
+    completed: 'Completed',
+  };
+
   return (
     <>
       <ScrollView
         className="flex-1 bg-[#F5F5F5]"
-        contentContainerClassName="pb-10"
+        contentContainerClassName="p-4 pb-10"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <View className="px-4 pt-4">
-          <Pressable
-            onPress={() => setAddModalOpen(true)}
-            className="mb-0 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
-            style={webPressable}
-          >
-            <Text className="font-bold text-black">+ Create task</Text>
+        <Pressable
+          onPress={() => setAddModalOpen(true)}
+          className="mb-3 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
+          style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+        >
+          <Text className="font-bold text-black">+ Create task</Text>
+        </Pressable>
+
+        <View className="mb-3 flex-row items-center gap-2">
+          <Pressable onPress={() => setShowFilter(!showFilter)} className="flex-row items-center gap-1 rounded-lg bg-white px-3 py-2">
+            <Text className="text-sm">Filter ▼</Text>
+            <Text className="text-xs text-[#757575]">{filterLabels[filter]}</Text>
           </Pressable>
+          <View className="flex-1 flex-row items-center rounded-lg bg-white px-3">
+            <Ionicons name="search" size={18} color="#757575" />
+            <TextInput
+              className="flex-1 py-2 pl-2"
+              placeholder="Search task or farmer"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
         </View>
+        {showFilter ? (
+          <View className="mb-3 flex-row flex-wrap gap-2">
+            {(Object.keys(filterLabels) as FilterKey[]).map((key) => (
+              <Pressable
+                key={key}
+                onPress={() => {
+                  setFilter(key);
+                  setShowFilter(false);
+                }}
+                className={`rounded-lg px-3 py-2 ${filter === key ? 'bg-[#1A4D3E]' : 'bg-white'}`}
+              >
+                <Text className={filter === key ? 'text-white' : 'text-[#333333]'}>
+                  {filterLabels[key]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
 
-        <TasksSummaryCards
-          tasks={assigneeFiltered}
-          activeFilter={statusFilter}
-          onFilterChange={setStatusFilter}
-        />
-
-        <TasksSearchToolbar
-          search={search}
-          onSearchChange={setSearch}
-          filterButtons={[
-            {
-              key: 'status',
-              label: statusFilterLabel,
-              active: statusFilter !== 'all',
-              onPress: () => setFilterModalOpen(true),
-            },
-            {
-              key: 'assignee',
-              label: assigneeLabel,
-              active: assigneeFilter !== 'all',
-              onPress: () => setFilterModalOpen(true),
-            },
-          ]}
-        />
-
-        <TasksTableView
-          rows={tableRows}
-          onRowPress={(row) => {
-            const task = tableTasks.find((t) => t.id === row.id);
-            if (task) openTaskDetail(task);
-          }}
-          emptyMessage="No tasks match your filters."
+        <TaskSection
+          TitleIcon={TriangleAlert}
+          title={`Overdue (${overdue.length})`}
+          color="#EF4444"
+          tasks={overdue}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+          onExpandApproval={setExpandedId}
+          expandedId={expandedId}
+          rejectReason={rejectReason}
+          setRejectReason={setRejectReason}
+          acting={acting}
+          approve={approve}
+          reject={reject}
         />
 
         {helpRequests.length > 0 ? (
-          <View className="mx-4 mt-4">
+          <View className="mb-5">
             <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
               Farmer help requests
             </Text>
@@ -406,74 +550,53 @@ export function AgentTasksScreen() {
               <KBCard key={item.id} style={{ marginBottom: 8 }}>
                 <Text className="font-bold text-[#333333]">{item.farmer_name}</Text>
                 <Text className="text-sm text-[#757575]">{item.message}</Text>
-                <Button
-                  className="mt-2 h-10 bg-[#1A4D3E]"
-                  onPress={() => markContacted(item.id)}
-                  disabled={acting === item.id}
-                >
+                <Button className="mt-2 h-10 bg-[#1A4D3E]" onPress={() => markContacted(item.id)} disabled={acting === item.id}>
                   <Text className="text-white">Mark contacted</Text>
                 </Button>
               </KBCard>
             ))}
           </View>
         ) : null}
-      </ScrollView>
 
-      <Modal visible={filterModalOpen} transparent animationType="slide" onRequestClose={() => setFilterModalOpen(false)}>
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="rounded-t-2xl bg-white px-4 py-5">
-            <Text className="mb-3 text-lg font-bold text-[#333333]">Filter tasks</Text>
+        <TaskSection
+          TitleIcon={Hourglass}
+          title={`In progress (${inProgress.length})`}
+          color="#2563EB"
+          tasks={inProgress}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+          onExpandApproval={setExpandedId}
+          expandedId={expandedId}
+          rejectReason={rejectReason}
+          setRejectReason={setRejectReason}
+          acting={acting}
+          approve={approve}
+          reject={reject}
+        />
+        <TaskSection
+          TitleIcon={Ban}
+          title={`Not started (${notStarted.length})`}
+          color="#757575"
+          tasks={notStarted}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+        />
+        <TaskSection
+          TitleIcon={CircleCheck}
+          title={`Completed (${completed.length})`}
+          color="#10B981"
+          tasks={completed}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+        />
 
-            <Text className="mb-2 text-sm font-semibold text-[#333333]">Status</Text>
-            {(['all', 'overdue', 'in_progress', 'not_started', 'completed'] as FilterKey[]).map((key) => (
-              <Pressable
-                key={key}
-                onPress={() => {
-                  setStatusFilter(key);
-                }}
-                className="py-2.5"
-                style={webPressable}
-              >
-                <Text
-                  className={`text-sm ${statusFilter === key ? 'font-bold text-[#4472C4]' : 'text-[#666666]'}`}
-                >
-                  {key === 'all' ? 'All statuses' : key.replace(/_/g, ' ')}
-                </Text>
-              </Pressable>
-            ))}
-
-            <Text className="mb-2 mt-4 text-sm font-semibold text-[#333333]">Assignee</Text>
-            <Pressable onPress={() => setAssigneeFilter('all')} className="py-2.5" style={webPressable}>
-              <Text className={`text-sm ${assigneeFilter === 'all' ? 'font-bold text-[#4472C4]' : 'text-[#666666]'}`}>
-                All assignees
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => setAssigneeFilter('me')} className="py-2.5" style={webPressable}>
-              <Text className={`text-sm ${assigneeFilter === 'me' ? 'font-bold text-[#4472C4]' : 'text-[#666666]'}`}>
-                My tasks
-              </Text>
-            </Pressable>
-            {farmers.map((f) => (
-              <Pressable
-                key={f.farmer_id}
-                onPress={() => setAssigneeFilter(f.farmer_id)}
-                className="py-2.5"
-                style={webPressable}
-              >
-                <Text
-                  className={`text-sm ${assigneeFilter === f.farmer_id ? 'font-bold text-[#4472C4]' : 'text-[#666666]'}`}
-                >
-                  {f.name}
-                </Text>
-              </Pressable>
-            ))}
-
-            <Button className="mt-4 h-11 bg-[#4472C4]" onPress={() => setFilterModalOpen(false)}>
-              <Text className="text-white">Close</Text>
-            </Button>
+        {!hasVisibleTasks && helpRequests.length === 0 ? (
+          <View className="items-center rounded-xl bg-white p-6">
+            <Ionicons name="checkmark-circle-outline" size={48} color="#2E7D5E" />
+            <Text className="mt-3 text-center text-[#757575]">No tasks match your filters.</Text>
           </View>
-        </View>
-      </Modal>
+        ) : null}
+      </ScrollView>
 
       <AgentTaskDetailModal
         task={selectedTask}

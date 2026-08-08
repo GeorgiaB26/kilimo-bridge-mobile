@@ -23,15 +23,7 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-sqlite",
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow Kilimo Bridge to access your photos",
-          "cameraPermission": "Allow Kilimo Bridge to use your camera",
-          "cameraRollPermission": "Allow Kilimo Bridge to save photos"
-        }
-      ]
+      "expo-sqlite"
     ]
   }
 }

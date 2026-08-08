@@ -28,7 +28,6 @@ export interface TaskCategoryCounts {
 
 function normalizeStatusForCategory(status: string): string {
   const s = (status || 'not-started').toLowerCase().replace(/_/g, '-');
-  if (s === 'open') return 'not-started';
   if (s === 'submitted-for-approval' || s === 'submitted') return 'in-progress';
   if (s === 'approved') return 'completed';
   return s;
@@ -122,19 +121,4 @@ export function pickCategorizedTasks<T>(
     notStarted: filter === 'not_started' ? categorized.notStarted : [],
     completed: filter === 'completed' ? categorized.completed : [],
   };
-}
-
-/** Flat list for table view: OVERDUE → IN PROGRESS → NOT STARTED → COMPLETED */
-export function flattenCategorizedTasks<T extends CategorizableTask>(tasks: T[]): T[] {
-  const categorized = categorizeTasks(tasks);
-  return flattenCategorizedBuckets(categorized);
-}
-
-export function flattenCategorizedBuckets<T>(categorized: CategorizedTasks<T>): T[] {
-  return [
-    ...categorized.overdue,
-    ...categorized.inProgress,
-    ...categorized.notStarted,
-    ...categorized.completed,
-  ];
 }
