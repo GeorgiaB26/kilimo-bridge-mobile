@@ -51,6 +51,8 @@ type TaskDetail = {
   submitted_date?: string | null;
   approved_date?: string | null;
   source?: 'hierarchy' | 'agent_assignment';
+  /** Program farmer_tasks row — supports photo evidence submit flow. */
+  submittable?: boolean;
 };
 
 type SelectedImage = {
@@ -68,18 +70,17 @@ type SubmissionHistoryEntry = {
   reviewNotes?: string | null;
 };
 
-const MIN_NOTES_ONLY_LENGTH = 10;
+const MIN_NOTES_ONLY_LENGTH = 1;
 
 function normalizeTaskStatus(status: string): string {
   return status.replace(/_/g, '-');
 }
 
-function canSubmitTask(status: string, isAgentAssignment: boolean): boolean {
-  if (isAgentAssignment) return false;
+/** Allow submit for actionable program tasks (not completed/approved/pending review). */
+function canSubmitTask(status: string): boolean {
   const s = normalizeTaskStatus(status);
-  if (['approved', 'completed', 'submitted-for-approval', 'submitted'].includes(s)) {
-    return false;
-  }
+  if (s === 'completed' || s === 'approved') return false;
+  if (s === 'submitted-for-approval' || s === 'submitted') return false;
   return true;
 }
 
@@ -130,7 +131,7 @@ function buildSubmissionHistory(task: TaskDetail): SubmissionHistoryEntry[] {
 export function FarmerTaskDetailScreen() {
   const route = useRoute<DetailRoute>();
   const navigation = useNavigation<DetailNav>();
-  const { taskId, source: sourceHint } = route.params;
+  const { taskId } = route.params;
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -143,13 +144,13 @@ export function FarmerTaskDetailScreen() {
   const [notesError, setNotesError] = useState('');
   const [pendingSubmission, setPendingSubmission] = useState<PendingTaskSubmissionView | null>(null);
 
-  const isAgentAssignment = task?.source === 'agent_assignment';
+  const isReadOnlyAgentTask = task != null && !task.submittable;
   const taskIsCompleted =
     task != null && ['approved', 'completed'].includes(normalizeTaskStatus(task.status));
   const showSubmitForm =
     task != null &&
-    !taskIsCompleted &&
-    canSubmitTask(task.status, isAgentAssignment) &&
+    task.submittable &&
+    canSubmitTask(task.status) &&
     !pendingSubmission;
 
   const submissionHistory = useMemo(
@@ -168,38 +169,40 @@ export function FarmerTaskDetailScreen() {
     setError(null);
     try {
       let loaded: TaskDetail | null = null;
+      const listRes = await getFarmerAssignedTasks();
+      const list = (listRes.tasks ?? []) as TaskDetail[];
+      const fromList = list.find((row) => row.id === taskId);
 
-      if (sourceHint !== 'agent_assignment') {
-        try {
-          const detail = await getFarmerHierarchyTask(taskId);
-          const listRes = await getFarmerAssignedTasks();
-          const fromList = ((listRes.tasks ?? []) as TaskDetail[]).find((row) => row.id === taskId);
-          loaded = {
-            ...(fromList ?? {}),
-            ...detail,
-            id: String(detail.id ?? taskId),
-            name: String(detail.name ?? fromList?.name ?? 'Task'),
-            status: String(detail.status ?? fromList?.status ?? 'not-started'),
-            assigned_by_name: fromList?.assigned_by_name ?? detail.assigned_by_name,
-            program_project_name: fromList?.program_project_name ?? detail.program_project_name,
-            source: 'hierarchy',
-          };
-        } catch (err: unknown) {
-          const status = (err as { response?: { status?: number } })?.response?.status;
-          if (status !== 403 && status !== 404) throw err;
-        }
+      // Always try program hierarchy detail first — fixes "view only" on admin-assigned tasks.
+      try {
+        const detail = await getFarmerHierarchyTask(taskId);
+        loaded = {
+          ...(fromList ?? {}),
+          ...detail,
+          id: String(detail.id ?? taskId),
+          name: String(detail.name ?? fromList?.name ?? 'Task'),
+          status: String(detail.status ?? fromList?.status ?? 'not-started'),
+          assigned_by_name: fromList?.assigned_by_name ?? detail.assigned_by_name,
+          program_project_name: fromList?.program_project_name ?? detail.program_project_name,
+          source: 'hierarchy',
+          submittable: true,
+        };
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status !== 403 && status !== 404) throw err;
+      }
+
+      if (!loaded && fromList) {
+        loaded = {
+          ...fromList,
+          submittable: fromList.source !== 'agent_assignment',
+        };
       }
 
       if (!loaded) {
-        const listRes = await getFarmerAssignedTasks();
-        const list = (listRes.tasks ?? []) as TaskDetail[];
-        const fromList = list.find((row) => row.id === taskId);
-        if (!fromList) {
-          setTask(null);
-          setError('Task not found');
-          return;
-        }
-        loaded = fromList;
+        setTask(null);
+        setError('Task not found');
+        return;
       }
 
       setTask(loaded);
@@ -210,7 +213,7 @@ export function FarmerTaskDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, sourceHint, loadPending]);
+  }, [taskId, loadPending]);
 
   useEffect(() => {
     load();
@@ -234,7 +237,7 @@ export function FarmerTaskDetailScreen() {
     })();
   }, []);
 
-  useTaskApprovalPolling(task && !isAgentAssignment ? [task] : [], load);
+  useTaskApprovalPolling(task?.submittable ? [task] : [], load);
 
   const goBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -290,11 +293,11 @@ export function FarmerTaskDetailScreen() {
 
     const trimmedNotes = notes.trim();
     const hasPhotos = selectedImages.length > 0;
-    const hasEnoughNotes = trimmedNotes.length >= MIN_NOTES_ONLY_LENGTH;
+    const hasNotes = trimmedNotes.length >= MIN_NOTES_ONLY_LENGTH;
 
-    if (!hasPhotos && !hasEnoughNotes) {
-      setPhotoError('Add at least one photo or a short note (10+ characters).');
-      setNotesError('Add at least one photo or a short note (10+ characters).');
+    if (!hasPhotos && !hasNotes) {
+      setPhotoError('Add at least one photo or a note to submit.');
+      setNotesError('Add at least one photo or a note to submit.');
       return;
     }
 
@@ -355,11 +358,7 @@ export function FarmerTaskDetailScreen() {
     );
   }
 
-  const noteLen = notes.trim().length;
-  const notesHint =
-    selectedImages.length > 0
-      ? 'Optional with photos'
-      : `Required without photos (min ${MIN_NOTES_ONLY_LENGTH} characters)`;
+  const notesHint = selectedImages.length > 0 ? 'Optional with photos' : 'Required without photos';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -368,7 +367,7 @@ export function FarmerTaskDetailScreen() {
           <Text className="text-sm font-semibold text-[#4472C4]">← Back</Text>
         </Pressable>
         <Text className="text-xl font-bold text-foreground">{task.name}</Text>
-        {isAgentAssignment ? (
+        {isReadOnlyAgentTask ? (
           <Text className="mt-1 text-xs font-semibold text-muted-foreground">
             Field agent assignment · view only
           </Text>
@@ -387,7 +386,7 @@ export function FarmerTaskDetailScreen() {
         <View style={styles.detailRow}>
           <Text style={styles.label}>Project</Text>
           <Text style={styles.value}>
-            {task.program_project_name ?? (isAgentAssignment ? 'Field agent assignment' : '—')}
+            {task.program_project_name ?? (isReadOnlyAgentTask ? 'Field agent assignment' : '—')}
           </Text>
         </View>
 
@@ -458,9 +457,9 @@ export function FarmerTaskDetailScreen() {
             editable={!submitting}
           />
           <Text style={styles.charCount}>
-            {noteLen} characters
-            {selectedImages.length === 0 && noteLen < MIN_NOTES_ONLY_LENGTH
-              ? ` — ${MIN_NOTES_ONLY_LENGTH - noteLen} more needed without a photo`
+            {notes.trim().length} characters
+            {selectedImages.length === 0 && !notes.trim()
+              ? ' — add a note or photo to submit'
               : ''}
           </Text>
           {notesError ? <Text style={styles.errorText}>{notesError}</Text> : null}
@@ -548,15 +547,19 @@ export function FarmerTaskDetailScreen() {
             </View>
           ))}
         </View>
-      ) : !showSubmitForm && !taskIsCompleted ? (
+      ) : null}
+
+      {!showSubmitForm && !taskIsCompleted && submissionHistory.length === 0 ? (
         <View style={styles.emptySubmission}>
           <Text style={styles.emptySubmissionText}>No submissions yet</Text>
-          {isAgentAssignment ? (
+          {isReadOnlyAgentTask ? (
             <Text style={styles.emptySubmissionSubText}>
               This assignment was created by your field agent.
             </Text>
           ) : (
-            <Text style={styles.emptySubmissionSubText}>Upload photos and submit work above.</Text>
+            <Text style={styles.emptySubmissionSubText}>
+              Your submission is pending review, or add photos and notes above when available.
+            </Text>
           )}
         </View>
       ) : null}
