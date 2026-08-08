@@ -188,6 +188,7 @@ export async function getFarmerDashboard(farmerId: string) {
       total: categoryCounts.total,
     },
     recentTasks: allAssignedTasks.slice(0, 3),
+    assignedTasks: allAssignedTasks.slice(0, 10),
     assignedTaskCount: allAssignedTasks.length,
     activeProjects: sortedActive,
     nextProject: sortedActive[0] ?? null,

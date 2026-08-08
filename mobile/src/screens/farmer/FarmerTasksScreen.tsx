@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   SectionList,
@@ -12,7 +12,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
 import { COLORS } from '../../constants';
-import { getFarmerHierarchyTasks } from '../../api/client';
+import { getFarmerAssignedTasks } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
@@ -72,7 +72,8 @@ export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation();
   const statusFilter = route.params?.statusFilter;
-  const highlightTaskId = route.params?.highlightTaskId;
+  const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
+  const listRef = useRef<SectionList>(null);
   const { formatAmount } = useCurrency();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +83,7 @@ export function FarmerTasksScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await getFarmerHierarchyTasks();
+      const data = await getFarmerAssignedTasks();
       const list = (data.tasks ?? []) as ExtendedTaskRow[];
       setTasks(list);
       setError(null);
@@ -99,6 +100,8 @@ export function FarmerTasksScreen() {
     useCallback(() => {
       setLoading(tasks.length === 0);
       load();
+      const interval = setInterval(load, 30000);
+      return () => clearInterval(interval);
     }, [load, tasks.length])
   );
 
@@ -120,18 +123,6 @@ export function FarmerTasksScreen() {
       ].join('\n\n')
     );
   };
-
-  useEffect(() => {
-    if (!highlightTaskId || loading || tasks.length === 0) return;
-    const task = tasks.find((t) => t.id === highlightTaskId);
-    if (!task) return;
-    if (isAgentAssignment(task)) {
-      showAgentTaskDetail(task);
-    } else if (canOpenTask(task.status)) {
-      setSubmitTask(task);
-    }
-    navigation.setParams({ highlightTaskId: undefined });
-  }, [highlightTaskId, tasks, loading, navigation]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -183,6 +174,35 @@ export function FarmerTasksScreen() {
     return list;
   }, [displayCategories]);
 
+  useEffect(() => {
+    if (!scrollTargetId || loading || tasks.length === 0) return;
+    const task = tasks.find((t) => t.id === scrollTargetId);
+    if (!task) return;
+
+    if (sections.length > 0) {
+      for (let si = 0; si < sections.length; si++) {
+        const ti = sections[si].data.findIndex((t) => t.id === scrollTargetId);
+        if (ti >= 0) {
+          setTimeout(() => {
+            listRef.current?.scrollToLocation({
+              sectionIndex: si,
+              itemIndex: ti,
+              viewOffset: 80,
+            });
+          }, 400);
+          break;
+        }
+      }
+    }
+
+    if (isAgentAssignment(task)) {
+      showAgentTaskDetail(task);
+    } else if (canOpenTask(task.status)) {
+      setSubmitTask(task);
+    }
+    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
+  }, [scrollTargetId, tasks, loading, navigation, sections]);
+
   const filterLabel =
     statusFilter === 'overdue'
       ? 'Overdue tasks'
@@ -201,7 +221,7 @@ export function FarmerTasksScreen() {
     const assignedWhen = formatDisplayDate(item.assigned_at);
     const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
     const assigner = item.assigned_by_name?.trim() || 'Program team';
-    const highlighted = highlightTaskId === item.id;
+    const highlighted = scrollTargetId === item.id;
 
     return (
       <KBCard
@@ -304,6 +324,7 @@ export function FarmerTasksScreen() {
     <View style={styles.root}>
       <FarmerInboxHeaderBar />
       <SectionList
+        ref={listRef}
         sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}

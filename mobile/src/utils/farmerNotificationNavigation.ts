@@ -122,7 +122,7 @@ export function navigateFromFarmerNotification(
     navigateMainTab(
       root,
       'Tasks',
-      contextIdValue ? { highlightTaskId: contextIdValue } : undefined
+      contextIdValue ? { taskId: contextIdValue, highlightTaskId: contextIdValue } : undefined
     );
     return;
   }

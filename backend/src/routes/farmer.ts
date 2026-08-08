@@ -6,6 +6,7 @@ import {
   getFarmerPayments,
   getFarmerPaymentSummary,
   claimPayment,
+  listAllFarmerAssignedTasks,
 } from '../services/farmerPortalService';
 import { getUserNotifications } from '../services/notificationService';
 import { updateFarmerLocation, updateFarmerPicture } from '../services/farmerService';
@@ -54,6 +55,26 @@ router.get(
     }
     logFarmerDataAccess(req, 'dashboard', req.user.farmerId);
     res.json(data);
+  })
+);
+
+/** All tasks assigned to this farmer (program + field agent assignments). */
+router.get(
+  '/assigned-tasks',
+  asyncHandler(async (req, res) => {
+    if (!req.user?.farmerId) {
+      res.status(400).json({ error: 'No farmer profile linked to this account' });
+      return;
+    }
+    const status = req.query.status as string | undefined;
+    const outstanding =
+      req.query.outstanding === 'true' || req.query.outstanding === '1';
+    const tasks = await listAllFarmerAssignedTasks(req.user.farmerId, {
+      status,
+      outstanding,
+    });
+    logFarmerDataAccess(req, 'assigned_tasks', req.user.farmerId);
+    res.json({ tasks, count: tasks.length });
   })
 );
 
