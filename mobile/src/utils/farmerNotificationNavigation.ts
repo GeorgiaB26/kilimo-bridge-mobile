@@ -119,11 +119,16 @@ export function navigateFromFarmerNotification(
     contextType === 'agent_task' ||
     type === 'task_assigned'
   ) {
-    navigateMainTab(
-      root,
-      'Tasks',
-      contextIdValue ? { taskId: contextIdValue, highlightTaskId: contextIdValue } : undefined
-    );
+    if (contextIdValue) {
+      root.dispatch(
+        CommonActions.navigate({
+          name: 'TaskDetail',
+          params: { taskId: contextIdValue },
+        })
+      );
+    } else {
+      navigateMainTab(root, 'Tasks');
+    }
     return;
   }
 

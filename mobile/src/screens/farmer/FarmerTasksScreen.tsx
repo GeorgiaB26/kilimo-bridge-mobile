@@ -5,27 +5,24 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native';
+import type { RouteProp, NavigationProp, ParamListBase } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import { getFarmerAssignedTasks } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
-import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
 import type { FarmerTaskRow } from '../../components/farmer/FarmerProjectTasksSection';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
-import { formatCleanDate } from '../../utils/greeting';
 import {
   categorizeTasks,
   flattenCategorizedBuckets,
   pickCategorizedTasks,
   type TaskCategoryFilter,
 } from '../../utils/taskCategorization';
-import type { FarmerTabParamList } from '../../navigation/types';
+import type { FarmerRootStackParamList, FarmerTabParamList } from '../../navigation/types';
 import { TasksSummaryCards } from '../../components/tasks/TasksSummaryCards';
 import { TasksTableView, farmerTaskColumns, type TaskTableRow } from '../../components/tasks/TasksTableView';
 import { TasksSearchToolbar } from '../../components/tasks/TasksSearchToolbar';
@@ -45,13 +42,22 @@ function isAgentAssignment(task: ExtendedTaskRow): boolean {
   return task.source === 'agent_assignment';
 }
 
-function normalizeTaskStatus(status: string): string {
-  return status.replace(/_/g, '-');
-}
-
-function canOpenTask(status: string): boolean {
-  const s = normalizeTaskStatus(status);
-  return ['not-started', 'in-progress', 'rejected'].includes(s);
+function openTaskDetail(
+  navigation: NavigationProp<ParamListBase>,
+  task: ExtendedTaskRow
+): void {
+  let nav = navigation as NavigationProp<ParamListBase> | undefined;
+  while (nav) {
+    const state = nav.getState();
+    if (state && state.routeNames.includes('TaskDetail')) {
+      nav.navigate('TaskDetail', {
+        taskId: task.id,
+        source: task.source,
+      } satisfies FarmerRootStackParamList['TaskDetail']);
+      return;
+    }
+    nav = nav.getParent();
+  }
 }
 
 export function FarmerTasksScreen() {
@@ -59,11 +65,11 @@ export function FarmerTasksScreen() {
   const navigation = useNavigation();
   const statusFilterFromRoute = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
+  const handledDeepLinkRef = useRef<string | null>(null);
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterKey>(
     statusFilterFromRoute ?? 'all'
@@ -100,20 +106,6 @@ export function FarmerTasksScreen() {
     tasks.filter((t) => !isAgentAssignment(t)),
     load
   );
-
-  const showAgentTaskDetail = (item: ExtendedTaskRow) => {
-    const assigner = item.assigned_by_name?.trim() || 'Your field agent';
-    const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
-    Alert.alert(
-      item.name,
-      [
-        item.description?.trim() || 'No description provided.',
-        `Assigned by: ${assigner}`,
-        `Due: ${deadline}`,
-        `Status: ${item.status.replace(/_/g, ' ')}`,
-      ].join('\n\n')
-    );
-  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -157,27 +149,20 @@ export function FarmerTasksScreen() {
 
   useEffect(() => {
     if (!scrollTargetId || loading || tasks.length === 0) return;
+    if (handledDeepLinkRef.current === scrollTargetId) return;
+
     const task = tasks.find((t) => t.id === scrollTargetId);
     if (!task) return;
 
-    if (isAgentAssignment(task)) {
-      showAgentTaskDetail(task);
-    } else if (canOpenTask(task.status)) {
-      setSubmitTask(task);
-    }
+    handledDeepLinkRef.current = scrollTargetId;
+    openTaskDetail(navigation as NavigationProp<ParamListBase>, task);
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined } as never);
   }, [scrollTargetId, tasks, loading, navigation]);
 
   const handleRowPress = (row: TaskTableRow) => {
     const task = tableTasks.find((t) => t.id === row.id);
     if (!task) return;
-    if (isAgentAssignment(task)) {
-      showAgentTaskDetail(task);
-      return;
-    }
-    if (canOpenTask(task.status)) {
-      setSubmitTask(task);
-    }
+    openTaskDetail(navigation as NavigationProp<ParamListBase>, task);
   };
 
   const filterLabel =
@@ -247,16 +232,6 @@ export function FarmerTasksScreen() {
           }
         />
       </ScrollView>
-
-      <FarmerTaskSubmitModal
-        task={submitTask && !isAgentAssignment(submitTask) ? submitTask : null}
-        visible={!!submitTask}
-        onClose={() => setSubmitTask(null)}
-        onSubmitted={async () => {
-          setSubmitTask(null);
-          await load();
-        }}
-      />
     </View>
   );
 }
