@@ -5,7 +5,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
-  TextInput,
   Pressable,
   Platform,
   Modal,
@@ -39,6 +38,7 @@ import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/age
 import { checkAndShowTaskReminders } from '../../utils/taskReminders';
 import { TasksSummaryCards } from '../../components/tasks/TasksSummaryCards';
 import { TasksTableView, type TaskTableRow } from '../../components/tasks/TasksTableView';
+import { TasksSearchToolbar } from '../../components/tasks/TasksSearchToolbar';
 
 type UnifiedTask = {
   id: string;
@@ -350,16 +350,18 @@ export function AgentTasksScreen() {
     <>
       <ScrollView
         className="flex-1 bg-[#F5F5F5]"
-        contentContainerClassName="p-4 pb-10"
+        contentContainerClassName="pb-10"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <Pressable
-          onPress={() => setAddModalOpen(true)}
-          className="mb-3 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
-          style={webPressable}
-        >
-          <Text className="font-bold text-black">+ Create task</Text>
-        </Pressable>
+        <View className="px-4 pt-4">
+          <Pressable
+            onPress={() => setAddModalOpen(true)}
+            className="mb-0 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
+            style={webPressable}
+          >
+            <Text className="font-bold text-black">+ Create task</Text>
+          </Pressable>
+        </View>
 
         <TasksSummaryCards
           tasks={assigneeFiltered}
@@ -367,32 +369,24 @@ export function AgentTasksScreen() {
           onFilterChange={setStatusFilter}
         />
 
-        <View className="mb-2 flex-row items-center rounded-lg bg-white px-3">
-          <Ionicons name="search" size={18} color="#757575" />
-          <TextInput
-            className="flex-1 py-2.5 pl-2 text-sm"
-            placeholder="Search task, project, assignee or status"
-            value={search}
-            onChangeText={setSearch}
-          />
-        </View>
-
-        <View className="mb-3 flex-row gap-2">
-          <Pressable
-            onPress={() => setFilterModalOpen(true)}
-            className="flex-1 rounded-lg border border-[#E0E0E0] bg-white px-3 py-2"
-            style={webPressable}
-          >
-            <Text className="text-center text-xs text-[#333333]">{statusFilterLabel}</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setFilterModalOpen(true)}
-            className="flex-1 rounded-lg border border-[#E0E0E0] bg-white px-3 py-2"
-            style={webPressable}
-          >
-            <Text className="text-center text-xs text-[#333333]">{assigneeLabel}</Text>
-          </Pressable>
-        </View>
+        <TasksSearchToolbar
+          search={search}
+          onSearchChange={setSearch}
+          filterButtons={[
+            {
+              key: 'status',
+              label: statusFilterLabel,
+              active: statusFilter !== 'all',
+              onPress: () => setFilterModalOpen(true),
+            },
+            {
+              key: 'assignee',
+              label: assigneeLabel,
+              active: assigneeFilter !== 'all',
+              onPress: () => setFilterModalOpen(true),
+            },
+          ]}
+        />
 
         <TasksTableView
           rows={tableRows}
@@ -404,7 +398,7 @@ export function AgentTasksScreen() {
         />
 
         {helpRequests.length > 0 ? (
-          <View className="mt-4">
+          <View className="mx-4 mt-4">
             <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
               Farmer help requests
             </Text>

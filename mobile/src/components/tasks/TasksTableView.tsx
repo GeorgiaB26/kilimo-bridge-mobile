@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, ScrollView, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { isTaskOverdue, isTaskCompletedStatus, isTaskInProgressStatus } from '../../utils/taskCategorization';
 
@@ -7,6 +7,7 @@ export type TaskTableColumn = {
   key: string;
   label: string;
   flex: number;
+  align?: 'left' | 'right' | 'center';
   render: (row: TaskTableRow) => React.ReactNode;
 };
 
@@ -20,6 +21,8 @@ export type TaskTableRow = {
   start_date?: string | null;
   submissionsCount?: number;
 };
+
+const TABLE_MIN_WIDTH = 720;
 
 function formatEndDate(value?: string | null): string {
   if (!value) return '—';
@@ -58,7 +61,7 @@ export const defaultTaskColumns: TaskTableColumn[] = [
   {
     key: 'task',
     label: 'Task',
-    flex: 2.2,
+    flex: 2.5,
     render: (row) => (
       <Text style={styles.cellTask} numberOfLines={2}>{row.name}</Text>
     ),
@@ -66,31 +69,32 @@ export const defaultTaskColumns: TaskTableColumn[] = [
   {
     key: 'assignee',
     label: 'Assignee',
-    flex: 1.3,
+    flex: 1.5,
     render: (row) => (
-      <Text style={styles.cell} numberOfLines={1}>{row.assigneeLabel ?? '—'}</Text>
+      <Text style={styles.cell} numberOfLines={2}>{row.assigneeLabel ?? '—'}</Text>
     ),
   },
   {
     key: 'project',
     label: 'Project',
-    flex: 1.5,
+    flex: 1.8,
     render: (row) => (
-      <Text style={styles.cell} numberOfLines={1}>{row.projectLabel ?? '—'}</Text>
+      <Text style={styles.cell} numberOfLines={2}>{row.projectLabel ?? '—'}</Text>
     ),
   },
   {
     key: 'end',
     label: 'End',
     flex: 1,
+    align: 'right',
     render: (row) => (
-      <Text style={styles.cell}>{formatEndDate(row.due_date)}</Text>
+      <Text style={[styles.cell, styles.cellDate]}>{formatEndDate(row.due_date)}</Text>
     ),
   },
   {
     key: 'status',
     label: 'Status',
-    flex: 1.2,
+    flex: 1.3,
     render: (row) => buildStatusCell(row.status, row.due_date),
   },
 ];
@@ -99,7 +103,7 @@ export const farmerTaskColumns: TaskTableColumn[] = [
   {
     key: 'task',
     label: 'Task',
-    flex: 2.2,
+    flex: 2.5,
     render: (row) => (
       <Text style={styles.cellTask} numberOfLines={2}>{row.name}</Text>
     ),
@@ -107,31 +111,32 @@ export const farmerTaskColumns: TaskTableColumn[] = [
   {
     key: 'assignedBy',
     label: 'Assigned by',
-    flex: 1.3,
+    flex: 1.5,
     render: (row) => (
-      <Text style={styles.cell} numberOfLines={1}>{row.assigneeLabel ?? '—'}</Text>
+      <Text style={styles.cell} numberOfLines={2}>{row.assigneeLabel ?? '—'}</Text>
     ),
   },
   {
     key: 'project',
     label: 'Project',
-    flex: 1.5,
+    flex: 1.8,
     render: (row) => (
-      <Text style={styles.cell} numberOfLines={1}>{row.projectLabel ?? '—'}</Text>
+      <Text style={styles.cell} numberOfLines={2}>{row.projectLabel ?? '—'}</Text>
     ),
   },
   {
     key: 'end',
     label: 'End',
     flex: 1,
+    align: 'right',
     render: (row) => (
-      <Text style={styles.cell}>{formatEndDate(row.due_date)}</Text>
+      <Text style={[styles.cell, styles.cellDate]}>{formatEndDate(row.due_date)}</Text>
     ),
   },
   {
     key: 'status',
     label: 'Status',
-    flex: 1.2,
+    flex: 1.3,
     render: (row) => buildStatusCell(row.status, row.due_date),
   },
 ];
@@ -151,23 +156,36 @@ export function TasksTableView({
   emptyMessage = 'No tasks found',
   highlightId,
 }: Props) {
+  const { width: windowWidth } = useWindowDimensions();
+  const tableWidth = Math.max(TABLE_MIN_WIDTH, windowWidth - 32);
   const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
   if (!rows.length) {
     return (
       <View style={styles.empty}>
-        <Text className="text-sm text-[#999999]">{emptyMessage}</Text>
+        <Text style={styles.emptyText}>{emptyMessage}</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.tableWrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={Platform.OS === 'web'}>
-        <View style={styles.table}>
+    <View style={styles.tableOuter}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={Platform.OS === 'web'}
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
+        <View style={[styles.table, { minWidth: tableWidth }]}>
           <View style={styles.headerRow}>
             {columns.map((col) => (
-              <Text key={col.key} style={[styles.headerCell, { flex: col.flex }]}>
+              <Text
+                key={col.key}
+                style={[
+                  styles.headerCell,
+                  { flex: col.flex },
+                  col.align === 'right' && styles.alignRight,
+                ]}
+              >
                 {col.label}
               </Text>
             ))}
@@ -185,7 +203,14 @@ export function TasksTableView({
                 ]}
               >
                 {columns.map((col) => (
-                  <View key={col.key} style={{ flex: col.flex, paddingRight: 4 }}>
+                  <View
+                    key={col.key}
+                    style={[
+                      styles.cellWrap,
+                      { flex: col.flex },
+                      col.align === 'right' && styles.alignRight,
+                    ]}
+                  >
                     {col.render(row)}
                   </View>
                 ))}
@@ -199,67 +224,90 @@ export function TasksTableView({
 }
 
 const styles = StyleSheet.create({
-  tableWrap: {
+  tableOuter: {
+    marginHorizontal: 16,
+    marginVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    overflow: 'hidden',
+    borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: '#E0E0E0',
+    overflow: 'hidden',
   },
   table: {
-    minWidth: 640,
+    width: '100%',
   },
   headerRow: {
     flexDirection: 'row',
-    backgroundColor: '#F0F0F0',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
   headerCell: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#666666',
-    paddingRight: 4,
+    color: '#333333',
+    paddingRight: 8,
   },
   dataRow: {
     flexDirection: 'row',
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
   dataRowHighlight: {
     backgroundColor: '#E8F5E9',
     borderLeftWidth: 3,
     borderLeftColor: '#1A4D3E',
   },
+  cellWrap: {
+    paddingRight: 8,
+    justifyContent: 'center',
+  },
   cell: {
-    fontSize: 12,
-    color: '#333333',
+    fontSize: 13,
+    color: '#1A1A1A',
   },
   cellTask: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#1A1A1A',
   },
+  cellDate: {
+    textAlign: 'right',
+  },
+  alignRight: {
+    alignItems: 'flex-end',
+  },
   statusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 3,
+    minWidth: 80,
     alignSelf: 'flex-start',
   },
   statusText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
+    textAlign: 'center',
   },
   empty: {
-    paddingVertical: 40,
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingVertical: 50,
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#999999',
   },
 });

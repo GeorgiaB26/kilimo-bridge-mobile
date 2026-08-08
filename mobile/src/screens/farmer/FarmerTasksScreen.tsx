@@ -6,11 +6,9 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
-  TextInput,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import { getFarmerAssignedTasks } from '../../api/client';
@@ -30,6 +28,7 @@ import {
 import type { FarmerTabParamList } from '../../navigation/types';
 import { TasksSummaryCards } from '../../components/tasks/TasksSummaryCards';
 import { TasksTableView, farmerTaskColumns, type TaskTableRow } from '../../components/tasks/TasksTableView';
+import { TasksSearchToolbar } from '../../components/tasks/TasksSearchToolbar';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 
@@ -230,15 +229,11 @@ export function FarmerTasksScreen() {
           onFilterChange={setStatusFilter}
         />
 
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={18} color="#757575" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search task, project or assignee"
-            value={search}
-            onChangeText={setSearch}
-          />
-        </View>
+        <TasksSearchToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search task, project or assignee"
+        />
 
         <TasksTableView
           rows={tableRows}
@@ -278,27 +273,11 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   listContent: {
-    paddingHorizontal: 16,
     paddingBottom: 100,
   },
   header: {
-    marginBottom: 12,
+    marginBottom: 0,
     marginTop: 4,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingLeft: 8,
-    fontSize: 14,
+    paddingHorizontal: 16,
   },
 });

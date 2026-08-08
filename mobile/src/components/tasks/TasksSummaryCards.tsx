@@ -59,7 +59,7 @@ export function TasksSummaryCards<T extends CategorizableTask>({
 
   return (
     <View style={styles.container}>
-      {cards.map((card) => (
+      {cards.map((card, index) => (
         <Pressable
           key={card.key}
           onPress={() => onFilterChange(activeFilter === card.key ? 'all' : card.key)}
@@ -67,6 +67,7 @@ export function TasksSummaryCards<T extends CategorizableTask>({
             styles.card,
             card.style,
             activeFilter === card.key && styles.cardActive,
+            index < cards.length - 1 && styles.cardDivider,
           ]}
         >
           <Text style={[styles.count, card.countColor ? { color: card.countColor } : null]}>
@@ -82,22 +83,24 @@ export function TasksSummaryCards<T extends CategorizableTask>({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
   },
   card: {
     flex: 1,
-    minWidth: '22%',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    justifyContent: 'center',
+  },
+  cardDivider: {
+    borderRightWidth: 1,
+    borderRightColor: '#E0E0E0',
   },
   cardActive: {
-    borderColor: '#1A4D3E',
+    borderBottomWidth: 3,
+    borderBottomColor: '#1A4D3E',
   },
   overdueCard: {
     backgroundColor: '#FFEBEE',
@@ -112,12 +115,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F5E9',
   },
   count: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#1A1A1A',
   },
   label: {
-    fontSize: 10,
+    fontSize: 11,
+    fontWeight: '600',
     color: '#666666',
     marginTop: 4,
     textAlign: 'center',
