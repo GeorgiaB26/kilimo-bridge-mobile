@@ -5,6 +5,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp, ParamListBase } from '@react-navigation/native';
@@ -22,10 +23,11 @@ import {
   pickCategorizedTasks,
   type TaskCategoryFilter,
 } from '../../utils/taskCategorization';
-import type { FarmerRootStackParamList, FarmerTabParamList } from '../../navigation/types';
+import type { FarmerTabParamList } from '../../navigation/types';
 import { TasksSummaryCards } from '../../components/tasks/TasksSummaryCards';
 import { TasksTableView, farmerTaskColumns, type TaskTableRow } from '../../components/tasks/TasksTableView';
 import { TasksSearchToolbar } from '../../components/tasks/TasksSearchToolbar';
+import { navigateFarmerRootScreen } from '../../utils/farmerRootNavigation';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 
@@ -46,18 +48,14 @@ function openTaskDetail(
   navigation: NavigationProp<ParamListBase>,
   task: ExtendedTaskRow
 ): void {
-  let nav = navigation as NavigationProp<ParamListBase> | undefined;
-  while (nav) {
-    const state = nav.getState();
-    if (state && state.routeNames.includes('TaskDetail')) {
-      nav.navigate('TaskDetail', {
-        taskId: task.id,
-        source: task.source,
-      } satisfies FarmerRootStackParamList['TaskDetail']);
-      return;
-    }
-    nav = nav.getParent();
-  }
+  navigateFarmerRootScreen(navigation, 'TaskDetail', {
+    taskId: task.id,
+    source: task.source,
+  });
+}
+
+function openCreateTask(navigation: NavigationProp<ParamListBase>): void {
+  navigateFarmerRootScreen(navigation, 'CreateTask');
 }
 
 export function FarmerTasksScreen() {
@@ -198,7 +196,15 @@ export function FarmerTasksScreen() {
         }
       >
         <View style={styles.header}>
-          <Text className="text-2xl font-bold text-foreground">Your Tasks</Text>
+          <View style={styles.headerRow}>
+            <Text className="text-2xl font-bold text-foreground">Your Tasks</Text>
+            <Pressable
+              style={styles.createTaskButton}
+              onPress={() => openCreateTask(navigation as NavigationProp<ParamListBase>)}
+            >
+              <Text style={styles.createTaskButtonText}>+ Create task</Text>
+            </Pressable>
+          </View>
           {filterLabel ? (
             <Text className="mt-1 text-sm font-semibold text-[#4472C4]">{filterLabel}</Text>
           ) : null}
@@ -254,5 +260,22 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     marginTop: 4,
     paddingHorizontal: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  createTaskButton: {
+    backgroundColor: COLORS.success,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  createTaskButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

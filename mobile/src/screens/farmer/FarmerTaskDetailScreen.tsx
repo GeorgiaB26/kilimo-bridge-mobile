@@ -17,7 +17,7 @@ import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
-import { getFarmerAssignedTasks, getFarmerHierarchyTask } from '../../api/client';
+import { getFarmerAssignedTasks, getFarmerHierarchyTask, submitFarmerHierarchyTask } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { formatCleanDate } from '../../utils/greeting';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
@@ -68,7 +68,7 @@ type SubmissionHistoryEntry = {
   reviewNotes?: string | null;
 };
 
-const MIN_NOTES_LENGTH = 50;
+const MIN_NOTES_ONLY_LENGTH = 10;
 
 function normalizeTaskStatus(status: string): string {
   return status.replace(/_/g, '-');
@@ -209,6 +209,17 @@ export function FarmerTaskDetailScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        await ImagePicker.requestCameraPermissionsAsync();
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      } catch {
+        // Permissions requested on first photo action as fallback.
+      }
+    })();
+  }, []);
+
   useTaskApprovalPolling(task && !isAgentAssignment ? [task] : [], load);
 
   const goBack = () => {
@@ -230,16 +241,16 @@ export function FarmerTaskDetailScreen() {
 
       const result = useCamera
         ? await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
+            allowsEditing: false,
             aspect: [4, 3],
-            quality: 0.7,
+            quality: 0.8,
             base64: true,
           })
         : await ImagePicker.launchImageLibraryAsync({
             allowsMultipleSelection: true,
             selectionLimit: 6,
             aspect: [4, 3],
-            quality: 0.7,
+            quality: 0.8,
             base64: true,
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
           });
@@ -263,46 +274,46 @@ export function FarmerTaskDetailScreen() {
   const submitTask = async () => {
     if (!task || !showSubmitForm) return;
 
-    let valid = true;
-    if (selectedImages.length === 0) {
-      setPhotoError('Please upload a photo (JPEG or PNG) of your completed work.');
-      valid = false;
-    } else {
-      setPhotoError('');
+    const trimmedNotes = notes.trim();
+    const hasPhotos = selectedImages.length > 0;
+    const hasEnoughNotes = trimmedNotes.length >= MIN_NOTES_ONLY_LENGTH;
+
+    if (!hasPhotos && !hasEnoughNotes) {
+      setPhotoError('Add at least one photo or a short note (10+ characters).');
+      setNotesError('Add at least one photo or a short note (10+ characters).');
+      return;
     }
 
-    const noteLen = notes.trim().length;
-    if (noteLen < MIN_NOTES_LENGTH) {
-      setNotesError(
-        `Notes must be at least ${MIN_NOTES_LENGTH} characters (currently ${noteLen}).`
-      );
-      valid = false;
-    } else {
-      setNotesError('');
-    }
-    if (!valid) return;
+    setPhotoError('');
+    setNotesError('');
 
-    const primaryImage = selectedImages[0];
     setSubmitting(true);
     try {
-      const result = await submitFarmerTaskWithOutbox({
-        farmerTaskId: task.id,
-        taskName: task.name,
-        notes: notes.trim(),
-        photoLocalUri: primaryImage.uri,
-        photoBase64: primaryImage.base64,
-      });
+      if (hasPhotos) {
+        const primaryImage = selectedImages[0];
+        const result = await submitFarmerTaskWithOutbox({
+          farmerTaskId: task.id,
+          taskName: task.name,
+          notes: trimmedNotes,
+          photoLocalUri: primaryImage.uri,
+          photoBase64: primaryImage.base64,
+        });
+        if (result.mode === 'offline') {
+          showMessage(
+            'Saved offline',
+            'Your evidence is saved on this device. Open Your Tasks when back online to push it.'
+          );
+        } else {
+          showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
+        }
+      } else {
+        await submitFarmerHierarchyTask(task.id, { notes: trimmedNotes });
+        showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
+      }
+
       setNotes('');
       setSelectedImages([]);
       await load();
-      if (result.mode === 'offline') {
-        showMessage(
-          'Saved offline',
-          'Your evidence is saved on this device. Open Your Tasks when back online to push it.'
-        );
-      } else {
-        showMessage('Task submitted!', 'Awaiting review. We will check status every 30 seconds.');
-      }
     } catch (err: unknown) {
       showMessage('Error', extractApiError(err, 'Could not submit task'));
     } finally {
@@ -331,7 +342,10 @@ export function FarmerTaskDetailScreen() {
   }
 
   const noteLen = notes.trim().length;
-  const notesTooShort = noteLen < MIN_NOTES_LENGTH;
+  const notesHint =
+    selectedImages.length > 0
+      ? 'Optional with photos'
+      : `Required without photos (min ${MIN_NOTES_ONLY_LENGTH} characters)`;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -415,7 +429,7 @@ export function FarmerTaskDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Submit work</Text>
 
-          <Text style={styles.label}>Notes * (min {MIN_NOTES_LENGTH} characters)</Text>
+          <Text style={styles.label}>Notes ({notesHint})</Text>
           <TextInput
             style={[styles.noteInput, notesError ? styles.inputError : null]}
             placeholder="Add any notes about this task..."
@@ -425,17 +439,22 @@ export function FarmerTaskDetailScreen() {
             value={notes}
             onChangeText={(text) => {
               setNotes(text);
-              if (notesError && text.trim().length >= MIN_NOTES_LENGTH) setNotesError('');
+              if (notesError) setNotesError('');
             }}
+            editable={!submitting}
           />
-          <Text style={[styles.charCount, notesTooShort ? styles.charCountWarn : styles.charCountOk]}>
-            {noteLen}/{MIN_NOTES_LENGTH} characters
-            {notesTooShort ? ` — ${MIN_NOTES_LENGTH - noteLen} more needed` : ''}
+          <Text style={styles.charCount}>
+            {noteLen} characters
+            {selectedImages.length === 0 && noteLen < MIN_NOTES_ONLY_LENGTH
+              ? ` — ${MIN_NOTES_ONLY_LENGTH - noteLen} more needed without a photo`
+              : ''}
           </Text>
           {notesError ? <Text style={styles.errorText}>{notesError}</Text> : null}
 
-          <Text style={[styles.label, styles.labelSpaced]}>Upload photos *</Text>
-          <Text style={styles.subLabel}>Add evidence of completed work. First photo is submitted.</Text>
+          <Text style={[styles.label, styles.labelSpaced]}>Upload photos</Text>
+          <Text style={styles.subLabel}>
+            Add evidence of completed work. Photos optional if you add notes instead.
+          </Text>
 
           {selectedImages.length > 0 ? (
             <View style={styles.imageGrid}>

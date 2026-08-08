@@ -30,6 +30,7 @@ export type FarmerRootStackParamList = {
   MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
   NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
   TaskDetail: { taskId: string; source?: 'hierarchy' | 'agent_assignment' };
+  CreateTask: undefined;
 };
 
 export type AdminTabParamList = {

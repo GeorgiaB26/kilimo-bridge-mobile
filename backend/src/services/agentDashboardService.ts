@@ -187,15 +187,69 @@ export async function listAgentTasksAssignedToFarmer(farmerId: string): Promise<
 > {
   const rows = await query<AgentPersonalTask & { assigned_by_name?: string | null }>(
     `
-    SELECT at.*, u.name AS assigned_by_name
+    SELECT at.*,
+      CASE
+        WHEN at.agent_user_id::text = fu.user_id::text THEN 'You'
+        ELSE COALESCE(u.name, 'Your field agent')
+      END AS assigned_by_name
     FROM agent_tasks at
     LEFT JOIN users u ON u.user_id::text = at.agent_user_id
+    LEFT JOIN users fu ON fu.farmer_id = $1
     WHERE at.assigned_farmer_ids IS NOT NULL
       AND TRIM(at.assigned_farmer_ids) != ''
     ORDER BY at.due_date, at.name
-    `
+    `,
+    [farmerId]
   );
   return rows.filter((row) => parseAssignedFarmerIds(row.assigned_farmer_ids).includes(farmerId));
+}
+
+const FARMER_TASK_PRIORITIES = new Set(['low', 'medium', 'high']);
+
+function mapFarmerTaskPriority(priority?: string): string {
+  const p = (priority ?? 'normal').trim().toLowerCase();
+  if (p === 'normal') return 'medium';
+  if (FARMER_TASK_PRIORITIES.has(p)) return p;
+  return 'medium';
+}
+
+/** Personal task created by a farmer (stored in agent_tasks, assigned to self). */
+export async function createFarmerPersonalTask(
+  farmerId: string,
+  farmerUserId: string,
+  data: {
+    name: string;
+    description?: string;
+    due_date: string;
+    priority?: string;
+    assign_to_self?: boolean;
+  }
+): Promise<AgentPersonalTask> {
+  const id = uuidv4();
+  const dueDate = normalizeAgentTaskDueDate(data.due_date);
+  const assignToSelf = data.assign_to_self !== false;
+  const assignedFarmerIds = assignToSelf ? JSON.stringify([farmerId]) : null;
+
+  await query(
+    `
+    INSERT INTO agent_tasks (
+      id, agent_user_id, name, description, due_date, priority, status,
+      assigned_farmer_ids, reminder_type, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'not_started', $7, NULL, NOW(), NOW())
+    `,
+    [
+      id,
+      farmerUserId,
+      data.name.trim(),
+      data.description?.trim() ?? null,
+      dueDate,
+      mapFarmerTaskPriority(data.priority),
+      assignedFarmerIds,
+    ]
+  );
+
+  const row = await queryOne<AgentPersonalTask>('SELECT * FROM agent_tasks WHERE id = $1', [id]);
+  return enrichPersonalTask(row!);
 }
 
 export async function getAgentPersonalTask(

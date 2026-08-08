@@ -7,6 +7,7 @@ import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerTaskDetailScreen } from '../screens/farmer/FarmerTaskDetailScreen';
+import { FarmerCreateTaskScreen } from '../screens/farmer/FarmerCreateTaskScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
@@ -78,6 +79,7 @@ export function FarmerNavigator() {
         <RootStack.Screen name="MessagesFlow" component={MessagesStackNavigator} />
         <RootStack.Screen name="NotificationsFlow" component={NotificationsStackNavigator} />
         <RootStack.Screen name="TaskDetail" component={FarmerTaskDetailScreen} />
+        <RootStack.Screen name="CreateTask" component={FarmerCreateTaskScreen} />
       </RootStack.Navigator>
     </>
   );

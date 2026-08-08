@@ -234,6 +234,17 @@ export async function getFarmerAssignedTasks(params?: {
   }
 }
 
+export async function createFarmerPersonalTask(body: {
+  name: string;
+  description?: string;
+  due_date: string;
+  priority?: string;
+  assign_to_self?: boolean;
+}) {
+  const { data } = await api.post('/farmer/personal-tasks', body);
+  return data;
+}
+
 export async function submitFarmerHelpRequest(message: string) {
   const { data } = await api.post('/farmer/help-requests', { message });
   return data;
