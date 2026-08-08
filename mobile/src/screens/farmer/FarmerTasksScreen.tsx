@@ -56,6 +56,26 @@ const KPI_CARDS: Array<{
   { key: 'completed', label: 'COMPLETED', badgeBg: '#E8F5E9', countColor: '#2E7D32' },
 ];
 
+const KPI_LABEL_MAX_FONT = 10;
+const KPI_LABEL_MIN_FONT = 5.5;
+/** Approximate width factor for bold uppercase sans glyphs. */
+const KPI_LABEL_CHAR_WIDTH = 0.72;
+
+/** Shared font size so the longest KPI label fits in the measured label width. */
+function kpiLabelFontSizeForWidth(labelWidth: number): number {
+  if (labelWidth <= 0) return KPI_LABEL_MAX_FONT;
+  const longest = Math.max(...KPI_CARDS.map((k) => k.label.length));
+  const letterSpacing = 0.15;
+  let size = KPI_LABEL_MAX_FONT;
+  while (size > KPI_LABEL_MIN_FONT) {
+    const estimated =
+      longest * size * KPI_LABEL_CHAR_WIDTH + Math.max(0, longest - 1) * letterSpacing;
+    if (estimated <= labelWidth) return Math.round(size * 10) / 10;
+    size -= 0.25;
+  }
+  return KPI_LABEL_MIN_FONT;
+}
+
 function isAgentAssignment(task: ExtendedTaskRow): boolean {
   return task.source === 'agent_assignment';
 }
@@ -96,6 +116,17 @@ export function FarmerTasksScreen() {
   const [error, setError] = useState<string | null>(null);
   const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [kpiLabelWidth, setKpiLabelWidth] = useState(0);
+
+  const kpiLabelFontSize = useMemo(
+    () => kpiLabelFontSizeForWidth(kpiLabelWidth),
+    [kpiLabelWidth]
+  );
+
+  const onKpiLabelLayout = useCallback((width: number) => {
+    if (width <= 0) return;
+    setKpiLabelWidth((prev) => (Math.abs(prev - width) < 0.5 ? prev : width));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -226,6 +257,8 @@ export function FarmerTasksScreen() {
     const highlighted = scrollTargetId === item.id;
     const expanded = expandedTaskId === item.id;
     const statusNorm = normalizeTaskStatus(item.status);
+    const openLabel = statusNorm === 'rejected' ? 'Resubmit task' : 'Open task';
+    const openButtonColor = statusNorm === 'rejected' ? COLORS.warning : COLORS.primary;
 
     return (
       <KBCard
@@ -257,6 +290,17 @@ export function FarmerTasksScreen() {
 
         {item.description ? (
           <Text className="mt-2 text-sm text-foreground leading-5">{item.description}</Text>
+        ) : null}
+
+        {!expanded && openable ? (
+          <Button
+            mode="contained"
+            buttonColor={openButtonColor}
+            onPress={() => setSubmitTask(item)}
+            style={styles.openBtn}
+          >
+            {openLabel}
+          </Button>
         ) : null}
 
         {expanded ? (
@@ -302,16 +346,18 @@ export function FarmerTasksScreen() {
             {openable ? (
               <Button
                 mode="contained"
-                buttonColor={statusNorm === 'rejected' ? COLORS.warning : COLORS.primary}
+                buttonColor={openButtonColor}
                 onPress={() => setSubmitTask(item)}
                 style={styles.openBtn}
               >
-                {statusNorm === 'rejected' ? 'Resubmit task' : 'Open task'}
+                {openLabel}
               </Button>
             ) : null}
           </View>
         ) : (
-          <Text style={styles.expandHint}>Tap for details</Text>
+          <Text style={styles.expandHint}>
+            {openable ? 'Tap card for more details' : 'Tap for details'}
+          </Text>
         )}
       </KBCard>
     );
@@ -362,14 +408,20 @@ export function FarmerTasksScreen() {
                       Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
                     ]}
                   >
-                    <Text
-                      style={styles.kpiLabel}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.65}
+                    <View
+                      style={styles.kpiLabelWrap}
+                      onLayout={(e) => onKpiLabelLayout(e.nativeEvent.layout.width)}
                     >
-                      {kpi.label}
-                    </Text>
+                      <Text
+                        style={[styles.kpiLabel, { fontSize: kpiLabelFontSize }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={KPI_LABEL_MIN_FONT / KPI_LABEL_MAX_FONT}
+                        allowFontScaling={false}
+                      >
+                        {kpi.label}
+                      </Text>
+                    </View>
                     <View style={[styles.kpiBadge, { backgroundColor: kpi.badgeBg }]}>
                       <Text style={[styles.kpiCount, { color: kpi.countColor }]}>
                         {categoryCounts[kpi.key]}
@@ -473,13 +525,16 @@ const styles = StyleSheet.create({
     borderColor: '#1A4D3E',
     borderWidth: 2,
   },
+  kpiLabelWrap: {
+    width: '100%',
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
   kpiLabel: {
     width: '100%',
-    fontSize: 9,
     fontWeight: '700',
     color: '#666666',
-    letterSpacing: 0.2,
-    marginBottom: 8,
+    letterSpacing: 0.15,
     textAlign: 'center',
   },
   kpiBadge: {
