@@ -189,7 +189,7 @@ export async function listAgentTasksAssignedToFarmer(farmerId: string): Promise<
     `
     SELECT at.*, u.name AS assigned_by_name
     FROM agent_tasks at
-    LEFT JOIN users u ON u.user_id = at.agent_user_id
+    LEFT JOIN users u ON u.user_id::text = at.agent_user_id
     WHERE at.assigned_farmer_ids IS NOT NULL
       AND TRIM(at.assigned_farmer_ids) != ''
     ORDER BY at.due_date, at.name
@@ -371,24 +371,25 @@ export async function getProjectManagerUserForAgent(region?: string, district?: 
       [region ?? null, district ?? null]
     );
     if (row) return row;
+
+    return await queryOne<{ user_id: string; name: string; phone_number: string }>(
+      `
+      SELECT user_id::text AS user_id, name, phone_number FROM users
+      WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
+        AND phone_number IS NOT NULL
+      ORDER BY CASE role::text
+        WHEN 'project_manager' THEN 0
+        WHEN 'platform_admin' THEN 1
+        WHEN 'super_admin' THEN 2
+        WHEN 'admin' THEN 3
+        ELSE 4
+      END
+      LIMIT 1
+      `
+    );
   } catch {
-    /* region/district columns may be missing on some deployments */
+    return null;
   }
-  return queryOne<{ user_id: string; name: string; phone_number: string }>(
-    `
-    SELECT user_id::text AS user_id, name, phone_number FROM users
-    WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
-      AND phone_number IS NOT NULL
-    ORDER BY CASE role::text
-      WHEN 'project_manager' THEN 0
-      WHEN 'platform_admin' THEN 1
-      WHEN 'super_admin' THEN 2
-      WHEN 'admin' THEN 3
-      ELSE 4
-    END
-    LIMIT 1
-    `
-  );
 }
 
 export async function getProjectManagerForAgent(region?: string, district?: string) {
@@ -452,7 +453,9 @@ export async function getAgentDashboardSummary(
 
   const overdueTasks = [
     ...farmerTasks.filter(
-      (t) => classifyTaskDue(t.due_date).overdue && !['approved', 'completed'].includes(t.status)
+      (t) =>
+        classifyTaskDue(t.due_date).overdue &&
+        !['approved', 'completed'].includes(String(t.status ?? '').replace(/_/g, '-'))
     ),
     ...personalTasks.filter(
       (t) => classifyTaskDue(t.due_date).overdue && t.status !== 'completed'

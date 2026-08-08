@@ -92,7 +92,7 @@ export async function listAllFarmerAssignedTasks(
     return sortFarmerPortalTasks(hierarchyTasks);
   }
 
-  const agentRows = await listAgentTasksAssignedToFarmer(farmerId);
+  const agentRows = await listAgentTasksAssignedToFarmer(farmerId).catch(() => []);
   let agentTasks = agentRows.map(mapAgentTaskToFarmerRow);
 
   if (filters?.status) {
