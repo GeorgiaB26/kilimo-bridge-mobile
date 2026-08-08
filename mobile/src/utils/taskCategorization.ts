@@ -122,3 +122,18 @@ export function pickCategorizedTasks<T>(
     completed: filter === 'completed' ? categorized.completed : [],
   };
 }
+
+/** Flat list for table view: OVERDUE → IN PROGRESS → NOT STARTED → COMPLETED */
+export function flattenCategorizedTasks<T extends CategorizableTask>(tasks: T[]): T[] {
+  const categorized = categorizeTasks(tasks);
+  return flattenCategorizedBuckets(categorized);
+}
+
+export function flattenCategorizedBuckets<T>(categorized: CategorizedTasks<T>): T[] {
+  return [
+    ...categorized.overdue,
+    ...categorized.inProgress,
+    ...categorized.notStarted,
+    ...categorized.completed,
+  ];
+}

@@ -17,7 +17,7 @@ export function MessagesNotificationsHeaderIcons({
   iconColor = '#fff',
 }: Props) {
   const navigation = useNavigation();
-  const { messageCount, notificationCount } = useUnreadInboxCounts();
+  const { messageCount, notificationCount, notificationsEnabled } = useUnreadInboxCounts();
 
   const openFlow = (route: string) => {
     let nav = navigation as NavigationProp<ParamListBase> | undefined;
@@ -30,6 +30,9 @@ export function MessagesNotificationsHeaderIcons({
     }
   };
 
+  const showBadges = notificationsEnabled;
+  const showNotificationIcon = notificationsEnabled;
+
   return (
     <View style={styles.row}>
       <Pressable
@@ -39,25 +42,27 @@ export function MessagesNotificationsHeaderIcons({
         accessibilityHint="Open messages"
       >
         <Ionicons name="chatbubbles-outline" size={22} color={iconColor} />
-        {messageCount > 0 ? (
+        {showBadges && messageCount > 0 ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{messageCount > 99 ? '99+' : messageCount}</Text>
           </View>
         ) : null}
       </Pressable>
-      <Pressable
-        onPress={() => openFlow(notificationsRoute)}
-        style={styles.hit}
-        accessibilityLabel="Notifications"
-        accessibilityHint="Open notifications"
-      >
-        <Ionicons name="notifications-outline" size={22} color={iconColor} />
-        {notificationCount > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-          </View>
-        ) : null}
-      </Pressable>
+      {showNotificationIcon ? (
+        <Pressable
+          onPress={() => openFlow(notificationsRoute)}
+          style={styles.hit}
+          accessibilityLabel="Notifications"
+          accessibilityHint="Open notifications"
+        >
+          <Ionicons name="notifications-outline" size={22} color={iconColor} />
+          {showBadges && notificationCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      ) : null}
     </View>
   );
 }
