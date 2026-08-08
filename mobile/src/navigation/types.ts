@@ -79,8 +79,11 @@ export type AgentTabParamList = {
   Dashboard: undefined;
   Farmers: NavigatorScreenParams<AgentFarmersStackParamList> | undefined;
   Tasks: {
-    filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
+    filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'rejected' | 'completed';
     openAdd?: boolean;
+    /** Deep-link from notification — open this task in the detail modal. */
+    taskId?: string;
+    highlightTaskId?: string;
   } | undefined;
   Audit: undefined;
   Profile: undefined;

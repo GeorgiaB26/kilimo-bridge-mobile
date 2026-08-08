@@ -5,11 +5,13 @@ import {
   listFarmerTasks,
   getFarmerTask,
   submitFarmerTask,
+  recallFarmerTask,
 } from '../services/hierarchyService';
 import { listAllFarmerAssignedTasks } from '../services/farmerPortalService';
 import {
   getAgentTaskAssignedToFarmer,
   submitAgentTaskByFarmer,
+  recallAgentTaskByFarmer,
 } from '../services/agentDashboardService';
 import { getAdminNotifyPhone, sendSms } from '../services/notificationService';
 import { resolvePhotoUrlForDisplay } from '../services/r2StorageService';
@@ -49,6 +51,7 @@ async function mapFarmerTaskRow(row: Record<string, unknown>) {
     task_order: row.task_order,
     photo_url: await resolvePhotoUrlForDisplay(stored),
     photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+    photo_evidence_key: stored,
     notes: row.notes,
     approval_date: row.approved_date,
     rejection_reason: row.rejection_reason,
@@ -203,6 +206,34 @@ router.post(
   })
 );
 
+router.post(
+  '/tasks/:farmerTaskId/recall',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    try {
+      const updated = await recallFarmerTask(req.params.farmerTaskId, farmerId);
+      res.json({
+        status: 'in-progress',
+        message: 'Submission recalled — edit and resubmit when ready',
+        task: await mapFarmerTaskRow(updated as Record<string, unknown>),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not recall task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
 router.get(
   '/hierarchy/projects',
   requirePermission('hierarchy.read.own'),
@@ -299,6 +330,38 @@ router.post(
   })
 );
 
+router.post(
+  '/hierarchy/tasks/:farmerTaskId/recall',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    try {
+      const updated = await recallFarmerTask(req.params.farmerTaskId, farmerId);
+      const stored =
+        typeof (updated as { photo_evidence_url?: string })?.photo_evidence_url === 'string'
+          ? (updated as { photo_evidence_url: string }).photo_evidence_url
+          : null;
+      res.json({
+        ...(updated as object),
+        photo_evidence_key: stored,
+        photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not recall task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
 /** Farmer submits photo + notes on a field-agent-assigned agent_tasks row. */
 router.post(
   '/agent-tasks/:taskId/submit',
@@ -324,6 +387,36 @@ router.post(
           ? Number((err as { statusCode: number }).statusCode)
           : 500;
       const message = err instanceof Error ? err.message : 'Could not submit task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+/** Farmer recalls evidence on an agent-assigned task before review. */
+router.post(
+  '/agent-tasks/:taskId/recall',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+
+    try {
+      const updated = await recallAgentTaskByFarmer(req.params.taskId, farmerId);
+      res.json({
+        ...updated,
+        source: 'agent_assignment',
+        photo_evidence_url: updated.photo_evidence_url,
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not recall task';
       if (statusCode >= 400 && statusCode < 600) {
         res.status(statusCode).json({ error: message });
         return;

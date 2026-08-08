@@ -1,4 +1,4 @@
-/** Shared task categorization: OVERDUE → IN PROGRESS → NOT STARTED → COMPLETED */
+/** Shared task categorization: OVERDUE → IN PROGRESS → NOT STARTED → REJECTED → COMPLETED */
 
 export type DueDateInput = string | Date | null | undefined;
 
@@ -11,6 +11,7 @@ export interface TaskCategoryCounts {
   overdue: number;
   inProgress: number;
   notStarted: number;
+  rejected: number;
   completed: number;
   total: number;
 }
@@ -24,6 +25,10 @@ function normalizeStatusForCategory(status?: string | null): string {
 
 function isCompletedStatus(status?: string | null): boolean {
   return normalizeStatusForCategory(status) === 'completed';
+}
+
+function isRejectedStatus(status?: string | null): boolean {
+  return normalizeStatusForCategory(status) === 'rejected';
 }
 
 function isInProgressStatus(status?: string | null): boolean {
@@ -62,7 +67,7 @@ export function compareDueDates(a?: DueDateInput, b?: DueDateInput): number {
 }
 
 function isOverdue(due?: DueDateInput, status?: string | null): boolean {
-  if (status && isCompletedStatus(status)) return false;
+  if (status && (isCompletedStatus(status) || isRejectedStatus(status))) return false;
   const dueDay = parseDueDay(due);
   if (!dueDay) return false;
   const today = new Date();
@@ -74,11 +79,16 @@ export function countTaskCategories(tasks: CategorizableTaskRow[]): TaskCategory
   let overdue = 0;
   let inProgress = 0;
   let notStarted = 0;
+  let rejected = 0;
   let completed = 0;
 
   for (const task of tasks) {
     if (isCompletedStatus(task.status)) {
       completed++;
+      continue;
+    }
+    if (isRejectedStatus(task.status)) {
+      rejected++;
       continue;
     }
     if (isOverdue(task.due_date, task.status)) {
@@ -96,6 +106,7 @@ export function countTaskCategories(tasks: CategorizableTaskRow[]): TaskCategory
     overdue,
     inProgress,
     notStarted,
+    rejected,
     completed,
     total: tasks.length,
   };

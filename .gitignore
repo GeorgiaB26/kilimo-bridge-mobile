@@ -17,5 +17,6 @@ scripts/_prove-farmer-verification-outbox.bundle.cjs
 scripts/_prove-centre-qc-outbox.bundle.cjs
 scripts/_prove-project-assign-outbox.bundle.cjs
 scripts/_prove-agent-task-approval-outbox.bundle.cjs
+scripts/_prove-task-recall-outbox.bundle.cjs
 scripts/_tmp_task_evidence.jpg
 scripts/_tmp_task_evidence.b64

@@ -9,6 +9,7 @@ import {
   Calendar,
   ChartColumn,
   CircleCheck,
+  CircleX,
   ChevronRight,
   Hourglass,
   TriangleAlert,
@@ -31,7 +32,7 @@ const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : 
 
 type DashboardData = Awaited<ReturnType<typeof getAgentDashboard>>;
 
-type TaskFilter = 'overdue' | 'in_progress' | 'not_started' | 'completed';
+type TaskFilter = 'overdue' | 'in_progress' | 'not_started' | 'rejected' | 'completed';
 
 function navigateNested(
   navigation: Nav,
@@ -242,7 +243,7 @@ export function AgentDashboardScreen() {
           onPress={() => goToTasks('in_progress')}
         />
       </View>
-      <View className="mb-4 flex-row gap-2">
+      <View className="mb-2 flex-row gap-2">
         <MetricCard
           Icon={Ban}
           label="Not started"
@@ -256,6 +257,16 @@ export function AgentDashboardScreen() {
           value={tasks?.completed_count ?? 0}
           color="#10B981"
           onPress={() => goToTasks('completed')}
+        />
+      </View>
+      <View className="mb-4 flex-row gap-2">
+        <MetricCard
+          Icon={CircleX}
+          iconColor="#D32F2F"
+          label="Rejected"
+          value={tasks?.rejected_count ?? 0}
+          color="#D32F2F"
+          onPress={() => goToTasks('rejected')}
         />
       </View>
 
@@ -312,7 +323,12 @@ export function AgentDashboardScreen() {
       {recentTasks.length > 0 ? (
         <KBCard style={{ marginBottom: 12 }}>
           <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
-          {recentTasks.slice(0, 5).map((t) => (
+          {recentTasks.slice(0, 5).map((t: {
+            id: string;
+            name?: string;
+            farmer_name?: string;
+            due_date?: string | null;
+          }) => (
             <Pressable
               key={t.id}
               onPress={() => goToTasks('all')}

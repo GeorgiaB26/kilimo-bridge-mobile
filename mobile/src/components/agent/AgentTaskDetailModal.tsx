@@ -26,6 +26,7 @@ export type AgentTaskDetail = {
   payment_value_kes?: number;
   notes?: string;
   photo_evidence_url?: string;
+  rejection_reason?: string;
   priority?: string;
   source: 'farmer' | 'personal';
   assigned_farmer_names?: string[];
@@ -198,6 +199,15 @@ export function AgentTaskDetailModal({
                 </>
               ) : null}
             </KBCard>
+
+            {task.rejection_reason ? (
+              <View className="mb-3">
+                <Text className="text-xs font-semibold text-[#757575]">Rejection reason</Text>
+                <Text className="mt-1 text-sm font-semibold leading-5 text-[#D32F2F]">
+                  {task.rejection_reason}
+                </Text>
+              </View>
+            ) : null}
 
             {isApproval || task.notes || photoUrl ? (
               <View className="mb-3">

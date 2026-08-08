@@ -109,6 +109,8 @@ export interface RegionFarmerTaskRow {
   payment_value_kes?: number;
   notes?: string | null;
   photo_evidence_url?: string | null;
+  rejection_reason?: string | null;
+  description?: string | null;
   source?: 'farmer';
 }
 
@@ -201,12 +203,13 @@ export async function listRegionFarmerTasks(region: string, district?: string): 
     payment_value_kes?: number;
     notes?: string | null;
     photo_evidence_url?: string | null;
+    rejection_reason?: string | null;
   }>(
     `
     SELECT ft.id, ft.farmer_id, ft.status, t.name, t.description, t.due_date,
       f.name AS farmer_name, pp.name AS program_project_name,
       ft.submitted_date, ft.completed_date, t.payment_value_kes,
-      ft.notes, ft.photo_evidence_url
+      ft.notes, ft.photo_evidence_url, ft.rejection_reason
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id
@@ -342,8 +345,11 @@ export async function submitAgentTaskByFarmer(
   try {
     await createNotification({
       userId: row.agent_user_id,
-      title: 'Task evidence submitted',
-      message: `${farmer?.name ?? 'A farmer'} submitted evidence for "${row.name}". Review in your Tasks tab.`,
+      title: current === 'rejected' ? 'Task evidence resubmitted' : 'Task evidence submitted',
+      message:
+        current === 'rejected'
+          ? `${farmer?.name ?? 'A farmer'} resubmitted evidence for "${row.name}". Review in your Tasks tab.`
+          : `${farmer?.name ?? 'A farmer'} submitted evidence for "${row.name}". Review in your Tasks tab.`,
       type: 'task',
       contextType: 'agent_task',
       contextId: taskId,
@@ -356,6 +362,68 @@ export async function submitAgentTaskByFarmer(
   const updated = await getAgentTaskAssignedToFarmer(taskId, farmerId);
   if (!updated) {
     throw Object.assign(new Error('Task not found after submit'), { statusCode: 500 });
+  }
+  return updated;
+}
+
+/**
+ * Farmer recalls evidence on an agent-assigned task before agent review.
+ * Status → in_progress; photo + notes kept. 409 if not still submitted_for_approval.
+ */
+export async function recallAgentTaskByFarmer(
+  taskId: string,
+  farmerId: string
+): Promise<AgentPersonalTask> {
+  const row = await queryOne<AgentPersonalTask>('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
+  if (!row) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  if (!parseAssignedFarmerIds(row.assigned_farmer_ids).includes(farmerId)) {
+    throw Object.assign(new Error('Not your task'), { statusCode: 403 });
+  }
+
+  const current = normalizeAgentTaskStatus(row.status);
+  if (current !== 'submitted_for_approval') {
+    throw Object.assign(
+      new Error('Only submitted tasks can be recalled (already reviewed or not submitted)'),
+      { statusCode: 409 }
+    );
+  }
+
+  await query(
+    `
+    UPDATE agent_tasks SET
+      status = 'in_progress',
+      submitted_at = NULL,
+      reviewed_at = NULL,
+      updated_at = NOW()
+    WHERE id = $1
+    `,
+    [taskId]
+  );
+
+  const farmer = await queryOne<{ name: string }>(
+    'SELECT name FROM farmers WHERE farmer_id = $1',
+    [farmerId]
+  );
+
+  try {
+    await createNotification({
+      userId: row.agent_user_id,
+      title: 'Task evidence recalled',
+      message: `${farmer?.name ?? 'A farmer'} recalled their submission for "${row.name}". It is no longer awaiting review.`,
+      type: 'task',
+      contextType: 'agent_task',
+      contextId: taskId,
+      priority: 'normal',
+    });
+  } catch {
+    // best-effort
+  }
+
+  const updated = await getAgentTaskAssignedToFarmer(taskId, farmerId);
+  if (!updated) {
+    throw Object.assign(new Error('Task not found after recall'), { statusCode: 500 });
   }
   return updated;
 }
@@ -763,6 +831,7 @@ export async function getAgentDashboardSummary(
       in_progress_count: categoryCounts.inProgress,
       not_started_count: categoryCounts.notStarted,
       completed_count: categoryCounts.completed,
+      rejected_count: categoryCounts.rejected,
       total_count: categoryCounts.total,
       overdue: overdueTasks.slice(0, 5),
       recent: allRecentTasks.slice(0, 5),

@@ -1,9 +1,10 @@
-/** Shared task categorization: OVERDUE → IN PROGRESS → NOT STARTED → COMPLETED */
+/** Shared task categorization: OVERDUE → IN PROGRESS → NOT STARTED → REJECTED → COMPLETED */
 
 export type TaskCategoryFilter =
   | 'overdue'
   | 'in_progress'
   | 'not_started'
+  | 'rejected'
   | 'completed';
 
 export interface CategorizableTask {
@@ -15,6 +16,7 @@ export interface CategorizedTasks<T> {
   overdue: T[];
   inProgress: T[];
   notStarted: T[];
+  rejected: T[];
   completed: T[];
 }
 
@@ -22,6 +24,7 @@ export interface TaskCategoryCounts {
   overdue: number;
   inProgress: number;
   notStarted: number;
+  rejected: number;
   completed: number;
   total: number;
 }
@@ -37,6 +40,10 @@ export function isTaskCompletedStatus(status: string): boolean {
   return normalizeStatusForCategory(status) === 'completed';
 }
 
+export function isTaskRejectedStatus(status: string): boolean {
+  return normalizeStatusForCategory(status) === 'rejected';
+}
+
 export function isTaskInProgressStatus(status: string): boolean {
   return normalizeStatusForCategory(status) === 'in-progress';
 }
@@ -50,7 +57,7 @@ function parseDueDay(due?: string | null): Date | null {
 }
 
 export function isTaskOverdue(due?: string | null, status?: string): boolean {
-  if (status && isTaskCompletedStatus(status)) return false;
+  if (status && (isTaskCompletedStatus(status) || isTaskRejectedStatus(status))) return false;
   const dueDay = parseDueDay(due);
   if (!dueDay) return false;
   const today = new Date();
@@ -72,12 +79,17 @@ export function categorizeTasks<T extends CategorizableTask>(tasks: T[]): Catego
     overdue: [],
     inProgress: [],
     notStarted: [],
+    rejected: [],
     completed: [],
   };
 
   for (const task of tasks) {
     if (isTaskCompletedStatus(task.status)) {
       result.completed.push(task);
+      continue;
+    }
+    if (isTaskRejectedStatus(task.status)) {
+      result.rejected.push(task);
       continue;
     }
     if (isTaskOverdue(task.due_date, task.status)) {
@@ -94,6 +106,7 @@ export function categorizeTasks<T extends CategorizableTask>(tasks: T[]): Catego
   result.overdue.sort(sortByDueDate);
   result.inProgress.sort(sortByDueDate);
   result.notStarted.sort(sortByDueDate);
+  result.rejected.sort(sortByDueDate);
   result.completed.sort(sortByDueDate);
 
   return result;
@@ -105,6 +118,7 @@ export function countTaskCategories(tasks: CategorizableTask[]): TaskCategoryCou
     overdue: categorized.overdue.length,
     inProgress: categorized.inProgress.length,
     notStarted: categorized.notStarted.length,
+    rejected: categorized.rejected.length,
     completed: categorized.completed.length,
     total: tasks.length,
   };
@@ -119,6 +133,7 @@ export function pickCategorizedTasks<T>(
     overdue: filter === 'overdue' ? categorized.overdue : [],
     inProgress: filter === 'in_progress' ? categorized.inProgress : [],
     notStarted: filter === 'not_started' ? categorized.notStarted : [],
+    rejected: filter === 'rejected' ? categorized.rejected : [],
     completed: filter === 'completed' ? categorized.completed : [],
   };
 }

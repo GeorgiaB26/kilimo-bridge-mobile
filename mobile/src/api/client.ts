@@ -664,6 +664,24 @@ export async function getFarmerAgentAssignedTask(taskId: string) {
   return data;
 }
 
+/** Farmer recalls a hierarchy submission (status → in-progress, evidence kept). */
+export async function recallFarmerHierarchyTask(farmerTaskId: string) {
+  const { data } = await api.post(`/farmer/hierarchy/tasks/${farmerTaskId}/recall`);
+  return data;
+}
+
+/** Spec alias: POST /api/farmer/tasks/:id/recall */
+export async function recallFarmerTaskCompletion(farmerTaskId: string) {
+  const { data } = await api.post(`/farmer/tasks/${farmerTaskId}/recall`);
+  return data;
+}
+
+/** Farmer recalls an agent-assigned submission (status → in_progress, evidence kept). */
+export async function recallAgentAssignedTask(taskId: string) {
+  const { data } = await api.post(`/farmer/agent-tasks/${taskId}/recall`);
+  return data;
+}
+
 export async function getFarmerPaymentPending() {
   const { data } = await api.get('/farmer/hierarchy/payment-pending');
   return data;

@@ -8,6 +8,24 @@ export async function ensureFarmerTaskAssignerColumn(): Promise<void> {
     ALTER TABLE farmer_tasks
     ADD COLUMN IF NOT EXISTS assigned_by_user_id TEXT
   `);
+  await ensureFarmerTaskInProgressStatus();
+}
+
+/**
+ * Recall returns submissions to in-progress (not not-started).
+ * Legacy task_status enums only had not-started/submitted/approved/rejected/completed.
+ */
+export async function ensureFarmerTaskInProgressStatus(): Promise<void> {
+  const row = await queryOne<{ exists: boolean }>(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_enum e
+      JOIN pg_type t ON t.oid = e.enumtypid
+      WHERE t.typname = 'task_status' AND e.enumlabel = 'in-progress'
+    ) AS exists
+  `);
+  if (row?.exists) return;
+  await query(`ALTER TYPE task_status ADD VALUE 'in-progress'`);
 }
 
 export function toDbTaskStatus(status: string): string {
@@ -425,6 +443,91 @@ export async function getFarmerTask(farmerTaskId: string) {
   return mapFarmerTaskRow(row as { status?: string });
 }
 
+/** User ids of field agents who should review this farmer's hierarchy tasks. */
+async function resolveAgentUserIdsForFarmer(farmerId: string): Promise<string[]> {
+  const farmer = await queryOne<{
+    district: string | null;
+    registered_by_agent_id: string | null;
+  }>(
+    `SELECT district, registered_by_agent_id FROM farmers WHERE farmer_id = $1`,
+    [farmerId]
+  );
+  if (!farmer) return [];
+
+  const ids = new Set<string>();
+
+  if (farmer.registered_by_agent_id) {
+    const registered = await queryOne<{ user_id: string }>(
+      `SELECT u.user_id::text AS user_id
+       FROM agents a
+       JOIN users u ON u.user_id = a.user_id
+       WHERE a.agent_id = $1`,
+      [farmer.registered_by_agent_id]
+    );
+    if (registered?.user_id) ids.add(registered.user_id);
+  }
+
+  if (farmer.district) {
+    const districtAgents = await query<{ user_id: string }>(
+      `SELECT DISTINCT u.user_id::text AS user_id
+       FROM agents a
+       JOIN users u ON u.user_id = a.user_id
+       WHERE a.district = $1 AND (a.status IS NULL OR a.status = 'active')`,
+      [farmer.district]
+    );
+    for (const row of districtAgents) {
+      if (row.user_id) ids.add(row.user_id);
+    }
+  }
+
+  return [...ids];
+}
+
+/**
+ * In-app notify for field agents when a farmer submits hierarchy task evidence.
+ * context_type=farmer_task so the agent app can deep-link to Tasks.
+ */
+export async function notifyAgentsOfFarmerTaskSubmission(
+  farmerTaskId: string,
+  options?: { resubmitted?: boolean }
+): Promise<void> {
+  const task = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+    farmer_name?: string;
+  } | null;
+  if (!task?.farmer_id || !task.id) return;
+
+  const agentUserIds = await resolveAgentUserIdsForFarmer(task.farmer_id);
+  if (agentUserIds.length === 0) return;
+
+  const { createNotification } = await import('./notificationService');
+  const farmerName = task.farmer_name ?? 'A farmer';
+  const taskName = task.name ?? 'a task';
+  const resubmitted = Boolean(options?.resubmitted);
+  const title = resubmitted ? 'Task evidence resubmitted' : 'Task evidence submitted';
+  const message = resubmitted
+    ? `${farmerName} resubmitted evidence for "${taskName}". Review in your Tasks tab.`
+    : `${farmerName} submitted evidence for "${taskName}". Review in your Tasks tab.`;
+
+  for (const userId of agentUserIds) {
+    try {
+      await createNotification({
+        userId,
+        title,
+        message,
+        type: 'task',
+        contextType: 'farmer_task',
+        contextId: task.id,
+        priority: 'high',
+      });
+    } catch {
+      // best-effort
+    }
+  }
+}
+
 export async function listFarmerTasks(
   farmerId: string,
   filters?: { status?: string; program_project_id?: string; outstanding?: boolean }
@@ -474,12 +577,96 @@ export async function listFarmerProgramProjects(farmerId: string) {
 }
 
 export async function submitFarmerTask(farmerTaskId: string, data: { photo_url?: string; notes?: string }) {
+  const existing = await queryOne<{ status: string }>(
+    'SELECT status FROM farmer_tasks WHERE id = $1',
+    [farmerTaskId]
+  );
+  const prior = (existing?.status ?? '').toLowerCase();
+  const resubmitted = prior === 'rejected' || prior === 'submitted';
+
   await query(`
     UPDATE farmer_tasks SET status = 'submitted', submitted_date = NOW(),
-      photo_evidence_url = $1, notes = $2, updated_at = NOW()
+      photo_evidence_url = $1, notes = $2, rejection_reason = NULL, updated_at = NOW()
     WHERE id = $3
   `, [data.photo_url ?? null, data.notes ?? null, farmerTaskId]);
-  return getFarmerTask(farmerTaskId);
+
+  const updated = await getFarmerTask(farmerTaskId);
+  await notifyAgentsOfFarmerTaskSubmission(farmerTaskId, { resubmitted });
+  return updated;
+}
+
+/**
+ * Farmer recalls a hierarchy submission before review.
+ * Status → in-progress; photo + notes are kept for edit/resubmit.
+ * 409 when not still submitted.
+ */
+export async function recallFarmerTask(farmerTaskId: string, farmerId: string) {
+  const existing = await queryOne<{ status: string; farmer_id: string }>(
+    'SELECT status, farmer_id FROM farmer_tasks WHERE id = $1',
+    [farmerTaskId]
+  );
+  if (!existing) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  if (existing.farmer_id !== farmerId) {
+    throw Object.assign(new Error('Not your task'), { statusCode: 403 });
+  }
+  const prior = (existing.status ?? '').toLowerCase().replace(/_/g, '-');
+  if (prior !== 'submitted' && prior !== 'submitted-for-approval') {
+    throw Object.assign(
+      new Error('Only submitted tasks can be recalled (already reviewed or not submitted)'),
+      { statusCode: 409 }
+    );
+  }
+
+  await query(
+    `
+    UPDATE farmer_tasks SET
+      status = 'in-progress',
+      submitted_date = NULL,
+      updated_at = NOW()
+    WHERE id = $1 AND farmer_id = $2
+    `,
+    [farmerTaskId, farmerId]
+  );
+
+  const updated = await getFarmerTask(farmerTaskId);
+  await notifyAgentsOfFarmerTaskRecall(farmerTaskId);
+  return updated;
+}
+
+/** Notify field agents that a farmer withdrew hierarchy evidence before review. */
+export async function notifyAgentsOfFarmerTaskRecall(farmerTaskId: string): Promise<void> {
+  const task = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+    farmer_name?: string;
+  } | null;
+  if (!task?.farmer_id || !task.id) return;
+
+  const agentUserIds = await resolveAgentUserIdsForFarmer(task.farmer_id);
+  if (agentUserIds.length === 0) return;
+
+  const { createNotification } = await import('./notificationService');
+  const farmerName = task.farmer_name ?? 'A farmer';
+  const taskName = task.name ?? 'a task';
+
+  for (const userId of agentUserIds) {
+    try {
+      await createNotification({
+        userId,
+        title: 'Task evidence recalled',
+        message: `${farmerName} recalled their submission for "${taskName}". It is no longer awaiting review.`,
+        type: 'task',
+        contextType: 'farmer_task',
+        contextId: task.id,
+        priority: 'normal',
+      });
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 export async function approveFarmerTask(farmerTaskId: string, notes?: string) {

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Pressable,
   Platform,
+  Image,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -15,12 +16,13 @@ import { Button } from 'react-native-paper';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { COLORS } from '../../constants';
 import { getFarmerAssignedTasks } from '../../api/client';
-import { extractApiError } from '../../utils/feedback';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
+import { OutboxTaskRecallCard } from '../../components/OutboxTaskRecallCard';
 import type { FarmerTaskRow } from '../../components/farmer/FarmerProjectTasksSection';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
@@ -33,16 +35,45 @@ import {
 import { formatDisplayDate, formatCleanDate } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerTabParamList } from '../../navigation/types';
+import {
+  dismissTaskRecallOutbox,
+  listPendingTaskRecalls,
+  pushPendingTaskRecall,
+  recallFarmerTaskWithOutbox,
+  syncAllPendingTaskRecalls,
+  type PendingTaskRecallView,
+} from '../../services/submitTaskRecallOutbox';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
-type StatusFilterKey = TaskCategoryFilter;
+type StatusFilterKey = Exclude<TaskCategoryFilter, 'rejected'>;
 
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
   assigned_at?: string;
   assigned_by_name?: string;
   source?: 'hierarchy' | 'agent_assignment';
+  notes?: string | null;
+  photo_evidence_key?: string | null;
 };
+
+function evidencePhotoUri(item: ExtendedTaskRow): string | null {
+  const url = (item.photo_evidence_url ?? item.photo_url)?.trim();
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('file:')) return url;
+  return null;
+}
+
+/** Show read-only notes + photo after the farmer has submitted (or after review). */
+function shouldShowSubmissionEvidence(status: string): boolean {
+  const s = normalizeTaskStatus(status);
+  return (
+    s === 'submitted' ||
+    s === 'submitted-for-approval' ||
+    s === 'approved' ||
+    s === 'completed' ||
+    s === 'rejected'
+  );
+}
 
 const KPI_CARDS: Array<{
   key: StatusFilterKey;
@@ -117,6 +148,9 @@ export function FarmerTasksScreen() {
   const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [kpiLabelWidth, setKpiLabelWidth] = useState(0);
+  const [pendingRecalls, setPendingRecalls] = useState<PendingTaskRecallView[]>([]);
+  const [pushingRecallId, setPushingRecallId] = useState<string | null>(null);
+  const [recallingId, setRecallingId] = useState<string | null>(null);
 
   const kpiLabelFontSize = useMemo(
     () => kpiLabelFontSizeForWidth(kpiLabelWidth),
@@ -126,6 +160,10 @@ export function FarmerTasksScreen() {
   const onKpiLabelLayout = useCallback((width: number) => {
     if (width <= 0) return;
     setKpiLabelWidth((prev) => (Math.abs(prev - width) < 0.5 ? prev : width));
+  }, []);
+
+  const loadPendingRecalls = useCallback(async () => {
+    setPendingRecalls(await listPendingTaskRecalls());
   }, []);
 
   const load = useCallback(async () => {
@@ -146,17 +184,62 @@ export function FarmerTasksScreen() {
   useFocusEffect(
     useCallback(() => {
       setLoading(tasks.length === 0);
-      load();
-      const interval = setInterval(load, 30000);
+      void (async () => {
+        await syncAllPendingTaskRecalls();
+        await loadPendingRecalls();
+        await load();
+      })();
+      const interval = setInterval(() => {
+        void load();
+        void loadPendingRecalls();
+      }, 30000);
       return () => clearInterval(interval);
-    }, [load, tasks.length])
+    }, [load, loadPendingRecalls, tasks.length])
   );
 
   useTaskApprovalPolling(tasks, load);
 
   const onRefresh = () => {
     setRefreshing(true);
-    load();
+    void (async () => {
+      await syncAllPendingTaskRecalls();
+      await loadPendingRecalls();
+      await load();
+    })();
+  };
+
+  const handleRecall = async (item: ExtendedTaskRow) => {
+    setRecallingId(item.id);
+    try {
+      const result = await recallFarmerTaskWithOutbox({
+        taskId: item.id,
+        taskName: item.name,
+        source: item.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
+        expectedStatus: item.status || 'submitted-for-approval',
+      });
+      await loadPendingRecalls();
+      if (result.mode === 'online') {
+        showMessage(
+          'Submission recalled',
+          'Your photo and notes are still saved. Edit and resubmit when ready.'
+        );
+        await load();
+        setSubmitTask({ ...item, status: 'in-progress' });
+        return;
+      }
+      if (result.mode === 'offline') {
+        showMessage(
+          'Recall saved offline',
+          'We will push your recall when you are back online. Open Your Tasks to push manually.'
+        );
+        return;
+      }
+      showMessage('Needs your review', result.error);
+    } catch (err: unknown) {
+      showMessage('Error', extractApiError(err, 'Could not recall task'));
+    } finally {
+      setRecallingId(null);
+    }
   };
 
   const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
@@ -203,6 +286,12 @@ export function FarmerTasksScreen() {
       list.push({
         title: `NOT STARTED (${displayCategories.notStarted.length})`,
         data: displayCategories.notStarted,
+      });
+    }
+    if (displayCategories.rejected.length > 0) {
+      list.push({
+        title: `REJECTED (${displayCategories.rejected.length})`,
+        data: displayCategories.rejected,
       });
     }
     if (displayCategories.completed.length > 0) {
@@ -259,6 +348,9 @@ export function FarmerTasksScreen() {
     const statusNorm = normalizeTaskStatus(item.status);
     const openLabel = statusNorm === 'rejected' ? 'Resubmit task' : 'Open task';
     const openButtonColor = statusNorm === 'rejected' ? COLORS.warning : COLORS.primary;
+    const showEvidence = shouldShowSubmissionEvidence(item.status);
+    const photoUri = evidencePhotoUri(item);
+    const submissionNotes = item.notes?.trim() || '';
 
     return (
       <KBCard
@@ -333,6 +425,35 @@ export function FarmerTasksScreen() {
               <Text className="mt-2 text-sm text-muted-foreground">Field agent assignment</Text>
             ) : null}
 
+            {showEvidence ? (
+              <View style={styles.evidenceBlock}>
+                <Text className="mb-2 text-sm font-semibold text-foreground">Your submission</Text>
+                {submissionNotes ? (
+                  <View style={styles.metaItem}>
+                    <Text className="text-xs font-semibold text-muted-foreground">Notes</Text>
+                    <Text className="mt-1 text-sm leading-5 text-foreground">{submissionNotes}</Text>
+                  </View>
+                ) : (
+                  <Text className="text-sm text-muted-foreground">No notes provided.</Text>
+                )}
+                {photoUri ? (
+                  <View style={styles.evidencePhotoWrap}>
+                    <Text className="mb-2 text-xs font-semibold text-muted-foreground">
+                      Photo evidence
+                    </Text>
+                    <Image
+                      source={{ uri: photoUri }}
+                      style={styles.evidenceImage}
+                      resizeMode="cover"
+                      accessibilityLabel={`Evidence photo for ${item.name}`}
+                    />
+                  </View>
+                ) : (
+                  <Text className="mt-2 text-sm font-semibold text-destructive">Photo required</Text>
+                )}
+              </View>
+            ) : null}
+
             {statusNorm === 'rejected' && item.rejection_reason ? (
               <Text className="mt-2 text-sm text-destructive">{item.rejection_reason}</Text>
             ) : null}
@@ -341,6 +462,19 @@ export function FarmerTasksScreen() {
               <Text className="mt-2 text-sm italic text-blue-600">
                 Awaiting approval — we check status every 30 seconds
               </Text>
+            ) : null}
+
+            {statusNorm === 'submitted-for-approval' ? (
+              <Button
+                mode="outlined"
+                textColor={COLORS.primary}
+                loading={recallingId === item.id}
+                disabled={recallingId === item.id}
+                onPress={() => void handleRecall(item)}
+                style={styles.openBtn}
+              >
+                Recall submission
+              </Button>
             ) : null}
 
             {openable ? (
@@ -356,7 +490,11 @@ export function FarmerTasksScreen() {
           </View>
         ) : (
           <Text style={styles.expandHint}>
-            {openable ? 'Tap card for more details' : 'Tap for details'}
+            {openable
+              ? 'Tap card for more details'
+              : showEvidence
+                ? 'Tap to view your submission'
+                : 'Tap for details'}
           </Text>
         )}
       </KBCard>
@@ -437,6 +575,45 @@ export function FarmerTasksScreen() {
               <Text style={styles.filterHint}>Updates every 30s</Text>
             )}
             {error ? <FarmerOfflineBanner message={error} /> : null}
+            {pendingRecalls.length > 0 ? (
+              <View style={styles.pendingRecalls}>
+                <Text className="mb-2 text-sm font-semibold text-foreground">
+                  Queued recalls ({pendingRecalls.length})
+                </Text>
+                {pendingRecalls.map((item) => (
+                  <OutboxTaskRecallCard
+                    key={item.id}
+                    item={item}
+                    pushing={pushingRecallId === item.id}
+                    onPush={() => {
+                      void (async () => {
+                        setPushingRecallId(item.id);
+                        try {
+                          const result = await pushPendingTaskRecall(item.id);
+                          if (result.success) {
+                            showMessage('Recall synced', 'You can edit and resubmit when ready.');
+                            await load();
+                          } else if (result.needsReview) {
+                            showMessage('Needs your review', result.error || 'Conflict detected');
+                          } else {
+                            showMessage('Sync failed', result.error || 'Could not push recall');
+                          }
+                          await loadPendingRecalls();
+                        } finally {
+                          setPushingRecallId(null);
+                        }
+                      })();
+                    }}
+                    onDismiss={() => {
+                      void (async () => {
+                        await dismissTaskRecallOutbox(item.id);
+                        await loadPendingRecalls();
+                      })();
+                    }}
+                  />
+                ))}
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -467,6 +644,9 @@ export function FarmerTasksScreen() {
                 description: submitTask.description,
                 payment_value_kes: submitTask.payment_value_kes,
                 source: submitTask.source ?? 'hierarchy',
+                initialNotes: submitTask.notes ?? null,
+                initialPhotoUri: evidencePhotoUri(submitTask),
+                initialPhotoKey: submitTask.photo_evidence_key ?? null,
               }
             : null
         }
@@ -499,6 +679,9 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 12,
     marginTop: 4,
+  },
+  pendingRecalls: {
+    marginTop: 12,
   },
   kpiRow: {
     flexDirection: 'row',
@@ -581,6 +764,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#1A4D3E',
+  },
+  evidenceBlock: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E0E0E0',
+  },
+  evidencePhotoWrap: {
+    marginTop: 10,
+  },
+  evidenceImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: '#F0F0F0',
   },
   metaGrid: {
     gap: 10,

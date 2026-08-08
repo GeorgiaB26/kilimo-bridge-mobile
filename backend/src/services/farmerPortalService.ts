@@ -26,6 +26,8 @@ export type FarmerPortalTaskRow = {
   task_order?: number;
   notes?: string | null;
   photo_evidence_url?: string | null;
+  /** Unresolved storage key / data URL for resubmit without re-upload. */
+  photo_evidence_key?: string | null;
   rejection_reason?: string | null;
 };
 
@@ -89,7 +91,16 @@ export async function listAllFarmerAssignedTasks(
   const hierarchyTasks = hierarchyRows.map(mapHierarchyTaskToFarmerRow);
 
   if (filters?.program_project_id) {
-    return sortFarmerPortalTasks(hierarchyTasks);
+    return Promise.all(
+      sortFarmerPortalTasks(hierarchyTasks).map(async (task) => {
+        const stored = task.photo_evidence_url ?? null;
+        return {
+          ...task,
+          photo_evidence_key: stored,
+          photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+        };
+      })
+    );
   }
 
   const agentRows = await listAgentTasksAssignedToFarmer(farmerId).catch(() => []);
@@ -105,7 +116,17 @@ export async function listAllFarmerAssignedTasks(
     );
   }
 
-  return sortFarmerPortalTasks([...hierarchyTasks, ...agentTasks]);
+  const merged = sortFarmerPortalTasks([...hierarchyTasks, ...agentTasks]);
+  return Promise.all(
+    merged.map(async (task) => {
+      const stored = task.photo_evidence_url ?? null;
+      return {
+        ...task,
+        photo_evidence_key: stored,
+        photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+      };
+    })
+  );
 }
 
 export async function getFarmerDashboard(farmerId: string) {

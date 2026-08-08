@@ -117,6 +117,7 @@ export function navigateFromFarmerNotification(
     type.includes('task') ||
     contextType === 'task' ||
     contextType === 'agent_task' ||
+    contextType === 'farmer_task' ||
     type === 'task_assigned'
   ) {
     navigateMainTab(
@@ -176,8 +177,21 @@ export function navigateFromNotification(
     return;
   }
 
-  if (type.includes('task') || contextType === 'task' || type === 'task_assigned') {
-    navigateMainTab(root, 'Tasks', { filter: 'all' });
+  if (
+    type.includes('task') ||
+    contextType === 'task' ||
+    contextType === 'agent_task' ||
+    contextType === 'farmer_task' ||
+    type === 'task_assigned'
+  ) {
+    const id = contextId(notification);
+    navigateMainTab(
+      root,
+      'Tasks',
+      id
+        ? { filter: 'all', taskId: id, highlightTaskId: id }
+        : { filter: 'all' }
+    );
     return;
   }
 

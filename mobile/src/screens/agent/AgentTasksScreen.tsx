@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   View,
@@ -18,6 +18,7 @@ import {
   Ban,
   Bell,
   CircleCheck,
+  CircleX,
   Hourglass,
   TriangleAlert,
 } from 'lucide-react-native';
@@ -73,12 +74,17 @@ type UnifiedTask = {
   payment_value_kes?: number;
   notes?: string;
   photo_evidence_url?: string;
+  rejection_reason?: string;
   priority?: string;
   description?: string | null;
   assigned_farmer_names?: string[];
 };
 
-type FilterKey = 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
+type FilterKey = 'all' | 'overdue' | 'not_started' | 'in_progress' | 'rejected' | 'completed';
+
+function isRejectedStatus(status: string): boolean {
+  return status.toLowerCase().replace(/_/g, '-') === 'rejected';
+}
 
 function formatDue(value?: string | null): string {
   if (!value) return 'No due date';
@@ -149,7 +155,17 @@ function TaskSection({
             {item.program_project_name ? (
               <Text className="text-[13px] text-[#757575]">{item.program_project_name}</Text>
             ) : null}
-            {item.source === 'personal' && !isApproval ? (
+            {isRejectedStatus(item.status) ? (
+              <View className="mt-2">
+                <KBStatusChip label="Rejected" variant="danger" />
+                {item.rejection_reason ? (
+                  <Text className="mt-1 text-sm leading-5 text-[#D32F2F]">
+                    Reason: {item.rejection_reason}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            {item.source === 'personal' && !isApproval && !isRejectedStatus(item.status) ? (
               <View className="mt-2 flex-row flex-wrap gap-2">
                 <Pressable
                   onPress={() => onReminder(item, '1_day_before')}
@@ -290,6 +306,7 @@ export function AgentTasksScreen() {
         : (t.farmer_name as string | undefined),
       notes: t.notes as string | undefined,
       photo_evidence_url: t.photo_evidence_url as string | undefined,
+      rejection_reason: t.rejection_reason as string | undefined,
       source: 'personal' as const,
     };
   };
@@ -305,6 +322,7 @@ export function AgentTasksScreen() {
     payment_value_kes: task.payment_value_kes,
     notes: task.notes,
     photo_evidence_url: task.photo_evidence_url,
+    rejection_reason: task.rejection_reason,
     priority: task.priority,
     source: task.source,
     assigned_farmer_names: task.assigned_farmer_names,
@@ -341,6 +359,7 @@ export function AgentTasksScreen() {
         payment_value_kes: t.payment_value_kes as number | undefined,
         notes: t.notes as string | undefined,
         photo_evidence_url: t.photo_evidence_url as string | undefined,
+        rejection_reason: t.rejection_reason as string | undefined,
         description: t.description as string | null | undefined,
         source: 'farmer' as const,
       }));
@@ -393,8 +412,37 @@ export function AgentTasksScreen() {
         await Promise.all([load(), loadPending()]);
         checkAndShowTaskReminders();
       })();
-    }, [load, loadPending, navigation, route.params?.filter, route.params?.openAdd])
+    }, [
+      load,
+      loadPending,
+      navigation,
+      route.params?.filter,
+      route.params?.openAdd,
+      route.params?.taskId,
+      route.params?.highlightTaskId,
+    ])
   );
+
+  // After tasks load, open detail for notification deep-links
+  useEffect(() => {
+    const deepLinkTaskId = route.params?.taskId ?? route.params?.highlightTaskId;
+    if (!deepLinkTaskId || loading) return;
+    const match = [...farmerTasks, ...personalTasks].find((t) => t.id === deepLinkTaskId);
+    if (!match) return;
+    setSelectedTask(toTaskDetail(match));
+    setDetailOpen(true);
+    if (isSubmittedForApprovalStatus(match.status)) {
+      setExpandedId(match.id);
+    }
+    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
+  }, [
+    route.params?.taskId,
+    route.params?.highlightTaskId,
+    farmerTasks,
+    personalTasks,
+    loading,
+    navigation,
+  ]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -430,11 +478,13 @@ export function AgentTasksScreen() {
   const overdue = displayCategories.overdue;
   const inProgress = displayCategories.inProgress;
   const notStarted = displayCategories.notStarted;
+  const rejected = displayCategories.rejected;
   const completed = displayCategories.completed;
   const hasVisibleTasks =
     overdue.length +
       inProgress.length +
       notStarted.length +
+      rejected.length +
       completed.length >
     0;
 
@@ -673,6 +723,7 @@ export function AgentTasksScreen() {
     overdue: 'Overdue',
     not_started: 'Not started',
     in_progress: 'In progress',
+    rejected: 'Rejected',
     completed: 'Completed',
   };
 
@@ -804,6 +855,14 @@ export function AgentTasksScreen() {
           title={`Not started (${notStarted.length})`}
           color="#757575"
           tasks={notStarted}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+        />
+        <TaskSection
+          TitleIcon={CircleX}
+          title={`Rejected (${rejected.length})`}
+          color="#D32F2F"
+          tasks={rejected}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
         />
