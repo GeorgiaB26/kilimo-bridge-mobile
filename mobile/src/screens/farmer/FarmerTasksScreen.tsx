@@ -12,7 +12,6 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -64,8 +63,8 @@ import {
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 type StatusFilterKey = TaskStatusKpiKey;
 
-/** Show Project / Start / End columns at this width and above. */
-const WIDE_TABLE_MIN_WIDTH = 600;
+/** Fixed table canvas width — horizontal scroll when viewport is narrower. */
+const TABLE_MIN_WIDTH = 840;
 
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
@@ -155,8 +154,6 @@ function isValidYmd(value: string): boolean {
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
-  const { width } = useWindowDimensions();
-  const wide = width >= WIDE_TABLE_MIN_WIDTH;
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
   const { formatAmount } = useCurrency();
@@ -494,32 +491,24 @@ export function FarmerTasksScreen() {
     );
   };
 
-  const colTask = wide ? styles.colTaskWide : styles.colTaskNarrow;
-  const colStatus = wide ? styles.colStatusWide : styles.colStatusNarrow;
-  const colActions = wide ? styles.colActionsWide : styles.colActionsNarrow;
-
   const renderTableHeader = () => (
-    <View style={[styles.tableHeader, wide ? styles.tableHeaderWide : null]}>
-      <Text style={[styles.th, colTask]} numberOfLines={1}>
+    <View style={styles.tableHeader}>
+      <Text style={[styles.th, styles.colTask]} numberOfLines={1}>
         Task
       </Text>
-      {wide ? (
-        <>
-          <Text style={[styles.th, styles.colProject]} numberOfLines={1}>
-            Project
-          </Text>
-          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
-            Start
-          </Text>
-          <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
-            End
-          </Text>
-        </>
-      ) : null}
-      <Text style={[styles.th, colStatus]} numberOfLines={1}>
+      <Text style={[styles.th, styles.colProject]} numberOfLines={1}>
+        Project
+      </Text>
+      <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+        Start
+      </Text>
+      <Text style={[styles.th, styles.colDate]} numberOfLines={1}>
+        End
+      </Text>
+      <Text style={[styles.th, styles.colStatus]} numberOfLines={1}>
         Status
       </Text>
-      <Text style={[styles.th, colActions]} numberOfLines={1}>
+      <Text style={[styles.th, styles.colActions]} numberOfLines={1}>
         Actions
       </Text>
     </View>
@@ -543,48 +532,35 @@ export function FarmerTasksScreen() {
         onPress={() => setDetailTask(item)}
         style={({ pressed }) => [
           styles.tableRow,
-          wide ? styles.tableRowWide : null,
           !last ? styles.tableRowBorder : null,
           highlighted ? styles.tableRowHighlighted : null,
           pressed ? styles.tableRowPressed : null,
         ]}
       >
-        <View style={[colTask, styles.taskCell]}>
+        <View style={[styles.colTask, styles.taskCell]}>
           <Text style={styles.taskName} numberOfLines={2}>
             {item.name}
           </Text>
-          {!wide ? (
-            <Text style={styles.taskProjectMuted} numberOfLines={1}>
-              {project}
-            </Text>
-          ) : null}
         </View>
-
-        {wide ? (
-          <>
-            <Text style={[styles.td, styles.colProject]} numberOfLines={2}>
-              {project}
-            </Text>
-            <Text style={[styles.td, styles.colDate]} numberOfLines={1}>
-              {startDate}
-            </Text>
-            <Text
-              style={[styles.td, styles.colDate, overdue ? styles.dateOverdue : null]}
-              numberOfLines={1}
-            >
-              {endDate}
-            </Text>
-          </>
-        ) : null}
-
-        <View style={[colStatus, styles.statusCell]}>
+        <Text style={[styles.td, styles.colProject]} numberOfLines={2}>
+          {project}
+        </Text>
+        <Text style={[styles.td, styles.colDate]} numberOfLines={1}>
+          {startDate}
+        </Text>
+        <Text
+          style={[styles.td, styles.colDate, overdue ? styles.dateOverdue : null]}
+          numberOfLines={1}
+        >
+          {endDate}
+        </Text>
+        <View style={[styles.colStatus, styles.statusCell]}>
           <KBStatusChip
             label={displayStatus(item.status)}
             variant={statusVariant(item.status)}
           />
         </View>
-
-        <View style={[colActions, styles.actionsCell]}>
+        <View style={[styles.colActions, styles.actionsCell]}>
           {renderActionButton(item, true)}
         </View>
       </Pressable>
@@ -726,8 +702,18 @@ export function FarmerTasksScreen() {
           ) : null
         ) : (
           <View style={styles.tableShell}>
-            {renderTableHeader()}
-            {flatTasks.map((item, index) => renderTask(item, index, flatTasks.length))}
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator
+              bounces
+              contentContainerStyle={styles.tableScrollContent}
+            >
+              <View style={styles.tableCanvas}>
+                {renderTableHeader()}
+                {flatTasks.map((item, index) => renderTask(item, index, flatTasks.length))}
+              </View>
+            </ScrollView>
           </View>
         )}
       </ScrollView>
@@ -945,19 +931,22 @@ const styles = StyleSheet.create({
     borderColor: '#E5E5E5',
     overflow: 'hidden',
   },
+  tableScrollContent: {
+    flexGrow: 1,
+  },
+  tableCanvas: {
+    minWidth: TABLE_MIN_WIDTH,
+    width: TABLE_MIN_WIDTH,
+  },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 8,
+    gap: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#E5E5E5',
     backgroundColor: '#FAFAFA',
-  },
-  tableHeaderWide: {
-    gap: 10,
-    paddingHorizontal: 16,
   },
   th: {
     fontSize: 12,
@@ -968,15 +957,11 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 14,
-    gap: 8,
+    gap: 10,
     minHeight: 64,
     backgroundColor: '#FFFFFF',
-  },
-  tableRowWide: {
-    gap: 10,
-    paddingHorizontal: 16,
   },
   tableRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -988,36 +973,24 @@ const styles = StyleSheet.create({
   tableRowPressed: {
     backgroundColor: '#F7F7F7',
   },
-  colTaskNarrow: {
-    flex: 1.35,
-    minWidth: 0,
-  },
-  colTaskWide: {
-    flex: 1.4,
-    minWidth: 0,
+  colTask: {
+    width: 168,
+    flexShrink: 0,
   },
   colProject: {
-    flex: 1.1,
-    minWidth: 0,
+    width: 140,
+    flexShrink: 0,
   },
   colDate: {
-    flex: 0.75,
-    minWidth: 72,
-  },
-  colStatusNarrow: {
-    width: 108,
+    width: 96,
     flexShrink: 0,
   },
-  colStatusWide: {
-    flex: 1.05,
-    minWidth: 100,
-  },
-  colActionsNarrow: {
-    width: 100,
+  colStatus: {
+    width: 148,
     flexShrink: 0,
   },
-  colActionsWide: {
-    width: 108,
+  colActions: {
+    width: 110,
     flexShrink: 0,
   },
   td: {
@@ -1035,11 +1008,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#1A1A1A',
-  },
-  taskProjectMuted: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#757575',
   },
   statusCell: {
     alignItems: 'flex-start',
