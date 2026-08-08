@@ -130,6 +130,8 @@ export function FarmerDashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      const interval = setInterval(load, 30000);
+      return () => clearInterval(interval);
     }, [load])
   );
 
@@ -178,15 +180,15 @@ export function FarmerDashboardScreen() {
   const goToPayments = () => navigation.navigate('Payments');
   const goToTasks = (
     statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed',
-    highlightTaskId?: string
+    taskId?: string
   ) => {
-    if (!statusFilter && !highlightTaskId) {
+    if (!statusFilter && !taskId) {
       navigation.navigate('Tasks');
       return;
     }
     navigation.navigate('Tasks', {
       ...(statusFilter ? { statusFilter } : {}),
-      ...(highlightTaskId ? { highlightTaskId } : {}),
+      ...(taskId ? { taskId, highlightTaskId: taskId } : {}),
     });
   };
 

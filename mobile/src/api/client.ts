@@ -216,6 +216,15 @@ export async function getFarmerDashboard() {
   return data;
 }
 
+/** All tasks for this farmer (program hierarchy + field agent assignments). */
+export async function getFarmerAssignedTasks(params?: {
+  status?: string;
+  outstanding?: string;
+}) {
+  const { data } = await api.get('/farmer/assigned-tasks', { params });
+  return data;
+}
+
 export async function submitFarmerHelpRequest(message: string) {
   const { data } = await api.post('/farmer/help-requests', { message });
   return data;

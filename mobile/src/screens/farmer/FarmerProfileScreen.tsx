@@ -18,7 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { APP_BUILD } from '../../constants/build';
-import { getFarmerDashboard, getFarmerHierarchyTasks, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
+import { getFarmerDashboard, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
@@ -26,6 +26,8 @@ import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
+import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
 import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
@@ -63,6 +65,10 @@ type ProfileTaskRow = {
   source?: string;
 };
 
+function profileTaskStatus(status?: string): string {
+  return (status ?? 'not-started').replace(/_/g, '-');
+}
+
 type ProfileNav = BottomTabNavigationProp<FarmerTabParamList, 'Profile'>;
 
 export function FarmerProfileScreen() {
@@ -97,6 +103,7 @@ export function FarmerProfileScreen() {
   const [picking, setPicking] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [assignedTasks, setAssignedTasks] = useState<ProfileTaskRow[]>([]);
+  const [assignedTaskCount, setAssignedTaskCount] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(true);
 
   const loadProfile = useCallback(() => {
@@ -104,27 +111,29 @@ export function FarmerProfileScreen() {
       .then((d) => {
         setFarmer(d.farmer);
         setContacts(d.contacts ?? null);
+        setAssignedTasks((d.assignedTasks ?? d.recentTasks ?? []) as ProfileTaskRow[]);
+        setAssignedTaskCount(
+          typeof d.assignedTaskCount === 'number'
+            ? d.assignedTaskCount
+            : (d.assignedTasks ?? d.recentTasks ?? []).length
+        );
         if (d.farmer?.country) selectCountry(d.farmer.country);
         setError(null);
+        setTasksLoading(false);
       })
       .catch((err: unknown) => {
         setError(extractApiError(err, 'Could not load profile'));
-      });
-
-    setTasksLoading(true);
-    getFarmerHierarchyTasks()
-      .then((data) => {
-        setAssignedTasks((data.tasks ?? []) as ProfileTaskRow[]);
-      })
-      .catch(() => {
         setAssignedTasks([]);
-      })
-      .finally(() => setTasksLoading(false));
+        setTasksLoading(false);
+      });
   }, [selectCountry]);
 
   useFocusEffect(
     useCallback(() => {
+      setTasksLoading(true);
       loadProfile();
+      const interval = setInterval(loadProfile, 30000);
+      return () => clearInterval(interval);
     }, [loadProfile])
   );
 
@@ -403,7 +412,7 @@ export function FarmerProfileScreen() {
       </View>
 
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">
-        Assigned tasks ({assignedTasks.length})
+        Assigned tasks ({assignedTaskCount})
       </Text>
       <View className="mb-5 overflow-hidden rounded-xl bg-white">
         {tasksLoading ? (
@@ -417,7 +426,10 @@ export function FarmerProfileScreen() {
             <Pressable
               key={task.id}
               onPress={() =>
-                navigation.navigate('Tasks', { highlightTaskId: task.id })
+                navigation.navigate('Tasks', {
+                  taskId: task.id,
+                  highlightTaskId: task.id,
+                })
               }
               className="p-4"
               style={
@@ -426,7 +438,15 @@ export function FarmerProfileScreen() {
                   : undefined
               }
             >
-              <Text className="text-base font-semibold text-[#333333]">{task.name}</Text>
+              <View className="flex-row items-start justify-between gap-2">
+                <Text className="flex-1 text-base font-semibold text-[#333333]">{task.name}</Text>
+                {task.status ? (
+                  <KBStatusChip
+                    label={taskStatusLabel(profileTaskStatus(task.status))}
+                    variant={taskStatusVariant(profileTaskStatus(task.status))}
+                  />
+                ) : null}
+              </View>
               <Text className="mt-1 text-sm text-[#757575]">
                 Assigned by: {task.assigned_by_name ?? 'Program team'}
               </Text>
