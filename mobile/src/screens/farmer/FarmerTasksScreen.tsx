@@ -5,10 +5,11 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
-  Alert,
+  Pressable,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native';
+import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
 import { COLORS } from '../../constants';
@@ -33,6 +34,7 @@ import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerTabParamList } from '../../navigation/types';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
+type StatusFilterKey = TaskCategoryFilter;
 
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
@@ -40,6 +42,18 @@ type ExtendedTaskRow = FarmerTaskRow & {
   assigned_by_name?: string;
   source?: 'hierarchy' | 'agent_assignment';
 };
+
+const KPI_CARDS: Array<{
+  key: StatusFilterKey;
+  label: string;
+  badgeBg: string;
+  countColor: string;
+}> = [
+  { key: 'overdue', label: 'OVERDUE', badgeBg: '#FFEBEE', countColor: '#C62828' },
+  { key: 'in_progress', label: 'IN PROGRESS', badgeBg: '#FFF3E0', countColor: '#EF6C00' },
+  { key: 'not_started', label: 'NOT STARTED', badgeBg: '#F5F5F5', countColor: '#37474F' },
+  { key: 'completed', label: 'COMPLETED', badgeBg: '#E8F5E9', countColor: '#2E7D32' },
+];
 
 function isAgentAssignment(task: ExtendedTaskRow): boolean {
   return task.source === 'agent_assignment';
@@ -70,7 +84,7 @@ function isOverdue(due?: string | null, status?: string): boolean {
 
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
   const listRef = useRef<SectionList>(null);
@@ -105,24 +119,7 @@ export function FarmerTasksScreen() {
     }, [load, tasks.length])
   );
 
-  useTaskApprovalPolling(
-    tasks.filter((t) => !isAgentAssignment(t)),
-    load
-  );
-
-  const showAgentTaskDetail = (item: ExtendedTaskRow) => {
-    const assigner = item.assigned_by_name?.trim() || 'Your field agent';
-    const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
-    Alert.alert(
-      item.name,
-      [
-        item.description?.trim() || 'No description provided.',
-        `Assigned by: ${assigner}`,
-        `Due: ${deadline}`,
-        `Status: ${displayStatus(item.status)}`,
-      ].join('\n\n')
-    );
-  };
+  useTaskApprovalPolling(tasks, load);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -138,12 +135,21 @@ export function FarmerTasksScreen() {
     [categorized, statusFilter]
   );
 
-  const categoryCounts = useMemo(() => ({
-    overdue: categorized.overdue.length,
-    inProgress: categorized.inProgress.length,
-    notStarted: categorized.notStarted.length,
-    completed: categorized.completed.length,
-  }), [categorized]);
+  const categoryCounts = useMemo(
+    () => ({
+      overdue: categorized.overdue.length,
+      in_progress: categorized.inProgress.length,
+      not_started: categorized.notStarted.length,
+      completed: categorized.completed.length,
+    }),
+    [categorized]
+  );
+
+  const toggleStatusFilter = (key: StatusFilterKey) => {
+    navigation.setParams({
+      statusFilter: statusFilter === key ? undefined : key,
+    });
+  };
 
   const sections = useMemo(() => {
     const list: Array<{ title: string; data: ExtendedTaskRow[] }> = [];
@@ -195,48 +201,30 @@ export function FarmerTasksScreen() {
       }
     }
 
-    if (isAgentAssignment(task)) {
-      showAgentTaskDetail(task);
-    } else if (canOpenTask(task.status)) {
+    if (canOpenTask(task.status)) {
       setSubmitTask(task);
     }
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
   }, [scrollTargetId, tasks, loading, navigation, sections]);
 
-  const filterLabel =
-    statusFilter === 'overdue'
-      ? 'Overdue tasks'
-      : statusFilter === 'in_progress'
-        ? 'In progress tasks'
-        : statusFilter === 'not_started'
-          ? 'Not started tasks'
-          : statusFilter === 'completed'
-            ? 'Completed tasks'
-            : null;
-
   const renderTask = (item: ExtendedTaskRow) => {
     const agentTask = isAgentAssignment(item);
-    const openable = !agentTask && canOpenTask(item.status);
+    const openable = canOpenTask(item.status);
     const overdue = isOverdue(item.due_date, item.status);
     const assignedWhen = formatDisplayDate(item.assigned_at);
     const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
-    const assigner = item.assigned_by_name?.trim() || 'Program team';
+    const assigner = item.assigned_by_name?.trim() || (agentTask ? 'Your field agent' : 'Program team');
     const highlighted = scrollTargetId === item.id;
 
     return (
       <KBCard
         elevated={false}
-        onPress={
-          agentTask
-            ? () => showAgentTaskDetail(item)
-            : openable
-              ? () => setSubmitTask(item)
-              : undefined
+        onPress={openable ? () => setSubmitTask(item) : undefined}
+        style={
+          highlighted
+            ? { ...styles.card, borderWidth: 2, borderColor: COLORS.primary }
+            : styles.card
         }
-        style={[
-          styles.card,
-          highlighted ? { borderWidth: 2, borderColor: COLORS.primary } : null,
-        ]}
       >
         <View style={styles.row}>
           <View style={styles.titleCol}>
@@ -277,9 +265,7 @@ export function FarmerTasksScreen() {
         </View>
 
         {agentTask ? (
-          <Text className="mt-2 text-sm text-muted-foreground">
-            Assigned by your field agent — tap for details
-          </Text>
+          <Text className="mt-2 text-sm text-muted-foreground">Field agent assignment</Text>
         ) : null}
 
         {normalizeTaskStatus(item.status) === 'rejected' && item.rejection_reason ? (
@@ -335,13 +321,39 @@ export function FarmerTasksScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Text className="text-2xl font-bold text-foreground">Your Tasks</Text>
-            {filterLabel ? (
-              <Text className="mt-1 text-sm font-semibold text-[#4472C4]">{filterLabel}</Text>
-            ) : null}
-            <Text className="mt-1 text-sm text-muted-foreground">
-              {categoryCounts.overdue} overdue · {categoryCounts.inProgress} in progress ·{' '}
-              {categoryCounts.notStarted} not started · {categoryCounts.completed} completed · updates every 30s
-            </Text>
+            <View style={styles.kpiRow}>
+              {KPI_CARDS.map((kpi) => {
+                const selected = statusFilter === kpi.key;
+                return (
+                  <Pressable
+                    key={kpi.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`${kpi.label}: ${categoryCounts[kpi.key]}. ${
+                      selected ? 'Filter active, tap to show all tasks' : 'Tap to filter'
+                    }`}
+                    onPress={() => toggleStatusFilter(kpi.key)}
+                    style={[
+                      styles.kpiCard,
+                      selected ? styles.kpiCardSelected : null,
+                      Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
+                    ]}
+                  >
+                    <Text style={styles.kpiLabel}>{kpi.label}</Text>
+                    <View style={[styles.kpiBadge, { backgroundColor: kpi.badgeBg }]}>
+                      <Text style={[styles.kpiCount, { color: kpi.countColor }]}>
+                        {categoryCounts[kpi.key]}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {statusFilter ? (
+              <Text style={styles.filterHint}>Tap the selected card again to show all tasks</Text>
+            ) : (
+              <Text style={styles.filterHint}>Updates every 30s</Text>
+            )}
             {error ? <FarmerOfflineBanner message={error} /> : null}
           </View>
         }
@@ -365,7 +377,17 @@ export function FarmerTasksScreen() {
       />
 
       <FarmerTaskSubmitModal
-        task={submitTask && !isAgentAssignment(submitTask) ? submitTask : null}
+        task={
+          submitTask
+            ? {
+                id: submitTask.id,
+                name: submitTask.name,
+                description: submitTask.description,
+                payment_value_kes: submitTask.payment_value_kes,
+                source: submitTask.source ?? 'hierarchy',
+              }
+            : null
+        }
         visible={!!submitTask}
         onClose={() => setSubmitTask(null)}
         onSubmitted={async () => {
@@ -395,6 +417,52 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 12,
     marginTop: 4,
+  },
+  kpiRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  kpiCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  kpiCardSelected: {
+    borderColor: '#1A4D3E',
+    borderWidth: 2,
+  },
+  kpiLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#666666',
+    letterSpacing: 0.3,
+    marginBottom: 8,
+  },
+  kpiBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kpiCount: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  filterHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#757575',
   },
   card: {
     marginBottom: 12,
