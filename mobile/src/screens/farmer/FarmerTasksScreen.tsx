@@ -12,6 +12,7 @@ import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/nativ
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { COLORS } from '../../constants';
 import { getFarmerAssignedTasks } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
@@ -94,6 +95,7 @@ export function FarmerTasksScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -146,6 +148,7 @@ export function FarmerTasksScreen() {
   );
 
   const toggleStatusFilter = (key: StatusFilterKey) => {
+    setExpandedTaskId(null);
     navigation.setParams({
       statusFilter: statusFilter === key ? undefined : key,
     });
@@ -204,8 +207,13 @@ export function FarmerTasksScreen() {
     if (canOpenTask(task.status)) {
       setSubmitTask(task);
     }
+    setExpandedTaskId(task.id);
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
   }, [scrollTargetId, tasks, loading, navigation, sections]);
+
+  const toggleExpanded = (taskId: string) => {
+    setExpandedTaskId((prev) => (prev === taskId ? null : taskId));
+  };
 
   const renderTask = (item: ExtendedTaskRow) => {
     const agentTask = isAgentAssignment(item);
@@ -213,13 +221,16 @@ export function FarmerTasksScreen() {
     const overdue = isOverdue(item.due_date, item.status);
     const assignedWhen = formatDisplayDate(item.assigned_at);
     const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
-    const assigner = item.assigned_by_name?.trim() || (agentTask ? 'Your field agent' : 'Program team');
+    const assigner =
+      item.assigned_by_name?.trim() || (agentTask ? 'Your field agent' : 'Program team');
     const highlighted = scrollTargetId === item.id;
+    const expanded = expandedTaskId === item.id;
+    const statusNorm = normalizeTaskStatus(item.status);
 
     return (
       <KBCard
         elevated={false}
-        onPress={openable ? () => setSubmitTask(item) : undefined}
+        onPress={() => toggleExpanded(item.id)}
         style={
           highlighted
             ? { ...styles.card, borderWidth: 2, borderColor: COLORS.primary }
@@ -229,67 +240,79 @@ export function FarmerTasksScreen() {
         <View style={styles.row}>
           <View style={styles.titleCol}>
             <Text className="text-lg font-bold text-foreground">{item.name}</Text>
-            {item.program_project_name ? (
-              <Text className="mt-1 text-sm text-muted-foreground">{item.program_project_name}</Text>
-            ) : null}
           </View>
-          <KBStatusChip label={displayStatus(item.status)} variant={statusVariant(item.status)} />
+          <View style={styles.headerRight}>
+            <KBStatusChip label={displayStatus(item.status)} variant={statusVariant(item.status)} />
+            {expanded ? (
+              <ChevronUp size={18} color="#757575" />
+            ) : (
+              <ChevronDown size={18} color="#757575" />
+            )}
+          </View>
         </View>
+
+        {item.program_project_name ? (
+          <Text className="mt-1 text-sm text-muted-foreground">{item.program_project_name}</Text>
+        ) : null}
 
         {item.description ? (
           <Text className="mt-2 text-sm text-foreground leading-5">{item.description}</Text>
         ) : null}
 
-        <View style={styles.metaGrid}>
-          <View style={styles.metaItem}>
-            <Text className="text-xs font-semibold text-muted-foreground">Assigned</Text>
-            <Text className="text-sm text-foreground">{assignedWhen}</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text className="text-xs font-semibold text-muted-foreground">By</Text>
-            <Text className="text-sm text-foreground">{assigner}</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text className="text-xs font-semibold text-muted-foreground">Deadline</Text>
-            <Text className="text-sm" style={{ color: overdue ? COLORS.alert : COLORS.text }}>
-              {deadline}
-              {overdue ? ' · Overdue' : ''}
-            </Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text className="text-xs font-semibold text-muted-foreground">Payment</Text>
-            <Text className="text-sm font-semibold" style={{ color: COLORS.accent }}>
-              {agentTask ? '—' : formatAmount(item.payment_value_kes ?? 0)}
-            </Text>
-          </View>
-        </View>
+        {expanded ? (
+          <View style={styles.expandedBody}>
+            <View style={styles.metaGrid}>
+              <View style={styles.metaItem}>
+                <Text className="text-xs font-semibold text-muted-foreground">Assigned</Text>
+                <Text className="text-sm text-foreground">{assignedWhen}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Text className="text-xs font-semibold text-muted-foreground">By</Text>
+                <Text className="text-sm text-foreground">{assigner}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Text className="text-xs font-semibold text-muted-foreground">Deadline</Text>
+                <Text className="text-sm" style={{ color: overdue ? COLORS.alert : COLORS.text }}>
+                  {deadline}
+                  {overdue ? ' · Overdue' : ''}
+                </Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Text className="text-xs font-semibold text-muted-foreground">Payment</Text>
+                <Text className="text-sm font-semibold" style={{ color: COLORS.accent }}>
+                  {agentTask ? '—' : formatAmount(item.payment_value_kes ?? 0)}
+                </Text>
+              </View>
+            </View>
 
-        {agentTask ? (
-          <Text className="mt-2 text-sm text-muted-foreground">Field agent assignment</Text>
-        ) : null}
+            {agentTask ? (
+              <Text className="mt-2 text-sm text-muted-foreground">Field agent assignment</Text>
+            ) : null}
 
-        {normalizeTaskStatus(item.status) === 'rejected' && item.rejection_reason ? (
-          <Text className="mt-2 text-sm text-destructive">{item.rejection_reason}</Text>
-        ) : null}
+            {statusNorm === 'rejected' && item.rejection_reason ? (
+              <Text className="mt-2 text-sm text-destructive">{item.rejection_reason}</Text>
+            ) : null}
 
-        {normalizeTaskStatus(item.status) === 'submitted-for-approval' ? (
-          <Text className="mt-2 text-sm italic text-blue-600">
-            Awaiting approval — we check status every 30 seconds
-          </Text>
-        ) : null}
+            {statusNorm === 'submitted-for-approval' ? (
+              <Text className="mt-2 text-sm italic text-blue-600">
+                Awaiting approval — we check status every 30 seconds
+              </Text>
+            ) : null}
 
-        {openable ? (
-          <Button
-            mode="contained"
-            buttonColor={
-              normalizeTaskStatus(item.status) === 'rejected' ? COLORS.warning : COLORS.primary
-            }
-            onPress={() => setSubmitTask(item)}
-            style={styles.openBtn}
-          >
-            {normalizeTaskStatus(item.status) === 'rejected' ? 'Resubmit task' : 'Open task'}
-          </Button>
-        ) : null}
+            {openable ? (
+              <Button
+                mode="contained"
+                buttonColor={statusNorm === 'rejected' ? COLORS.warning : COLORS.primary}
+                onPress={() => setSubmitTask(item)}
+                style={styles.openBtn}
+              >
+                {statusNorm === 'rejected' ? 'Resubmit task' : 'Open task'}
+              </Button>
+            ) : null}
+          </View>
+        ) : (
+          <Text style={styles.expandHint}>Tap for details</Text>
+        )}
       </KBCard>
     );
   };
@@ -339,7 +362,14 @@ export function FarmerTasksScreen() {
                       Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
                     ]}
                   >
-                    <Text style={styles.kpiLabel}>{kpi.label}</Text>
+                    <Text
+                      style={styles.kpiLabel}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
+                    >
+                      {kpi.label}
+                    </Text>
                     <View style={[styles.kpiBadge, { backgroundColor: kpi.badgeBg }]}>
                       <Text style={[styles.kpiCount, { color: kpi.countColor }]}>
                         {categoryCounts[kpi.key]}
@@ -425,12 +455,14 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     borderWidth: 1,
     borderColor: '#EEEEEE',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -442,11 +474,13 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   kpiLabel: {
-    fontSize: 10,
+    width: '100%',
+    fontSize: 9,
     fontWeight: '700',
     color: '#666666',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
     marginBottom: 8,
+    textAlign: 'center',
   },
   kpiBadge: {
     width: 28,
@@ -476,8 +510,24 @@ const styles = StyleSheet.create({
   titleCol: {
     flex: 1,
   },
-  metaGrid: {
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  expandedBody: {
     marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E0E0E0',
+  },
+  expandHint: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1A4D3E',
+  },
+  metaGrid: {
     gap: 10,
   },
   metaItem: {
