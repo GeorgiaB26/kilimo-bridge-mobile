@@ -45,6 +45,10 @@ import { AddAgentTaskModal } from '../../components/agent/AddAgentTaskModal';
 import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
 import { OutboxAgentTaskApprovalCard } from '../../components/OutboxAgentTaskApprovalCard';
 import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
+import {
+  TaskStatusKpiRow,
+  type TaskStatusKpiKey,
+} from '../../components/TaskStatusKpiRow';
 import { checkAndShowTaskReminders, setTaskReminder, type ReminderType } from '../../utils/taskReminders';
 import {
   dismissAgentTaskApprovalOutbox,
@@ -470,10 +474,31 @@ export function AgentTasksScreen() {
   }, [allTasks, search]);
 
   const categorized = useMemo(() => categorizeTasks(searchFiltered), [searchFiltered]);
+  const categoryCounts = useMemo(
+    () => ({
+      overdue: categorized.overdue.length,
+      in_progress: categorized.inProgress.length,
+      not_started: categorized.notStarted.length,
+      rejected: categorized.rejected.length,
+      completed: categorized.completed.length,
+    }),
+    [categorized]
+  );
   const displayCategories = useMemo(
     () => pickCategorizedTasks(categorized, filter),
     [categorized, filter]
   );
+
+  useEffect(() => {
+    if (filter === 'rejected' && categoryCounts.rejected === 0) {
+      setFilter('all');
+    }
+  }, [filter, categoryCounts.rejected]);
+
+  const toggleKpiFilter = (key: TaskStatusKpiKey) => {
+    setFilter((prev) => (prev === key ? 'all' : key));
+    setShowFilter(false);
+  };
 
   const overdue = displayCategories.overdue;
   const inProgress = displayCategories.inProgress;
@@ -742,6 +767,20 @@ export function AgentTasksScreen() {
           <Text className="font-bold text-black">+ Create task</Text>
         </Pressable>
 
+        <Text className="text-2xl font-bold text-[#333333]">Tasks</Text>
+        <TaskStatusKpiRow
+          counts={categoryCounts}
+          selected={filter === 'all' ? null : (filter as TaskStatusKpiKey)}
+          onSelect={toggleKpiFilter}
+        />
+        {filter !== 'all' ? (
+          <Text className="mb-3 mt-2 text-xs text-[#757575]">
+            Tap the selected card again to show all tasks
+          </Text>
+        ) : (
+          <Text className="mb-3 mt-2 text-xs text-[#757575]">Tap a card to filter</Text>
+        )}
+
         <View className="mb-3 flex-row items-center gap-2">
           <Pressable onPress={() => setShowFilter(!showFilter)} className="flex-row items-center gap-1 rounded-lg bg-white px-3 py-2">
             <Text className="text-sm">Filter ▼</Text>
@@ -759,7 +798,9 @@ export function AgentTasksScreen() {
         </View>
         {showFilter ? (
           <View className="mb-3 flex-row flex-wrap gap-2">
-            {(Object.keys(filterLabels) as FilterKey[]).map((key) => (
+            {(Object.keys(filterLabels) as FilterKey[])
+              .filter((key) => key !== 'rejected' || categoryCounts.rejected > 0)
+              .map((key) => (
               <Pressable
                 key={key}
                 onPress={() => {

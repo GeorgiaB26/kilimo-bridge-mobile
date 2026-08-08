@@ -259,16 +259,18 @@ export function AgentDashboardScreen() {
           onPress={() => goToTasks('completed')}
         />
       </View>
-      <View className="mb-4 flex-row gap-2">
-        <MetricCard
-          Icon={CircleX}
-          iconColor="#D32F2F"
-          label="Rejected"
-          value={tasks?.rejected_count ?? 0}
-          color="#D32F2F"
-          onPress={() => goToTasks('rejected')}
-        />
-      </View>
+      {(tasks?.rejected_count ?? 0) > 0 ? (
+        <View className="mb-4 flex-row gap-2">
+          <MetricCard
+            Icon={CircleX}
+            iconColor="#D32F2F"
+            label="Rejected"
+            value={tasks?.rejected_count ?? 0}
+            color="#D32F2F"
+            onPress={() => goToTasks('rejected')}
+          />
+        </View>
+      ) : null}
 
       {(tasks?.overdue_count ?? 0) > 0 ? (
         <Pressable onPress={() => goToTasks('overdue')} style={webPressable}>
