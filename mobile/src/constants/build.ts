@@ -1,2 +1,2 @@
 /** Bump this when users need to clear cache — shown on login screen */
-export const APP_BUILD = 'v2.11.23-portal-api-fix';
+export const APP_BUILD = 'v2.11.24-due-date-normalize-fix';
