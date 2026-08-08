@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
 import { getProjectManagerUserForAgent } from './agentDashboardService';
-import { isAgentRole } from '../../../shared/src/roles';
 
 export interface MessageThreadSummary {
   id: string;
@@ -202,14 +201,19 @@ export async function getOrCreateDirectThread(
   return threadId;
 }
 
+/**
+ * List every direct thread the user participates in.
+ * Agent "who can I message" allow-lists apply only when *starting* a new thread
+ * (see agentCanMessageRecipient / listAgentMessageableUsers) — never hide existing ones.
+ */
 export async function listThreadsForUser(
   userId: string,
   search?: string,
-  role?: string,
-  region?: string,
-  district?: string
+  _role?: string,
+  _region?: string,
+  _district?: string
 ): Promise<MessageThreadSummary[]> {
-  const rows = await query<{
+  return query<{
     id: string;
     title: string | null;
     last_message_at: string | null;
@@ -258,14 +262,6 @@ export async function listThreadsForUser(
     `,
     [userId, search?.trim() || null]
   );
-
-  if (isAgentRole(role ?? '')) {
-    const allowed = await listAgentMessageableUsers(userId, region, district);
-    const allowedIds = new Set(allowed.map((u) => u.userId));
-    return rows.filter((r) => allowedIds.has(String(r.other_user_id)));
-  }
-
-  return rows;
 }
 
 export async function getThreadMessages(
@@ -403,7 +399,10 @@ export async function sendThreadMessage(
   return { ...row!, is_mine: true };
 }
 
-/** Field agents may only message their project manager and farmers they registered. */
+/**
+ * Contacts an agent may *start* a new conversation with (PM + farmers they registered).
+ * Does not restrict which existing participant threads appear in the inbox.
+ */
 export async function listAgentMessageableUsers(
   agentUserId: string,
   region?: string,
@@ -503,6 +502,11 @@ export async function listMessageableUsers(
   return all.map((r) => ({ userId: r.user_id, name: r.name, role: r.role }));
 }
 
+/**
+ * Unread messages across all threads the user participates in.
+ * Same visibility set as listThreadsForUser (participant threads only) so the
+ * header badge never exceeds what is reachable from the Messages list.
+ */
 export async function getUnreadMessageCount(userId: string): Promise<number> {
   const row = await queryOne<{ count: number }>(
     `
