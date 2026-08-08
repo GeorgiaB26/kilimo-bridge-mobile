@@ -35,7 +35,7 @@ import {
 import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { isTaskOverdue } from '../../utils/taskCategorization';
-import { categorizeTasks, pickCategorizedTasks } from '../../utils/taskCategorization';
+import { categorizeTasks } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
@@ -72,6 +72,7 @@ type UnifiedTask = {
   name: string;
   status: string;
   due_date?: string | null;
+  farmer_id?: string;
   farmer_name?: string;
   program_project_name?: string;
   source: 'farmer' | 'personal';
@@ -82,19 +83,98 @@ type UnifiedTask = {
   priority?: string;
   description?: string | null;
   assigned_farmer_names?: string[];
+  assigned_farmer_ids?: string[];
 };
 
-type FilterKey =
+/** Status / KPI filter — includes overdue for KPI sync; raw statuses for the Filters dropdown. */
+type StatusFilterKey =
   | 'all'
   | 'overdue'
   | 'not_started'
   | 'in_progress'
   | 'submitted_for_approval'
+  | 'approved'
   | 'rejected'
   | 'completed';
 
+const STATUS_FILTER_OPTIONS: Array<{ key: StatusFilterKey; label: string }> = [
+  { key: 'all', label: 'All statuses' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'not_started', label: 'Not started' },
+  { key: 'in_progress', label: 'In progress' },
+  { key: 'submitted_for_approval', label: 'Submitted for approval' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'completed', label: 'Completed' },
+];
+
+function normalizeTaskStatus(status: string): string {
+  const s = status.toLowerCase().replace(/_/g, '-');
+  if (s === 'submitted') return 'submitted-for-approval';
+  return s;
+}
+
 function isRejectedStatus(status: string): boolean {
-  return status.toLowerCase().replace(/_/g, '-') === 'rejected';
+  return normalizeTaskStatus(status) === 'rejected';
+}
+
+function parseAssignedFarmerIds(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) {
+    return raw.map(String).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      return raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return undefined;
+}
+
+function firstNameKey(name: string): string {
+  return (name.trim().split(/\s+/)[0] || name).toLowerCase();
+}
+
+function taskMatchesFarmer(task: UnifiedTask, farmerId: string, farmerName: string): boolean {
+  if (task.farmer_id && task.farmer_id === farmerId) return true;
+  if (task.assigned_farmer_ids?.includes(farmerId)) return true;
+  const name = farmerName.trim().toLowerCase();
+  if (!name) return false;
+  if (task.farmer_name?.toLowerCase().includes(name)) return true;
+  if (task.assigned_farmer_names?.some((n) => n.toLowerCase().includes(name))) return true;
+  return false;
+}
+
+function taskMatchesStatusFilter(task: UnifiedTask, filter: StatusFilterKey): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'overdue') return isTaskOverdue(task.due_date, task.status);
+  const s = normalizeTaskStatus(task.status);
+  switch (filter) {
+    case 'not_started':
+      return s === 'not-started';
+    case 'in_progress':
+      return s === 'in-progress';
+    case 'submitted_for_approval':
+      return s === 'submitted-for-approval';
+    case 'approved':
+      return s === 'approved';
+    case 'rejected':
+      return s === 'rejected';
+    case 'completed':
+      return s === 'completed';
+    default:
+      return true;
+  }
+}
+
+function statusFilterToKpiKey(filter: StatusFilterKey): TaskStatusKpiKey | null {
+  if (filter === 'all' || filter === 'approved') return null;
+  return filter;
 }
 
 function formatDue(value?: string | null): string {
@@ -285,8 +365,12 @@ export function AgentTasksScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('all');
-  const [showFilter, setShowFilter] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
+  const [farmerFilterId, setFarmerFilterId] = useState<string | null>(null);
+  const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [farmerMenuOpen, setFarmerMenuOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedTask, setSelectedTask] = useState<AgentTaskDetail | null>(null);
@@ -304,6 +388,7 @@ export function AgentTasksScreen() {
     const assignedNames = Array.isArray(t.assigned_farmer_names)
       ? (t.assigned_farmer_names as string[])
       : undefined;
+    const assignedIds = parseAssignedFarmerIds(t.assigned_farmer_ids);
     return {
       id: String(t.id),
       name: String(t.name ?? ''),
@@ -312,6 +397,7 @@ export function AgentTasksScreen() {
       priority: t.priority as string | undefined,
       description: t.description as string | null | undefined,
       assigned_farmer_names: assignedNames,
+      assigned_farmer_ids: assignedIds,
       farmer_name: assignedNames?.length
         ? assignedNames.join(', ')
         : (t.farmer_name as string | undefined),
@@ -365,6 +451,7 @@ export function AgentTasksScreen() {
         name: String(t.name ?? ''),
         status: String(t.status ?? 'not_started'),
         due_date: t.due_date as string | null,
+        farmer_id: t.farmer_id ? String(t.farmer_id) : undefined,
         farmer_name: t.farmer_name as string | undefined,
         program_project_name: t.program_project_name as string | undefined,
         payment_value_kes: t.payment_value_kes as number | undefined,
@@ -407,8 +494,8 @@ export function AgentTasksScreen() {
     useCallback(() => {
       const routeFilter = route.params?.filter;
       if (routeFilter) {
-        setFilter(routeFilter);
-        setShowFilter(false);
+        setStatusFilter(routeFilter as StatusFilterKey);
+        setShowFiltersPanel(false);
         navigation.setParams({ filter: undefined });
       }
       if (route.params?.openAdd) {
@@ -467,7 +554,22 @@ export function AgentTasksScreen() {
 
   const allTasks = useMemo(() => [...farmerTasks, ...personalTasks], [farmerTasks, personalTasks]);
 
-  const searchFiltered = useMemo(() => {
+  const farmersSorted = useMemo(
+    () =>
+      [...farmers].sort((a, b) => {
+        const byFirst = firstNameKey(a.name).localeCompare(firstNameKey(b.name));
+        return byFirst !== 0 ? byFirst : a.name.localeCompare(b.name);
+      }),
+    [farmers]
+  );
+
+  const selectedFarmer = useMemo(
+    () => (farmerFilterId ? farmers.find((f) => f.farmer_id === farmerFilterId) : null),
+    [farmerFilterId, farmers]
+  );
+
+  /** Search → farmer → My Tasks (status applied after KPI counts). */
+  const scopedTasks = useMemo(() => {
     let list = allTasks;
     const q = search.trim().toLowerCase();
     if (q) {
@@ -477,42 +579,69 @@ export function AgentTasksScreen() {
           (t.farmer_name?.toLowerCase().includes(q) ?? false)
       );
     }
+    if (farmerFilterId && selectedFarmer) {
+      list = list.filter((t) =>
+        taskMatchesFarmer(t, selectedFarmer.farmer_id, selectedFarmer.name)
+      );
+    }
+    if (myTasksOnly) {
+      list = list.filter((t) => t.source === 'personal');
+    }
     return list;
-  }, [allTasks, search]);
+  }, [allTasks, search, farmerFilterId, selectedFarmer, myTasksOnly]);
 
-  const categorized = useMemo(() => categorizeTasks(searchFiltered), [searchFiltered]);
+  const statusFilteredTasks = useMemo(
+    () => scopedTasks.filter((t) => taskMatchesStatusFilter(t, statusFilter)),
+    [scopedTasks, statusFilter]
+  );
+
+  const categorizedForKpis = useMemo(() => categorizeTasks(scopedTasks), [scopedTasks]);
   const categoryCounts = useMemo(
     () => ({
-      overdue: categorized.overdue.length,
-      in_progress: categorized.inProgress.length,
-      not_started: categorized.notStarted.length,
-      submitted_for_approval: categorized.submittedForApproval.length,
-      rejected: categorized.rejected.length,
-      completed: categorized.completed.length,
+      overdue: categorizedForKpis.overdue.length,
+      in_progress: categorizedForKpis.inProgress.length,
+      not_started: categorizedForKpis.notStarted.length,
+      submitted_for_approval: categorizedForKpis.submittedForApproval.length,
+      rejected: categorizedForKpis.rejected.length,
+      completed: categorizedForKpis.completed.length,
     }),
-    [categorized]
+    [categorizedForKpis]
   );
+
   const displayCategories = useMemo(
-    () => pickCategorizedTasks(categorized, filter),
-    [categorized, filter]
+    () => categorizeTasks(statusFilteredTasks),
+    [statusFilteredTasks]
   );
 
   useEffect(() => {
-    if (filter === 'rejected' && categoryCounts.rejected === 0) {
-      setFilter('all');
+    if (statusFilter === 'rejected' && categoryCounts.rejected === 0) {
+      setStatusFilter('all');
     }
     if (
-      filter === 'submitted_for_approval' &&
+      statusFilter === 'submitted_for_approval' &&
       categoryCounts.submitted_for_approval === 0
     ) {
-      setFilter('all');
+      setStatusFilter('all');
     }
-  }, [filter, categoryCounts.rejected, categoryCounts.submitted_for_approval]);
+  }, [statusFilter, categoryCounts.rejected, categoryCounts.submitted_for_approval]);
 
   const toggleKpiFilter = (key: TaskStatusKpiKey) => {
-    setFilter((prev) => (prev === key ? 'all' : key));
-    setShowFilter(false);
+    setStatusFilter((prev) => (prev === key ? 'all' : key));
   };
+
+  const resetFilters = () => {
+    setStatusFilter('all');
+    setFarmerFilterId(null);
+    setMyTasksOnly(false);
+    setStatusMenuOpen(false);
+    setFarmerMenuOpen(false);
+  };
+
+  const activeFilterCount =
+    (statusFilter !== 'all' ? 1 : 0) + (farmerFilterId ? 1 : 0) + (myTasksOnly ? 1 : 0);
+
+  const statusFilterLabel =
+    STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)?.label ?? 'All statuses';
 
   const overdue = displayCategories.overdue;
   const inProgress = displayCategories.inProgress;
@@ -735,8 +864,7 @@ export function AgentTasksScreen() {
           return [...prev, mapped];
         });
       }
-      setFilter('all');
-      setShowFilter(false);
+      resetFilters();
       setSearch('');
       navigation.setParams({ filter: undefined });
       await load();
@@ -759,16 +887,6 @@ export function AgentTasksScreen() {
     );
   }
 
-  const filterLabels: Record<FilterKey, string> = {
-    all: 'All tasks',
-    overdue: 'Overdue',
-    not_started: 'Not started',
-    in_progress: 'In progress',
-    submitted_for_approval: 'Submitted for approval',
-    rejected: 'Rejected',
-    completed: 'Completed',
-  };
-
   return (
     <>
       <ScrollView
@@ -787,21 +905,49 @@ export function AgentTasksScreen() {
         <Text className="text-2xl font-bold text-[#333333]">Tasks</Text>
         <TaskStatusKpiRow
           counts={categoryCounts}
-          selected={filter === 'all' ? null : (filter as TaskStatusKpiKey)}
+          selected={statusFilterToKpiKey(statusFilter)}
           onSelect={toggleKpiFilter}
         />
-        {filter !== 'all' ? (
+        {statusFilter !== 'all' ? (
           <Text className="mb-3 mt-2 text-xs text-[#757575]">
-            Tap the selected card again to show all tasks
+            Tap the selected card again to clear status filter
           </Text>
         ) : (
-          <Text className="mb-3 mt-2 text-xs text-[#757575]">Tap a card to filter</Text>
+          <Text className="mb-3 mt-2 text-xs text-[#757575]">Tap a card to filter by status</Text>
         )}
 
         <View className="mb-3 flex-row items-center gap-2">
-          <Pressable onPress={() => setShowFilter(!showFilter)} className="flex-row items-center gap-1 rounded-lg bg-white px-3 py-2">
-            <Text className="text-sm">Filter ▼</Text>
-            <Text className="text-xs text-[#757575]">{filterLabels[filter]}</Text>
+          <Pressable
+            onPress={() => {
+              setShowFiltersPanel((open) => !open);
+              setStatusMenuOpen(false);
+              setFarmerMenuOpen(false);
+            }}
+            className={`flex-row items-center gap-1 rounded-lg px-3 py-2 ${
+              showFiltersPanel || activeFilterCount > 0 ? 'bg-[#1A4D3E]' : 'bg-white'
+            }`}
+            style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+          >
+            <Text
+              className={`text-sm font-semibold ${
+                showFiltersPanel || activeFilterCount > 0 ? 'text-white' : 'text-[#333333]'
+              }`}
+            >
+              Filters
+            </Text>
+            {activeFilterCount > 0 ? (
+              <View className="min-w-[18px] items-center rounded-full bg-[#FFD700] px-1.5">
+                <Text className="text-[11px] font-bold text-[#1A1A1A]">{activeFilterCount}</Text>
+              </View>
+            ) : (
+              <Text
+                className={`text-xs ${
+                  showFiltersPanel || activeFilterCount > 0 ? 'text-white/80' : 'text-[#757575]'
+                }`}
+              >
+                ▼
+              </Text>
+            )}
           </Pressable>
           <View className="flex-1 flex-row items-center rounded-lg bg-white px-3">
             <Ionicons name="search" size={18} color="#757575" />
@@ -813,29 +959,140 @@ export function AgentTasksScreen() {
             />
           </View>
         </View>
-        {showFilter ? (
-          <View className="mb-3 flex-row flex-wrap gap-2">
-            {(Object.keys(filterLabels) as FilterKey[])
-              .filter(
-                (key) =>
-                  (key !== 'rejected' || categoryCounts.rejected > 0) &&
-                  (key !== 'submitted_for_approval' ||
-                    categoryCounts.submitted_for_approval > 0)
-              )
-              .map((key) => (
+
+        {showFiltersPanel ? (
+          <View className="mb-4 rounded-xl border border-[#E5E5E5] bg-white p-3">
+            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#757575]">
+              Status
+            </Text>
+            <Pressable
+              onPress={() => {
+                setStatusMenuOpen((o) => !o);
+                setFarmerMenuOpen(false);
+              }}
+              className="mb-2 flex-row items-center justify-between rounded-lg border border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2.5"
+            >
+              <Text className="text-sm text-[#333333]">{statusFilterLabel}</Text>
+              <Text className="text-xs text-[#757575]">{statusMenuOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+            {statusMenuOpen ? (
+              <View className="mb-3 max-h-48 overflow-hidden rounded-lg border border-[#EEEEEE]">
+                <ScrollView nestedScrollEnabled>
+                  {STATUS_FILTER_OPTIONS.filter(
+                    (opt) =>
+                      (opt.key !== 'rejected' || categoryCounts.rejected > 0 || statusFilter === 'rejected') &&
+                      (opt.key !== 'submitted_for_approval' ||
+                        categoryCounts.submitted_for_approval > 0 ||
+                        statusFilter === 'submitted_for_approval')
+                  ).map((opt) => (
+                    <Pressable
+                      key={opt.key}
+                      onPress={() => {
+                        setStatusFilter(opt.key);
+                        setStatusMenuOpen(false);
+                      }}
+                      className={`px-3 py-2.5 ${
+                        statusFilter === opt.key ? 'bg-[#E8F5F0]' : 'bg-white'
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm ${
+                          statusFilter === opt.key
+                            ? 'font-semibold text-[#1A4D3E]'
+                            : 'text-[#333333]'
+                        }`}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#757575]">
+              Farmer
+            </Text>
+            <Pressable
+              onPress={() => {
+                setFarmerMenuOpen((o) => !o);
+                setStatusMenuOpen(false);
+              }}
+              className="mb-2 flex-row items-center justify-between rounded-lg border border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2.5"
+            >
+              <Text className="flex-1 text-sm text-[#333333]" numberOfLines={1}>
+                {selectedFarmer?.name ?? 'All farmers'}
+              </Text>
+              <Text className="text-xs text-[#757575]">{farmerMenuOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+            {farmerMenuOpen ? (
+              <View className="mb-3 max-h-48 overflow-hidden rounded-lg border border-[#EEEEEE]">
+                <ScrollView nestedScrollEnabled>
+                  <Pressable
+                    onPress={() => {
+                      setFarmerFilterId(null);
+                      setFarmerMenuOpen(false);
+                    }}
+                    className={`px-3 py-2.5 ${!farmerFilterId ? 'bg-[#E8F5F0]' : 'bg-white'}`}
+                  >
+                    <Text
+                      className={`text-sm ${
+                        !farmerFilterId ? 'font-semibold text-[#1A4D3E]' : 'text-[#333333]'
+                      }`}
+                    >
+                      All farmers
+                    </Text>
+                  </Pressable>
+                  {farmersSorted.map((f) => (
+                    <Pressable
+                      key={f.farmer_id}
+                      onPress={() => {
+                        setFarmerFilterId(f.farmer_id);
+                        setFarmerMenuOpen(false);
+                      }}
+                      className={`px-3 py-2.5 ${
+                        farmerFilterId === f.farmer_id ? 'bg-[#E8F5F0]' : 'bg-white'
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm ${
+                          farmerFilterId === f.farmer_id
+                            ? 'font-semibold text-[#1A4D3E]'
+                            : 'text-[#333333]'
+                        }`}
+                      >
+                        {f.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <View className="mt-1 flex-row flex-wrap gap-2">
               <Pressable
-                key={key}
-                onPress={() => {
-                  setFilter(key);
-                  setShowFilter(false);
-                }}
-                className={`rounded-lg px-3 py-2 ${filter === key ? 'bg-[#1A4D3E]' : 'bg-white'}`}
+                onPress={() => setMyTasksOnly((v) => !v)}
+                className={`rounded-lg px-3 py-2.5 ${
+                  myTasksOnly ? 'bg-[#1A4D3E]' : 'border border-[#E0E0E0] bg-[#FAFAFA]'
+                }`}
+                style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
               >
-                <Text className={filter === key ? 'text-white' : 'text-[#333333]'}>
-                  {filterLabels[key]}
+                <Text
+                  className={`text-sm font-semibold ${
+                    myTasksOnly ? 'text-white' : 'text-[#333333]'
+                  }`}
+                >
+                  My Tasks
                 </Text>
               </Pressable>
-            ))}
+              <Pressable
+                onPress={resetFilters}
+                className="rounded-lg border border-[#E0E0E0] bg-white px-3 py-2.5"
+                style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+              >
+                <Text className="text-sm font-semibold text-[#757575]">Reset</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
