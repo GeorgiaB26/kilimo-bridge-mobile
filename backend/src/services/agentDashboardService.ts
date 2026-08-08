@@ -349,27 +349,31 @@ export async function updateAgentPersonalTaskReminder(
 }
 
 export async function getProjectManagerUserForAgent(region?: string, district?: string) {
-  const row = await queryOne<{ user_id: string; name: string; phone_number: string }>(
-    `
-    SELECT user_id::text AS user_id, name, phone_number FROM users
-    WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
-      AND phone_number IS NOT NULL
-      AND (
-        ($1::text IS NOT NULL AND region = $1)
-        OR ($2::text IS NOT NULL AND district = $2)
-      )
-    ORDER BY CASE role::text
-      WHEN 'project_manager' THEN 0
-      WHEN 'platform_admin' THEN 1
-      WHEN 'super_admin' THEN 2
-      WHEN 'admin' THEN 3
-      ELSE 4
-    END
-    LIMIT 1
-    `,
-    [region ?? null, district ?? null]
-  );
-  if (row) return row;
+  try {
+    const row = await queryOne<{ user_id: string; name: string; phone_number: string }>(
+      `
+      SELECT user_id::text AS user_id, name, phone_number FROM users
+      WHERE role::text IN ('project_manager', 'admin', 'super_admin', 'platform_admin')
+        AND phone_number IS NOT NULL
+        AND (
+          ($1::text IS NOT NULL AND region = $1)
+          OR ($2::text IS NOT NULL AND district = $2)
+        )
+      ORDER BY CASE role::text
+        WHEN 'project_manager' THEN 0
+        WHEN 'platform_admin' THEN 1
+        WHEN 'super_admin' THEN 2
+        WHEN 'admin' THEN 3
+        ELSE 4
+      END
+      LIMIT 1
+      `,
+      [region ?? null, district ?? null]
+    );
+    if (row) return row;
+  } catch {
+    /* region/district columns may be missing on some deployments */
+  }
   return queryOne<{ user_id: string; name: string; phone_number: string }>(
     `
     SELECT user_id::text AS user_id, name, phone_number FROM users
@@ -409,10 +413,42 @@ export async function getAgentDashboardSummary(
   const personalTasks = await listAgentPersonalTasks(agentUserId);
 
   const allTasksForCounts = [
-    ...farmerTasks.map((t) => ({ status: t.status, due_date: t.due_date })),
-    ...personalTasks.map((t) => ({ status: t.status, due_date: t.due_date })),
+    ...farmerTasks.map((t) => ({
+      status: t.status ?? 'not-started',
+      due_date: t.due_date,
+    })),
+    ...personalTasks.map((t) => ({
+      status: t.status ?? 'not_started',
+      due_date: t.due_date,
+    })),
   ];
   const categoryCounts = countTaskCategories(allTasksForCounts);
+
+  const allRecentTasks = [
+    ...farmerTasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: t.status ?? 'not-started',
+      due_date: t.due_date,
+      farmer_name: t.farmer_name,
+      source: 'farmer' as const,
+    })),
+    ...personalTasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: (t.status ?? 'not_started').replace(/_/g, '-'),
+      due_date: t.due_date,
+      farmer_name: t.assigned_farmer_names?.join(', ') || 'You',
+      source: 'personal' as const,
+    })),
+  ].sort((a, b) => {
+    const da = a.due_date ? new Date(a.due_date.includes('T') ? a.due_date : `${a.due_date}T12:00:00`) : null;
+    const db = b.due_date ? new Date(b.due_date.includes('T') ? b.due_date : `${b.due_date}T12:00:00`) : null;
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da.getTime() - db.getTime();
+  });
 
   const overdueTasks = [
     ...farmerTasks.filter(
@@ -450,7 +486,16 @@ export async function getAgentDashboardSummary(
       completed_count: categoryCounts.completed,
       total_count: categoryCounts.total,
       overdue: overdueTasks.slice(0, 5),
+      recent: allRecentTasks.slice(0, 5),
     },
+    recent_farmers: farmers.slice(0, 5).map((f) => ({
+      farmer_id: f.farmer_id,
+      name: f.name,
+      phone_number: f.phone_number,
+      district: f.district,
+      sub_county: f.sub_county,
+      status: f.status,
+    })),
     project_manager: pm
       ? { name: pm.name, phone: pm.phone_number }
       : null,

@@ -10,6 +10,7 @@ import {
   getFarmerDashboard,
   getFarmerPayments,
   getFarmerHierarchyProjects,
+  getFarmerAssignedTasks,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
@@ -102,7 +103,19 @@ export function FarmerDashboardScreen() {
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerDashboard,
         userScope,
-        fetchLive: () => getFarmerDashboard(),
+        fetchLive: async () => {
+          const dashboard = await getFarmerDashboard();
+          let recentTasks = dashboard.recentTasks ?? dashboard.assignedTasks ?? [];
+          if (!recentTasks.length) {
+            try {
+              const tasksRes = await getFarmerAssignedTasks();
+              recentTasks = (tasksRes.tasks ?? []).slice(0, 3);
+            } catch {
+              /* keep dashboard-only data */
+            }
+          }
+          return { ...dashboard, recentTasks };
+        },
       });
       setData(result.data as DashboardData);
       setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);

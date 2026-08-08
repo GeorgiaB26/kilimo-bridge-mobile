@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { KBCard } from '../../components/ui/KBCard';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
+import { extractApiError } from '../../utils/feedback';
 import { APP_BUILD } from '../../constants/build';
 import { API_BASE_URL } from '../../constants';
 import type { AgentTabParamList } from '../../navigation/types';
@@ -100,19 +101,28 @@ export function AgentDashboardScreen() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const summary = await getAgentDashboard();
       setData(summary);
-    } catch {
+      setLoadError(null);
+    } catch (err: unknown) {
       setData(null);
+      setLoadError(extractApiError(err, 'Could not load dashboard'));
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      const interval = setInterval(load, 30000);
+      return () => clearInterval(interval);
+    }, [load])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -134,6 +144,21 @@ export function AgentDashboardScreen() {
 
   const farmers = data?.farmers;
   const tasks = data?.tasks;
+  const recentFarmers = (data as { recent_farmers?: Array<{
+    farmer_id: string;
+    name: string;
+    phone_number?: string;
+    district?: string;
+    sub_county?: string;
+    status?: string;
+  }> })?.recent_farmers ?? [];
+  const recentTasks = (tasks as { recent?: Array<{
+    id: string;
+    name: string;
+    due_date?: string;
+    farmer_name?: string;
+    status?: string;
+  }> })?.recent ?? tasks?.overdue ?? [];
 
   return (
     <ScrollView
@@ -147,6 +172,13 @@ export function AgentDashboardScreen() {
           API: {API_BASE_URL}
         </Text>
       </View>
+
+      {loadError ? (
+        <View className="mb-3 rounded-lg border border-[#EF4444] bg-[#FFEBEE] p-3">
+          <Text className="text-sm font-semibold text-[#EF4444]">{loadError}</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Pull down to retry or check API connection above.</Text>
+        </View>
+      ) : null}
 
       <View className="flex-row items-center gap-1.5">
         <User size={16} color="#757575" />
@@ -205,7 +237,7 @@ export function AgentDashboardScreen() {
           Icon={Hourglass}
           iconColor="#2563EB"
           label="In progress"
-          value={tasks?.in_progress_count ?? 0}
+          value={tasks?.in_progress_count ?? (tasks as { upcoming_count?: number })?.upcoming_count ?? 0}
           color="#2563EB"
           onPress={() => goToTasks('in_progress')}
         />
@@ -249,6 +281,52 @@ export function AgentDashboardScreen() {
             </View>
           </KBCard>
         </Pressable>
+      ) : null}
+
+      <Pressable
+        onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
+        style={webPressable}
+      >
+        <KBCard style={{ marginBottom: 12 }}>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-bold text-[#333333]">
+              My farmers ({farmers?.total ?? recentFarmers.length})
+            </Text>
+            <ChevronRight size={16} color="#1A4D3E" />
+          </View>
+          {recentFarmers.length > 0 ? (
+            recentFarmers.map((f) => (
+              <View key={f.farmer_id} className="mt-2 border-t border-[#EEE] pt-2">
+                <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
+                <Text className="text-xs text-[#757575]">
+                  {f.district ?? f.sub_county ?? '—'} · {f.status ?? 'pending'}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text className="mt-2 text-sm text-[#757575]">No farmers in your region yet.</Text>
+          )}
+        </KBCard>
+      </Pressable>
+
+      {recentTasks.length > 0 ? (
+        <KBCard style={{ marginBottom: 12 }}>
+          <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
+          {recentTasks.slice(0, 5).map((t) => (
+            <Pressable
+              key={t.id}
+              onPress={() => goToTasks('all')}
+              className="mt-2 border-t border-[#EEE] pt-2"
+              style={webPressable}
+            >
+              <Text className="text-sm font-semibold text-[#333333]">{t.name}</Text>
+              <Text className="text-xs text-[#757575]">
+                {t.farmer_name ?? 'Task'}
+                {t.due_date ? ` · Due ${t.due_date}` : ''}
+              </Text>
+            </Pressable>
+          ))}
+        </KBCard>
       ) : null}
 
       <View className="mb-2 flex-row items-center gap-1.5">

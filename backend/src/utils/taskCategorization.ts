@@ -13,18 +13,18 @@ export interface TaskCategoryCounts {
   total: number;
 }
 
-function normalizeStatusForCategory(status: string): string {
-  const s = status.toLowerCase().replace(/_/g, '-');
+function normalizeStatusForCategory(status?: string | null): string {
+  const s = (status ?? 'not-started').toLowerCase().replace(/_/g, '-');
   if (s === 'submitted-for-approval' || s === 'submitted') return 'in-progress';
   if (s === 'approved') return 'completed';
   return s;
 }
 
-function isCompletedStatus(status: string): boolean {
+function isCompletedStatus(status?: string | null): boolean {
   return normalizeStatusForCategory(status) === 'completed';
 }
 
-function isInProgressStatus(status: string): boolean {
+function isInProgressStatus(status?: string | null): boolean {
   return normalizeStatusForCategory(status) === 'in-progress';
 }
 
@@ -36,7 +36,7 @@ function parseDueDay(due?: string | null): Date | null {
   return d;
 }
 
-function isOverdue(due?: string | null, status?: string): boolean {
+function isOverdue(due?: string | null, status?: string | null): boolean {
   if (status && isCompletedStatus(status)) return false;
   const dueDay = parseDueDay(due);
   if (!dueDay) return false;
