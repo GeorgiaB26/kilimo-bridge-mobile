@@ -130,8 +130,12 @@ export function AgentDashboardScreen() {
     setRefreshing(false);
   };
 
-  const goToTasks = (filter: TaskFilter | 'all') => {
-    navigateNested(navigation, 'Tasks', { filter });
+  const goToTasks = (filter?: TaskFilter) => {
+    if (!filter || filter === 'all') {
+      navigation.navigate('Tasks');
+      return;
+    }
+    navigation.navigate('Tasks', { filter });
   };
 
   if (loading) {
@@ -318,9 +322,7 @@ export function AgentDashboardScreen() {
         <Button
           variant="outline"
           className="h-10"
-          onPress={() =>
-            navigateNested(navigation, 'Tasks', { filter: 'all', openAdd: true })
-          }
+          onPress={() => navigation.navigate('Tasks', { openAdd: true })}
         >
           <Text>+ Add task</Text>
         </Button>

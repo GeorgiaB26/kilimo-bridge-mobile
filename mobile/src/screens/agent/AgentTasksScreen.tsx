@@ -492,16 +492,6 @@ export function AgentTasksScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const routeFilter = route.params?.filter;
-      if (routeFilter) {
-        setStatusFilter(routeFilter as StatusFilterKey);
-        setShowFiltersPanel(false);
-        navigation.setParams({ filter: undefined });
-      }
-      if (route.params?.openAdd) {
-        setAddModalOpen(true);
-        navigation.setParams({ openAdd: undefined });
-      }
       void (async () => {
         await Promise.all([
           syncAllPendingAgentTaskApprovals(),
@@ -510,16 +500,22 @@ export function AgentTasksScreen() {
         await Promise.all([load(), loadPending()]);
         checkAndShowTaskReminders();
       })();
-    }, [
-      load,
-      loadPending,
-      navigation,
-      route.params?.filter,
-      route.params?.openAdd,
-      route.params?.taskId,
-      route.params?.highlightTaskId,
-    ])
+    }, [load, loadPending])
   );
+
+  // Dashboard KPI / notification deep-links: apply filter (and openAdd) from route params.
+  useEffect(() => {
+    const routeFilter = route.params?.filter;
+    if (routeFilter) {
+      setStatusFilter(routeFilter as StatusFilterKey);
+      setShowFiltersPanel(false);
+      navigation.setParams({ filter: undefined });
+    }
+    if (route.params?.openAdd) {
+      setAddModalOpen(true);
+      navigation.setParams({ openAdd: undefined });
+    }
+  }, [navigation, route.params?.filter, route.params?.openAdd]);
 
   // After tasks load, open detail for notification deep-links
   useEffect(() => {
@@ -606,6 +602,7 @@ export function AgentTasksScreen() {
   );
 
   useEffect(() => {
+    if (loading) return;
     if (statusFilter === 'rejected' && categoryCounts.rejected === 0) {
       setStatusFilter('all');
     }
@@ -615,7 +612,12 @@ export function AgentTasksScreen() {
     ) {
       setStatusFilter('all');
     }
-  }, [statusFilter, categoryCounts.rejected, categoryCounts.submitted_for_approval]);
+  }, [
+    loading,
+    statusFilter,
+    categoryCounts.rejected,
+    categoryCounts.submitted_for_approval,
+  ]);
 
   const toggleKpiFilter = (key: TaskStatusKpiKey) => {
     setStatusFilter((prev) => (prev === key ? 'all' : key));
