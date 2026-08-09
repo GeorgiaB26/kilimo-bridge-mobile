@@ -743,20 +743,20 @@ export function FarmerTasksScreen() {
               <Text style={styles.taskName} numberOfLines={2}>
                 {item.name}
               </Text>
-              {expanded ? (
-                <ChevronUp size={18} color="#757575" />
-              ) : (
-                <ChevronDown size={18} color="#757575" />
-              )}
+              <KBStatusChip
+                label={displayStatus(item.status)}
+                variant={statusVariant(item.status)}
+              />
             </View>
             <Text style={styles.taskProjectMuted} numberOfLines={1}>
               {project}
             </Text>
           </View>
-          <KBStatusChip
-            label={displayStatus(item.status)}
-            variant={statusVariant(item.status)}
-          />
+          {expanded ? (
+            <ChevronUp size={18} color="#757575" />
+          ) : (
+            <ChevronDown size={18} color="#757575" />
+          )}
         </View>
 
         <View style={styles.collapsedMeta}>
@@ -1280,7 +1280,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
   },
@@ -1290,8 +1290,8 @@ const styles = StyleSheet.create({
   },
   taskTitleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
+    alignItems: 'center',
+    gap: 8,
   },
   taskName: {
     flex: 1,
