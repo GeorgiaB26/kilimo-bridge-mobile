@@ -18,22 +18,22 @@ type KpiCardDef = {
 };
 
 const BASE_KPI_CARDS: KpiCardDef[] = [
-  { key: 'overdue', label: 'OVERDUE', badgeBg: '#FFEBEE', countColor: '#C62828' },
-  { key: 'in_progress', label: 'IN PROGRESS', badgeBg: '#FFF3E0', countColor: '#EF6C00' },
-  { key: 'not_started', label: 'NOT STARTED', badgeBg: '#F5F5F5', countColor: '#37474F' },
-  { key: 'completed', label: 'COMPLETED', badgeBg: '#E8F5E9', countColor: '#2E7D32' },
+  { key: 'overdue', label: 'Overdue', badgeBg: '#FFEBEE', countColor: '#C62828' },
+  { key: 'in_progress', label: 'In progress', badgeBg: '#FFF3E0', countColor: '#EF6C00' },
+  { key: 'not_started', label: 'Not started', badgeBg: '#F5F5F5', countColor: '#37474F' },
+  { key: 'completed', label: 'Completed', badgeBg: '#E8F5E9', countColor: '#2E7D32' },
 ];
 
 const SUBMITTED_KPI: KpiCardDef = {
   key: 'submitted_for_approval',
-  label: 'SUBMITTED FOR APPROVAL',
+  label: 'Submitted for approval',
   badgeBg: '#E3F2FD',
   countColor: '#1565C0',
 };
 
 const REJECTED_KPI: KpiCardDef = {
   key: 'rejected',
-  label: 'REJECTED',
+  label: 'Rejected',
   badgeBg: '#FFEBEE',
   countColor: '#C62828',
 };
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 8,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '400',
     color: '#666666',
     letterSpacing: 0.15,
     textAlign: 'center',
