@@ -126,10 +126,14 @@ export function navigateFromFarmerNotification(
     if (contextIdValue) {
       params.taskId = contextIdValue;
       params.highlightTaskId = contextIdValue;
+      const isApproved = type === 'task_approved' || type.includes('approved');
+      if (!isApproved) {
+        // Open Start Task or Edit/submit modal (assigned + rejected).
+        params.openSubmitModal = true;
+      }
     }
     if (type === 'task_rejected' || type.includes('rejected')) {
       params.statusFilter = 'rejected';
-      params.openSubmitModal = true;
     }
     navigateMainTab(root, 'Tasks', Object.keys(params).length ? params : undefined);
     return;

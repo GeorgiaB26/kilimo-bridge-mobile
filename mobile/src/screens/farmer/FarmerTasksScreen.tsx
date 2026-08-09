@@ -571,7 +571,7 @@ export function FarmerTasksScreen() {
     };
   }, [scrollTargetId, openSubmitModalParam, statusFilter]);
 
-  // Apply deep-link once tasks are ready: expand, scroll, then open edit modal.
+  // Apply deep-link once tasks are ready: expand, scroll, then open Start or Edit modal.
   useEffect(() => {
     const pending = pendingDeepLinkRef.current;
     if (!pending || loading || tasks.length === 0) return;
@@ -584,7 +584,7 @@ export function FarmerTasksScreen() {
     setDeepLinkHighlightId(task.id);
     scheduleScrollToTask(task.id);
 
-    const shouldOpenEdit =
+    const shouldOpenAction =
       pending.openEdit ||
       normalizeTaskStatus(task.status) === 'rejected';
 
@@ -594,16 +594,25 @@ export function FarmerTasksScreen() {
       openSubmitModal: undefined,
     });
 
-    if (!shouldOpenEdit) return;
+    if (!shouldOpenAction) return;
 
     if (pendingOpenEditTimerRef.current) {
       clearTimeout(pendingOpenEditTimerRef.current);
     }
-    // Scroll first, then open the resubmit modal. Keep timer on a ref so route-param
+    // Scroll first, then open the action modal. Keep timer on a ref so route-param
     // updates do not cancel it via effect cleanup.
     pendingOpenEditTimerRef.current = setTimeout(() => {
       pendingOpenEditTimerRef.current = null;
-      setSubmitTask(task);
+      if (canStartTask(task.status)) {
+        setStartDateInput(todayYmd());
+        setStartTask(task);
+        return;
+      }
+      // Rejected / in-progress: open evidence submit modal (same as Edit).
+      // Skip submitted-for-approval — that path needs an explicit recall confirm.
+      if (canEditTask(task.status) && !isSubmittedForApproval(task.status)) {
+        setSubmitTask(task);
+      }
     }, 500);
   }, [loading, tasks, navigation, scheduleScrollToTask]);
 
