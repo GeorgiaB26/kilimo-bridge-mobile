@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   FlatList,
@@ -89,36 +89,35 @@ export function AgentFarmersScreen() {
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const loadPending = useCallback(async () => listPendingRegistrationOutbox(), []);
   const loadPendingVerifications = useCallback(async () => listPendingFarmerVerifications(), []);
 
   const load = useCallback(async () => {
     try {
-      const pendingRegs = await loadPending();
+      const [pendingRegs, pendingVers, result] = await Promise.all([
+        loadPending(),
+        loadPendingVerifications(),
+        loadWithReadCache<{ farmers?: FarmerRow[] }>({
+          cacheKey: READ_CACHE_KEYS.agentFarmers,
+          userScope,
+          fetchLive: async () => {
+            const farmersRes = await api.get('/agents/farmers');
+            return farmersRes.data;
+          },
+        }),
+      ]);
       setPending(pendingRegs);
-      setPendingVerifications(await loadPendingVerifications());
-
-      if (pendingRegs.length > 0) {
-        await syncAllPendingRegistrations();
-        setPending(await loadPending());
-      }
-      await syncAllPendingFarmerVerifications();
-      setPendingVerifications(await loadPendingVerifications());
-
-      const result = await loadWithReadCache<{ farmers?: FarmerRow[] }>({
-        cacheKey: READ_CACHE_KEYS.agentFarmers,
-        userScope,
-        fetchLive: async () => {
-          const farmersRes = await api.get('/agents/farmers');
-          return farmersRes.data;
-        },
-      });
+      setPendingVerifications(pendingVers);
       setFarmers(result.data.farmers ?? []);
       setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      hasLoadedRef.current = true;
     } catch {
-      setFarmers([]);
-      setCacheFetchedAt(null);
+      if (!hasLoadedRef.current) {
+        setFarmers([]);
+        setCacheFetchedAt(null);
+      }
       setPending(await loadPending());
       setPendingVerifications(await loadPendingVerifications());
     } finally {
@@ -128,8 +127,22 @@ export function AgentFarmersScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      let cancelled = false;
+      void (async () => {
+        await load();
+        if (cancelled) return;
+        const pendingRegs = await loadPending();
+        if (pendingRegs.length > 0) {
+          await syncAllPendingRegistrations();
+        }
+        await syncAllPendingFarmerVerifications();
+        if (cancelled) return;
+        await load();
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [load, loadPending])
   );
 
   const onRefresh = async () => {
@@ -197,7 +210,7 @@ export function AgentFarmersScreen() {
 
   const filterActive = statusFilter !== 'all';
 
-  if (loading) {
+  if (loading && !hasLoadedRef.current) {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#1A4D3E" />

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -93,6 +93,16 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     []
   );
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    hasLoadedRef.current = false;
+    setFarmer(null);
+    setLoading(true);
+    setLoadError(null);
+    setTaskCompleted(0);
+    setTaskOutstanding(0);
+  }, [farmerId]);
 
   const loadPending = useCallback(async () => {
     const all = await listPendingFarmerVerifications();
@@ -100,28 +110,36 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   }, [farmerId]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedRef.current) {
+      setLoading(true);
+    }
     setLoadError(null);
     try {
-      const data = await getAgentFarmerById(farmerId);
-      setFarmer(data.farmer as FarmerDetail);
-      try {
-        const tasksData = await getAdminFarmerTasks({ farmer_id: farmerId });
-        const tasks = tasksData.tasks ?? [];
+      const [farmerResult, tasksResult] = await Promise.all([
+        getAgentFarmerById(farmerId),
+        getAdminFarmerTasks({ farmer_id: farmerId }).catch(() => null),
+      ]);
+      setFarmer(farmerResult.farmer as FarmerDetail);
+
+      if (tasksResult) {
+        const tasks = tasksResult.tasks ?? [];
         const completed = tasks.filter((t: { status?: string }) =>
           ['approved', 'completed'].includes(t.status ?? '')
         ).length;
-        const outstanding = tasks.filter((t: { status?: string }) =>
-          !['approved', 'completed'].includes(t.status ?? '')
+        const outstanding = tasks.filter(
+          (t: { status?: string }) => !['approved', 'completed'].includes(t.status ?? '')
         ).length;
         setTaskCompleted(completed);
         setTaskOutstanding(outstanding);
-      } catch {
+      } else {
         setTaskCompleted(0);
         setTaskOutstanding(0);
       }
+      hasLoadedRef.current = true;
     } catch (err: unknown) {
-      setFarmer(null);
+      if (!hasLoadedRef.current) {
+        setFarmer(null);
+      }
       setLoadError(extractApiError(err, 'Could not load farmer profile'));
     } finally {
       setLoading(false);
@@ -130,10 +148,18 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
       void (async () => {
+        // Paint profile ASAP — do not wait on outbox sync before fetching.
+        await Promise.all([load(), loadPending()]);
+        if (cancelled) return;
         await syncAllPendingFarmerVerifications();
+        if (cancelled) return;
         await Promise.all([load(), loadPending()]);
       })();
+      return () => {
+        cancelled = true;
+      };
     }, [load, loadPending])
   );
 
@@ -218,10 +244,21 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     }
   };
 
-  if (loading) {
+  if (loading && !farmer) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="#1A4D3E" />
+      <View className="flex-1 bg-[#F5F5F5]">
+        <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
+          <View className="w-full flex-row items-center justify-between">
+            <Pressable onPress={() => navigation.goBack()} className="flex-row items-center gap-1 py-2">
+              <ChevronLeft size={20} color="#FFFFFF" />
+              <Text className="text-lg text-white">Back</Text>
+            </Pressable>
+          </View>
+          <Text className="mt-4 text-2xl font-bold text-white">{routeName}</Text>
+        </View>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#1A4D3E" />
+        </View>
       </View>
     );
   }
