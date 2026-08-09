@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   View,
-  Image,
   Pressable,
   StyleSheet,
   Linking,
@@ -10,7 +9,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import { formatProjectDate } from '../../utils/greeting';
+import { formatFarmerStatus } from '../../utils/farmerStatus';
 import type { FarmerProject } from '../../types/farmerProject';
+import { FarmerProfilePhoto } from '../FarmerProfilePhoto';
+import { FarmerStatusChip } from '../agent/FarmerStatusChip';
 import {
   TaskStatusKpiRow,
   type TaskStatusKpiKey,
@@ -75,11 +77,6 @@ type Props = {
   onProjectPress: (project: FarmerProject) => void;
 };
 
-function isVerified(status?: string): boolean {
-  const s = (status ?? '').toLowerCase().replace(/\s+/g, '_');
-  return s === 'verified' || s === 'active';
-}
-
 export function FarmerDashboardProfileCard({
   farmer,
   currencyLabel,
@@ -88,20 +85,12 @@ export function FarmerDashboardProfileCard({
 }: Pick<Props, 'farmer' | 'currencyLabel' | 'onEditProfile' | 'onLogout'>) {
   const name = farmer?.name ?? 'Farmer';
   const location = farmer?.district || farmer?.region || farmer?.country || 'Kenya';
-  const verified = isVerified(farmer?.status);
+  const statusInfo = formatFarmerStatus(farmer?.status);
 
   return (
     <View style={styles.profileContainer}>
       <View style={styles.photoContainer}>
-        {farmer?.picture_url ? (
-          <Image source={{ uri: farmer.picture_url }} style={styles.profilePhoto} />
-        ) : (
-          <View style={styles.photoPlaceholder}>
-            <Text className="text-white" style={styles.photoInitials}>
-              {name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <FarmerProfilePhoto name={name} pictureUrl={farmer?.picture_url} size="large" />
       </View>
       <Text className="text-white" style={styles.profileName}>
         {name}
@@ -109,16 +98,12 @@ export function FarmerDashboardProfileCard({
       <Text className="text-white" style={styles.profileLocation}>
         {location}
       </Text>
-      {verified ? (
-        <View style={styles.verificationBadge}>
-          <Text className="text-white" style={styles.verificationText}>
-            ✓ Verified
-          </Text>
-        </View>
-      ) : null}
-      <Text className="text-white" style={styles.statusText}>
-        {verified ? 'Verified and approved' : 'Profile under review'}
-      </Text>
+      <View style={styles.statusBlock}>
+        <FarmerStatusChip status={farmer?.status} centered />
+        <Text className="text-white" style={styles.statusText}>
+          {statusInfo.description}
+        </Text>
+      </View>
       <Text className="text-white" style={styles.currencyText}>
         {currencyLabel ?? 'Kenyan Shilling (KES)'}
       </Text>
@@ -360,25 +345,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  photoContainer: { marginBottom: 16 },
-  profilePhoto: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  photoPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  photoInitials: { fontSize: 40, fontWeight: 'bold', color: '#fff' },
+  photoContainer: { marginBottom: 12, alignItems: 'center' },
   profileName: {
     fontSize: 24,
     fontWeight: '700',
@@ -392,17 +359,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  verificationBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 12,
+  statusBlock: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 4,
   },
-  verificationText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   statusText: {
     fontSize: 14,
     color: '#fff',
+    marginTop: 8,
     marginBottom: 4,
     textAlign: 'center',
   },

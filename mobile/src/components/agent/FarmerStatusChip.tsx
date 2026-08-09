@@ -5,10 +5,13 @@ import { formatFarmerStatus } from '../../utils/farmerStatus';
 export function FarmerStatusChip({
   status,
   compact = false,
+  centered = false,
 }: {
   status?: string | null;
   /** Smaller pill for dense lists (e.g. dashboard recent farmers). */
   compact?: boolean;
+  /** Center the chip in a column (e.g. farmer profile / home header cards). */
+  centered?: boolean;
 }) {
   const info = formatFarmerStatus(status);
   const Icon = info.Icon;
@@ -17,6 +20,7 @@ export function FarmerStatusChip({
       style={[
         styles.chip,
         compact ? styles.chipCompact : null,
+        centered ? styles.chipCentered : null,
         { backgroundColor: info.color },
       ]}
     >
@@ -43,6 +47,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  chipCentered: {
+    alignSelf: 'center',
   },
   chipCompact: {
     paddingHorizontal: 8,

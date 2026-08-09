@@ -335,8 +335,8 @@ export function FarmerProfileScreen() {
         <Text className="mb-3 mt-1 text-center text-sm text-white/80">
           {[farmer?.district, farmer?.sub_county, country].filter(Boolean).join(' · ')}
         </Text>
-        <View className="mt-2 items-center">
-          <FarmerStatusChip status={farmer?.status} />
+        <View className="mt-2 w-full items-center">
+          <FarmerStatusChip status={farmer?.status} centered />
           <Text className="mt-2 text-center text-xs text-white/85">{statusInfo.description}</Text>
         </View>
         <Text className="mt-2.5 text-xs font-semibold text-[#D4AF6A]">{currencyInfo.name} ({currency})</Text>
