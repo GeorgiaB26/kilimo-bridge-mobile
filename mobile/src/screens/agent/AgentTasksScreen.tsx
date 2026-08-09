@@ -34,7 +34,7 @@ import {
 } from '../../api/client';
 import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
-import { isTaskOverdue, categorizeTasks, countOverlappingStatusKpis } from '../../utils/taskCategorization';
+import { isTaskOverdue, categorizeTasks, countOverlappingStatusKpis, isTaskCompletedStatus } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
@@ -165,7 +165,8 @@ function taskMatchesStatusFilter(task: UnifiedTask, filter: StatusFilterKey): bo
     case 'rejected':
       return s === 'rejected';
     case 'completed':
-      return s === 'completed';
+      // Match KPI / categorizeTasks: approved counts as completed.
+      return isTaskCompletedStatus(task.status);
     default:
       return true;
   }
