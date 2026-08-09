@@ -344,7 +344,7 @@ router.post(
       res.status(201).json({ task });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not create task';
-      if (message.includes('DD/MM/YYYY')) {
+      if (message.includes('DD-MM-YYYY') || message.includes('DD/MM/YYYY')) {
         res.status(400).json({ error: message });
         return;
       }
@@ -404,7 +404,11 @@ router.patch(
       res.json({ task });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not update task';
-      if (message.includes('DD/MM/YYYY') || message.includes('Invalid task status')) {
+      if (
+        message.includes('DD-MM-YYYY') ||
+        message.includes('DD/MM/YYYY') ||
+        message.includes('Invalid task status')
+      ) {
         res.status(400).json({ error: message });
         return;
       }

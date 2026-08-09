@@ -13,7 +13,7 @@ import {
 import { Square, SquareCheck, X } from 'lucide-react-native';
 import { TextInput } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
-import { maskDdMmYyyyInput, parseAgentTaskDueDateInput } from '../../utils/agentTaskDate';
+import { maskDdMmYyyyInput, parseAgentTaskDueDateInput, DISPLAY_DATE_FORMAT } from '../../utils/agentTaskDate';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 
@@ -100,7 +100,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       return;
     }
     if (!dueDate.trim()) {
-      const msg = 'Enter a due date as DD/MM/YYYY (e.g. 20/08/2026).';
+      const msg = `Enter a due date as ${DISPLAY_DATE_FORMAT} (e.g. 20-08-2026).`;
       setFormError(msg);
       showMessage('Due date required', msg);
       return;
@@ -110,7 +110,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       : dueDate;
     const isoDue = parseAgentTaskDueDateInput(normalizedDue);
     if (!isoDue) {
-      const msg = 'Use DD/MM/YYYY format, e.g. 20/08/2026 for 20 August 2026.';
+      const msg = `Use ${DISPLAY_DATE_FORMAT} format, e.g. 20-08-2026 for 20 August 2026.`;
       setFormError(msg);
       showMessage('Invalid date', msg);
       return;
@@ -191,17 +191,17 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
               mode="outlined"
               style={{ marginBottom: 12, backgroundColor: '#fff' }}
             />
-            <Text className="mb-1 text-sm font-semibold text-[#333333]">Due date * (DD/MM/YYYY)</Text>
+            <Text className="mb-1 text-sm font-semibold text-[#333333]">Due date * ({DISPLAY_DATE_FORMAT})</Text>
             <TextInput
               value={dueDate}
               onChangeText={(text) => setDueDate(maskDdMmYyyyInput(text))}
-              placeholder="20/08/2026"
+              placeholder="20-08-2026"
               keyboardType={Platform.OS === 'web' ? 'default' : 'number-pad'}
               mode="outlined"
               style={{ marginBottom: 4, backgroundColor: '#fff' }}
             />
             <Text className="mb-3 text-xs text-[#757575]">
-              Example: 20/08/2026 for 20 August 2026
+              Example: 20-08-2026 for 20 August 2026
             </Text>
             <Text className="mb-2 text-sm font-semibold text-[#333333]">Priority</Text>
             <View className="mb-3 flex-row gap-2">

@@ -13,6 +13,7 @@ import {
   receiveCentreDelivery,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
+import { formatCleanDate } from '../../utils/greeting';
 import { useAuthStore } from '../../store/authStore';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
@@ -258,7 +259,7 @@ export function AggregationCentreDashboardScreen() {
         deliveries.map((d) => (
           <KBCard key={d.farmer_task_id} elevated={false}>
             <Text className="text-base font-bold text-[#333333]">{d.farmer_name}</Text>
-            <Text className="mt-1 text-[13px] text-[#757575]">{d.task_name} · {d.submitted_date?.slice(0, 10) ?? '—'}</Text>
+            <Text className="mt-1 text-[13px] text-[#757575]">{d.task_name} · {d.submitted_date ? formatCleanDate(d.submitted_date) : '—'}</Text>
             <Button className="mt-2.5 h-10 bg-[#1A4D3E]" onPress={() => setReceiveModal(d)}>
               <Text className="text-white">Receive delivery</Text>
             </Button>

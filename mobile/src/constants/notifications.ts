@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Tractor,
 } from 'lucide-react-native';
+import { formatCleanDate } from '../utils/greeting';
 
 export type NotificationIcon = ComponentType<{ size?: number | string; color?: string }>;
 
@@ -53,7 +54,7 @@ export function formatTimeAgo(value: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  return formatCleanDate(value);
 }
 
 export function formatMessageTime(value: string): string {

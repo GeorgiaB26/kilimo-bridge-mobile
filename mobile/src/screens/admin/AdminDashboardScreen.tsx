@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { extractApiError } from '../../utils/feedback';
+import { formatCleanDate } from '../../utils/greeting';
 import { API_BASE_URL } from '../../constants';
 import { getAdminDashboard } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -126,7 +127,7 @@ export function AdminDashboardScreen() {
         <View key={i} className="mb-2 rounded-lg bg-[#F9F9F9] p-3">
           <Text className="font-semibold capitalize text-[#333333]">{imp.status}</Text>
           <Text className="mt-0.5 text-[13px] text-[#757575]">
-            {imp.imported_count}/{imp.total_rows} rows · {imp.created_at?.slice(0, 10)}
+            {imp.imported_count}/{imp.total_rows} rows · {imp.created_at ? formatCleanDate(imp.created_at) : '—'}
           </Text>
         </View>
       ))}

@@ -10,6 +10,12 @@ import { cn } from '@/lib/utils';
 import { AdminFormModal } from '../../components/admin/AdminFormModal';
 import { KBCard } from '../../components/ui/KBCard';
 import { extractApiError } from '../../utils/feedback';
+import { formatCleanDate } from '../../utils/greeting';
+import {
+  DISPLAY_DATE_FORMAT,
+  formatAgentTaskDueInput,
+  parseAgentTaskDueDateInput,
+} from '../../utils/agentTaskDate';
 import {
   getAdminSectors, createAdminSector, updateAdminSector, deleteAdminSector,
   getAdminPrograms, createAdminProgram, updateAdminProgram, deleteAdminProgram,
@@ -98,7 +104,7 @@ export function AdminManageScreen() {
       {sectors.map((s) => (
         <KBCard key={s.id} elevated={false}>
           <Text className="text-base font-bold text-[#333333]">{s.name}</Text>
-          <Text className="mt-1 text-[13px] text-[#757575]">{s.created_at?.slice(0, 10) ?? '—'}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{s.created_at ? formatCleanDate(s.created_at) : '—'}</Text>
           <View className="mt-2 flex-row flex-wrap gap-1">
             <Button variant="ghost" size="sm" onPress={() => setModal({ type: 'sectors', item: s })}>
               <Text>Edit</Text>
@@ -143,7 +149,7 @@ export function AdminManageScreen() {
         <KBCard key={p.id} elevated={false}>
           <Text className="text-base font-bold text-[#333333]">{p.name}</Text>
           <Text className="mt-1 text-[13px] text-[#757575]">{p.program_name}</Text>
-          <Text className="mt-1 text-[13px] text-[#757575]">KES {(p.budget_kes ?? 0).toLocaleString()} · {p.start_date ?? '—'} → {p.end_date ?? '—'}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">KES {(p.budget_kes ?? 0).toLocaleString()} · {p.start_date ? formatCleanDate(p.start_date) : '—'} → {p.end_date ? formatCleanDate(p.end_date) : '—'}</Text>
           <View className="mt-2 flex-row flex-wrap gap-1">
             <Button variant="ghost" size="sm" onPress={() => setModal({ type: 'projects', item: p })}>
               <Text>Edit</Text>
@@ -184,7 +190,7 @@ export function AdminManageScreen() {
           <Text className="mb-1 text-xs font-bold text-[#1A4D3E]">Order {t.task_order}</Text>
           <Text className="text-[15px] font-semibold text-[#333333]">Task {t.task_order}: {t.name} — {t.payment_value_kes?.toLocaleString()} KES</Text>
           {t.description ? <Text className="mt-1 text-[13px] text-[#757575]">{t.description}</Text> : null}
-          <Text className="mt-1 text-[13px] text-[#757575]">Due {t.due_date ?? '—'}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">Due {t.due_date ? formatCleanDate(t.due_date) : '—'}</Text>
           <View className="mt-2 flex-row flex-wrap gap-1">
             <Button variant="ghost" size="sm" onPress={() => setModal({ type: 'tasks', item: t })}>
               <Text>Edit</Text>
@@ -251,7 +257,7 @@ export function AdminManageScreen() {
       {farmers.map((f) => (
         <KBCard key={f.farmer_id} elevated={false}>
           <Text className="text-base font-bold text-[#333333]">{f.name}</Text>
-          <Text className="mt-1 text-[13px] text-[#757575]">{f.phone_number} · {f.assigned_date?.slice(0, 10) ?? '—'}</Text>
+          <Text className="mt-1 text-[13px] text-[#757575]">{f.phone_number} · {f.assigned_date ? formatCleanDate(f.assigned_date) : '—'}</Text>
           {f.assigned_tasks ? <Text className="mt-1 text-[13px] text-[#757575]">Tasks: {f.assigned_tasks}</Text> : null}
           <Button variant="ghost" size="sm" onPress={() => confirmDelete(f.name, () => removeAdminProjectFarmer(selectedProjectId, f.farmer_id))}>
             <Text className="text-[#D32F2F]">Remove</Text>
@@ -320,11 +326,26 @@ export function AdminManageScreen() {
             options: programs.map((p) => ({ value: p.id, label: p.name })),
           },
           { key: 'budget_kes', label: 'Budget (KES)', required: true, keyboardType: 'numeric' },
-          { key: 'start_date', label: 'Start Date (YYYY-MM-DD)' },
-          { key: 'end_date', label: 'End Date (YYYY-MM-DD)' },
+          { key: 'start_date', label: `Start Date (${DISPLAY_DATE_FORMAT})` },
+          { key: 'end_date', label: `End Date (${DISPLAY_DATE_FORMAT})` },
         ],
         onSubmit: async (v) => {
-          const body = { ...v, budget_kes: Number(v.budget_kes) };
+          const startIso = v.start_date?.trim()
+            ? parseAgentTaskDueDateInput(v.start_date)
+            : null;
+          const endIso = v.end_date?.trim() ? parseAgentTaskDueDateInput(v.end_date) : null;
+          if (v.start_date?.trim() && !startIso) {
+            throw new Error(`Start date must be ${DISPLAY_DATE_FORMAT}`);
+          }
+          if (v.end_date?.trim() && !endIso) {
+            throw new Error(`End date must be ${DISPLAY_DATE_FORMAT}`);
+          }
+          const body = {
+            ...v,
+            budget_kes: Number(v.budget_kes),
+            start_date: startIso ?? undefined,
+            end_date: endIso ?? undefined,
+          };
           if (item) await updateAdminProject(String(item.id), body);
           else await createAdminProject(body);
           await load();
@@ -339,15 +360,19 @@ export function AdminManageScreen() {
           { key: 'task_order', label: 'Order (1-5)', required: true, keyboardType: 'numeric' },
           { key: 'payment_value_kes', label: 'Payment (KES)', required: true, keyboardType: 'numeric' },
           { key: 'description', label: 'Description', multiline: true },
-          { key: 'due_date', label: 'Due Date (YYYY-MM-DD)' },
+          { key: 'due_date', label: `Due Date (${DISPLAY_DATE_FORMAT})` },
         ],
         onSubmit: async (v) => {
+          const dueIso = v.due_date?.trim() ? parseAgentTaskDueDateInput(v.due_date) : null;
+          if (v.due_date?.trim() && !dueIso) {
+            throw new Error(`Due date must be ${DISPLAY_DATE_FORMAT}`);
+          }
           const body = {
             name: v.name,
             task_order: Number(v.task_order),
             payment_value_kes: Number(v.payment_value_kes),
             description: v.description,
-            due_date: v.due_date,
+            due_date: dueIso ?? undefined,
           };
           if (item) await updateAdminProjectTask(String(item.id), body);
           else await createAdminProjectTask(selectedProjectId, body);
@@ -359,13 +384,23 @@ export function AdminManageScreen() {
   };
 
   const cfg = modalConfig();
-  const initialModalValues = modal?.item
-    ? Object.fromEntries(Object.entries(modal.item).map(([k, v]) => [k, v == null ? '' : String(v)]))
-    : modal?.type === 'programs' && sectors[0]
-      ? { sector_id: sectors[0].id }
-      : modal?.type === 'projects' && programs[0]
-        ? { program_id: programs[0].id }
-        : undefined;
+  const initialModalValues = (() => {
+    if (!modal?.item) {
+      return modal?.type === 'programs' && sectors[0]
+        ? { sector_id: sectors[0].id }
+        : modal?.type === 'projects' && programs[0]
+          ? { program_id: programs[0].id }
+          : undefined;
+    }
+    const dateKeys = new Set(['start_date', 'end_date', 'due_date']);
+    return Object.fromEntries(
+      Object.entries(modal.item).map(([k, v]) => {
+        if (v == null) return [k, ''];
+        if (dateKeys.has(k)) return [k, formatAgentTaskDueInput(String(v))];
+        return [k, String(v)];
+      })
+    );
+  })();
 
   return (
     <View className="flex-1 bg-[#F5F5F5]">

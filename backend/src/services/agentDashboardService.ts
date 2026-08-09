@@ -493,18 +493,18 @@ export function normalizeAgentTaskDueDate(input: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
   const match = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (!match) {
-    throw new Error('Due date must be DD/MM/YYYY');
+    throw new Error('Due date must be DD-MM-YYYY');
   }
   const day = Number(match[1]);
   const month = Number(match[2]);
   const year = Number(match[3]);
   if (month < 1 || month > 12 || day < 1 || day > 31) {
-    throw new Error('Due date must be DD/MM/YYYY');
+    throw new Error('Due date must be DD-MM-YYYY');
   }
   const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   const probe = new Date(`${iso}T12:00:00`);
   if (Number.isNaN(probe.getTime())) {
-    throw new Error('Due date must be DD/MM/YYYY');
+    throw new Error('Due date must be DD-MM-YYYY');
   }
   return iso;
 }

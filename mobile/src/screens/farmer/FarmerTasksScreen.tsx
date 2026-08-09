@@ -45,6 +45,13 @@ import {
   type TaskCategoryFilter,
 } from '../../utils/taskCategorization';
 import { formatDisplayDate, formatCleanDate } from '../../utils/greeting';
+import {
+  DISPLAY_DATE_FORMAT,
+  maskDdMmYyyyInput,
+  parseAgentTaskDueDateInput,
+  todayDisplayDate,
+  todayIsoDate,
+} from '../../utils/agentTaskDate';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerTabParamList } from '../../navigation/types';
 import {
@@ -148,20 +155,6 @@ function projectLabel(item: ExtendedTaskRow): string {
   return '—';
 }
 
-function todayYmd(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function isValidYmd(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const probe = new Date(`${value}T12:00:00`);
-  return !Number.isNaN(probe.getTime());
-}
-
 /** End/due date — missing deadlines sort last for both soonest and latest. */
 function dueSortValue(item: ExtendedTaskRow): number {
   if (!item.due_date?.trim()) return Number.POSITIVE_INFINITY;
@@ -220,7 +213,7 @@ export function FarmerTasksScreen() {
   const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [startTask, setStartTask] = useState<ExtendedTaskRow | null>(null);
-  const [startDateInput, setStartDateInput] = useState(todayYmd());
+  const [startDateInput, setStartDateInput] = useState(todayDisplayDate());
   const [pendingRecalls, setPendingRecalls] = useState<PendingTaskRecallView[]>([]);
   const [pendingStarts, setPendingStarts] = useState<PendingTaskStartView[]>([]);
   const [pushingRecallId, setPushingRecallId] = useState<string | null>(null);
@@ -387,19 +380,19 @@ export function FarmerTasksScreen() {
   };
 
   const openStartModal = (item: ExtendedTaskRow) => {
-    setStartDateInput(todayYmd());
+    setStartDateInput(todayDisplayDate());
     setStartTask(item);
   };
 
   const handleConfirmStart = async () => {
     if (!startTask) return;
-    const date = startDateInput.trim();
-    if (!isValidYmd(date)) {
-      showMessage('Invalid date', 'Enter start date as YYYY-MM-DD.');
+    const isoDate = parseAgentTaskDueDateInput(startDateInput);
+    if (!isoDate) {
+      showMessage('Invalid date', `Enter start date as ${DISPLAY_DATE_FORMAT}.`);
       return;
     }
-    const today = todayYmd();
-    if (date > today) {
+    const today = todayIsoDate();
+    if (isoDate > today) {
       showMessage('Invalid date', 'Start date cannot be in the future.');
       return;
     }
@@ -410,12 +403,12 @@ export function FarmerTasksScreen() {
         taskId: startTask.id,
         taskName: startTask.name,
         source: startTask.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
-        startDate: date,
+        startDate: isoDate,
         expectedStatus: startTask.status || 'not-started',
       });
       await loadPendingStarts();
       if (result.mode === 'online') {
-        showMessage('Task started', `Start date set to ${date}.`);
+        showMessage('Task started', `Start date set to ${formatCleanDate(isoDate)}.`);
         setStartTask(null);
         await load();
         return;
@@ -605,7 +598,7 @@ export function FarmerTasksScreen() {
     pendingOpenEditTimerRef.current = setTimeout(() => {
       pendingOpenEditTimerRef.current = null;
       if (canStartTask(task.status)) {
-        setStartDateInput(todayYmd());
+        setStartDateInput(todayDisplayDate());
         setStartTask(task);
         return;
       }
@@ -1047,12 +1040,12 @@ export function FarmerTasksScreen() {
             <Text className="text-lg font-bold text-foreground">Start Task</Text>
             <Text className="mt-1 text-sm text-muted-foreground">{startTask?.name}</Text>
             <Text className="mt-4 text-xs font-semibold text-muted-foreground">
-              When did you start? (YYYY-MM-DD)
+              When did you start? ({DISPLAY_DATE_FORMAT})
             </Text>
             <TextInput
               value={startDateInput}
-              onChangeText={setStartDateInput}
-              placeholder="YYYY-MM-DD"
+              onChangeText={(text) => setStartDateInput(maskDdMmYyyyInput(text))}
+              placeholder={DISPLAY_DATE_FORMAT}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="numbers-and-punctuation"

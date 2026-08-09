@@ -18,6 +18,7 @@ import { FarmerProfilePhoto } from '../../components/FarmerProfilePhoto';
 import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import { isUsableFarmerPhotoUrl } from '../../../shared/src/farmerPhoto';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
+import { formatCleanDate } from '../../utils/greeting';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
@@ -74,9 +75,8 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
 
 function formatDate(value?: string | null): string | undefined {
   if (!value) return undefined;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return undefined;
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const formatted = formatCleanDate(value);
+  return formatted === 'N/A' ? undefined : formatted;
 }
 
 export function AgentFarmerProfileScreen({ route, navigation }: Props) {
