@@ -263,35 +263,51 @@ export function AgentDashboardScreen() {
         </Pressable>
       ) : null}
 
-      <Pressable
-        onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
-        style={webPressable}
-      >
-        <KBCard style={{ marginBottom: 12 }}>
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm font-bold text-[#333333]">
-              My farmers ({farmers?.total ?? recentFarmers.length})
-            </Text>
-            <ChevronRight size={16} color="#1A4D3E" />
-          </View>
-          {recentFarmers.length > 0 ? (
-            recentFarmers.map((f) => (
-              <View key={f.farmer_id} className="mt-2 border-t border-[#EEE] pt-2">
-                <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
-                <Text className="text-xs text-[#757575]">
-                  {f.district ?? f.sub_county ?? '—'} · {f.status ?? 'pending'}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text className="mt-2 text-sm text-[#757575]">No farmers in your region yet.</Text>
-          )}
-        </KBCard>
-      </Pressable>
+      <KBCard style={{ marginBottom: 12 }}>
+        <Pressable
+          onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
+          className="flex-row items-center justify-between"
+          style={webPressable}
+        >
+          <Text className="text-sm font-bold text-[#333333]">
+            My farmers ({farmers?.total ?? recentFarmers.length})
+          </Text>
+          <ChevronRight size={16} color="#1A4D3E" />
+        </Pressable>
+        {recentFarmers.length > 0 ? (
+          recentFarmers.map((f) => (
+            <Pressable
+              key={f.farmer_id}
+              onPress={() =>
+                navigateNested(navigation, 'Farmers', {
+                  screen: 'FarmerProfile',
+                  params: { farmerId: f.farmer_id, name: f.name },
+                })
+              }
+              className="mt-2 border-t border-[#EEE] pt-2"
+              style={webPressable}
+            >
+              <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
+              <Text className="text-xs text-[#757575]">
+                {f.district ?? f.sub_county ?? '—'} · {f.status ?? 'pending'}
+              </Text>
+            </Pressable>
+          ))
+        ) : (
+          <Text className="mt-2 text-sm text-[#757575]">No farmers in your region yet.</Text>
+        )}
+      </KBCard>
 
       {recentTasks.length > 0 ? (
         <KBCard style={{ marginBottom: 12 }}>
-          <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
+          <Pressable
+            onPress={() => goToTasks()}
+            className="flex-row items-center justify-between"
+            style={webPressable}
+          >
+            <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
+            <ChevronRight size={16} color="#1A4D3E" />
+          </Pressable>
           {recentTasks.slice(0, 5).map((t: {
             id: string;
             name?: string;
@@ -300,7 +316,12 @@ export function AgentDashboardScreen() {
           }) => (
             <Pressable
               key={t.id}
-              onPress={() => goToTasks('all')}
+              onPress={() =>
+                navigation.navigate('Tasks', {
+                  taskId: t.id,
+                  highlightTaskId: t.id,
+                })
+              }
               className="mt-2 border-t border-[#EEE] pt-2"
               style={webPressable}
             >

@@ -517,17 +517,18 @@ export function AgentTasksScreen() {
     }
   }, [navigation, route.params?.filter, route.params?.openAdd]);
 
-  // After tasks load, open detail for notification deep-links
+  // After tasks load, open detail for dashboard / notification deep-links
   useEffect(() => {
     const deepLinkTaskId = route.params?.taskId ?? route.params?.highlightTaskId;
     if (!deepLinkTaskId || loading) return;
     const match = [...farmerTasks, ...personalTasks].find((t) => t.id === deepLinkTaskId);
     if (!match) return;
+    setStatusFilter('all');
+    setFarmerFilterId(null);
+    setMyTasksOnly(false);
+    setExpandedId(match.id);
     setSelectedTask(toTaskDetail(match));
     setDetailOpen(true);
-    if (isSubmittedForApprovalStatus(match.status)) {
-      setExpandedId(match.id);
-    }
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
   }, [
     route.params?.taskId,
