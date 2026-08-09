@@ -126,9 +126,9 @@ export function navigateFromFarmerNotification(
     if (contextIdValue) {
       params.taskId = contextIdValue;
       params.highlightTaskId = contextIdValue;
-      const isApproved = type === 'task_approved' || type.includes('approved');
-      if (!isApproved) {
-        // Open Start Task or Edit/submit modal (assigned + rejected).
+      // Rejected: open Edit/submit so they can fix evidence. Assigned: expand details only
+      // so the farmer can read the task before choosing Start.
+      if (type === 'task_rejected' || type.includes('rejected')) {
         params.openSubmitModal = true;
       }
     }

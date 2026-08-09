@@ -26,7 +26,7 @@ export type FarmerTabParamList = {
       | 'completed';
     highlightTaskId?: string;
     taskId?: string;
-    /** When true, open Start Task or Edit/submit modal after scrolling to the task. */
+    /** When true, open Edit/submit modal after scrolling (e.g. rejected-task notifications). */
     openSubmitModal?: boolean;
   } | undefined;
   Payments: { highlightPaymentId?: string } | undefined;

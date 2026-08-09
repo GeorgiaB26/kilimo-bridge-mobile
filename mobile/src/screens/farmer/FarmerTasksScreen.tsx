@@ -571,7 +571,8 @@ export function FarmerTasksScreen() {
     };
   }, [scrollTargetId, openSubmitModalParam, statusFilter]);
 
-  // Apply deep-link once tasks are ready: expand, scroll, then open Start or Edit modal.
+  // Apply deep-link once tasks are ready: expand + scroll; open Edit modal only when requested
+  // (e.g. rejected). New assignments expand details so the farmer can read before Start.
   useEffect(() => {
     const pending = pendingDeepLinkRef.current;
     if (!pending || loading || tasks.length === 0) return;
