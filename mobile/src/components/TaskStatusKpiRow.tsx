@@ -95,8 +95,8 @@ type Props = {
 };
 
 /**
- * Status KPI cards for Tasks screens (agent + farmer).
- * Matches agent dashboard MetricCard styling: icon, large count, left-aligned label.
+ * Status KPI cards shared by agent/farmer dashboards and Tasks screens.
+ * Typography matches agent dashboard MetricCard (NativeWind text-2xl / text-xs).
  * SUBMITTED FOR APPROVAL and REJECTED are omitted when count is 0.
  */
 export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
@@ -139,8 +139,13 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
                 ]}
               >
                 <Icon size={20} color={kpi.iconColor} />
-                <Text style={[styles.kpiCount, { color: kpi.countColor }]}>{count}</Text>
-                <Text style={styles.kpiLabel}>{kpi.label}</Text>
+                <Text
+                  className="mt-1 text-2xl font-bold"
+                  style={{ color: kpi.countColor }}
+                >
+                  {count}
+                </Text>
+                <Text className="mt-0.5 text-xs text-[#757575]">{kpi.label}</Text>
               </Pressable>
             );
           })}
@@ -182,18 +187,5 @@ const styles = StyleSheet.create({
   kpiCardSelected: {
     borderColor: '#1A4D3E',
     borderWidth: 2,
-  },
-  kpiCount: {
-    marginTop: 4,
-    fontSize: 24,
-    fontWeight: '700',
-    lineHeight: 28,
-  },
-  kpiLabel: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '400',
-    color: '#757575',
-    textAlign: 'left',
   },
 });
