@@ -24,6 +24,8 @@ export interface FarmerTaskSubmitTarget {
   /** Storage key / data URL for resubmit without re-upload when photo unchanged. */
   initialPhotoKey?: string | null;
   initialNotes?: string | null;
+  /** Agent rejection feedback shown when resubmitting a rejected task. */
+  rejectionReason?: string | null;
 }
 
 interface Props {
@@ -180,6 +182,12 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
                 {hasPrefill ? 'Update & submit: ' : 'Submit Task: '}
                 {task.name}
               </Text>
+              {task.rejectionReason?.trim() ? (
+                <View style={styles.rejectionBox}>
+                  <Text style={styles.rejectionTitle}>Rejected — reason from your field agent</Text>
+                  <Text style={styles.rejectionBody}>{task.rejectionReason.trim()}</Text>
+                </View>
+              ) : null}
               {hasPrefill ? (
                 <Text style={styles.prefillHint}>
                   Your previous photo and notes are loaded — edit anything, then submit again.
@@ -261,6 +269,25 @@ const styles = StyleSheet.create({
   closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 16 },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
+  rejectionBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+    backgroundColor: '#FFEBEE',
+  },
+  rejectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.alert,
+    marginBottom: 4,
+  },
+  rejectionBody: {
+    fontSize: 14,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
   prefillHint: { fontSize: 13, color: COLORS.muted, marginTop: 8, lineHeight: 18 },
   description: { fontSize: 14, color: COLORS.text, marginTop: 8, lineHeight: 20 },
   pay: { fontSize: 16, fontWeight: '700', color: COLORS.accent, marginTop: 8, marginBottom: 16 },

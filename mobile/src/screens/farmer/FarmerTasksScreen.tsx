@@ -1077,6 +1077,7 @@ export function FarmerTasksScreen() {
                 initialNotes: submitTask.notes ?? null,
                 initialPhotoUri: evidencePhotoUri(submitTask),
                 initialPhotoKey: submitTask.photo_evidence_key ?? null,
+                rejectionReason: submitTask.rejection_reason ?? null,
               }
             : null
         }
