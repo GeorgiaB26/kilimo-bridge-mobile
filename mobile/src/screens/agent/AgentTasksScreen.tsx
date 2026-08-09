@@ -36,6 +36,7 @@ import {
 import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { isTaskOverdue, categorizeTasks, countOverlappingStatusKpis, isTaskCompletedStatus } from '../../utils/taskCategorization';
+import type { CategorizedTasks } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
@@ -711,10 +712,41 @@ export function AgentTasksScreen() {
     [scopedTasks]
   );
 
-  const displayCategories = useMemo(
-    () => categorizeTasks(statusFilteredTasks),
-    [statusFilteredTasks]
-  );
+  /**
+   * KPI filters use overlapping counts (In Progress includes overdue in-progress tasks).
+   * When a status KPI is selected, keep those tasks in that section — do not re-bucket
+   * them into Overdue via categorizeTasks (that caused overdue to leak into other filters).
+   */
+  const displayCategories = useMemo((): CategorizedTasks<UnifiedTask> => {
+    if (statusFilter === 'all') {
+      return categorizeTasks(scopedTasks);
+    }
+    const empty: CategorizedTasks<UnifiedTask> = {
+      overdue: [],
+      inProgress: [],
+      notStarted: [],
+      submittedForApproval: [],
+      rejected: [],
+      completed: [],
+    };
+    switch (statusFilter) {
+      case 'overdue':
+        return { ...empty, overdue: statusFilteredTasks };
+      case 'in_progress':
+        return { ...empty, inProgress: statusFilteredTasks };
+      case 'not_started':
+        return { ...empty, notStarted: statusFilteredTasks };
+      case 'submitted_for_approval':
+        return { ...empty, submittedForApproval: statusFilteredTasks };
+      case 'rejected':
+        return { ...empty, rejected: statusFilteredTasks };
+      case 'completed':
+      case 'approved':
+        return { ...empty, completed: statusFilteredTasks };
+      default:
+        return categorizeTasks(statusFilteredTasks);
+    }
+  }, [scopedTasks, statusFilteredTasks, statusFilter]);
 
   useEffect(() => {
     if (loading) return;
@@ -1296,9 +1328,9 @@ export function AgentTasksScreen() {
           onTaskLayout={onTaskLayoutInList}
         />
         <TaskSection
-          TitleIcon={Hourglass}
+          TitleIcon={Bell}
           title={`Submitted for approval (${submittedForApproval.length})`}
-          color="#1565C0"
+          color="#2563EB"
           tasks={submittedForApproval}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
