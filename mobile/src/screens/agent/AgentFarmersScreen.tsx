@@ -1,8 +1,19 @@
-import React, { useState, useCallback } from 'react';
-import { View, FlatList, RefreshControl, ActivityIndicator, Alert, Pressable } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  TextInput,
+  Platform,
+  StyleSheet,
+} from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { Sprout } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -28,6 +39,7 @@ import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerif
 import type { AgentFarmersStackParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { COLORS } from '../../constants';
 
 type FarmerRow = {
   farmer_id: string;
@@ -37,11 +49,34 @@ type FarmerRow = {
   status: string;
 };
 
+type StatusFilterKey = 'all' | 'pending_verification' | 'verified' | 'rejected';
+
+const STATUS_FILTER_OPTIONS: Array<{ key: StatusFilterKey; label: string }> = [
+  { key: 'all', label: 'All statuses' },
+  { key: 'pending_verification', label: 'Pending review' },
+  { key: 'verified', label: 'Verified' },
+  { key: 'rejected', label: 'Rejected' },
+];
+
+function matchesStatusFilter(status: string, filter: StatusFilterKey): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'pending_verification') {
+    return status === 'pending_field_verification' || status === 'pending_review';
+  }
+  return status === filter;
+}
+
 export function AgentFarmersScreen() {
   const user = useAuthStore((s) => s.user);
   const userScope = useReadCacheUserScope();
   const route = useRoute<RouteProp<AgentFarmersStackParamList, 'FarmerList'>>();
-  const statusFilter = route.params?.statusFilter ?? 'all';
+  const rawFilter = route.params?.statusFilter ?? 'all';
+  const statusFilter: StatusFilterKey =
+    rawFilter === 'pending_verification' ||
+    rawFilter === 'verified' ||
+    rawFilter === 'rejected'
+      ? rawFilter
+      : 'all';
   const navigation = useNavigation<NativeStackNavigationProp<AgentFarmersStackParamList>>();
   const [farmers, setFarmers] = useState<FarmerRow[]>([]);
   const [pending, setPending] = useState<PendingRegistrationView[]>([]);
@@ -52,6 +87,8 @@ export function AgentFarmersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   const loadPending = useCallback(async () => listPendingRegistrationOutbox(), []);
   const loadPendingVerifications = useCallback(async () => listPendingFarmerVerifications(), []);
@@ -101,6 +138,13 @@ export function AgentFarmersScreen() {
     setRefreshing(false);
   };
 
+  const setStatusFilter = (key: StatusFilterKey) => {
+    setStatusMenuOpen(false);
+    navigation.setParams({
+      statusFilter: key === 'all' ? undefined : key,
+    });
+  };
+
   const handlePushRegistration = async (id: string, name: string) => {
     setPushingId(id);
     try {
@@ -139,6 +183,20 @@ export function AgentFarmersScreen() {
     }
   };
 
+  const filteredFarmers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return farmers.filter((f) => {
+      if (!matchesStatusFilter(f.status, statusFilter)) return false;
+      if (!q) return true;
+      return (f.name ?? '').toLowerCase().includes(q);
+    });
+  }, [farmers, searchQuery, statusFilter]);
+
+  const statusFilterLabel =
+    STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)?.label ?? 'All statuses';
+
+  const filterActive = statusFilter !== 'all';
+
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center">
@@ -147,28 +205,12 @@ export function AgentFarmersScreen() {
     );
   }
 
-  const filteredFarmers = farmers.filter((f) => {
-    if (!statusFilter || statusFilter === 'all') return true;
-    if (statusFilter === 'pending_verification') {
-      return f.status === 'pending_field_verification' || f.status === 'pending_review';
-    }
-    return f.status === statusFilter;
-  });
-
-  const filterLabel =
-    statusFilter === 'pending_verification'
-      ? 'Pending verification'
-      : statusFilter === 'verified'
-        ? 'Verified'
-        : statusFilter === 'rejected'
-          ? 'Rejected'
-          : null;
-
   return (
     <FlatList
       className="flex-1 p-4"
       data={filteredFarmers}
       keyExtractor={(item) => item.farmer_id}
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       ListHeaderComponent={
         <View>
@@ -178,14 +220,6 @@ export function AgentFarmersScreen() {
           <Text className="mb-3 text-sm text-[#757575]">
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
-
-          {filterLabel ? (
-            <View className="mb-3 rounded-lg border border-[#1A4D3E] bg-[#E8F5E9] px-3 py-2">
-              <Text className="text-sm font-semibold text-[#1A4D3E]">
-                Filter: {filterLabel} ({filteredFarmers.length})
-              </Text>
-            </View>
-          ) : null}
 
           {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
 
@@ -250,6 +284,70 @@ export function AgentFarmersScreen() {
           ) : null}
 
           <Text className="mb-2 text-[17px] font-bold text-[#333333]">Registered farmers</Text>
+
+          <View style={styles.searchFilterRow}>
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={18} color="#757575" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search farmer name"
+                placeholderTextColor="#9E9E9E"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+              />
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Filter farmers: ${statusFilterLabel}`}
+              onPress={() => setStatusMenuOpen((open) => !open)}
+              style={({ pressed }) => [
+                styles.filterButton,
+                statusMenuOpen || filterActive ? styles.filterButtonActive : null,
+                pressed ? styles.filterButtonPressed : null,
+                Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
+              ]}
+            >
+              <Text style={styles.filterButtonLabel} numberOfLines={1}>
+                {statusFilter === 'all' ? 'Filter' : statusFilterLabel}
+              </Text>
+              <Text style={styles.filterChevron}>{statusMenuOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+          </View>
+
+          {statusMenuOpen ? (
+            <View style={styles.filterMenu}>
+              {STATUS_FILTER_OPTIONS.map((opt) => {
+                const selected = statusFilter === opt.key;
+                return (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => setStatusFilter(opt.key)}
+                    style={[styles.filterMenuItem, selected ? styles.filterMenuItemActive : null]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterMenuItemLabel,
+                        selected ? styles.filterMenuItemLabelActive : null,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {filterActive || searchQuery.trim() ? (
+            <Text className="mb-2 mt-2 text-xs text-[#757575]">
+              Showing {filteredFarmers.length} of {farmers.length} farmers
+            </Text>
+          ) : (
+            <View className="mb-2" />
+          )}
         </View>
       }
       renderItem={({ item }) => (
@@ -272,11 +370,93 @@ export function AgentFarmersScreen() {
       )}
       ListEmptyComponent={
         <Text className="text-[#757575]">
-          {filterLabel
-            ? `No farmers match the “${filterLabel}” filter.`
+          {searchQuery.trim() || filterActive
+            ? 'No farmers match your search or filter.'
             : 'No farmers in your region yet. Use Register Farmer in the header.'}
         </Text>
       }
     />
   );
 }
+
+const styles = StyleSheet.create({
+  searchFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchBox: {
+    flex: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  searchInput: {
+    flex: 1,
+    paddingLeft: 6,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    fontSize: 14,
+    color: '#1A1A1A',
+  },
+  filterButton: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  filterButtonActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#F1F7F4',
+  },
+  filterButtonPressed: {
+    opacity: 0.85,
+  },
+  filterButtonLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333333',
+  },
+  filterChevron: {
+    fontSize: 10,
+    color: '#757575',
+  },
+  filterMenu: {
+    marginTop: 8,
+    marginBottom: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  filterMenuItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  filterMenuItemActive: {
+    backgroundColor: '#E8F5F0',
+  },
+  filterMenuItemLabel: {
+    fontSize: 14,
+    color: '#333333',
+  },
+  filterMenuItemLabelActive: {
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+});
