@@ -46,16 +46,18 @@ export function RegisterNewFarmerBanner({ onPress }: Props) {
 
 const styles = StyleSheet.create({
   compactBtn: {
-    height: 34,
+    height: 32,
+    maxWidth: 118,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     borderRadius: 8,
     backgroundColor: '#FFD700',
   },
   compactLabel: {
-    fontSize: 12,
+    flexShrink: 1,
+    fontSize: 10,
     fontWeight: '600',
     color: '#000000',
   },

@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from '@/components/ui/text';
 import { COLORS } from '../constants';
 import { AgentFarmersScreen } from '../screens/agent/AgentFarmersScreen';
 import { AgentFarmerProfileScreen } from '../screens/agent/AgentFarmerProfileScreen';
@@ -11,6 +12,7 @@ import { AgentFarmerRegistrationNavigator } from './AgentFarmerRegistrationNavig
 import { RegisterNewFarmerButton } from '../components/agent/RegisterNewFarmerButton';
 import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import type { AgentFarmersStackParamList } from './types';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 const Stack = createNativeStackNavigator<AgentFarmersStackParamList>();
 
@@ -30,6 +32,41 @@ function withAgentFormLayout<P extends object>(Screen: React.ComponentType<P>) {
   };
 }
 
+/** Flex header so the title truncates instead of overlapping actions (native-stack web quirk). */
+function FarmerListHeader({
+  navigation,
+}: {
+  navigation: NativeStackNavigationProp<AgentFarmersStackParamList, 'FarmerList'>;
+}) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View
+      style={[
+        styles.headerBar,
+        {
+          paddingTop: Platform.OS === 'web' ? 0 : insets.top,
+          paddingLeft: Math.max(insets.left, 16),
+          paddingRight: Math.max(insets.right, 16),
+        },
+      ]}
+    >
+      <View style={styles.headerInner}>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          Field Agent Platform
+        </Text>
+        <View style={styles.headerActions}>
+          <MessagesNotificationsHeaderIcons iconColor="#fff" />
+          <RegisterNewFarmerButton
+            compact
+            onPress={() => navigation.navigate('RegisterPicker')}
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export function AgentFarmersStackNavigator() {
   return (
     <Stack.Navigator
@@ -44,15 +81,7 @@ export function AgentFarmersStackNavigator() {
         component={AgentFarmersScreen}
         options={({ navigation }) => ({
           title: 'Field Agent Platform',
-          headerRight: () => (
-            <View style={styles.headerRight}>
-              <MessagesNotificationsHeaderIcons iconColor="#fff" />
-              <RegisterNewFarmerButton
-                compact
-                onPress={() => navigation.navigate('RegisterPicker')}
-              />
-            </View>
-          ),
+          header: () => <FarmerListHeader navigation={navigation} />,
         })}
       />
       <Stack.Screen
@@ -86,10 +115,32 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   scroll: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
-  headerRight: {
+  headerBar: {
+    backgroundColor: COLORS.primary,
+    paddingBottom: 10,
+    ...Platform.select({
+      web: { paddingTop: 10 },
+      default: {},
+    }),
+  },
+  headerInner: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+    minHeight: 40,
+  },
+  headerTitle: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
     gap: 6,
-    marginRight: 16,
   },
 });
