@@ -35,7 +35,7 @@ function AgentTabNavigator() {
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} icons={AGENT_TAB_ICONS} />}
       screenOptions={({ route }) => ({
-        headerShown: route.name === 'Farmers' || route.name === 'Profile' ? false : true,
+        headerShown: route.name === 'Farmers' ? false : true,
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
         headerTitle: HEADER_TITLE,

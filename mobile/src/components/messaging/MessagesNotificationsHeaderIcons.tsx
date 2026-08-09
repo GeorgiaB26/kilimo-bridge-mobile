@@ -8,6 +8,8 @@ type Props = {
   messagesRoute?: string;
   notificationsRoute?: string;
   iconColor?: string;
+  /** Optional settings gear (same size/spacing as messages & notifications). */
+  onSettingsPress?: () => void;
 };
 
 function UnreadBadge({ count }: { count: number }) {
@@ -22,10 +24,13 @@ function UnreadBadge({ count }: { count: number }) {
   );
 }
 
+const ICON_SIZE = 22;
+
 export function MessagesNotificationsHeaderIcons({
   messagesRoute = 'MessagesFlow',
   notificationsRoute = 'NotificationsFlow',
   iconColor = '#fff',
+  onSettingsPress,
 }: Props) {
   const navigation = useNavigation();
   const { messageCount, notificationCount } = useUnreadInboxCounts();
@@ -49,7 +54,7 @@ export function MessagesNotificationsHeaderIcons({
         accessibilityLabel="Messages"
         accessibilityHint="Open messages"
       >
-        <Ionicons name="chatbubbles-outline" size={22} color={iconColor} />
+        <Ionicons name="chatbubbles-outline" size={ICON_SIZE} color={iconColor} />
         {messageCount > 0 ? <UnreadBadge count={messageCount} /> : null}
       </Pressable>
       <Pressable
@@ -58,9 +63,19 @@ export function MessagesNotificationsHeaderIcons({
         accessibilityLabel="Notifications"
         accessibilityHint="Open notifications"
       >
-        <Ionicons name="notifications-outline" size={22} color={iconColor} />
+        <Ionicons name="notifications-outline" size={ICON_SIZE} color={iconColor} />
         {notificationCount > 0 ? <UnreadBadge count={notificationCount} /> : null}
       </Pressable>
+      {onSettingsPress ? (
+        <Pressable
+          onPress={onSettingsPress}
+          style={styles.hit}
+          accessibilityLabel="Settings"
+          accessibilityHint="Open profile settings"
+        >
+          <Ionicons name="settings-outline" size={ICON_SIZE} color={iconColor} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -71,7 +86,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
   hit: {
     padding: 6,

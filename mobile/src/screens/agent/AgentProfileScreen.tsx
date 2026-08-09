@@ -1,8 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useState } from 'react';
 import { View, ScrollView, Linking, Alert, Modal, Pressable, Switch } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { TextInput } from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
 import {
   ChevronRight,
   CircleCheck,
@@ -21,6 +21,7 @@ import { getAgentDashboard, getNotificationSettings, updateNotificationSettings 
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
+import type { AgentTabParamList } from '../../navigation/types';
 
 const USEFUL_DOCUMENTS = [
   { name: 'User Guide v2.1', size: '2.3 MB', type: 'PDF' },
@@ -31,6 +32,7 @@ const USEFUL_DOCUMENTS = [
 ];
 
 export function AgentProfileScreen() {
+  const navigation = useNavigation<BottomTabNavigationProp<AgentTabParamList, 'Profile'>>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [pm, setPm] = useState<{ name: string; phone: string } | null>(null);
@@ -95,6 +97,19 @@ export function AgentProfileScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ marginRight: 16 }}>
+          <MessagesNotificationsHeaderIcons
+            iconColor="#fff"
+            onSettingsPress={() => setSettingsOpen(true)}
+          />
+        </View>
+      ),
+    });
+  }, [navigation]);
+
   const callPhone = (phone: string) => {
     Linking.openURL(`tel:${phone.replace(/\s/g, '')}`);
   };
@@ -110,16 +125,6 @@ export function AgentProfileScreen() {
   return (
     <>
       <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
-        <View className="mb-4 flex-row items-center justify-between">
-          <Text className="text-[22px] font-bold text-[#1A4D3E]">Profile</Text>
-          <View className="flex-row items-center gap-1">
-            <MessagesNotificationsHeaderIcons iconColor="#1A4D3E" />
-            <Pressable onPress={() => setSettingsOpen(true)} accessibilityLabel="Settings">
-              <Ionicons name="settings-outline" size={26} color="#1A4D3E" />
-            </Pressable>
-          </View>
-        </View>
-
         <View className="mb-4 items-center rounded-xl bg-white p-5">
           <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-[#1A4D3E]">
             <Text className="text-2xl font-bold text-[#D4AF6A]">
