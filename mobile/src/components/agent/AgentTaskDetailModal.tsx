@@ -133,11 +133,18 @@ export function AgentTaskDetailModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
       <View
         className="flex-1 justify-end bg-black/40"
         style={Platform.OS === 'web' ? { zIndex: 1000 } : undefined}
       >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          onPress={onClose}
+          className="flex-1"
+          style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : undefined}
+        />
         <View className="max-h-[92%] rounded-t-2xl bg-white p-5">
           <View className="mb-4 flex-row items-start justify-between gap-3">
             <View className="flex-1">

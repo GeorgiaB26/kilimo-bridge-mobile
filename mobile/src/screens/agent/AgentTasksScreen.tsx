@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   View,
@@ -383,6 +383,8 @@ export function AgentTasksScreen() {
     []
   );
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
+  const appliedDeepLinkTaskIdRef = useRef<string | null>(null);
 
   const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => {
     const assignedNames = Array.isArray(t.assigned_farmer_names)
@@ -445,61 +447,81 @@ export function AgentTasksScreen() {
 
   const load = useCallback(async () => {
     try {
-      const tasksData = await getAgentTasks();
-      const ft = (tasksData.farmer_tasks ?? []).map((t: Record<string, unknown>) => ({
-        id: String(t.id),
-        name: String(t.name ?? ''),
-        status: String(t.status ?? 'not_started'),
-        due_date: t.due_date as string | null,
-        farmer_id: t.farmer_id ? String(t.farmer_id) : undefined,
-        farmer_name: t.farmer_name as string | undefined,
-        program_project_name: t.program_project_name as string | undefined,
-        payment_value_kes: t.payment_value_kes as number | undefined,
-        notes: t.notes as string | undefined,
-        photo_evidence_url: t.photo_evidence_url as string | undefined,
-        rejection_reason: t.rejection_reason as string | undefined,
-        description: t.description as string | null | undefined,
-        source: 'farmer' as const,
-      }));
-      const pt = (tasksData.personal_tasks ?? []).map((t: Record<string, unknown>) =>
-        mapPersonalTask(t)
-      );
-      setFarmerTasks(ft);
-      setPersonalTasks(pt);
-    } catch {
-      /* keep existing task lists on partial failure */
-    }
+      const [tasksResult, helpResult, farmersResult] = await Promise.all([
+        getAgentTasks()
+          .then((tasksData) => ({ ok: true as const, tasksData }))
+          .catch(() => ({ ok: false as const })),
+        getAgentHelpRequests()
+          .then((helpData) => ({ ok: true as const, helpData }))
+          .catch(() => ({ ok: false as const })),
+        api
+          .get('/agents/farmers')
+          .then((farmersRes) => ({ ok: true as const, farmersRes }))
+          .catch(() => ({ ok: false as const })),
+      ]);
 
-    try {
-      const helpData = await getAgentHelpRequests();
-      setHelpRequests(helpData.requests ?? []);
-    } catch {
-      /* keep existing help requests */
-    }
+      if (tasksResult.ok) {
+        const tasksData = tasksResult.tasksData;
+        const ft = (tasksData.farmer_tasks ?? []).map((t: Record<string, unknown>) => ({
+          id: String(t.id),
+          name: String(t.name ?? ''),
+          status: String(t.status ?? 'not_started'),
+          due_date: t.due_date as string | null,
+          farmer_id: t.farmer_id ? String(t.farmer_id) : undefined,
+          farmer_name: t.farmer_name as string | undefined,
+          program_project_name: t.program_project_name as string | undefined,
+          payment_value_kes: t.payment_value_kes as number | undefined,
+          notes: t.notes as string | undefined,
+          photo_evidence_url: t.photo_evidence_url as string | undefined,
+          rejection_reason: t.rejection_reason as string | undefined,
+          description: t.description as string | null | undefined,
+          source: 'farmer' as const,
+        }));
+        const pt = (tasksData.personal_tasks ?? []).map((t: Record<string, unknown>) =>
+          mapPersonalTask(t)
+        );
+        setFarmerTasks(ft);
+        setPersonalTasks(pt);
+      }
 
-    try {
-      const farmersRes = await api.get('/agents/farmers');
-      setFarmers((farmersRes.data.farmers ?? []).map((f: { farmer_id: string; name: string }) => ({
-        farmer_id: f.farmer_id,
-        name: f.name,
-      })));
-    } catch {
-      /* keep existing farmers list */
+      if (helpResult.ok) {
+        setHelpRequests(helpResult.helpData.requests ?? []);
+      }
+
+      if (farmersResult.ok) {
+        setFarmers(
+          (farmersResult.farmersRes.data.farmers ?? []).map(
+            (f: { farmer_id: string; name: string }) => ({
+              farmer_id: f.farmer_id,
+              name: f.name,
+            })
+          )
+        );
+      }
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
       void (async () => {
+        // Paint the list ASAP — do not wait on outbox sync before fetching.
+        await Promise.all([load(), loadPending()]);
+        if (cancelled) return;
         await Promise.all([
           syncAllPendingAgentTaskApprovals(),
           syncAllPendingTaskApprovals(),
         ]);
+        if (cancelled) return;
         await Promise.all([load(), loadPending()]);
         checkAndShowTaskReminders();
       })();
+      return () => {
+        cancelled = true;
+      };
     }, [load, loadPending])
   );
 
@@ -517,12 +539,17 @@ export function AgentTasksScreen() {
     }
   }, [navigation, route.params?.filter, route.params?.openAdd]);
 
-  // After tasks load, open detail for dashboard / notification deep-links
+  // Open task detail as soon as the target exists — do not wait on full-screen loading.
   useEffect(() => {
     const deepLinkTaskId = route.params?.taskId ?? route.params?.highlightTaskId;
-    if (!deepLinkTaskId || loading) return;
+    if (!deepLinkTaskId) {
+      appliedDeepLinkTaskIdRef.current = null;
+      return;
+    }
+    if (appliedDeepLinkTaskIdRef.current === deepLinkTaskId) return;
     const match = [...farmerTasks, ...personalTasks].find((t) => t.id === deepLinkTaskId);
     if (!match) return;
+    appliedDeepLinkTaskIdRef.current = deepLinkTaskId;
     setStatusFilter('all');
     setFarmerFilterId(null);
     setMyTasksOnly(false);
@@ -535,7 +562,6 @@ export function AgentTasksScreen() {
     route.params?.highlightTaskId,
     farmerTasks,
     personalTasks,
-    loading,
     navigation,
   ]);
 
@@ -874,7 +900,7 @@ export function AgentTasksScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && !hasLoadedRef.current) {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#1A4D3E" />

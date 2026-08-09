@@ -142,7 +142,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
       onRequestClose={handleClose}
       statusBarTranslucent
@@ -152,6 +152,14 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
         style={webOverlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          onPress={handleClose}
+          className="flex-1"
+          disabled={loading}
+          style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : undefined}
+        />
         <View className="max-h-[90%] rounded-t-2xl bg-white">
           <View className="flex-row items-center justify-between border-b border-[#E8E8E8] px-5 py-4">
             <Text className="text-lg font-bold text-[#333333]">Create task</Text>
