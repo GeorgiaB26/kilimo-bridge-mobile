@@ -34,8 +34,7 @@ import {
 } from '../../api/client';
 import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
-import { isTaskOverdue } from '../../utils/taskCategorization';
-import { categorizeTasks } from '../../utils/taskCategorization';
+import { isTaskOverdue, categorizeTasks, countOverlappingStatusKpis } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
@@ -595,17 +594,9 @@ export function AgentTasksScreen() {
     [scopedTasks, statusFilter]
   );
 
-  const categorizedForKpis = useMemo(() => categorizeTasks(scopedTasks), [scopedTasks]);
   const categoryCounts = useMemo(
-    () => ({
-      overdue: categorizedForKpis.overdue.length,
-      in_progress: categorizedForKpis.inProgress.length,
-      not_started: categorizedForKpis.notStarted.length,
-      submitted_for_approval: categorizedForKpis.submittedForApproval.length,
-      rejected: categorizedForKpis.rejected.length,
-      completed: categorizedForKpis.completed.length,
-    }),
-    [categorizedForKpis]
+    () => countOverlappingStatusKpis(scopedTasks),
+    [scopedTasks]
   );
 
   const displayCategories = useMemo(
