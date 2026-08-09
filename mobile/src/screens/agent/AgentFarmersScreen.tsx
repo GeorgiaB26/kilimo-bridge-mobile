@@ -274,7 +274,7 @@ export function AgentFarmersScreen() {
         <Text className="text-[#757575]">
           {filterLabel
             ? `No farmers match the “${filterLabel}” filter.`
-            : 'No farmers in your region yet. Use REGISTER NEW FARMER in the header.'}
+            : 'No farmers in your region yet. Use Register Farmer in the header.'}
         </Text>
       }
     />

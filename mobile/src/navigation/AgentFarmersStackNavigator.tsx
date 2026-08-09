@@ -45,7 +45,7 @@ export function AgentFarmersStackNavigator() {
         options={({ navigation }) => ({
           title: 'Field Agent Platform',
           headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={styles.headerRight}>
               <MessagesNotificationsHeaderIcons iconColor="#fff" />
               <RegisterNewFarmerButton
                 compact
@@ -86,4 +86,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   scroll: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginRight: 16,
+  },
 });
