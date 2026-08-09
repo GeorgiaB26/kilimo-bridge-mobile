@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Sprout, UserRound } from 'lucide-react-native';
@@ -9,17 +9,26 @@ import type { AgentFarmersStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<AgentFarmersStackParamList, 'RegisterPicker'>;
 
+type RegisterChoice = 'farmer' | 'field_agent';
+
 export function AgentRegisterTypeScreen({ navigation }: Props) {
   const resetForm = useRegistrationStore((s) => s.resetForm);
   const setUserType = useRegistrationStore((s) => s.setUserType);
+  const [selected, setSelected] = useState<RegisterChoice | null>(null);
+  const [error, setError] = useState('');
 
-  const startFarmer = () => {
-    resetForm();
-    setUserType('farmer');
-    navigation.navigate('RegisterFarmerFlow');
-  };
-
-  const startFieldAgent = () => {
+  const handleContinue = () => {
+    if (!selected) {
+      setError('Please select who you are registering');
+      return;
+    }
+    setError('');
+    if (selected === 'farmer') {
+      resetForm();
+      setUserType('farmer');
+      navigation.navigate('RegisterFarmerFlow');
+      return;
+    }
     navigation.navigate('RegisterFieldAgent');
   };
 
@@ -31,32 +40,84 @@ export function AgentRegisterTypeScreen({ navigation }: Props) {
       </Text>
 
       <Pressable
-        onPress={startFarmer}
-        className="mb-3 rounded-xl border-2 border-[#1A4D3E] bg-white p-4 active:opacity-90"
+        onPress={() => {
+          setSelected('farmer');
+          setError('');
+        }}
+        className={`mb-3 rounded-xl border-2 bg-white p-4 active:opacity-90 ${
+          selected === 'farmer' ? 'border-[#1A4D3E] bg-[#E8F5F0]' : 'border-[#E8E8E8]'
+        }`}
       >
         <View className="flex-row items-center gap-3">
           <Sprout size={28} color="#1A4D3E" />
           <View className="flex-1">
-            <Text className="text-lg font-bold text-[#1A4D3E]">Farmer</Text>
-            <Text className="mt-1 text-sm text-[#757575]">Register a farmer in your aggregation centre</Text>
+            <Text
+              className={`text-lg font-bold ${
+                selected === 'farmer' ? 'text-[#1A4D3E]' : 'text-[#333333]'
+              }`}
+            >
+              Farmer
+            </Text>
+            <Text className="mt-1 text-sm text-[#757575]">
+              Register a farmer in your aggregation centre
+            </Text>
+          </View>
+          <View
+            className={`h-6 w-6 items-center justify-center rounded-full border-2 ${
+              selected === 'farmer' ? 'border-[#1A4D3E]' : 'border-[#D1D5DB]'
+            }`}
+          >
+            {selected === 'farmer' ? (
+              <View className="h-3 w-3 rounded-full bg-[#1A4D3E]" />
+            ) : null}
           </View>
         </View>
       </Pressable>
 
       <Pressable
-        onPress={startFieldAgent}
-        className="mb-6 rounded-xl border-2 border-[#E8E8E8] bg-white p-4 active:opacity-90"
+        onPress={() => {
+          setSelected('field_agent');
+          setError('');
+        }}
+        className={`mb-4 rounded-xl border-2 bg-white p-4 active:opacity-90 ${
+          selected === 'field_agent' ? 'border-[#1A4D3E] bg-[#E8F5F0]' : 'border-[#E8E8E8]'
+        }`}
       >
         <View className="flex-row items-center gap-3">
           <UserRound size={28} color="#1A4D3E" />
           <View className="flex-1">
-            <Text className="text-lg font-bold text-[#333333]">Field Agent</Text>
+            <Text
+              className={`text-lg font-bold ${
+                selected === 'field_agent' ? 'text-[#1A4D3E]' : 'text-[#333333]'
+              }`}
+            >
+              Field Agent
+            </Text>
             <Text className="mt-1 text-sm text-[#757575]">
               Request a new field agent — reviewed by your project manager
             </Text>
           </View>
+          <View
+            className={`h-6 w-6 items-center justify-center rounded-full border-2 ${
+              selected === 'field_agent' ? 'border-[#1A4D3E]' : 'border-[#D1D5DB]'
+            }`}
+          >
+            {selected === 'field_agent' ? (
+              <View className="h-3 w-3 rounded-full bg-[#1A4D3E]" />
+            ) : null}
+          </View>
         </View>
       </Pressable>
+
+      {error ? <Text className="mb-3 text-sm text-[#D32F2F]">{error}</Text> : null}
+
+      <Button
+        className={`mb-3 h-12 ${selected ? 'bg-[#1A4D3E]' : 'bg-[#C8C8C8]'}`}
+        disabled={!selected}
+        onPress={handleContinue}
+      >
+        <Text className="text-white">Continue</Text>
+      </Button>
 
       <Button variant="outline" onPress={() => navigation.goBack()}>
         <Text>Cancel</Text>
