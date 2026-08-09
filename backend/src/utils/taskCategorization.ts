@@ -129,3 +129,57 @@ export function countTaskCategories(tasks: CategorizableTaskRow[]): TaskCategory
     total: tasks.length,
   };
 }
+
+/**
+ * KPI counts where Overdue overlaps status buckets (matches agent Tasks filters).
+ * In Progress / Not Started include overdue tasks of that status.
+ */
+export function countOverlappingStatusKpis(tasks: CategorizableTaskRow[]): {
+  overdue: number;
+  in_progress: number;
+  not_started: number;
+  submitted_for_approval: number;
+  rejected: number;
+  completed: number;
+} {
+  let overdue = 0;
+  let in_progress = 0;
+  let not_started = 0;
+  let submitted_for_approval = 0;
+  let rejected = 0;
+  let completed = 0;
+
+  for (const task of tasks) {
+    if (isCompletedStatus(task.status)) {
+      completed += 1;
+      continue;
+    }
+    if (isRejectedStatus(task.status)) {
+      rejected += 1;
+      continue;
+    }
+    if (isSubmittedForApprovalStatus(task.status)) {
+      submitted_for_approval += 1;
+      continue;
+    }
+    if (isOverdue(task.due_date, task.status)) {
+      overdue += 1;
+    }
+    if (isInProgressStatus(task.status)) {
+      in_progress += 1;
+    } else if (normalizeStatusForCategory(task.status) === 'not-started') {
+      not_started += 1;
+    } else {
+      not_started += 1;
+    }
+  }
+
+  return {
+    overdue,
+    in_progress,
+    not_started,
+    submitted_for_approval,
+    rejected,
+    completed,
+  };
+}

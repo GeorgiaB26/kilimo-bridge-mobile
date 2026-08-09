@@ -4,7 +4,7 @@ import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { createNotification } from './notificationService';
-import { countTaskCategories, compareDueDates } from '../utils/taskCategorization';
+import { countOverlappingStatusKpis, compareDueDates } from '../utils/taskCategorization';
 
 export interface AgentPersonalTask {
   id: string;
@@ -837,7 +837,7 @@ export async function getAgentDashboardSummary(
       due_date: t.due_date,
     })),
   ];
-  const categoryCounts = countTaskCategories(allTasksForCounts);
+  const categoryCounts = countOverlappingStatusKpis(allTasksForCounts);
 
   const allRecentTasks = [
     ...farmerTasks.map((t) => ({
@@ -891,12 +891,12 @@ export async function getAgentDashboardSummary(
     },
     tasks: {
       overdue_count: categoryCounts.overdue,
-      in_progress_count: categoryCounts.inProgress,
-      not_started_count: categoryCounts.notStarted,
-      submitted_for_approval_count: categoryCounts.submittedForApproval,
+      in_progress_count: categoryCounts.in_progress,
+      not_started_count: categoryCounts.not_started,
+      submitted_for_approval_count: categoryCounts.submitted_for_approval,
       completed_count: categoryCounts.completed,
       rejected_count: categoryCounts.rejected,
-      total_count: categoryCounts.total,
+      total_count: allTasksForCounts.length,
       overdue: overdueTasks.slice(0, 5),
       recent: allRecentTasks.slice(0, 5),
     },

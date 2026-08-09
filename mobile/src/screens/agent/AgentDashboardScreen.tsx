@@ -5,14 +5,11 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import {
-  Ban,
   Calendar,
   ChartColumn,
   CircleCheck,
-  CircleX,
   ChevronRight,
   Hourglass,
-  TriangleAlert,
   User,
   Users,
 } from 'lucide-react-native';
@@ -22,6 +19,10 @@ import { KBCard } from '../../components/ui/KBCard';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
+import {
+  TaskStatusKpiRow,
+  type TaskStatusKpiKey,
+} from '../../components/TaskStatusKpiRow';
 import type { AgentTabParamList } from '../../navigation/types';
 
 type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
@@ -30,7 +31,7 @@ const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : 
 
 type DashboardData = Awaited<ReturnType<typeof getAgentDashboard>>;
 
-type TaskFilter = 'overdue' | 'in_progress' | 'not_started' | 'rejected' | 'completed';
+type TaskFilter = TaskStatusKpiKey | 'all';
 
 function navigateNested(
   navigation: Nav,
@@ -216,52 +217,23 @@ export function AgentDashboardScreen() {
       </View>
 
       <SectionHeading Icon={Calendar}>Task snapshots</SectionHeading>
-      <View className="mb-2 flex-row gap-2">
-        <MetricCard
-          Icon={TriangleAlert}
-          iconColor="#EF4444"
-          label="Overdue"
-          value={tasks?.overdue_count ?? 0}
-          color="#EF4444"
-          onPress={() => goToTasks('overdue')}
-        />
-        <MetricCard
-          Icon={Hourglass}
-          iconColor="#2563EB"
-          label="In progress"
-          value={tasks?.in_progress_count ?? (tasks as { upcoming_count?: number })?.upcoming_count ?? 0}
-          color="#2563EB"
-          onPress={() => goToTasks('in_progress')}
-        />
-      </View>
-      <View className="mb-2 flex-row gap-2">
-        <MetricCard
-          Icon={Ban}
-          label="Not started"
-          value={tasks?.not_started_count ?? 0}
-          onPress={() => goToTasks('not_started')}
-        />
-        <MetricCard
-          Icon={CircleCheck}
-          iconColor="#10B981"
-          label="Completed"
-          value={tasks?.completed_count ?? 0}
-          color="#10B981"
-          onPress={() => goToTasks('completed')}
+      <View className="mb-4">
+        <TaskStatusKpiRow
+          counts={{
+            overdue: tasks?.overdue_count ?? 0,
+            in_progress:
+              tasks?.in_progress_count ??
+              (tasks as { upcoming_count?: number })?.upcoming_count ??
+              0,
+            not_started: tasks?.not_started_count ?? 0,
+            submitted_for_approval: tasks?.submitted_for_approval_count ?? 0,
+            rejected: tasks?.rejected_count ?? 0,
+            completed: tasks?.completed_count ?? 0,
+          }}
+          selected={null}
+          onSelect={(key) => goToTasks(key)}
         />
       </View>
-      {(tasks?.rejected_count ?? 0) > 0 ? (
-        <View className="mb-4 flex-row gap-2">
-          <MetricCard
-            Icon={CircleX}
-            iconColor="#D32F2F"
-            label="Rejected"
-            value={tasks?.rejected_count ?? 0}
-            color="#D32F2F"
-            onPress={() => goToTasks('rejected')}
-          />
-        </View>
-      ) : null}
 
       {(tasks?.overdue_count ?? 0) > 0 ? (
         <Pressable onPress={() => goToTasks('overdue')} style={webPressable}>
