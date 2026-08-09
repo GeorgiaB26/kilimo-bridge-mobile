@@ -747,7 +747,11 @@ export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
     WHERE id = $2
   `, [notes ?? null, farmerTaskId]);
   if (row) await refreshProjectTaskCounts(row.program_project_id);
-  const updated = await getFarmerTask(farmerTaskId);
+  const updated = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+  } | null;
   await notifyFarmerOfHierarchyTaskReview(updated, 'approved');
   return updated;
 }
@@ -757,7 +761,11 @@ export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: s
     UPDATE farmer_tasks SET status = 'rejected', rejection_reason = $1, updated_at = NOW()
     WHERE id = $2
   `, [rejection_reason, farmerTaskId]);
-  const updated = await getFarmerTask(farmerTaskId);
+  const updated = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+  } | null;
   await notifyFarmerOfHierarchyTaskReview(updated, 'rejected', rejection_reason);
   return updated;
 }
