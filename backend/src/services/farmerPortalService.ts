@@ -231,11 +231,15 @@ export async function getFarmerProjects(farmerId: string) {
 }
 
 export async function getFarmerPayments(farmerId: string) {
-  const rows = await query<Record<string, unknown>>(
-    `SELECT * FROM payments WHERE farmer_id = $1 ORDER BY created_at DESC`,
-    [farmerId]
-  );
-  return rows.map((row) => ({
+  const [rows, expectedItems] = await Promise.all([
+    query<Record<string, unknown>>(
+      `SELECT * FROM payments WHERE farmer_id = $1 ORDER BY created_at DESC`,
+      [farmerId]
+    ),
+    getFarmerExpectedPaymentItems(farmerId),
+  ]);
+
+  const payments = rows.map((row) => ({
     ...row,
     id: String(row.id),
     project_name: String(row.description ?? row.project_name ?? 'Payment'),
@@ -244,6 +248,49 @@ export async function getFarmerPayments(farmerId: string) {
     created_at: row.created_at ? String(row.created_at) : '',
     mpesa_reference: row.mpesa_reference ? String(row.mpesa_reference) : undefined,
     payment_method: row.payment_method ? String(row.payment_method) : 'M-Pesa',
+    is_expected: false,
+  }));
+
+  // Expected assigned-task payouts first so they appear with Pending/Transferred cards.
+  return [...expectedItems, ...payments];
+}
+
+/** Assigned tasks that still count toward the Expected summary total. */
+export async function getFarmerExpectedPaymentItems(farmerId: string) {
+  const rows = await query<Record<string, unknown>>(
+    `
+    SELECT
+      ft.id AS farmer_task_id,
+      t.name AS task_name,
+      pp.name AS project_name,
+      COALESCE(t.payment_value_kes, 0)::float AS amount,
+      ft.status,
+      COALESCE(ft.due_date, t.due_date) AS due_date,
+      ft.created_at
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    LEFT JOIN program_projects pp ON pp.id = ft.program_project_id
+    WHERE ft.farmer_id = $1
+      AND ft.status NOT IN ('approved', 'completed', 'submitted')
+      AND COALESCE(t.payment_value_kes, 0) > 0
+    ORDER BY COALESCE(ft.due_date, t.due_date) ASC NULLS LAST, ft.created_at DESC
+    `,
+    [farmerId]
+  );
+
+  return rows.map((row) => ({
+    id: `expected-${String(row.farmer_task_id)}`,
+    project_name: String(row.task_name ?? 'Assigned task'),
+    description: String(row.project_name ?? 'Program project'),
+    amount: Number(row.amount ?? 0),
+    payment_status: 'Expected',
+    payment_method: 'Upcoming',
+    created_at: row.due_date
+      ? String(row.due_date)
+      : row.created_at
+        ? String(row.created_at)
+        : '',
+    is_expected: true,
   }));
 }
 
@@ -252,6 +299,7 @@ function normalizePaymentStatusLabel(status: string): string {
   if (lower === 'transferred' || lower === 'paid') return 'Transferred';
   if (lower === 'pending') return 'Pending';
   if (lower === 'processing') return 'Processing';
+  if (lower === 'expected') return 'Expected';
   return status || 'Pending';
 }
 

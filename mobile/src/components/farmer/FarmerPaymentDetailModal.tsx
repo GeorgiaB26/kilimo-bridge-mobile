@@ -12,12 +12,15 @@ export type FarmerPaymentRow = {
   created_at: string;
   mpesa_reference?: string;
   description?: string;
+  /** True for assigned-task payouts that are not yet a payments-table row. */
+  is_expected?: boolean;
 };
 
 function statusColor(status: string): string {
   const lower = status.toLowerCase();
   if (lower === 'transferred' || lower === 'paid') return '#70AD47';
   if (lower === 'pending' || lower === 'processing') return '#FFC000';
+  if (lower === 'expected') return '#4472C4';
   return '#999999';
 }
 
@@ -40,7 +43,9 @@ export function FarmerPaymentDetailModal({ payment, onClose, formatAmount }: Pro
         </Pressable>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Project / task</Text>
+          <Text style={styles.sectionTitle}>
+            {payment.is_expected ? 'Expected task' : 'Project / task'}
+          </Text>
           <Text style={styles.value}>{payment.project_name}</Text>
           {payment.description && payment.description !== payment.project_name ? (
             <Text style={styles.subValue}>{payment.description}</Text>
@@ -58,7 +63,7 @@ export function FarmerPaymentDetailModal({ payment, onClose, formatAmount }: Pro
               <Text style={styles.reference}>{payment.mpesa_reference}</Text>
             </>
           ) : null}
-          <Text style={styles.label}>Date</Text>
+          <Text style={styles.label}>{payment.is_expected ? 'Due date' : 'Date'}</Text>
           <Text style={styles.value}>{formatCleanDate(payment.created_at)}</Text>
         </View>
       </View>

@@ -339,6 +339,7 @@ export async function getFarmerPayments() {
       created_at: string;
       mpesa_reference?: string;
       description?: string;
+      is_expected?: boolean;
     }>;
     summary?: {
       transferred: number;

@@ -35,7 +35,17 @@ function paymentStatusColor(status: string): string {
   const lower = status.toLowerCase();
   if (lower === 'transferred' || lower === 'paid') return '#70AD47';
   if (lower === 'pending' || lower === 'processing') return '#FFC000';
+  if (lower === 'expected') return '#4472C4';
   return '#999999';
+}
+
+function paymentStatusVariant(
+  status: string
+): 'success' | 'pending' | 'info' | 'warning' | 'danger' {
+  const lower = status.toLowerCase();
+  if (lower === 'transferred' || lower === 'paid') return 'success';
+  if (lower === 'expected') return 'info';
+  return 'pending';
 }
 
 function paymentDateMs(value?: string): number {
@@ -101,9 +111,17 @@ export function FarmerPaymentsScreen() {
     const q = searchQuery.trim().toLowerCase();
     let list = payments;
     if (q) {
-      list = list.filter((p) => (p.project_name ?? '').toLowerCase().includes(q));
+      list = list.filter(
+        (p) =>
+          (p.project_name ?? '').toLowerCase().includes(q) ||
+          (p.description ?? '').toLowerCase().includes(q)
+      );
     }
     const sorted = [...list].sort((a, b) => {
+      // Keep expected payouts grouped near the top when sorting newest.
+      const aExpected = a.is_expected || a.payment_status.toLowerCase() === 'expected' ? 1 : 0;
+      const bExpected = b.is_expected || b.payment_status.toLowerCase() === 'expected' ? 1 : 0;
+      if (aExpected !== bExpected) return bExpected - aExpected;
       const diff = paymentDateMs(a.created_at) - paymentDateMs(b.created_at);
       return sortMode === 'newest' ? -diff : diff;
     });
@@ -242,13 +260,21 @@ export function FarmerPaymentsScreen() {
         contentContainerClassName="p-4 pb-8"
         renderItem={({ item }) => {
           const borderColor = paymentStatusColor(item.payment_status);
+          const isExpected =
+            item.is_expected === true || item.payment_status.toLowerCase() === 'expected';
           return (
             <Pressable onPress={() => setSelected(item)} style={webPressable}>
               <KBCard style={{ borderLeftWidth: 4, borderLeftColor: borderColor }}>
                 <View className="flex-row items-center">
                   <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-[#F5F5F5]">
                     <Ionicons
-                      name={item.payment_method === 'M-Pesa' ? 'phone-portrait' : 'card'}
+                      name={
+                        isExpected
+                          ? 'calendar-outline'
+                          : item.payment_method === 'M-Pesa'
+                            ? 'phone-portrait'
+                            : 'card'
+                      }
                       size={20}
                       color={borderColor}
                     />
@@ -256,6 +282,10 @@ export function FarmerPaymentsScreen() {
                   <View className="flex-1">
                     <Text className="text-base font-semibold text-[#333333]">{item.project_name}</Text>
                     <Text className="mt-0.5 text-xs text-[#757575]">
+                      {item.description && item.description !== item.project_name
+                        ? `${item.description} · `
+                        : ''}
+                      {isExpected ? 'Due ' : ''}
                       {formatDisplayDate(item.created_at)}
                     </Text>
                   </View>
@@ -264,9 +294,7 @@ export function FarmerPaymentsScreen() {
                 <View className="mt-3 flex-row items-center justify-between">
                   <KBStatusChip
                     label={item.payment_status}
-                    variant={
-                      item.payment_status.toLowerCase() === 'transferred' ? 'success' : 'pending'
-                    }
+                    variant={paymentStatusVariant(item.payment_status)}
                   />
                   {item.mpesa_reference ? (
                     <Text className="text-[11px] text-[#757575]">Ref: {item.mpesa_reference}</Text>
