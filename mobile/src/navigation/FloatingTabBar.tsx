@@ -6,11 +6,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { COLORS } from '../constants';
 
-const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+export type FloatingTabIconMap = Record<string, keyof typeof Ionicons.glyphMap>;
+
+export const FARMER_TAB_ICONS: FloatingTabIconMap = {
   Dashboard: 'home',
   Projects: 'leaf',
   Tasks: 'checkbox',
   Payments: 'wallet',
+  Profile: 'person',
+};
+
+export const AGENT_TAB_ICONS: FloatingTabIconMap = {
+  Dashboard: 'stats-chart',
+  Farmers: 'people',
+  Tasks: 'checkmark-circle',
+  Audit: 'list',
   Profile: 'person',
 };
 
@@ -19,7 +29,11 @@ const BOTTOM_MARGIN = 12;
 const PILL_RADIUS = 28;
 const ICON_HIT = 36;
 
-export function FarmerFloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+type Props = BottomTabBarProps & {
+  icons?: FloatingTabIconMap;
+};
+
+export function FloatingTabBar({ state, descriptors, navigation, icons = FARMER_TAB_ICONS }: Props) {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 8) + BOTTOM_MARGIN;
 
@@ -65,7 +79,7 @@ export function FarmerFloatingTabBar({ state, descriptors, navigation }: BottomT
                 });
               };
 
-              const iconName = TAB_ICONS[route.name] ?? 'ellipse';
+              const iconName = icons[route.name] ?? 'ellipse';
               const color = focused ? COLORS.primary : COLORS.muted;
 
               return (

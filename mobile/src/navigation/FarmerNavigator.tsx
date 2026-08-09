@@ -7,7 +7,7 @@ import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
-import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
+import { FloatingTabBar, FARMER_TAB_ICONS } from './FloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import type { FarmerRootStackParamList, FarmerTabParamList } from './types';
@@ -31,7 +31,7 @@ const RootStack = createNativeStackNavigator<FarmerRootStackParamList>();
 function FarmerTabNavigator() {
   return (
     <Tab.Navigator
-      tabBar={(props) => <FarmerFloatingTabBar {...props} />}
+      tabBar={(props) => <FloatingTabBar {...props} icons={FARMER_TAB_ICONS} />}
       screenOptions={{
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',

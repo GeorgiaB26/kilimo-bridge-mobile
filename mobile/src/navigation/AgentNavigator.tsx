@@ -1,8 +1,6 @@
 import React from 'react';
-import { Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 import { AgentDashboardScreen } from '../screens/agent/AgentDashboardScreen';
 import { AgentTasksScreen } from '../screens/agent/AgentTasksScreen';
@@ -13,6 +11,7 @@ import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import { AgentTabScene } from './AgentTabScene';
+import { FloatingTabBar, AGENT_TAB_ICONS } from './FloatingTabBar';
 import type { AgentRootStackParamList, AgentTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<AgentTabParamList>();
@@ -33,6 +32,7 @@ function withAgentTabScene<P extends object>(Component: React.ComponentType<P>) 
 function AgentTabNavigator() {
   return (
     <Tab.Navigator
+      tabBar={(props) => <FloatingTabBar {...props} icons={AGENT_TAB_ICONS} />}
       screenOptions={({ route }) => ({
         headerShown: route.name === 'Farmers' || route.name === 'Profile' ? false : true,
         headerStyle: { backgroundColor: COLORS.primary },
@@ -40,18 +40,7 @@ function AgentTabNavigator() {
         headerTitle: HEADER_TITLE,
         headerTitleStyle: { fontWeight: '600' },
         headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarStyle: Platform.OS === 'web' ? { zIndex: 100, elevation: 100 } : undefined,
-        tabBarIcon: ({ color, size }) => {
-          const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-            Dashboard: 'stats-chart',
-            Farmers: 'people',
-            Tasks: 'checkmark-circle',
-            Audit: 'list',
-            Profile: 'person',
-          };
-          return <Ionicons name={icons[route.name] ?? 'ellipse'} size={size} color={color} />;
-        },
+        sceneStyle: { paddingBottom: 88 },
       })}
     >
       <Tab.Screen
@@ -72,7 +61,7 @@ function AgentTabNavigator() {
       <Tab.Screen
         name="Audit"
         component={withAgentTabScene(AgentAuditScreen)}
-        options={{ title: 'Activity Log' }}
+        options={{ title: 'Activity Log', tabBarLabel: 'Activity' }}
       />
       <Tab.Screen
         name="Profile"
