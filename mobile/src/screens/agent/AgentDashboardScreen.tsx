@@ -284,13 +284,16 @@ export function AgentDashboardScreen() {
                   params: { farmerId: f.farmer_id, name: f.name },
                 })
               }
-              className="mt-2 border-t border-[#EEE] pt-2"
+              className="mt-2 flex-row items-center justify-between border-t border-[#EEE] pt-2"
               style={webPressable}
             >
-              <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
-              <Text className="text-xs text-[#757575]">
-                {f.district ?? f.sub_county ?? '—'} · {f.status ?? 'pending'}
-              </Text>
+              <View className="flex-1 pr-2">
+                <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
+                <Text className="text-xs text-[#757575]">
+                  {f.district ?? f.sub_county ?? '—'} · {f.status ?? 'pending'}
+                </Text>
+              </View>
+              <ChevronRight size={16} color="#1A4D3E" />
             </Pressable>
           ))
         ) : (
@@ -322,14 +325,17 @@ export function AgentDashboardScreen() {
                   highlightTaskId: t.id,
                 })
               }
-              className="mt-2 border-t border-[#EEE] pt-2"
+              className="mt-2 flex-row items-center justify-between border-t border-[#EEE] pt-2"
               style={webPressable}
             >
-              <Text className="text-sm font-semibold text-[#333333]">{t.name}</Text>
-              <Text className="text-xs text-[#757575]">
-                {t.farmer_name ?? 'Task'}
-                {t.due_date ? ` · Due ${t.due_date}` : ''}
-              </Text>
+              <View className="flex-1 pr-2">
+                <Text className="text-sm font-semibold text-[#333333]">{t.name}</Text>
+                <Text className="text-xs text-[#757575]">
+                  {t.farmer_name ?? 'Task'}
+                  {t.due_date ? ` · Due ${t.due_date}` : ''}
+                </Text>
+              </View>
+              <ChevronRight size={16} color="#1A4D3E" />
             </Pressable>
           ))}
         </KBCard>
