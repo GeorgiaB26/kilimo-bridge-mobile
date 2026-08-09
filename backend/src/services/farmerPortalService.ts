@@ -265,7 +265,7 @@ export async function getFarmerExpectedPaymentItems(farmerId: string) {
       pp.name AS project_name,
       COALESCE(t.payment_value_kes, 0)::float AS amount,
       ft.status,
-      COALESCE(ft.due_date, t.due_date) AS due_date,
+      t.due_date AS due_date,
       ft.created_at
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
@@ -273,7 +273,7 @@ export async function getFarmerExpectedPaymentItems(farmerId: string) {
     WHERE ft.farmer_id = $1
       AND ft.status NOT IN ('approved', 'completed', 'submitted')
       AND COALESCE(t.payment_value_kes, 0) > 0
-    ORDER BY COALESCE(ft.due_date, t.due_date) ASC NULLS LAST, ft.created_at DESC
+    ORDER BY t.due_date ASC NULLS LAST, ft.created_at DESC
     `,
     [farmerId]
   );
