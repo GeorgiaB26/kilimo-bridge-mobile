@@ -11,6 +11,10 @@ import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import { formatProjectDate } from '../../utils/greeting';
 import type { FarmerProject } from '../../types/farmerProject';
+import {
+  TaskStatusKpiRow,
+  type TaskStatusKpiKey,
+} from '../TaskStatusKpiRow';
 
 type FarmerProfile = {
   name?: string;
@@ -33,6 +37,8 @@ type TaskStats = {
   overdue: number;
   in_progress?: number;
   not_started?: number;
+  submitted_for_approval?: number;
+  rejected?: number;
   completed?: number;
   total?: number;
 };
@@ -155,67 +161,26 @@ export function FarmerDashboardTaskSnapshots({
   onTasksPress,
 }: {
   taskStats?: TaskStats | null;
-  onTasksPress: (filter?: 'overdue' | 'in_progress' | 'not_started' | 'completed') => void;
+  onTasksPress: (filter?: TaskStatusKpiKey) => void;
 }) {
-  const overdue = taskStats?.overdue ?? 0;
-  const inProgress = taskStats?.in_progress ?? 0;
-  const notStarted = taskStats?.not_started ?? 0;
-  const completed = taskStats?.completed ?? 0;
-
-  const snapshots: Array<{
-    key: 'overdue' | 'in_progress' | 'not_started' | 'completed';
-    label: string;
-    count: number;
-    cardStyle: object;
-    countColor?: string;
-  }> = [
-    {
-      key: 'overdue',
-      label: 'Overdue',
-      count: overdue,
-      cardStyle: styles.overdueCard,
-      countColor: '#E74C3C',
-    },
-    {
-      key: 'in_progress',
-      label: 'In progress',
-      count: inProgress,
-      cardStyle: styles.inProgressCard,
-      countColor: '#2563EB',
-    },
-    {
-      key: 'not_started',
-      label: 'Not started',
-      count: notStarted,
-      cardStyle: styles.notStartedCard,
-    },
-    {
-      key: 'completed',
-      label: 'Completed',
-      count: completed,
-      cardStyle: styles.completedCard,
-      countColor: '#10B981',
-    },
-  ];
+  const counts: Record<TaskStatusKpiKey, number> = {
+    overdue: taskStats?.overdue ?? 0,
+    in_progress: taskStats?.in_progress ?? 0,
+    not_started: taskStats?.not_started ?? 0,
+    submitted_for_approval: taskStats?.submitted_for_approval ?? 0,
+    rejected: taskStats?.rejected ?? 0,
+    completed: taskStats?.completed ?? 0,
+  };
 
   return (
     <View style={styles.snapshotsContainer}>
       <Text style={styles.snapshotsTitle}>Task summary</Text>
 
-      <View style={styles.snapshotGrid}>
-        {snapshots.map((item) => (
-          <Pressable
-            key={item.key}
-            style={[styles.snapshotGridItem, item.cardStyle]}
-            onPress={() => onTasksPress(item.key)}
-          >
-            <Text style={[styles.snapshotGridCount, item.countColor ? { color: item.countColor } : null]}>
-              {item.count}
-            </Text>
-            <Text style={styles.snapshotGridLabel}>{item.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <TaskStatusKpiRow
+        counts={counts}
+        selected={null}
+        onSelect={(key) => onTasksPress(key)}
+      />
 
       <Pressable style={styles.viewAllTasks} onPress={() => onTasksPress()}>
         <Text style={styles.viewAllTasksText}>View all tasks →</Text>

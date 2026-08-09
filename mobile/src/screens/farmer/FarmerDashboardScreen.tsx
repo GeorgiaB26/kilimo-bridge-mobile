@@ -72,6 +72,8 @@ type DashboardData = {
     overdue: number;
     in_progress?: number;
     not_started?: number;
+    submitted_for_approval?: number;
+    rejected?: number;
     completed?: number;
     total?: number;
   };
