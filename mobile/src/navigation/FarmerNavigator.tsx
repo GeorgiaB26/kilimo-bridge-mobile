@@ -1,4 +1,5 @@
 import React from 'react';
+import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { COLORS } from '../constants';
@@ -29,6 +30,14 @@ function withFarmerTabScene<P extends object>(Component: React.ComponentType<P>)
 }
 const RootStack = createNativeStackNavigator<FarmerRootStackParamList>();
 
+function HeaderInboxIcons() {
+  return (
+    <View style={styles.headerRight}>
+      <MessagesNotificationsHeaderIcons iconColor="#fff" />
+    </View>
+  );
+}
+
 function FarmerTabNavigator() {
   return (
     <Tab.Navigator
@@ -39,7 +48,7 @@ function FarmerTabNavigator() {
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '600' },
-        headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
+        headerRight: () => <HeaderInboxIcons />,
         sceneStyle: { paddingBottom: 88 },
       })}
     >
@@ -84,3 +93,9 @@ export function FarmerNavigator() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  headerRight: {
+    marginRight: 16,
+  },
+});

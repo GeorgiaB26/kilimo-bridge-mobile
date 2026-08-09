@@ -851,6 +851,9 @@ export function FarmerTasksScreen() {
       >
         <View style={styles.header}>
           <View style={styles.titleRow}>
+            <Text className="text-2xl font-bold text-foreground" style={styles.titleText}>
+              Your Tasks
+            </Text>
             <RefreshCountdownBadge seconds={refreshInSec} />
           </View>
           <TaskStatusKpiRow
@@ -1111,9 +1114,12 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     gap: 12,
     marginBottom: 4,
+  },
+  titleText: {
+    flexShrink: 1,
   },
   refreshBadge: {
     flexDirection: 'row',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { COLORS } from '../constants';
 import { FarmerProjectsScreen } from '../screens/farmer/FarmerProjectsScreen';
@@ -23,7 +24,11 @@ export function FarmerProjectsNavigator() {
         component={FarmerProjectsScreen}
         options={{
           title: 'Projects',
-          headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
+          headerRight: () => (
+            <View style={styles.headerRight}>
+              <MessagesNotificationsHeaderIcons iconColor="#fff" />
+            </View>
+          ),
         }}
       />
       <Stack.Screen
@@ -39,3 +44,9 @@ export function FarmerProjectsNavigator() {
     </Stack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  headerRight: {
+    marginRight: 16,
+  },
+});

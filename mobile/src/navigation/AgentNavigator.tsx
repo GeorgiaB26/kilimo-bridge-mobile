@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { COLORS } from '../constants';
@@ -39,7 +40,11 @@ function AgentTabNavigator() {
         headerTintColor: '#fff',
         headerTitle: HEADER_TITLE,
         headerTitleStyle: { fontWeight: '600' },
-        headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
+        headerRight: () => (
+          <View style={{ marginRight: 16 }}>
+            <MessagesNotificationsHeaderIcons iconColor="#fff" />
+          </View>
+        ),
         sceneStyle: { paddingBottom: 88 },
       })}
     >
