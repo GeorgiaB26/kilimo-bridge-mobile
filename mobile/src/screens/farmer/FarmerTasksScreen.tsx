@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   RefreshControl,
@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
@@ -63,6 +65,16 @@ import {
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 type StatusFilterKey = TaskStatusKpiKey;
+type TaskSortMode = 'name_asc' | 'name_desc' | 'due_asc' | 'due_desc';
+
+const REFRESH_INTERVAL_SEC = 30;
+
+const SORT_OPTIONS: { key: TaskSortMode; label: string }[] = [
+  { key: 'name_asc', label: 'A–Z' },
+  { key: 'name_desc', label: 'Z–A' },
+  { key: 'due_asc', label: 'Soonest deadline' },
+  { key: 'due_desc', label: 'Latest deadline' },
+];
 
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
@@ -149,6 +161,50 @@ function isValidYmd(value: string): boolean {
   return !Number.isNaN(probe.getTime());
 }
 
+/** End/due date — missing deadlines sort last for both soonest and latest. */
+function dueSortValue(item: ExtendedTaskRow): number {
+  if (!item.due_date?.trim()) return Number.POSITIVE_INFINITY;
+  const ms = new Date(item.due_date).getTime();
+  return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;
+}
+
+function RefreshCountdownBadge({ seconds, total = REFRESH_INTERVAL_SEC }: { seconds: number; total?: number }) {
+  const size = 16;
+  const stroke = 2.5;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.max(0, Math.min(1, seconds / total));
+  const offset = circumference * (1 - progress);
+
+  return (
+    <View style={styles.refreshBadge} accessibilityLabel={`Refreshing in ${seconds} seconds`}>
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="#E0E0E0"
+          strokeWidth={stroke}
+          fill="none"
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={COLORS.primary}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      <Text style={styles.refreshText}>Refreshing in {seconds}s</Text>
+    </View>
+  );
+}
+
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
@@ -169,6 +225,12 @@ export function FarmerTasksScreen() {
   const [pushingStartId, setPushingStartId] = useState<string | null>(null);
   const [recallingId, setRecallingId] = useState<string | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
+  const [refreshInSec, setRefreshInSec] = useState(REFRESH_INTERVAL_SEC);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<TaskSortMode>('due_asc');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const countdownSecRef = useRef(REFRESH_INTERVAL_SEC);
+  const hasLoadedRef = useRef(false);
 
   const loadPendingRecalls = useCallback(async () => {
     setPendingRecalls(await listPendingTaskRecalls());
@@ -184,6 +246,7 @@ export function FarmerTasksScreen() {
       const list = (data.tasks ?? []) as ExtendedTaskRow[];
       setTasks(list);
       setError(null);
+      hasLoadedRef.current = true;
     } catch (err: unknown) {
       setTasks([]);
       setError(extractApiError(err, 'Could not load tasks'));
@@ -193,36 +256,52 @@ export function FarmerTasksScreen() {
     }
   }, []);
 
+  const softRefresh = useCallback(async () => {
+    await syncAllPendingTaskStarts();
+    await syncAllPendingTaskRecalls();
+    await loadPendingStarts();
+    await loadPendingRecalls();
+    await load();
+  }, [load, loadPendingRecalls, loadPendingStarts]);
+
+  const resetCountdown = useCallback(() => {
+    countdownSecRef.current = REFRESH_INTERVAL_SEC;
+    setRefreshInSec(REFRESH_INTERVAL_SEC);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      setLoading(tasks.length === 0);
-      void (async () => {
-        await syncAllPendingTaskStarts();
-        await syncAllPendingTaskRecalls();
-        await loadPendingStarts();
-        await loadPendingRecalls();
-        await load();
-      })();
-      const interval = setInterval(() => {
-        void load();
-        void loadPendingRecalls();
-        void loadPendingStarts();
-      }, 30000);
-      return () => clearInterval(interval);
-    }, [load, loadPendingRecalls, loadPendingStarts, tasks.length])
+      let alive = true;
+      if (!hasLoadedRef.current) {
+        setLoading(true);
+      }
+      resetCountdown();
+      void softRefresh();
+
+      const tick = setInterval(() => {
+        countdownSecRef.current -= 1;
+        if (countdownSecRef.current <= 0) {
+          countdownSecRef.current = REFRESH_INTERVAL_SEC;
+          void softRefresh();
+        }
+        if (alive) {
+          setRefreshInSec(countdownSecRef.current);
+        }
+      }, 1000);
+
+      return () => {
+        alive = false;
+        clearInterval(tick);
+      };
+    }, [resetCountdown, softRefresh])
   );
 
   useTaskApprovalPolling(tasks, load);
 
   const onRefresh = () => {
     setRefreshing(true);
-    void (async () => {
-      await syncAllPendingTaskStarts();
-      await syncAllPendingTaskRecalls();
-      await loadPendingStarts();
-      await loadPendingRecalls();
-      await load();
-    })();
+    resetCountdown();
+    void softRefresh();
   };
 
   const handleRecall = async (item: ExtendedTaskRow) => {
@@ -353,6 +432,46 @@ export function FarmerTasksScreen() {
     ],
     [displayCategories]
   );
+
+  const visibleTasks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let list = flatTasks;
+    if (q) {
+      list = list.filter((t) => {
+        const name = (t.name ?? '').toLowerCase();
+        const project = projectLabel(t).toLowerCase();
+        return name.includes(q) || project.includes(q);
+      });
+    }
+
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      if (sortMode === 'name_asc') return (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base' });
+      if (sortMode === 'name_desc') return (b.name ?? '').localeCompare(a.name ?? '', undefined, { sensitivity: 'base' });
+      if (sortMode === 'due_asc') {
+        const diff = dueSortValue(a) - dueSortValue(b);
+        if (diff !== 0) return diff;
+        return (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base' });
+      }
+      // due_desc — finite deadlines descending; missing still last
+      const aDue = dueSortValue(a);
+      const bDue = dueSortValue(b);
+      const aMissing = !Number.isFinite(aDue);
+      const bMissing = !Number.isFinite(bDue);
+      if (aMissing && bMissing) {
+        return (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base' });
+      }
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      const diff = bDue - aDue;
+      if (diff !== 0) return diff;
+      return (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base' });
+    });
+    return sorted;
+  }, [flatTasks, searchQuery, sortMode]);
+
+  const sortLabel =
+    SORT_OPTIONS.find((opt) => opt.key === sortMode)?.label ?? 'Sort';
 
   const categoryCounts = useMemo(
     () => ({
@@ -621,7 +740,12 @@ export function FarmerTasksScreen() {
         }
       >
         <View style={styles.header}>
-          <Text className="text-2xl font-bold text-foreground">Your Tasks</Text>
+          <View style={styles.titleRow}>
+            <Text className="text-2xl font-bold text-foreground" style={styles.titleText}>
+              Your Tasks
+            </Text>
+            <RefreshCountdownBadge seconds={refreshInSec} />
+          </View>
           <TaskStatusKpiRow
             counts={categoryCounts}
             selected={statusFilter ?? null}
@@ -629,9 +753,65 @@ export function FarmerTasksScreen() {
           />
           {statusFilter ? (
             <Text style={styles.filterHint}>Tap the selected card again to show all tasks</Text>
-          ) : (
-            <Text style={styles.filterHint}>Updates every 30s</Text>
-          )}
+          ) : null}
+
+          <View style={styles.searchSortRow}>
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={18} color="#757575" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search task or project"
+                placeholderTextColor="#9E9E9E"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+              />
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Sort tasks: ${sortLabel}`}
+              onPress={() => setSortMenuOpen((open) => !open)}
+              style={({ pressed }) => [
+                styles.sortButton,
+                sortMenuOpen ? styles.sortButtonOpen : null,
+                pressed ? styles.sortButtonPressed : null,
+              ]}
+            >
+              <Text style={styles.sortButtonLabel} numberOfLines={1}>
+                Sort
+              </Text>
+              <Text style={styles.sortChevron}>{sortMenuOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+          </View>
+          {sortMenuOpen ? (
+            <View style={styles.sortMenu}>
+              {SORT_OPTIONS.map((opt) => (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => {
+                    setSortMode(opt.key);
+                    setSortMenuOpen(false);
+                  }}
+                  style={[
+                    styles.sortMenuItem,
+                    sortMode === opt.key ? styles.sortMenuItemActive : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.sortMenuItemLabel,
+                      sortMode === opt.key ? styles.sortMenuItemLabelActive : null,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
           {error ? <FarmerOfflineBanner message={error} /> : null}
           {pendingStarts.length > 0 ? (
             <View style={styles.pendingQueue}>
@@ -713,18 +893,20 @@ export function FarmerTasksScreen() {
           ) : null}
         </View>
 
-        {flatTasks.length === 0 ? (
+        {visibleTasks.length === 0 ? (
           !error ? (
             <KBCard elevated={false}>
               <Text className="text-base text-muted-foreground text-center">
-                {statusFilter
-                  ? 'No tasks match this filter.'
-                  : 'You have no assigned tasks yet. New assignments from your field agent or program team will appear here.'}
+                {searchQuery.trim()
+                  ? 'No tasks match your search.'
+                  : statusFilter
+                    ? 'No tasks match this filter.'
+                    : 'You have no assigned tasks yet. New assignments from your field agent or program team will appear here.'}
               </Text>
             </KBCard>
           ) : null
         ) : (
-          <View style={styles.cardList}>{flatTasks.map((item) => renderTask(item))}</View>
+          <View style={styles.cardList}>{visibleTasks.map((item) => renderTask(item))}</View>
         )}
       </ScrollView>
 
@@ -816,6 +998,27 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 4,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 4,
+  },
+  titleText: {
+    flexShrink: 1,
+  },
+  refreshBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  refreshText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#757575',
+  },
   pendingQueue: {
     marginTop: 12,
   },
@@ -823,6 +1026,84 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
     color: '#757575',
+  },
+  searchSortRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchBox: {
+    flex: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    fontSize: 14,
+    color: '#1A1A1A',
+  },
+  sortButton: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  sortButtonOpen: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#F1F7F4',
+  },
+  sortButtonPressed: {
+    opacity: 0.85,
+  },
+  sortButtonLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  sortChevron: {
+    fontSize: 10,
+    color: '#757575',
+  },
+  sortMenu: {
+    marginTop: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  sortMenuItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  sortMenuItemActive: {
+    backgroundColor: '#E8F5F0',
+  },
+  sortMenuItemLabel: {
+    fontSize: 13,
+    color: '#333333',
+  },
+  sortMenuItemLabelActive: {
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   cardList: {
     marginTop: 12,
