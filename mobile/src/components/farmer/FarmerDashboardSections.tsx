@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
   },
   profileLocation: {
     fontSize: 14,
-    color: '#e0e0e0',
+    color: '#fff',
     marginBottom: 12,
     textAlign: 'center',
   },
@@ -388,13 +388,13 @@ const styles = StyleSheet.create({
   verificationText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   statusText: {
     fontSize: 14,
-    color: '#e0e0e0',
+    color: '#fff',
     marginBottom: 4,
     textAlign: 'center',
   },
   currencyText: {
     fontSize: 14,
-    color: '#FFB800',
+    color: '#fff',
     fontWeight: '600',
     marginBottom: 16,
     textAlign: 'center',
@@ -414,12 +414,10 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: '#E83838',
     paddingVertical: 10,
     borderRadius: 6,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#fff',
   },
   buttonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   logoutButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
