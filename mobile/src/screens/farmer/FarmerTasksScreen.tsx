@@ -351,18 +351,30 @@ export function FarmerTasksScreen() {
   };
 
   const confirmAndRecall = (item: ExtendedTaskRow) => {
-    Alert.alert(
-      'Withdraw submission?',
-      'This will withdraw your submission from review so you can edit it — continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Continue',
-          style: 'destructive',
-          onPress: () => void handleRecall(item),
-        },
-      ]
-    );
+    const title = 'Withdraw submission?';
+    const message =
+      'This will withdraw your submission from review so you can edit it — continue?';
+
+    // RN Alert confirm buttons are unreliable on web; use window.confirm there.
+    if (Platform.OS === 'web') {
+      const confirmed =
+        typeof window !== 'undefined' &&
+        typeof window.confirm === 'function' &&
+        window.confirm(`${title}\n\n${message}`);
+      if (confirmed) {
+        void handleRecall(item);
+      }
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Continue',
+        style: 'destructive',
+        onPress: () => void handleRecall(item),
+      },
+    ]);
   };
 
   const handleEdit = (item: ExtendedTaskRow) => {
