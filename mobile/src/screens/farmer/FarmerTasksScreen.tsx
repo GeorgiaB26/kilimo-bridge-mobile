@@ -83,6 +83,18 @@ const SORT_OPTIONS: { key: TaskSortMode; label: string }[] = [
   { key: 'due_desc', label: 'Latest deadline' },
 ];
 
+const STATUS_FILTER_OPTIONS: Array<{ key: StatusFilterKey | 'all'; label: string }> = [
+  { key: 'all', label: 'All statuses' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'in_progress', label: 'In progress' },
+  { key: 'not_started', label: 'Not started' },
+  { key: 'submitted_for_approval', label: 'Submitted for approval' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'completed', label: 'Completed' },
+];
+
+const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : undefined;
+
 type ExtendedTaskRow = FarmerTaskRow & {
   program_project_name?: string;
   assigned_at?: string;
@@ -222,6 +234,8 @@ export function FarmerTasksScreen() {
   const [refreshInSec, setRefreshInSec] = useState(REFRESH_INTERVAL_SEC);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<TaskSortMode>('due_asc');
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [deepLinkHighlightId, setDeepLinkHighlightId] = useState<string | null>(null);
   const countdownSecRef = useRef(REFRESH_INTERVAL_SEC);
@@ -486,9 +500,6 @@ export function FarmerTasksScreen() {
     return sorted;
   }, [flatTasks, searchQuery, sortMode]);
 
-  const sortLabel =
-    SORT_OPTIONS.find((opt) => opt.key === sortMode)?.label ?? 'Sort';
-
   const categoryCounts = useMemo(
     () => ({
       overdue: categorized.overdue.length,
@@ -527,6 +538,28 @@ export function FarmerTasksScreen() {
       statusFilter: statusFilter === key ? undefined : key,
     });
   };
+
+  const setStatusFilterFromMenu = (key: StatusFilterKey | 'all') => {
+    setExpandedTaskId(null);
+    setDeepLinkHighlightId(null);
+    setStatusMenuOpen(false);
+    navigation.setParams({
+      statusFilter: key === 'all' ? undefined : key,
+    });
+  };
+
+  const resetFilters = () => {
+    setStatusMenuOpen(false);
+    setSortMenuOpen(false);
+    setSortMode('due_asc');
+    navigation.setParams({ statusFilter: undefined });
+  };
+
+  const statusFilterLabel =
+    STATUS_FILTER_OPTIONS.find((o) => o.key === (statusFilter ?? 'all'))?.label ?? 'All statuses';
+  const sortLabel = SORT_OPTIONS.find((opt) => opt.key === sortMode)?.label ?? 'Sort';
+  const activeFilterCount =
+    (statusFilter ? 1 : 0) + (sortMode !== 'due_asc' ? 1 : 0);
 
   const scrollToTaskCard = useCallback((taskId: string) => {
     const y = cardOffsetsRef.current[taskId];
@@ -862,14 +895,52 @@ export function FarmerTasksScreen() {
             onSelect={toggleStatusFilter}
           />
           {statusFilter ? (
-            <Text style={styles.filterHint}>Tap the selected card again to show all tasks</Text>
-          ) : null}
+            <Text className="mb-3 mt-2 text-xs text-[#757575]">
+              Tap the selected card again to show all tasks
+            </Text>
+          ) : (
+            <Text className="mb-3 mt-2 text-xs text-[#757575]">Tap a card to filter by status</Text>
+          )}
 
-          <View style={styles.searchSortRow}>
-            <View style={styles.searchBox}>
+          <View className="mb-3 flex-row items-center gap-2">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
+              onPress={() => {
+                setShowFiltersPanel((open) => !open);
+                setStatusMenuOpen(false);
+                setSortMenuOpen(false);
+              }}
+              className={`flex-row items-center gap-1 rounded-lg px-3 py-2 ${
+                showFiltersPanel || activeFilterCount > 0 ? 'bg-[#1A4D3E]' : 'bg-white'
+              }`}
+              style={webPressable}
+            >
+              <Text
+                className={`text-sm font-semibold ${
+                  showFiltersPanel || activeFilterCount > 0 ? 'text-white' : 'text-[#333333]'
+                }`}
+              >
+                Filters
+              </Text>
+              {activeFilterCount > 0 ? (
+                <View className="min-w-[18px] items-center rounded-full bg-[#FFD700] px-1.5">
+                  <Text className="text-[11px] font-bold text-[#1A1A1A]">{activeFilterCount}</Text>
+                </View>
+              ) : (
+                <Text
+                  className={`text-xs ${
+                    showFiltersPanel || activeFilterCount > 0 ? 'text-white/80' : 'text-[#757575]'
+                  }`}
+                >
+                  ▼
+                </Text>
+              )}
+            </Pressable>
+            <View className="flex-1 flex-row items-center rounded-lg bg-white px-3">
               <Ionicons name="search" size={18} color="#757575" />
               <TextInput
-                style={styles.searchInput}
+                className="flex-1 py-2 pl-2"
                 placeholder="Search task or project"
                 placeholderTextColor="#9E9E9E"
                 value={searchQuery}
@@ -879,46 +950,112 @@ export function FarmerTasksScreen() {
                 clearButtonMode="while-editing"
               />
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Sort tasks: ${sortLabel}`}
-              onPress={() => setSortMenuOpen((open) => !open)}
-              style={({ pressed }) => [
-                styles.sortButton,
-                sortMenuOpen ? styles.sortButtonOpen : null,
-                pressed ? styles.sortButtonPressed : null,
-              ]}
-            >
-              <Text style={styles.sortButtonLabel} numberOfLines={1}>
-                {sortLabel}
-              </Text>
-              <Text style={styles.sortChevron}>{sortMenuOpen ? '▲' : '▼'}</Text>
-            </Pressable>
           </View>
-          {sortMenuOpen ? (
-            <View style={styles.sortMenu}>
-              {SORT_OPTIONS.map((opt) => (
+
+          {showFiltersPanel ? (
+            <View className="mb-4 rounded-xl border border-[#E5E5E5] bg-white p-3">
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#757575]">
+                Status
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setStatusMenuOpen((o) => !o);
+                  setSortMenuOpen(false);
+                }}
+                className="mb-2 flex-row items-center justify-between rounded-lg border border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2.5"
+                style={webPressable}
+              >
+                <Text className="text-sm text-[#333333]">{statusFilterLabel}</Text>
+                <Text className="text-xs text-[#757575]">{statusMenuOpen ? '▲' : '▼'}</Text>
+              </Pressable>
+              {statusMenuOpen ? (
+                <View className="mb-3 max-h-48 overflow-hidden rounded-lg border border-[#EEEEEE]">
+                  <ScrollView nestedScrollEnabled>
+                    {STATUS_FILTER_OPTIONS.filter(
+                      (opt) =>
+                        (opt.key !== 'rejected' ||
+                          categoryCounts.rejected > 0 ||
+                          statusFilter === 'rejected') &&
+                        (opt.key !== 'submitted_for_approval' ||
+                          categoryCounts.submitted_for_approval > 0 ||
+                          statusFilter === 'submitted_for_approval')
+                    ).map((opt) => (
+                      <Pressable
+                        key={opt.key}
+                        onPress={() => setStatusFilterFromMenu(opt.key)}
+                        className={`px-3 py-2.5 ${
+                          (statusFilter ?? 'all') === opt.key ? 'bg-[#E8F5F0]' : 'bg-white'
+                        }`}
+                        style={webPressable}
+                      >
+                        <Text
+                          className={`text-sm ${
+                            (statusFilter ?? 'all') === opt.key
+                              ? 'font-semibold text-[#1A4D3E]'
+                              : 'text-[#333333]'
+                          }`}
+                        >
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#757575]">
+                Sort
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setSortMenuOpen((o) => !o);
+                  setStatusMenuOpen(false);
+                }}
+                className="mb-2 flex-row items-center justify-between rounded-lg border border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2.5"
+                style={webPressable}
+              >
+                <Text className="text-sm text-[#333333]">{sortLabel}</Text>
+                <Text className="text-xs text-[#757575]">{sortMenuOpen ? '▲' : '▼'}</Text>
+              </Pressable>
+              {sortMenuOpen ? (
+                <View className="mb-3 max-h-48 overflow-hidden rounded-lg border border-[#EEEEEE]">
+                  <ScrollView nestedScrollEnabled>
+                    {SORT_OPTIONS.map((opt) => (
+                      <Pressable
+                        key={opt.key}
+                        onPress={() => {
+                          setSortMode(opt.key);
+                          setSortMenuOpen(false);
+                        }}
+                        className={`px-3 py-2.5 ${
+                          sortMode === opt.key ? 'bg-[#E8F5F0]' : 'bg-white'
+                        }`}
+                        style={webPressable}
+                      >
+                        <Text
+                          className={`text-sm ${
+                            sortMode === opt.key
+                              ? 'font-semibold text-[#1A4D3E]'
+                              : 'text-[#333333]'
+                          }`}
+                        >
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              <View className="mt-1 flex-row flex-wrap gap-2">
                 <Pressable
-                  key={opt.key}
-                  onPress={() => {
-                    setSortMode(opt.key);
-                    setSortMenuOpen(false);
-                  }}
-                  style={[
-                    styles.sortMenuItem,
-                    sortMode === opt.key ? styles.sortMenuItemActive : null,
-                  ]}
+                  onPress={resetFilters}
+                  className="rounded-lg border border-[#E0E0E0] bg-white px-3 py-2.5"
+                  style={webPressable}
                 >
-                  <Text
-                    style={[
-                      styles.sortMenuItemLabel,
-                      sortMode === opt.key ? styles.sortMenuItemLabelActive : null,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
+                  <Text className="text-sm font-semibold text-[#757575]">Reset</Text>
                 </Pressable>
-              ))}
+              </View>
             </View>
           ) : null}
 
@@ -1105,11 +1242,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 100,
   },
   header: {
     marginBottom: 8,
-    marginTop: 4,
   },
   titleRow: {
     flexDirection: 'row',
@@ -1134,90 +1271,6 @@ const styles = StyleSheet.create({
   },
   pendingQueue: {
     marginTop: 12,
-  },
-  filterHint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#757575',
-  },
-  searchSortRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  searchBox: {
-    flex: 3,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minHeight: 44,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#FFFFFF',
-  },
-  searchInput: {
-    flex: 1,
-    paddingLeft: 6,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-    fontSize: 14,
-    color: '#1A1A1A',
-  },
-  sortButton: {
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 4,
-  },
-  sortButtonOpen: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#F1F7F4',
-  },
-  sortButtonPressed: {
-    opacity: 0.85,
-  },
-  sortButtonLabel: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#1A1A1A',
-  },
-  sortChevron: {
-    fontSize: 10,
-    color: '#757575',
-  },
-  sortMenu: {
-    marginTop: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
-  },
-  sortMenuItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-  },
-  sortMenuItemActive: {
-    backgroundColor: '#E8F5F0',
-  },
-  sortMenuItemLabel: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#333333',
-  },
-  sortMenuItemLabelActive: {
-    color: COLORS.primary,
   },
   cardList: {
     marginTop: 12,
