@@ -1,5 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, type ComponentType } from 'react';
 import { View, Pressable, StyleSheet, Platform } from 'react-native';
+import {
+  Ban,
+  Bell,
+  CircleCheck,
+  CircleX,
+  Hourglass,
+  TriangleAlert,
+} from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 
 export type TaskStatusKpiKey =
@@ -13,29 +21,56 @@ export type TaskStatusKpiKey =
 type KpiCardDef = {
   key: TaskStatusKpiKey;
   label: string;
-  badgeBg: string;
+  Icon: ComponentType<{ size?: number; color?: string }>;
+  iconColor: string;
   countColor: string;
 };
 
 const BASE_KPI_CARDS: KpiCardDef[] = [
-  { key: 'overdue', label: 'Overdue', badgeBg: '#FFEBEE', countColor: '#C62828' },
-  { key: 'in_progress', label: 'In progress', badgeBg: '#FFF3E0', countColor: '#EF6C00' },
-  { key: 'not_started', label: 'Not started', badgeBg: '#F5F5F5', countColor: '#37474F' },
-  { key: 'completed', label: 'Completed', badgeBg: '#E8F5E9', countColor: '#2E7D32' },
+  {
+    key: 'overdue',
+    label: 'Overdue',
+    Icon: TriangleAlert,
+    iconColor: '#EF4444',
+    countColor: '#EF4444',
+  },
+  {
+    key: 'in_progress',
+    label: 'In progress',
+    Icon: Hourglass,
+    iconColor: '#2563EB',
+    countColor: '#2563EB',
+  },
+  {
+    key: 'not_started',
+    label: 'Not started',
+    Icon: Ban,
+    iconColor: '#757575',
+    countColor: '#333333',
+  },
+  {
+    key: 'completed',
+    label: 'Completed',
+    Icon: CircleCheck,
+    iconColor: '#10B981',
+    countColor: '#10B981',
+  },
 ];
 
 const SUBMITTED_KPI: KpiCardDef = {
   key: 'submitted_for_approval',
   label: 'Submitted for approval',
-  badgeBg: '#E3F2FD',
-  countColor: '#1565C0',
+  Icon: Bell,
+  iconColor: '#2563EB',
+  countColor: '#2563EB',
 };
 
 const REJECTED_KPI: KpiCardDef = {
   key: 'rejected',
   label: 'Rejected',
-  badgeBg: '#FFEBEE',
-  countColor: '#C62828',
+  Icon: CircleX,
+  iconColor: '#D32F2F',
+  countColor: '#D32F2F',
 };
 
 /**
@@ -60,10 +95,9 @@ type Props = {
 };
 
 /**
- * Status KPI cards for Tasks screens.
+ * Status KPI cards for Tasks screens (agent + farmer).
+ * Matches agent dashboard MetricCard styling: icon, large count, left-aligned label.
  * SUBMITTED FOR APPROVAL and REJECTED are omitted when count is 0.
- * Layout wraps by visible count: 4 on one line; 5 → 3+2; 6 → 3+3.
- * Labels are a fixed 10px and may wrap; cards in a row stretch to equal height.
  */
 export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
   const visibleCards = useMemo(() => {
@@ -88,6 +122,7 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
           {row.map((kpi) => {
             const selectedCard = selected === kpi.key;
             const count = counts[kpi.key];
+            const Icon = kpi.Icon;
             return (
               <Pressable
                 key={kpi.key}
@@ -103,16 +138,12 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
                   Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
                 ]}
               >
-                <Text style={styles.kpiLabel} allowFontScaling={false}>
-                  {kpi.label}
-                </Text>
-                <View style={[styles.kpiBadge, { backgroundColor: kpi.badgeBg }]}>
-                  <Text style={[styles.kpiCount, { color: kpi.countColor }]}>{count}</Text>
-                </View>
+                <Icon size={20} color={kpi.iconColor} />
+                <Text style={[styles.kpiCount, { color: kpi.countColor }]}>{count}</Text>
+                <Text style={styles.kpiLabel}>{kpi.label}</Text>
               </Pressable>
             );
           })}
-          {/* Keep card widths aligned when the last row is shorter (e.g. 3+2). */}
           {row.length < columnsPerRow
             ? Array.from({ length: columnsPerRow - row.length }).map((_, i) => (
                 <View key={`kpi-spacer-${rowIndex}-${i}`} style={styles.kpiSpacer} />
@@ -138,18 +169,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 6,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#EEEEEE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+    borderColor: '#E8E8E8',
+    alignItems: 'flex-start',
   },
   kpiSpacer: {
     flex: 1,
@@ -159,24 +183,17 @@ const styles = StyleSheet.create({
     borderColor: '#1A4D3E',
     borderWidth: 2,
   },
-  kpiLabel: {
-    width: '100%',
-    marginBottom: 8,
-    fontSize: 10,
-    fontWeight: '400',
-    color: '#666666',
-    letterSpacing: 0.15,
-    textAlign: 'center',
-  },
-  kpiBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   kpiCount: {
-    fontSize: 14,
+    marginTop: 4,
+    fontSize: 24,
     fontWeight: '700',
+    lineHeight: 28,
+  },
+  kpiLabel: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#757575',
+    textAlign: 'left',
   },
 });
