@@ -227,7 +227,8 @@ export function AgentFarmersScreen() {
 
   return (
     <FlatList
-      className="flex-1 p-4"
+      className="flex-1 bg-[#F5F5F5]"
+      contentContainerClassName="p-4 pb-10"
       data={filteredFarmers}
       keyExtractor={(item) => item.farmer_id}
       keyboardShouldPersistTaps="handled"
