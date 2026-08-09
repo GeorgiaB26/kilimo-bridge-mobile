@@ -2,12 +2,11 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   ScrollView,
-  Alert,
   Pressable,
   Image,
   ActivityIndicator,
   Platform,
-  ActionSheetIOS,
+  StyleSheet,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
@@ -19,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { APP_BUILD } from '../../constants/build';
 import { getFarmerDashboard, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
-import { extractApiError } from '../../utils/feedback';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
 import { useAuthStore } from '../../store/authStore';
@@ -141,66 +140,50 @@ export function FarmerProfileScreen() {
     setPendingBase64(null);
   };
 
-  const pickImage = async (useCamera: boolean) => {
+  /** Verification photos must be taken with the camera (not chosen from gallery). */
+  const takeVerificationPhoto = async () => {
+    if (picking || savingPhoto) return;
     setPicking(true);
     try {
-      const permission = useCamera
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow camera/gallery access to update your photo.');
+        showMessage(
+          'Camera permission needed',
+          'Allow camera access so you can take your verification photo.'
+        );
         return;
       }
 
-      const result = useCamera
-        ? await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-            base64: true,
-          })
-        : await ImagePicker.launchImageLibraryAsync({
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-            base64: true,
-          });
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      });
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         if (!asset.base64) {
-          Alert.alert('Photo error', 'Could not read image. Please try again.');
+          showMessage('Photo error', 'Could not read the image. Please try again.');
           return;
         }
         setPendingUri(asset.uri);
         setPendingBase64(asset.base64);
       }
+    } catch (err: unknown) {
+      showMessage(
+        'Could not open camera',
+        extractApiError(
+          err,
+          Platform.OS === 'web'
+            ? 'Use a device with a camera, or allow camera access in the browser, then try again.'
+            : 'Please try again.'
+        )
+      );
     } finally {
       setPicking(false);
     }
-  };
-
-  const promptChangePhoto = () => {
-    if (picking || savingPhoto) return;
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Take Photo', 'Choose from Gallery'],
-          cancelButtonIndex: 0,
-        },
-        (index) => {
-          if (index === 1) void pickImage(true);
-          if (index === 2) void pickImage(false);
-        }
-      );
-      return;
-    }
-    Alert.alert('Change photo', 'Choose a source', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Take Photo', onPress: () => void pickImage(true) },
-      { text: 'Choose from Gallery', onPress: () => void pickImage(false) },
-    ]);
   };
 
   const handleSavePhoto = async () => {
@@ -216,9 +199,12 @@ export function FarmerProfileScreen() {
       setFarmer(data.farmer);
       setContacts(data.contacts ?? null);
       discardPendingPhoto();
-      Alert.alert('Photo saved', 'Your profile photo has been updated.');
+      showMessage(
+        'Photo submitted',
+        'Your verification photo is saved. A field agent will confirm it matches you in person before your profile is fully verified.'
+      );
     } catch (err: unknown) {
-      Alert.alert('Could not save photo', extractApiError(err, 'Please try again.'));
+      showMessage('Could not save photo', extractApiError(err, 'Please try again.'));
     } finally {
       setSavingPhoto(false);
     }
@@ -252,7 +238,7 @@ export function FarmerProfileScreen() {
     setHelpLoading(true);
     try {
       await submitFarmerHelpRequest(message);
-      Alert.alert('Message sent', 'Your field agent will contact you soon.');
+      showMessage('Message sent', 'Your field agent will contact you soon.');
     } catch (err: unknown) {
       throw new Error(extractApiError(err, 'Could not send message'));
     } finally {
@@ -265,10 +251,11 @@ export function FarmerProfileScreen() {
       {error ? <FarmerOfflineBanner message={error} /> : null}
       <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">
         <Pressable
-          onPress={promptChangePhoto}
+          onPress={() => void takeVerificationPhoto()}
           disabled={picking || savingPhoto}
           accessibilityRole="button"
-          accessibilityLabel="Change profile photo"
+          accessibilityLabel="Take verification photo"
+          style={styles.photoPressable}
         >
           {pendingUri ? (
             <View className="mb-1 items-center">
@@ -289,11 +276,31 @@ export function FarmerProfileScreen() {
           )}
         </Pressable>
         {!pendingUri ? (
-          <Pressable onPress={promptChangePhoto} disabled={picking || savingPhoto} className="mb-1 mt-1">
-            <Text className="text-center text-xs font-semibold text-[#D4AF6A]">
-              {picking ? 'Opening camera…' : 'Tap photo to change'}
+          <View className="mb-1 mt-2 w-full items-center gap-2">
+            <Text className="text-center text-xs text-white/80">
+              Use the camera to take a clear photo of your face. A field agent will verify it in person.
             </Text>
-          </Pressable>
+            <Pressable
+              onPress={() => void takeVerificationPhoto()}
+              disabled={picking || savingPhoto}
+              style={({ pressed }) => [
+                styles.takePhotoBtn,
+                (picking || savingPhoto) && styles.takePhotoBtnDisabled,
+                pressed && styles.takePhotoBtnPressed,
+              ]}
+            >
+              {picking ? (
+                <ActivityIndicator color="#1A4D3E" />
+              ) : (
+                <>
+                  <Ionicons name="camera" size={18} color="#1A4D3E" />
+                  <Text className="font-semibold text-[#1A4D3E]">
+                    {farmer?.picture_url ? 'Retake verification photo' : 'Take verification photo'}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
         ) : null}
         {pendingUri ? (
           <View className="mb-3 mt-3 w-full flex-row gap-2">
@@ -308,7 +315,7 @@ export function FarmerProfileScreen() {
             <Button
               variant="outline"
               className="h-11 flex-1 border-white/40"
-              onPress={() => void pickImage(true)}
+              onPress={() => void takeVerificationPhoto()}
               disabled={savingPhoto || picking}
             >
               <Text className="text-white">Retake</Text>
@@ -321,7 +328,7 @@ export function FarmerProfileScreen() {
               {savingPhoto ? (
                 <ActivityIndicator color="#1A4D3E" />
               ) : (
-                <Text className="font-semibold text-[#1A4D3E]">Save photo</Text>
+                <Text className="font-semibold text-[#1A4D3E]">Submit photo</Text>
               )}
             </Button>
           </View>
@@ -540,3 +547,28 @@ function ProfileRow({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  photoPressable: {
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  takePhotoBtn: {
+    marginTop: 4,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#D4AF6A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  takePhotoBtnDisabled: {
+    opacity: 0.65,
+  },
+  takePhotoBtnPressed: {
+    opacity: 0.9,
+  },
+});

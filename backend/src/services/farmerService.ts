@@ -530,7 +530,10 @@ export async function updateFarmerLocation(
   });
 }
 
-export async function updateFarmerPicture(farmerId: string, pictureUrl: string): Promise<void> {
+export async function updateFarmerPicture(
+  farmerId: string,
+  pictureUrl: string
+): Promise<{ status: string }> {
   const photoError = validateFarmerPhotoRequired(pictureUrl);
   if (photoError) throw new Error(photoError);
 
@@ -539,15 +542,21 @@ export async function updateFarmerPicture(farmerId: string, pictureUrl: string):
     throw new Error('Invalid profile photo key for this farmer');
   }
 
-  const exists = await queryOne<{ farmer_id: string }>(
-    'SELECT farmer_id FROM farmers WHERE farmer_id = $1',
+  const farmer = await queryOne<{ farmer_id: string; status: string }>(
+    'SELECT farmer_id, status FROM farmers WHERE farmer_id = $1',
     [farmerId]
   );
-  if (!exists) throw new Error('Farmer not found');
+  if (!farmer) throw new Error('Farmer not found');
+
+  const previousStatus = farmer.status;
+  // New/changed verification photos need a field agent in-person check.
+  // Keep pending_review so PM queue order is preserved until they advance the farmer.
+  const nextStatus =
+    previousStatus === 'pending_review' ? previousStatus : 'pending_field_verification';
 
   await query(
-    `UPDATE farmers SET picture_url = $1, updated_at = NOW() WHERE farmer_id = $2`,
-    [key, farmerId]
+    `UPDATE farmers SET picture_url = $1, status = $2, updated_at = NOW() WHERE farmer_id = $3`,
+    [key, nextStatus, farmerId]
   );
 
   await logAudit({
@@ -555,9 +564,17 @@ export async function updateFarmerPicture(farmerId: string, pictureUrl: string):
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: { field: 'picture_url', objectKey: key },
+    details: {
+      field: 'picture_url',
+      objectKey: key,
+      previous_status: previousStatus,
+      farmer_status: nextStatus,
+      requires_field_verification: nextStatus === 'pending_field_verification',
+    },
     success: true,
   });
+
+  return { status: nextStatus };
 }
 
 export { PENDING_LOCATION_LABEL };
