@@ -1047,6 +1047,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    paddingLeft: 6,
     paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     fontSize: 14,
     color: '#1A1A1A',
