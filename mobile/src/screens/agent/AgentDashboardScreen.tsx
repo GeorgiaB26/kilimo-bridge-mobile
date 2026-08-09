@@ -20,6 +20,7 @@ import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
+import { formatCleanDate } from '../../utils/greeting';
 import {
   TaskStatusKpiRow,
   type TaskStatusKpiKey,
@@ -336,7 +337,7 @@ export function AgentDashboardScreen() {
                 <Text className="text-sm font-semibold text-[#333333]">{t.name}</Text>
                 <Text className="text-xs text-[#757575]">
                   {t.farmer_name ?? 'Task'}
-                  {t.due_date ? ` · Due ${t.due_date}` : ''}
+                  {t.due_date ? ` · Due ${formatCleanDate(t.due_date)}` : ''}
                 </Text>
               </View>
               <ChevronRight size={16} color="#1A4D3E" />
