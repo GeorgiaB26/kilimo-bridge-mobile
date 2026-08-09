@@ -271,7 +271,7 @@ export async function getFarmerExpectedPaymentItems(farmerId: string) {
     JOIN tasks t ON t.id = ft.task_id
     LEFT JOIN program_projects pp ON pp.id = ft.program_project_id
     WHERE ft.farmer_id = $1
-      AND ft.status NOT IN ('approved', 'completed', 'submitted')
+      AND ft.status NOT IN ('approved', 'completed')
       AND COALESCE(t.payment_value_kes, 0) > 0
     ORDER BY t.due_date ASC NULLS LAST, ft.created_at DESC
     `,
@@ -327,7 +327,7 @@ export async function getFarmerPaymentSummary(farmerId: string) {
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     WHERE ft.farmer_id = $1
-      AND ft.status NOT IN ('approved', 'completed', 'submitted')
+      AND ft.status NOT IN ('approved', 'completed')
     `,
     [farmerId]
   );
