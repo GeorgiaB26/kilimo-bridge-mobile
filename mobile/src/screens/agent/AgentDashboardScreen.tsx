@@ -16,6 +16,7 @@ import {
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { KBCard } from '../../components/ui/KBCard';
+import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
@@ -284,14 +285,17 @@ export function AgentDashboardScreen() {
                   params: { farmerId: f.farmer_id, name: f.name },
                 })
               }
-              className="mt-2 flex-row items-center justify-between border-t border-[#EEE] pt-2"
+              className="mt-3 flex-row items-center justify-between border-t border-[#EEE] pt-3"
               style={webPressable}
             >
               <View className="flex-1 pr-2">
                 <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
-                <Text className="text-xs text-[#757575]">
-                  {f.district ?? f.sub_county ?? '—'} · {f.status ?? 'pending'}
+                <Text className="mt-0.5 text-xs text-[#757575]">
+                  {f.district ?? f.sub_county ?? '—'}
                 </Text>
+                <View className="mt-2">
+                  <FarmerStatusChip status={f.status} compact />
+                </View>
               </View>
               <ChevronRight size={16} color="#1A4D3E" />
             </Pressable>
