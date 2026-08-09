@@ -306,29 +306,39 @@ export function FarmerProfileScreen() {
           <View className="mb-3 mt-3 w-full flex-row gap-2">
             <Button
               variant="outline"
-              className="h-11 flex-1 border-white/40"
+              className="h-11 min-w-0 flex-1 border-white/50 bg-white px-2"
               onPress={discardPendingPhoto}
               disabled={savingPhoto}
             >
-              <Text className="text-white">Cancel</Text>
+              <Text className="text-sm font-semibold text-[#1A4D3E]" numberOfLines={1}>
+                Cancel
+              </Text>
             </Button>
             <Button
               variant="outline"
-              className="h-11 flex-1 border-white/40"
+              className="h-11 min-w-0 flex-1 border-white/50 bg-white px-2"
               onPress={() => void takeVerificationPhoto()}
               disabled={savingPhoto || picking}
             >
-              <Text className="text-white">Retake</Text>
+              <Text className="text-sm font-semibold text-[#1A4D3E]" numberOfLines={1}>
+                Retake
+              </Text>
             </Button>
             <Button
-              className="h-11 flex-1 bg-[#D4AF6A]"
+              className="h-11 min-w-0 flex-1 bg-[#D4AF6A] px-2"
               onPress={() => void handleSavePhoto()}
               disabled={savingPhoto || picking}
             >
               {savingPhoto ? (
                 <ActivityIndicator color="#1A4D3E" />
               ) : (
-                <Text className="font-semibold text-[#1A4D3E]">Submit photo</Text>
+                <Text
+                  className="text-sm font-semibold text-[#1A4D3E]"
+                  numberOfLines={1}
+                  style={styles.singleLineLabel}
+                >
+                  Submit photo
+                </Text>
               )}
             </Button>
           </View>
@@ -570,5 +580,12 @@ const styles = StyleSheet.create({
   },
   takePhotoBtnPressed: {
     opacity: 0.9,
+  },
+  singleLineLabel: {
+    flexShrink: 0,
+    ...Platform.select({
+      web: { whiteSpace: 'nowrap' as const },
+      default: {},
+    }),
   },
 });
