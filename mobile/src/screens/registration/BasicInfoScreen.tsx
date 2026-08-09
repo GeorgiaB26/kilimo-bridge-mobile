@@ -9,6 +9,7 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCountryConfig, normalizePhoneForCountry } from '../../constants/regional';
+import { validateFarmerName } from '../../../shared/src/validation';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'BasicInfo'>;
@@ -18,24 +19,47 @@ export function BasicInfoScreen({ navigation }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const countryConfig = getCountryConfig(formData.country);
 
-  const validate = () => {
+  const validate = (values: {
+    name: string;
+    gender: string;
+    phone: string;
+    idNumber: string;
+  }) => {
     const e: Record<string, string> = {};
-    if (!formData.name || formData.name.length < 2) e.name = 'Name must be at least 2 characters';
-    if (!formData.gender) e.gender = 'Gender is required';
-    if (!formData.phone) {
+    const nameError = validateFarmerName(values.name);
+    if (nameError) e.name = nameError;
+    if (!values.gender) e.gender = 'Gender is required';
+    if (!values.phone.trim()) {
       e.phone = 'Phone number is required';
-    } else if (!normalizePhoneForCountry(formData.phone, formData.country)) {
+    } else if (!normalizePhoneForCountry(values.phone, formData.country)) {
       e.phone = countryConfig?.phoneError ?? 'Invalid phone number';
     }
-    if (!formData.idNumber || formData.idNumber.length < 5) e.idNumber = 'ID number is required (5+ chars)';
+    const id = values.idNumber.trim();
+    if (!id || id.length < 5) e.idNumber = 'ID number is required (5+ chars)';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handleNext = () => {
-    const phone = normalizePhoneForCountry(formData.phone, formData.country) ?? formData.phone;
-    updateForm({ phone });
-    if (validate()) navigation.navigate('Location');
+    const name = formData.name.trim();
+    const phone =
+      normalizePhoneForCountry(formData.phone, formData.country) ?? formData.phone.trim();
+    const idNumber = formData.idNumber.trim();
+    const gender = formData.gender;
+
+    if (
+      !validate({
+        name,
+        gender,
+        phone: formData.phone,
+        idNumber,
+      })
+    ) {
+      return;
+    }
+
+    updateForm({ name, phone, idNumber });
+    navigation.navigate('Location');
   };
 
   return (
@@ -44,23 +68,33 @@ export function BasicInfoScreen({ navigation }: Props) {
       <FormField
         label="Full Name"
         value={formData.name}
-        onChangeText={(name) => updateForm({ name })}
+        onChangeText={(name) => {
+          updateForm({ name });
+          if (errors.name) setErrors((prev) => ({ ...prev, name: '' }));
+        }}
         placeholder="James Kariuki"
         required
         error={errors.name}
+        autoCapitalize="words"
       />
       <PickerField
         label="Gender"
         value={formData.gender}
         options={GENDER_OPTIONS}
-        onSelect={(gender) => updateForm({ gender: gender as 'M' | 'F' | 'Other' })}
+        onSelect={(gender) => {
+          updateForm({ gender: gender as 'M' | 'F' | 'Other' });
+          if (errors.gender) setErrors((prev) => ({ ...prev, gender: '' }));
+        }}
         required
         error={errors.gender}
       />
       <FormField
         label="Phone Number"
         value={formData.phone}
-        onChangeText={(phone) => updateForm({ phone })}
+        onChangeText={(phone) => {
+          updateForm({ phone });
+          if (errors.phone) setErrors((prev) => ({ ...prev, phone: '' }));
+        }}
         placeholder={countryConfig?.phoneExample ?? '+254712345678'}
         keyboardType="phone-pad"
         required
@@ -69,7 +103,10 @@ export function BasicInfoScreen({ navigation }: Props) {
       <FormField
         label="National ID"
         value={formData.idNumber}
-        onChangeText={(idNumber) => updateForm({ idNumber })}
+        onChangeText={(idNumber) => {
+          updateForm({ idNumber });
+          if (errors.idNumber) setErrors((prev) => ({ ...prev, idNumber: '' }));
+        }}
         placeholder="12345678"
         required
         error={errors.idNumber}

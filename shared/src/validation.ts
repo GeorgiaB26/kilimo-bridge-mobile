@@ -55,6 +55,21 @@ export interface ValidationResult {
 
 const NAME_PATTERN = /^[a-zA-Z\s'-]+$/;
 
+/**
+ * Farmer display name rules (shared by API import validation and mobile wizard).
+ * Returns an error message, or null when valid.
+ */
+export function validateFarmerName(raw: string | undefined | null): string | null {
+  const name = typeof raw === 'string' ? raw.trim() : '';
+  if (!name || name.length < 2 || name.length > 100) {
+    return 'Name must be 2-100 characters';
+  }
+  if (!NAME_PATTERN.test(name)) {
+    return 'Name must contain letters only (no numbers)';
+  }
+  return null;
+}
+
 type Gender = 'M' | 'F' | 'Other';
 
 export function normalizePhone(phone: string, country = 'Kenya'): string | null {
@@ -254,17 +269,12 @@ export function validateFarmerRow(
   }
 
   const name = prepared.name?.trim();
-  if (!name || name.length < 2 || name.length > 100) {
+  const nameError = validateFarmerName(prepared.name);
+  if (nameError) {
     errors.push({
       field: 'name',
       value: prepared.name ?? '',
-      error: 'Name must be 2-100 characters',
-    });
-  } else if (!NAME_PATTERN.test(name)) {
-    errors.push({
-      field: 'name',
-      value: name,
-      error: 'Name must contain letters only',
+      error: nameError.includes('letters') ? 'Name must contain letters only' : nameError,
     });
   } else {
     normalized.name = name;

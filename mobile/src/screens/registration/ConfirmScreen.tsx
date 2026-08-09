@@ -13,10 +13,11 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { RegistrationSuccessModal } from '../../components/registration/RegistrationSuccessModal';
 import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
-import { getCountryConfig, generateFarmerId } from '../../constants/regional';
+import { getCountryConfig, generateFarmerId, normalizePhoneForCountry } from '../../constants/regional';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
 import { submitFarmerRegistration } from '../../services/submitFarmerRegistration';
 import { extractApiError, showMessage } from '../../utils/feedback';
+import { validateFarmerName } from '../../../shared/src/validation';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Confirm'>;
@@ -76,10 +77,59 @@ export function ConfirmScreen({ navigation }: Props) {
   };
 
   const handleSubmit = async () => {
+    const nameError = validateFarmerName(formData.name);
+    if (nameError) {
+      setSubmitError(nameError);
+      showMessage('Fix name', nameError);
+      navigation.navigate('BasicInfo');
+      return;
+    }
+    if (!formData.gender) {
+      setSubmitError('Gender is required');
+      showMessage('Missing information', 'Gender is required');
+      navigation.navigate('BasicInfo');
+      return;
+    }
+    if (!formData.phone?.trim() || !normalizePhoneForCountry(formData.phone, formData.country)) {
+      const msg = 'A valid phone number is required';
+      setSubmitError(msg);
+      showMessage('Fix phone', msg);
+      navigation.navigate('BasicInfo');
+      return;
+    }
+    if (!formData.idNumber?.trim() || formData.idNumber.trim().length < 5) {
+      const msg = 'ID number is required (5+ chars)';
+      setSubmitError(msg);
+      showMessage('Fix ID number', msg);
+      navigation.navigate('BasicInfo');
+      return;
+    }
+    if (!formData.district || !formData.subCounty) {
+      const msg = 'Location details are incomplete';
+      setSubmitError(msg);
+      showMessage('Fix location', msg);
+      navigation.navigate('Location');
+      return;
+    }
+    if (!formData.membershipGroup || !formData.membershipType) {
+      const msg = 'Membership details are incomplete';
+      setSubmitError(msg);
+      showMessage('Fix membership', msg);
+      navigation.navigate('Membership');
+      return;
+    }
+    if (!formData.occupation?.trim() || !formData.sizeOfLand?.trim()) {
+      const msg = 'Occupation and land size are required';
+      setSubmitError(msg);
+      showMessage('Fix farmer details', msg);
+      navigation.navigate('Details');
+      return;
+    }
     if (!formData.pictureBase64 && !formData.pictureUri) {
       const msg = 'A verification photo is required. Go back to the Photo step and add one.';
       setSubmitError(msg);
       showMessage('Photo required', msg);
+      navigation.navigate('Photo');
       return;
     }
 
