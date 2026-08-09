@@ -550,6 +550,13 @@ export function FarmerTasksScreen() {
     setDeepLinkHighlightId(task.id);
     scheduleScrollToTask(task.id);
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
+
+    // Rejected deep-links: scroll to the card, then open the edit/resubmit modal.
+    if (normalizeTaskStatus(task.status) !== 'rejected') return;
+    const openTimer = setTimeout(() => {
+      setSubmitTask(task);
+    }, 450);
+    return () => clearTimeout(openTimer);
   }, [scrollTargetId, tasks, loading, navigation, scheduleScrollToTask]);
 
   const onCardListLayout = useCallback((e: LayoutChangeEvent) => {
