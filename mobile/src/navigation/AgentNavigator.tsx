@@ -18,7 +18,7 @@ import type { AgentRootStackParamList, AgentTabParamList } from './types';
 const Tab = createBottomTabNavigator<AgentTabParamList>();
 const RootStack = createNativeStackNavigator<AgentRootStackParamList>();
 
-const HEADER_TITLE = 'Field Agent Platform';
+const HEADER_TITLE = 'Field Agent';
 
 function withAgentTabScene<P extends object>(Component: React.ComponentType<P>) {
   return function Wrapped(props: P) {
