@@ -1161,7 +1161,7 @@ export function FarmerTasksScreen() {
 
       <Modal
         visible={!!startTask}
-        animationType="slide"
+        animationType="none"
         transparent
         onRequestClose={() => setStartTask(null)}
       >

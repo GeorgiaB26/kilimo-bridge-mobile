@@ -299,7 +299,7 @@ export function AggregationCentreDashboardScreen() {
         ))
       )}
 
-      <Modal visible={!!receiveModal} transparent animationType="slide">
+      <Modal visible={!!receiveModal} transparent animationType="none">
         <View className="flex-1 justify-center bg-black/50 p-5">
           <View className="rounded-xl bg-white p-5">
             <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Receive delivery</Text>
@@ -319,7 +319,7 @@ export function AggregationCentreDashboardScreen() {
         </View>
       </Modal>
 
-      <Modal visible={!!qcModal} transparent animationType="slide">
+      <Modal visible={!!qcModal} transparent animationType="none">
         <View className="flex-1 justify-center bg-black/50 p-5">
           <View className="rounded-xl bg-white p-5">
             <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Quality check</Text>

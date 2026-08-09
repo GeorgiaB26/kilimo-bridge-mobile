@@ -275,7 +275,7 @@ export function AgentProfileScreen() {
         </Button>
       </ScrollView>
 
-      <Modal visible={settingsOpen} animationType="slide" transparent onRequestClose={() => setSettingsOpen(false)}>
+      <Modal visible={settingsOpen} animationType="none" transparent onRequestClose={() => setSettingsOpen(false)}>
         <View className="flex-1 justify-end bg-black/40">
           <View className="rounded-t-2xl bg-white p-5">
             <View className="mb-4 flex-row items-center justify-between">

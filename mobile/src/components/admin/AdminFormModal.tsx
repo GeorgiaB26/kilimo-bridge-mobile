@@ -65,7 +65,7 @@ export function AdminFormModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Pressable onPress={onClose} style={styles.closeRow}>

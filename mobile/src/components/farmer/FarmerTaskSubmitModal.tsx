@@ -167,7 +167,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const hasPrefill = Boolean(task?.initialNotes?.trim() || task?.initialPhotoUri);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+    <Modal visible={visible} animationType="none" transparent onRequestClose={close}>
       <View style={styles.overlay}>
         <ScrollView style={styles.card} contentContainerStyle={styles.content}>
           <Pressable onPress={close} style={styles.closeRow}>

@@ -453,7 +453,7 @@ export function AdminManageScreen() {
         />
       ) : null}
 
-      <Modal visible={assignModalOpen} transparent animationType="slide">
+      <Modal visible={assignModalOpen} transparent animationType="none">
         <View className="flex-1 justify-center bg-black/45 p-4">
           <View className="max-h-[85%] rounded-xl bg-white p-5">
             <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Assign {selectedFarmer?.name}</Text>

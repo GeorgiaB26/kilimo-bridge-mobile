@@ -45,7 +45,7 @@ export function VerifyFarmerModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
       <View className="flex-1 justify-end bg-black/50">
         <View className="rounded-t-2xl bg-white p-5 pb-8">
           <Text className="mb-1 text-xl font-bold text-[#1A4D3E]">Verify Farmer</Text>

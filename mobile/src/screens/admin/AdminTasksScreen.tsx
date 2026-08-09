@@ -388,7 +388,7 @@ export function AdminTasksScreen() {
         />
       )}
 
-      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
+      <Modal visible={!!selected} animationType="none" transparent onRequestClose={() => setSelected(null)}>
         <View className="flex-1 justify-end bg-black/50">
           <ScrollView className="max-h-[85%] rounded-t-2xl bg-white" contentContainerClassName="p-5 pb-10">
             <Pressable onPress={() => setSelected(null)} className="mb-2 self-end">
