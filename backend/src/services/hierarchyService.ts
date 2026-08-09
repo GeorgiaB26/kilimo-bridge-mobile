@@ -747,7 +747,9 @@ export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
     WHERE id = $2
   `, [notes ?? null, farmerTaskId]);
   if (row) await refreshProjectTaskCounts(row.program_project_id);
-  return getFarmerTask(farmerTaskId);
+  const updated = await getFarmerTask(farmerTaskId);
+  await notifyFarmerOfHierarchyTaskReview(updated, 'approved');
+  return updated;
 }
 
 export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: string) {
@@ -755,7 +757,48 @@ export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: s
     UPDATE farmer_tasks SET status = 'rejected', rejection_reason = $1, updated_at = NOW()
     WHERE id = $2
   `, [rejection_reason, farmerTaskId]);
-  return getFarmerTask(farmerTaskId);
+  const updated = await getFarmerTask(farmerTaskId);
+  await notifyFarmerOfHierarchyTaskReview(updated, 'rejected', rejection_reason);
+  return updated;
+}
+
+/** In-app notification for the farmer when hierarchy evidence is approved or rejected. */
+async function notifyFarmerOfHierarchyTaskReview(
+  task: { id?: string; farmer_id?: string; name?: string } | null,
+  outcome: 'approved' | 'rejected',
+  rejectionReason?: string
+): Promise<void> {
+  if (!task?.id || !task.farmer_id) return;
+
+  const farmerUser = await queryOne<{ user_id: string }>(
+    'SELECT user_id::text AS user_id FROM users WHERE farmer_id = $1 LIMIT 1',
+    [task.farmer_id]
+  );
+  if (!farmerUser?.user_id) return;
+
+  const taskName = task.name ?? 'your task';
+  const title = outcome === 'approved' ? 'Task approved' : 'Task rejected';
+  const message =
+    outcome === 'approved'
+      ? `Your field agent approved "${taskName}".`
+      : `Your field agent rejected "${taskName}".${
+          rejectionReason?.trim() ? ` Reason: ${rejectionReason.trim()}.` : ''
+        } Please resubmit.`;
+
+  try {
+    const { createNotification } = await import('./notificationService');
+    await createNotification({
+      userId: farmerUser.user_id,
+      title,
+      message,
+      type: outcome === 'approved' ? 'task_approved' : 'task_rejected',
+      contextType: 'farmer_task',
+      contextId: task.id,
+      priority: 'high',
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 export async function getHierarchyDashboardStats() {

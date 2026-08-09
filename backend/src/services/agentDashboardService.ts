@@ -631,7 +631,8 @@ export async function updateAgentPersonalTaskReminder(
 async function notifyAssignedFarmers(
   task: AgentPersonalTask,
   title: string,
-  message: string
+  message: string,
+  type: string = 'task'
 ): Promise<void> {
   const farmerIds = parseAssignedFarmerIds(task.assigned_farmer_ids);
   for (const farmerId of farmerIds) {
@@ -645,7 +646,7 @@ async function notifyAssignedFarmers(
         userId: farmerUser.user_id,
         title,
         message,
-        type: 'task',
+        type,
         contextType: 'agent_task',
         contextId: task.id,
         priority: 'high',
@@ -703,7 +704,8 @@ export async function approveAgentTaskByAgent(
   await notifyAssignedFarmers(
     updated,
     'Task approved',
-    `Your field agent approved "${updated.name}".`
+    `Your field agent approved "${updated.name}".`,
+    'task_approved'
   );
   return updated;
 }
@@ -754,7 +756,8 @@ export async function rejectAgentTaskByAgent(
   await notifyAssignedFarmers(
     updated,
     'Task rejected',
-    `Your field agent rejected "${updated.name}". Reason: ${reason}. Please resubmit.`
+    `Your field agent rejected "${updated.name}". Reason: ${reason}. Please resubmit.`,
+    'task_rejected'
   );
   return updated;
 }

@@ -118,13 +118,19 @@ export function navigateFromFarmerNotification(
     contextType === 'task' ||
     contextType === 'agent_task' ||
     contextType === 'farmer_task' ||
-    type === 'task_assigned'
+    type === 'task_assigned' ||
+    type === 'task_rejected' ||
+    type === 'task_approved'
   ) {
-    navigateMainTab(
-      root,
-      'Tasks',
-      contextIdValue ? { taskId: contextIdValue, highlightTaskId: contextIdValue } : undefined
-    );
+    const params: Record<string, unknown> = {};
+    if (contextIdValue) {
+      params.taskId = contextIdValue;
+      params.highlightTaskId = contextIdValue;
+    }
+    if (type === 'task_rejected' || type.includes('rejected')) {
+      params.statusFilter = 'rejected';
+    }
+    navigateMainTab(root, 'Tasks', Object.keys(params).length ? params : undefined);
     return;
   }
 
