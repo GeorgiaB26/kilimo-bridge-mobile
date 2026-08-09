@@ -7,6 +7,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
@@ -47,6 +48,32 @@ function SummaryRow({ label, value, onEdit }: { label: string; value: string; on
   );
 }
 
+function parentHasRoute(
+  parent: { getState?: () => { routeNames?: string[] } } | undefined,
+  routeName: string
+): boolean {
+  return Boolean(parent?.getState?.()?.routeNames?.includes(routeName));
+}
+
+function findStackWithRoute(
+  navigation: { getParent: () => unknown },
+  routeName: string
+): { dispatch: (action: unknown) => void; goBack: () => void } | undefined {
+  let parent = navigation.getParent() as
+    | {
+        getParent?: () => unknown;
+        getState?: () => { routeNames?: string[] };
+        dispatch: (action: unknown) => void;
+        goBack: () => void;
+      }
+    | undefined;
+  while (parent) {
+    if (parentHasRoute(parent, routeName)) return parent;
+    parent = parent.getParent?.() as typeof parent;
+  }
+  return undefined;
+}
+
 export function ConfirmScreen({ navigation }: Props) {
   const { formData, resetForm } = useRegistrationStore();
   const [loading, setLoading] = useState(false);
@@ -73,6 +100,55 @@ export function ConfirmScreen({ navigation }: Props) {
   const goToFarmersList = () => {
     setSuccess(null);
     resetForm();
+    const farmersStack = findStackWithRoute(navigation, 'FarmerList');
+    if (farmersStack) {
+      farmersStack.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'FarmerList' }],
+        })
+      );
+      return;
+    }
+    navigation.getParent()?.goBack();
+  };
+
+  const registerAnother = () => {
+    setSuccess(null);
+    resetForm();
+    const farmersStack = findStackWithRoute(navigation, 'RegisterPicker');
+    if (farmersStack) {
+      farmersStack.dispatch(
+        CommonActions.reset({
+          index: 1,
+          routes: [{ name: 'FarmerList' }, { name: 'RegisterPicker' }],
+        })
+      );
+      return;
+    }
+    // Public registration flow — restart at country.
+    navigation.navigate('Country');
+  };
+
+  const viewProfile = () => {
+    const id = success?.farmerId;
+    if (!id) return;
+    const farmerName = formData.name;
+    setSuccess(null);
+    resetForm();
+    const farmersStack = findStackWithRoute(navigation, 'FarmerProfile');
+    if (farmersStack) {
+      farmersStack.dispatch(
+        CommonActions.reset({
+          index: 1,
+          routes: [
+            { name: 'FarmerList' },
+            { name: 'FarmerProfile', params: { farmerId: id, name: farmerName } },
+          ],
+        })
+      );
+      return;
+    }
     navigation.getParent()?.goBack();
   };
 
@@ -157,22 +233,6 @@ export function ConfirmScreen({ navigation }: Props) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const viewProfile = () => {
-    const id = success?.farmerId;
-    if (!id) return;
-    const farmerName = formData.name;
-    setSuccess(null);
-    resetForm();
-    const parent = navigation.getParent();
-    parent?.goBack();
-    setTimeout(() => {
-      (parent as { navigate?: (name: string, params: unknown) => void })?.navigate?.('FarmerProfile', {
-        farmerId: id,
-        name: farmerName,
-      });
-    }, 100);
   };
 
   return (
@@ -266,11 +326,7 @@ export function ConfirmScreen({ navigation }: Props) {
         kbFarmerId={success?.kbFarmerId ?? kbFarmerId}
         offline={success?.offline}
         onViewProfile={viewProfile}
-        onRegisterAnother={() => {
-          setSuccess(null);
-          resetForm();
-          navigation.navigate('Country');
-        }}
+        onRegisterAnother={registerAnother}
         onClose={goToFarmersList}
       />
     </>
