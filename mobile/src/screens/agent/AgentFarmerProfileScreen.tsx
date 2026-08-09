@@ -253,12 +253,6 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
               <ChevronLeft size={20} color="#FFFFFF" />
               <Text className="text-lg text-white">Back</Text>
             </Pressable>
-            <Pressable
-              onPress={() => Alert.alert('Edit profile', 'Profile editing will be available in a future update.')}
-              className="py-2"
-            >
-              <Text className="text-sm font-semibold text-[#D4AF6A]">Edit</Text>
-            </Pressable>
           </View>
           <View className="mt-2 items-center">
             <FarmerProfilePhoto
