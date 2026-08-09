@@ -211,6 +211,7 @@ export function FarmerTasksScreen() {
   const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
+  const openSubmitModalParam = route.params?.openSubmitModal === true;
   const { formatAmount } = useCurrency();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -238,6 +239,10 @@ export function FarmerTasksScreen() {
   const cardOffsetsRef = useRef<Record<string, number>>({});
   const pendingScrollTaskIdRef = useRef<string | null>(null);
   const pendingOpenEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDeepLinkRef = useRef<{
+    taskId: string;
+    openEdit: boolean;
+  } | null>(null);
 
   const loadPendingRecalls = useCallback(async () => {
     setPendingRecalls(await listPendingTaskRecalls());
@@ -543,37 +548,52 @@ export function FarmerTasksScreen() {
     [scrollToTaskCard]
   );
 
+  // Capture deep-link intent as soon as route params arrive (even while loading).
   useEffect(() => {
-    if (!scrollTargetId || loading || tasks.length === 0) return;
-    const task = tasks.find((t) => t.id === scrollTargetId);
+    if (!scrollTargetId) return;
+    pendingDeepLinkRef.current = {
+      taskId: scrollTargetId,
+      openEdit:
+        openSubmitModalParam ||
+        statusFilter === 'rejected',
+    };
+  }, [scrollTargetId, openSubmitModalParam, statusFilter]);
+
+  // Apply deep-link once tasks are ready: expand, scroll, then open edit modal.
+  useEffect(() => {
+    const pending = pendingDeepLinkRef.current;
+    if (!pending || loading || tasks.length === 0) return;
+
+    const task = tasks.find((t) => t.id === pending.taskId);
     if (!task) return;
+
+    pendingDeepLinkRef.current = null;
     setExpandedTaskId(task.id);
     setDeepLinkHighlightId(task.id);
     scheduleScrollToTask(task.id);
 
-    // Open edit modal for rejected tasks. Use a ref timer so clearing deep-link
-    // params (below) does not cancel the open via this effect's cleanup.
-    if (normalizeTaskStatus(task.status) === 'rejected') {
-      if (pendingOpenEditTimerRef.current) {
-        clearTimeout(pendingOpenEditTimerRef.current);
-      }
-      pendingOpenEditTimerRef.current = setTimeout(() => {
-        pendingOpenEditTimerRef.current = null;
-        setSubmitTask(task);
-      }, 450);
+    const shouldOpenEdit =
+      pending.openEdit ||
+      normalizeTaskStatus(task.status) === 'rejected';
+
+    navigation.setParams({
+      taskId: undefined,
+      highlightTaskId: undefined,
+      openSubmitModal: undefined,
+    });
+
+    if (!shouldOpenEdit) return;
+
+    if (pendingOpenEditTimerRef.current) {
+      clearTimeout(pendingOpenEditTimerRef.current);
     }
-
-    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
-  }, [scrollTargetId, tasks, loading, navigation, scheduleScrollToTask]);
-
-  useEffect(() => {
-    return () => {
-      if (pendingOpenEditTimerRef.current) {
-        clearTimeout(pendingOpenEditTimerRef.current);
-        pendingOpenEditTimerRef.current = null;
-      }
-    };
-  }, []);
+    // Scroll first, then open the resubmit modal. Keep timer on a ref so route-param
+    // updates do not cancel it via effect cleanup.
+    pendingOpenEditTimerRef.current = setTimeout(() => {
+      pendingOpenEditTimerRef.current = null;
+      setSubmitTask(task);
+    }, 500);
+  }, [loading, tasks, navigation, scheduleScrollToTask]);
 
   const onCardListLayout = useCallback((e: LayoutChangeEvent) => {
     cardListOffsetRef.current = e.nativeEvent.layout.y;

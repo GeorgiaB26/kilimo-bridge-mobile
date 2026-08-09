@@ -129,6 +129,7 @@ export function navigateFromFarmerNotification(
     }
     if (type === 'task_rejected' || type.includes('rejected')) {
       params.statusFilter = 'rejected';
+      params.openSubmitModal = true;
     }
     navigateMainTab(root, 'Tasks', Object.keys(params).length ? params : undefined);
     return;
