@@ -118,13 +118,21 @@ export function NotificationsScreen() {
             style={[styles.filterBtn, filter === 'all' && styles.filterActive]}
             onPress={() => setFilter('all')}
           >
-            <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>All</Text>
+            <Text
+              className={`text-[13px] font-semibold ${filter === 'all' ? 'text-white' : 'text-[#757575]'}`}
+            >
+              All
+            </Text>
           </Pressable>
           <Pressable
             style={[styles.filterBtn, filter === 'unread' && styles.filterActive]}
             onPress={() => setFilter('unread')}
           >
-            <Text style={[styles.filterText, filter === 'unread' && styles.filterTextActive]}>
+            <Text
+              className={`text-[13px] font-semibold ${
+                filter === 'unread' ? 'text-white' : 'text-[#757575]'
+              }`}
+            >
               Unread
             </Text>
           </Pressable>
@@ -200,14 +208,14 @@ const styles = StyleSheet.create({
   },
   filterRow: { flexDirection: 'row', gap: 8 },
   filterBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
     backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterActive: { backgroundColor: COLORS.primary },
-  filterText: { fontSize: 13, fontWeight: '600', color: COLORS.muted },
-  filterTextActive: { color: '#fff' },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   actionBtn: { padding: 4 },
   actionText: { color: COLORS.primary, fontWeight: '600', fontSize: 13 },
