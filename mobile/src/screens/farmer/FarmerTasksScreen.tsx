@@ -237,6 +237,7 @@ export function FarmerTasksScreen() {
   const cardListOffsetRef = useRef(0);
   const cardOffsetsRef = useRef<Record<string, number>>({});
   const pendingScrollTaskIdRef = useRef<string | null>(null);
+  const pendingOpenEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadPendingRecalls = useCallback(async () => {
     setPendingRecalls(await listPendingTaskRecalls());
@@ -549,15 +550,30 @@ export function FarmerTasksScreen() {
     setExpandedTaskId(task.id);
     setDeepLinkHighlightId(task.id);
     scheduleScrollToTask(task.id);
-    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
 
-    // Rejected deep-links: scroll to the card, then open the edit/resubmit modal.
-    if (normalizeTaskStatus(task.status) !== 'rejected') return;
-    const openTimer = setTimeout(() => {
-      setSubmitTask(task);
-    }, 450);
-    return () => clearTimeout(openTimer);
+    // Open edit modal for rejected tasks. Use a ref timer so clearing deep-link
+    // params (below) does not cancel the open via this effect's cleanup.
+    if (normalizeTaskStatus(task.status) === 'rejected') {
+      if (pendingOpenEditTimerRef.current) {
+        clearTimeout(pendingOpenEditTimerRef.current);
+      }
+      pendingOpenEditTimerRef.current = setTimeout(() => {
+        pendingOpenEditTimerRef.current = null;
+        setSubmitTask(task);
+      }, 450);
+    }
+
+    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
   }, [scrollTargetId, tasks, loading, navigation, scheduleScrollToTask]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingOpenEditTimerRef.current) {
+        clearTimeout(pendingOpenEditTimerRef.current);
+        pendingOpenEditTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const onCardListLayout = useCallback((e: LayoutChangeEvent) => {
     cardListOffsetRef.current = e.nativeEvent.layout.y;
