@@ -290,10 +290,10 @@ export function AgentDashboardScreen() {
             >
               <View className="flex-1 pr-2">
                 <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
-                <Text className="mt-0.5 text-xs text-[#757575]">
-                  {f.district ?? f.sub_county ?? '—'}
-                </Text>
-                <View className="mt-2">
+                <View className="mt-1.5 flex-row flex-wrap items-center gap-2">
+                  <Text className="text-xs text-[#757575]">
+                    {f.district ?? f.sub_county ?? '—'}
+                  </Text>
                   <FarmerStatusChip status={f.status} compact />
                 </View>
               </View>
