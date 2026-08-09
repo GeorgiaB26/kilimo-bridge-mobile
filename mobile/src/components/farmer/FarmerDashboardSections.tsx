@@ -97,27 +97,41 @@ export function FarmerDashboardProfileCard({
           <Image source={{ uri: farmer.picture_url }} style={styles.profilePhoto} />
         ) : (
           <View style={styles.photoPlaceholder}>
-            <Text style={styles.photoInitials}>{name.charAt(0).toUpperCase()}</Text>
+            <Text className="text-white" style={styles.photoInitials}>
+              {name.charAt(0).toUpperCase()}
+            </Text>
           </View>
         )}
       </View>
-      <Text style={styles.profileName}>{name}</Text>
-      <Text style={styles.profileLocation}>{location}</Text>
+      <Text className="text-white" style={styles.profileName}>
+        {name}
+      </Text>
+      <Text className="text-white" style={styles.profileLocation}>
+        {location}
+      </Text>
       {verified ? (
         <View style={styles.verificationBadge}>
-          <Text style={styles.verificationText}>✓ Verified</Text>
+          <Text className="text-white" style={styles.verificationText}>
+            ✓ Verified
+          </Text>
         </View>
       ) : null}
-      <Text style={styles.statusText}>
+      <Text className="text-white" style={styles.statusText}>
         {verified ? 'Verified and approved' : 'Profile under review'}
       </Text>
-      <Text style={styles.currencyText}>{currencyLabel ?? 'Kenyan Shilling (KES)'}</Text>
+      <Text className="text-white" style={styles.currencyText}>
+        {currencyLabel ?? 'Kenyan Shilling (KES)'}
+      </Text>
       <View style={styles.profileActions}>
         <Pressable style={styles.editButton} onPress={onEditProfile}>
-          <Text style={styles.buttonText}>Edit Profile</Text>
+          <Text className="text-white" style={styles.buttonText}>
+            Edit Profile
+          </Text>
         </Pressable>
         <Pressable style={styles.logoutButton} onPress={onLogout}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
+          <Text className="text-white" style={styles.logoutButtonText}>
+            Logout
+          </Text>
         </Pressable>
       </View>
     </View>
