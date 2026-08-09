@@ -10,6 +10,7 @@ import {
   Pressable,
   Platform,
   Image,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -195,6 +196,8 @@ function TaskSection({
   onTaskPress,
   onExpandApproval,
   expandedId,
+  highlightTaskId,
+  onTaskLayout,
   rejectReason,
   setRejectReason,
   acting,
@@ -209,16 +212,25 @@ function TaskSection({
   onTaskPress: (task: UnifiedTask) => void;
   onExpandApproval?: (id: string | null) => void;
   expandedId?: string | null;
+  highlightTaskId?: string | null;
+  /** Y of card within the tasks list container (section offset + card offset). */
+  onTaskLayout?: (taskId: string, yWithinList: number) => void;
   rejectReason?: string;
   setRejectReason?: (v: string) => void;
   acting?: string | null;
   approve?: (id: string) => void | Promise<void>;
   reject?: (id: string) => void | Promise<void>;
 }) {
+  const sectionOffsetRef = useRef(0);
   if (!tasks.length) return null;
   const titleColor = color ?? '#757575';
   return (
-    <View className="mb-5">
+    <View
+      className="mb-5"
+      onLayout={(e) => {
+        sectionOffsetRef.current = e.nativeEvent.layout.y;
+      }}
+    >
       <View className="mb-2 flex-row items-center gap-1.5">
         {TitleIcon ? <TitleIcon size={16} color={titleColor} /> : null}
         <Text className="text-sm font-bold uppercase tracking-wide" style={{ color: titleColor }}>
@@ -228,13 +240,25 @@ function TaskSection({
       {tasks.map((item) => {
         const isApproval = isSubmittedForApprovalStatus(item.status);
         const expanded = expandedId === item.id;
+        const highlighted = highlightTaskId === item.id;
         const photoUrl = item.photo_evidence_url?.trim() || '';
         return (
-          <KBCard
+          <View
             key={`${item.source}-${item.id}`}
-            style={{ marginBottom: 8 }}
-            onPress={() => onTaskPress(item)}
+            collapsable={false}
+            onLayout={(e) => {
+              onTaskLayout?.(item.id, sectionOffsetRef.current + e.nativeEvent.layout.y);
+            }}
           >
+            <KBCard
+              style={{
+                marginBottom: 8,
+                ...(highlighted
+                  ? { borderWidth: 2, borderColor: '#1A4D3E' }
+                  : null),
+              }}
+              onPress={() => onTaskPress(item)}
+            >
             <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">
               Due: {formatDue(item.due_date)}
@@ -344,6 +368,7 @@ function TaskSection({
               <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view details</Text>
             )}
           </KBCard>
+          </View>
         );
       })}
     </View>
@@ -383,8 +408,14 @@ export function AgentTasksScreen() {
     []
   );
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [deepLinkHighlightId, setDeepLinkHighlightId] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
   const appliedDeepLinkTaskIdRef = useRef<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const cardListOffsetRef = useRef(0);
+  const cardOffsetsRef = useRef<Record<string, number>>({});
+  const pendingScrollTaskIdRef = useRef<string | null>(null);
+  const pendingOpenDetailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => {
     const assignedNames = Array.isArray(t.assigned_farmer_names)
@@ -428,9 +459,55 @@ export function AgentTasksScreen() {
   });
 
   const openTaskDetail = (task: UnifiedTask) => {
+    setDeepLinkHighlightId(null);
     setSelectedTask(toTaskDetail(task));
     setDetailOpen(true);
   };
+
+  const scrollToTaskCard = useCallback((taskId: string) => {
+    const yWithinList = cardOffsetsRef.current[taskId];
+    if (yWithinList == null || !scrollRef.current) return false;
+    const y = cardListOffsetRef.current + yWithinList;
+    scrollRef.current.scrollTo({ y: Math.max(0, y - 16), animated: true });
+    return true;
+  }, []);
+
+  const scheduleScrollToTask = useCallback(
+    (taskId: string) => {
+      pendingScrollTaskIdRef.current = taskId;
+      const attempt = () => {
+        if (pendingScrollTaskIdRef.current !== taskId) return;
+        if (scrollToTaskCard(taskId)) {
+          pendingScrollTaskIdRef.current = null;
+        }
+      };
+      requestAnimationFrame(attempt);
+      setTimeout(attempt, 120);
+      setTimeout(attempt, 350);
+      setTimeout(attempt, 700);
+    },
+    [scrollToTaskCard]
+  );
+
+  const onCardListLayout = useCallback((e: LayoutChangeEvent) => {
+    cardListOffsetRef.current = e.nativeEvent.layout.y;
+    const pendingId = pendingScrollTaskIdRef.current;
+    if (pendingId) {
+      scrollToTaskCard(pendingId);
+    }
+  }, [scrollToTaskCard]);
+
+  const onTaskLayoutInList = useCallback(
+    (taskId: string, yWithinList: number) => {
+      cardOffsetsRef.current[taskId] = yWithinList;
+      if (pendingScrollTaskIdRef.current === taskId) {
+        if (scrollToTaskCard(taskId)) {
+          pendingScrollTaskIdRef.current = null;
+        }
+      }
+    },
+    [scrollToTaskCard]
+  );
 
   const loadPending = useCallback(async () => {
     try {
@@ -539,7 +616,7 @@ export function AgentTasksScreen() {
     }
   }, [navigation, route.params?.filter, route.params?.openAdd]);
 
-  // Open task detail as soon as the target exists — do not wait on full-screen loading.
+  // Open task detail as soon as the target exists — scroll first, then open modal.
   useEffect(() => {
     const deepLinkTaskId = route.params?.taskId ?? route.params?.highlightTaskId;
     if (!deepLinkTaskId) {
@@ -553,16 +630,27 @@ export function AgentTasksScreen() {
     setStatusFilter('all');
     setFarmerFilterId(null);
     setMyTasksOnly(false);
+    setShowFiltersPanel(false);
     setExpandedId(match.id);
-    setSelectedTask(toTaskDetail(match));
-    setDetailOpen(true);
+    setDeepLinkHighlightId(match.id);
+    scheduleScrollToTask(match.id);
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
+
+    if (pendingOpenDetailTimerRef.current) {
+      clearTimeout(pendingOpenDetailTimerRef.current);
+    }
+    pendingOpenDetailTimerRef.current = setTimeout(() => {
+      pendingOpenDetailTimerRef.current = null;
+      setSelectedTask(toTaskDetail(match));
+      setDetailOpen(true);
+    }, 500);
   }, [
     route.params?.taskId,
     route.params?.highlightTaskId,
     farmerTasks,
     personalTasks,
     navigation,
+    scheduleScrollToTask,
   ]);
 
   const onRefresh = async () => {
@@ -911,6 +999,7 @@ export function AgentTasksScreen() {
   return (
     <>
       <ScrollView
+        ref={scrollRef}
         className="flex-1 bg-[#F5F5F5]"
         contentContainerClassName="p-4 pb-10"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -1143,6 +1232,7 @@ export function AgentTasksScreen() {
           </View>
         ) : null}
 
+        <View onLayout={onCardListLayout} collapsable={false}>
         <TaskSection
           TitleIcon={TriangleAlert}
           title={`Overdue (${overdue.length})`}
@@ -1152,6 +1242,8 @@ export function AgentTasksScreen() {
           onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
           rejectReason={rejectReason}
           setRejectReason={setRejectReason}
           acting={acting}
@@ -1185,6 +1277,8 @@ export function AgentTasksScreen() {
           onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
           rejectReason={rejectReason}
           setRejectReason={setRejectReason}
           acting={acting}
@@ -1198,6 +1292,8 @@ export function AgentTasksScreen() {
           tasks={notStarted}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
         />
         <TaskSection
           TitleIcon={Hourglass}
@@ -1208,6 +1304,8 @@ export function AgentTasksScreen() {
           onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
           rejectReason={rejectReason}
           setRejectReason={setRejectReason}
           acting={acting}
@@ -1221,6 +1319,8 @@ export function AgentTasksScreen() {
           tasks={rejected}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
         />
         <TaskSection
           TitleIcon={CircleCheck}
@@ -1229,7 +1329,10 @@ export function AgentTasksScreen() {
           tasks={completed}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
         />
+        </View>
 
         {!hasVisibleTasks && helpRequests.length === 0 ? (
           <View className="items-center rounded-xl bg-white p-6">
@@ -1246,17 +1349,20 @@ export function AgentTasksScreen() {
         onClose={() => {
           setDetailOpen(false);
           setSelectedTask(null);
+          setDeepLinkHighlightId(null);
         }}
         onUpdateStatus={handleUpdatePersonalStatus}
         onApprove={async (id) => {
           await approve(id);
           setDetailOpen(false);
           setSelectedTask(null);
+          setDeepLinkHighlightId(null);
         }}
         onReject={async (id, reason) => {
           await reject(id, reason);
           setDetailOpen(false);
           setSelectedTask(null);
+          setDeepLinkHighlightId(null);
         }}
       />
 
