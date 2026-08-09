@@ -8,7 +8,7 @@ import {
   Pressable,
   TextInput,
   Platform,
-  StyleSheet,
+  ScrollView,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,7 +39,6 @@ import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerif
 import type { AgentFarmersStackParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
-import { COLORS } from '../../constants';
 
 type FarmerRow = {
   farmer_id: string;
@@ -88,6 +87,7 @@ export function AgentFarmersScreen() {
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const hasLoadedRef = useRef(false);
 
@@ -158,6 +158,11 @@ export function AgentFarmersScreen() {
     });
   };
 
+  const resetFilters = () => {
+    setStatusMenuOpen(false);
+    navigation.setParams({ statusFilter: undefined });
+  };
+
   const handlePushRegistration = async (id: string, name: string) => {
     setPushingId(id);
     try {
@@ -209,6 +214,8 @@ export function AgentFarmersScreen() {
     STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)?.label ?? 'All statuses';
 
   const filterActive = statusFilter !== 'all';
+  const activeFilterCount = filterActive ? 1 : 0;
+  const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : undefined;
 
   if (loading && !hasLoadedRef.current) {
     return (
@@ -298,11 +305,44 @@ export function AgentFarmersScreen() {
 
           <Text className="mb-2 text-[17px] font-bold text-[#333333]">Registered farmers</Text>
 
-          <View style={styles.searchFilterRow}>
-            <View style={styles.searchBox}>
+          <View className="mb-3 flex-row items-center gap-2">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
+              onPress={() => {
+                setShowFiltersPanel((open) => !open);
+                setStatusMenuOpen(false);
+              }}
+              className={`flex-row items-center gap-1 rounded-lg px-3 py-2 ${
+                showFiltersPanel || activeFilterCount > 0 ? 'bg-[#1A4D3E]' : 'bg-white'
+              }`}
+              style={webPressable}
+            >
+              <Text
+                className={`text-sm font-semibold ${
+                  showFiltersPanel || activeFilterCount > 0 ? 'text-white' : 'text-[#333333]'
+                }`}
+              >
+                Filters
+              </Text>
+              {activeFilterCount > 0 ? (
+                <View className="min-w-[18px] items-center rounded-full bg-[#FFD700] px-1.5">
+                  <Text className="text-[11px] font-bold text-[#1A1A1A]">{activeFilterCount}</Text>
+                </View>
+              ) : (
+                <Text
+                  className={`text-xs ${
+                    showFiltersPanel || activeFilterCount > 0 ? 'text-white/80' : 'text-[#757575]'
+                  }`}
+                >
+                  ▼
+                </Text>
+              )}
+            </Pressable>
+            <View className="flex-1 flex-row items-center rounded-lg bg-white px-3">
               <Ionicons name="search" size={18} color="#757575" />
               <TextInput
-                style={styles.searchInput}
+                className="flex-1 py-2 pl-2"
                 placeholder="Search farmer name"
                 placeholderTextColor="#9E9E9E"
                 value={searchQuery}
@@ -312,50 +352,62 @@ export function AgentFarmersScreen() {
                 clearButtonMode="while-editing"
               />
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Filter farmers: ${statusFilterLabel}`}
-              onPress={() => setStatusMenuOpen((open) => !open)}
-              style={({ pressed }) => [
-                styles.filterButton,
-                statusMenuOpen || filterActive ? styles.filterButtonActive : null,
-                pressed ? styles.filterButtonPressed : null,
-                Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
-              ]}
-            >
-              <Text style={styles.filterButtonLabel} numberOfLines={1}>
-                {statusFilter === 'all' ? 'Filter' : statusFilterLabel}
-              </Text>
-              <Text style={styles.filterChevron}>{statusMenuOpen ? '▲' : '▼'}</Text>
-            </Pressable>
           </View>
 
-          {statusMenuOpen ? (
-            <View style={styles.filterMenu}>
-              {STATUS_FILTER_OPTIONS.map((opt) => {
-                const selected = statusFilter === opt.key;
-                return (
-                  <Pressable
-                    key={opt.key}
-                    onPress={() => setStatusFilter(opt.key)}
-                    style={[styles.filterMenuItem, selected ? styles.filterMenuItemActive : null]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterMenuItemLabel,
-                        selected ? styles.filterMenuItemLabelActive : null,
-                      ]}
-                    >
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+          {showFiltersPanel ? (
+            <View className="mb-4 rounded-xl border border-[#E5E5E5] bg-white p-3">
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#757575]">
+                Status
+              </Text>
+              <Pressable
+                onPress={() => setStatusMenuOpen((o) => !o)}
+                className="mb-2 flex-row items-center justify-between rounded-lg border border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2.5"
+                style={webPressable}
+              >
+                <Text className="text-sm text-[#333333]">{statusFilterLabel}</Text>
+                <Text className="text-xs text-[#757575]">{statusMenuOpen ? '▲' : '▼'}</Text>
+              </Pressable>
+              {statusMenuOpen ? (
+                <View className="mb-3 max-h-48 overflow-hidden rounded-lg border border-[#EEEEEE]">
+                  <ScrollView nestedScrollEnabled>
+                    {STATUS_FILTER_OPTIONS.map((opt) => (
+                      <Pressable
+                        key={opt.key}
+                        onPress={() => setStatusFilter(opt.key)}
+                        className={`px-3 py-2.5 ${
+                          statusFilter === opt.key ? 'bg-[#E8F5F0]' : 'bg-white'
+                        }`}
+                        style={webPressable}
+                      >
+                        <Text
+                          className={`text-sm ${
+                            statusFilter === opt.key
+                              ? 'font-semibold text-[#1A4D3E]'
+                              : 'text-[#333333]'
+                          }`}
+                        >
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              <View className="mt-1 flex-row flex-wrap gap-2">
+                <Pressable
+                  onPress={resetFilters}
+                  className="rounded-lg border border-[#E0E0E0] bg-white px-3 py-2.5"
+                  style={webPressable}
+                >
+                  <Text className="text-sm font-semibold text-[#757575]">Reset</Text>
+                </Pressable>
+              </View>
             </View>
           ) : null}
 
           {filterActive || searchQuery.trim() ? (
-            <Text className="mb-2 mt-2 text-xs text-[#757575]">
+            <Text className="mb-2 text-xs text-[#757575]">
               Showing {filteredFarmers.length} of {farmers.length} farmers
             </Text>
           ) : (
@@ -391,85 +443,3 @@ export function AgentFarmersScreen() {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  searchFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  searchBox: {
-    flex: 3,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minHeight: 44,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#FFFFFF',
-  },
-  searchInput: {
-    flex: 1,
-    paddingLeft: 6,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-    fontSize: 14,
-    color: '#1A1A1A',
-  },
-  filterButton: {
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 4,
-  },
-  filterButtonActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#F1F7F4',
-  },
-  filterButtonPressed: {
-    opacity: 0.85,
-  },
-  filterButtonLabel: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#333333',
-  },
-  filterChevron: {
-    fontSize: 10,
-    color: '#757575',
-  },
-  filterMenu: {
-    marginTop: 8,
-    marginBottom: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
-  },
-  filterMenuItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  filterMenuItemActive: {
-    backgroundColor: '#E8F5F0',
-  },
-  filterMenuItemLabel: {
-    fontSize: 14,
-    color: '#333333',
-  },
-  filterMenuItemLabelActive: {
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-});
