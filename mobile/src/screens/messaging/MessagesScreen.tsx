@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
+  Text as RNText,
 } from 'react-native';
 import { SquarePen } from 'lucide-react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -258,7 +259,9 @@ export function MessagesScreen() {
               </View>
               {item.unread_count > 0 ? (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{item.unread_count}</Text>
+                  <RNText style={styles.badgeText} allowFontScaling={false}>
+                    {item.unread_count > 99 ? '99+' : item.unread_count}
+                  </RNText>
                 </View>
               ) : null}
             </Pressable>
@@ -340,14 +343,20 @@ const styles = StyleSheet.create({
   timestamp: { fontSize: 12, color: COLORS.muted },
   preview: { fontSize: 14, color: COLORS.muted, marginTop: 4 },
   badge: {
-    backgroundColor: '#E74C3C',
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
+    backgroundColor: '#FFD700',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
   },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  badgeText: {
+    color: '#1A1A1A',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 11,
+    includeFontPadding: false,
+  },
 });

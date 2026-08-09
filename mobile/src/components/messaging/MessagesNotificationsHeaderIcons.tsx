@@ -1,8 +1,7 @@
 import React from 'react';
-import { Pressable, View, StyleSheet } from 'react-native';
+import { Pressable, View, StyleSheet, Text as RNText } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
-import { Text } from '@/components/ui/text';
 import { useUnreadInboxCounts } from '../../hooks/useUnreadInboxCounts';
 
 type Props = {
@@ -10,6 +9,18 @@ type Props = {
   notificationsRoute?: string;
   iconColor?: string;
 };
+
+function UnreadBadge({ count }: { count: number }) {
+  const label = count > 99 ? '99+' : String(count);
+  const wide = label.length > 1;
+  return (
+    <View style={[styles.badge, wide ? styles.badgeWide : null]}>
+      <RNText style={styles.badgeText} allowFontScaling={false}>
+        {label}
+      </RNText>
+    </View>
+  );
+}
 
 export function MessagesNotificationsHeaderIcons({
   messagesRoute = 'MessagesFlow',
@@ -39,11 +50,7 @@ export function MessagesNotificationsHeaderIcons({
         accessibilityHint="Open messages"
       >
         <Ionicons name="chatbubbles-outline" size={22} color={iconColor} />
-        {messageCount > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{messageCount > 99 ? '99+' : messageCount}</Text>
-          </View>
-        ) : null}
+        {messageCount > 0 ? <UnreadBadge count={messageCount} /> : null}
       </Pressable>
       <Pressable
         onPress={() => openFlow(notificationsRoute)}
@@ -52,15 +59,13 @@ export function MessagesNotificationsHeaderIcons({
         accessibilityHint="Open notifications"
       >
         <Ionicons name="notifications-outline" size={22} color={iconColor} />
-        {notificationCount > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-          </View>
-        ) : null}
+        {notificationCount > 0 ? <UnreadBadge count={notificationCount} /> : null}
       </Pressable>
     </View>
   );
 }
+
+const BADGE_SIZE = 16;
 
 const styles = StyleSheet.create({
   row: {
@@ -74,20 +79,27 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#E74C3C',
+    top: 1,
+    right: 1,
+    width: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: BADGE_SIZE / 2,
+    backgroundColor: '#FFD700',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    overflow: 'hidden',
+  },
+  badgeWide: {
+    width: undefined,
+    minWidth: BADGE_SIZE,
+    paddingHorizontal: 3,
   },
   badgeText: {
-    color: '#fff',
-    fontSize: 10,
+    color: '#1A1A1A',
+    fontSize: 8,
     fontWeight: '700',
-    lineHeight: 12,
+    lineHeight: 10,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 });
