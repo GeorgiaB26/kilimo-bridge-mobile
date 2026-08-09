@@ -780,7 +780,7 @@ export function FarmerTasksScreen() {
               ]}
             >
               <Text style={styles.sortButtonLabel} numberOfLines={1}>
-                Sort
+                {sortLabel}
               </Text>
               <Text style={styles.sortChevron}>{sortMenuOpen ? '▲' : '▼'}</Text>
             </Pressable>
@@ -1075,7 +1075,7 @@ const styles = StyleSheet.create({
   sortButtonLabel: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '400',
     color: '#1A1A1A',
   },
   sortChevron: {
@@ -1100,10 +1100,10 @@ const styles = StyleSheet.create({
   },
   sortMenuItemLabel: {
     fontSize: 13,
+    fontWeight: '400',
     color: '#333333',
   },
   sortMenuItemLabelActive: {
-    fontWeight: '700',
     color: COLORS.primary,
   },
   cardList: {
