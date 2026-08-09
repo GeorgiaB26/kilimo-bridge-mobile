@@ -8,7 +8,6 @@ import { getFarmerPayments } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
-import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { PaymentSummaryBreakdown } from '../../components/farmer/PaymentSummaryBreakdown';
 import {
   FarmerPaymentDetailModal,
@@ -79,7 +78,6 @@ export function FarmerPaymentsScreen() {
 
   return (
     <View className="flex-1 bg-[#F5F5F5]">
-      <FarmerInboxHeaderBar />
       <FlatList
         className="flex-1"
         data={payments}

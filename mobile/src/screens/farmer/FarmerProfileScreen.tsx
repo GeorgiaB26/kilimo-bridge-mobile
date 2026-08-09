@@ -33,7 +33,6 @@ import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
 import { useCurrency } from '../../context/CurrencyContext';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';
-import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 
 type SupportContacts = {
   fieldAgent?: {
@@ -264,9 +263,6 @@ export function FarmerProfileScreen() {
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
       {error ? <FarmerOfflineBanner message={error} /> : null}
-      <View className="mb-2 flex-row items-center justify-end">
-        <MessagesNotificationsHeaderIcons iconColor="#1A4D3E" />
-      </View>
       <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">
         <Pressable
           onPress={promptChangePhoto}

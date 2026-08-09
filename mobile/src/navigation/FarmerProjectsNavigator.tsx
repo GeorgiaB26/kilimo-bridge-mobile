@@ -4,6 +4,7 @@ import { COLORS } from '../constants';
 import { FarmerProjectsScreen } from '../screens/farmer/FarmerProjectsScreen';
 import { FarmerProjectDetailScreen } from '../screens/farmer/FarmerProjectDetailScreen';
 import { FarmerHierarchyProjectDetailScreen } from '../screens/farmer/FarmerHierarchyProjectDetailScreen';
+import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import type { FarmerProjectsStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<FarmerProjectsStackParamList>();
@@ -20,7 +21,10 @@ export function FarmerProjectsNavigator() {
       <Stack.Screen
         name="ProjectsList"
         component={FarmerProjectsScreen}
-        options={{ headerShown: false }}
+        options={{
+          title: 'Projects',
+          headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
+        }}
       />
       <Stack.Screen
         name="ProjectDetail"

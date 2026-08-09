@@ -16,7 +16,6 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { formatProjectStatus, formatDisplayDate, formatProjectDate } from '../../utils/greeting';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
-import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
@@ -90,10 +89,8 @@ export function FarmerProjectsScreen() {
 
     return (
       <View className="flex-1 bg-[#F5F5F5]">
-        <FarmerInboxHeaderBar />
         <View className="flex-1 p-4">
-        <Text className="text-[26px] font-bold text-[#1A4D3E]">Your program projects</Text>
-        <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">
+        <Text className="mb-4 text-sm leading-5 text-[#757575]">
           Tap a project to see your assigned tasks and mark them complete
         </Text>
         {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
@@ -157,10 +154,8 @@ export function FarmerProjectsScreen() {
 
   return (
     <View className="flex-1 bg-[#F5F5F5]">
-      <FarmerInboxHeaderBar />
       <View className="flex-1 p-4">
-      <Text className="text-[26px] font-bold text-[#1A4D3E]">Your Projects</Text>
-      <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">
+      <Text className="mb-4 text-sm leading-5 text-[#757575]">
         {tab === 'active'
           ? 'Training and work you are currently doing'
           : 'Projects you have finished and been paid for'}

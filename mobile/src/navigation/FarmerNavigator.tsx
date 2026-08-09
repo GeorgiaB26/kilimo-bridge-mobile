@@ -10,6 +10,7 @@ import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FloatingTabBar, FARMER_TAB_ICONS } from './FloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
+import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import type { FarmerRootStackParamList, FarmerTabParamList } from './types';
 
 import { FarmerCurrencySync } from '../components/FarmerCurrencySync';
@@ -32,37 +33,40 @@ function FarmerTabNavigator() {
   return (
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} icons={FARMER_TAB_ICONS} />}
-      screenOptions={{
+      screenOptions={({ route }) => ({
+        // Projects uses its own stack headers (list + detail) — same green bar size.
+        headerShown: route.name !== 'Projects',
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '600' },
+        headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
         sceneStyle: { paddingBottom: 88 },
-      }}
+      })}
     >
       <Tab.Screen
         name="Dashboard"
         component={withFarmerTabScene(FarmerDashboardScreen)}
-        options={{ title: 'Home', headerShown: false }}
+        options={{ title: 'Dashboard', tabBarLabel: 'Home' }}
       />
       <Tab.Screen
         name="Projects"
         component={withFarmerTabScene(FarmerProjectsNavigator)}
-        options={{ headerShown: false }}
+        options={{ title: 'Projects', tabBarLabel: 'Projects' }}
       />
       <Tab.Screen
         name="Tasks"
         component={withFarmerTabScene(FarmerTasksScreen)}
-        options={{ title: 'Tasks', headerShown: false }}
+        options={{ title: 'Tasks' }}
       />
       <Tab.Screen
         name="Payments"
         component={withFarmerTabScene(FarmerPaymentsScreen)}
-        options={{ headerShown: false }}
+        options={{ title: 'Payments' }}
       />
       <Tab.Screen
         name="Profile"
         component={withFarmerTabScene(FarmerProfileScreen)}
-        options={{ headerShown: false }}
+        options={{ title: 'Profile' }}
       />
     </Tab.Navigator>
   );

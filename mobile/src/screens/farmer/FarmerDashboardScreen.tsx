@@ -20,7 +20,6 @@ import { useAuthStore } from '../../store/authStore';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerTabParamList, FarmerProjectsStackParamList } from '../../navigation/types';
-import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 import {
   FarmerDashboardProfileCard,
   FarmerDashboardEarningsCard,
@@ -222,13 +221,6 @@ export function FarmerDashboardScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF6A" />
         }
       >
-        <View className="bg-white px-4 pb-3 pt-4">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-[28px] font-bold text-[#1F4E78]">Dashboard</Text>
-            <MessagesNotificationsHeaderIcons iconColor="#1A4D3E" />
-          </View>
-        </View>
-
         {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         {error && !data ? <FarmerOfflineBanner message={error} /> : null}
 

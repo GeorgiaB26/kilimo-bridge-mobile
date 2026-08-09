@@ -25,7 +25,6 @@ import { COLORS } from '../../constants';
 import { getFarmerAssignedTasks } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
-import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
@@ -833,7 +832,6 @@ export function FarmerTasksScreen() {
   if (loading && tasks.length === 0) {
     return (
       <View style={styles.root}>
-        <FarmerInboxHeaderBar />
         <View style={styles.centered}>
           <ActivityIndicator color={COLORS.primary} size="large" />
           <Text className="mt-3 text-muted-foreground">Loading your tasks...</Text>
@@ -844,7 +842,6 @@ export function FarmerTasksScreen() {
 
   return (
     <View style={styles.root}>
-      <FarmerInboxHeaderBar />
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.listContent}
@@ -854,9 +851,6 @@ export function FarmerTasksScreen() {
       >
         <View style={styles.header}>
           <View style={styles.titleRow}>
-            <Text className="text-2xl font-bold text-foreground" style={styles.titleText}>
-              Your Tasks
-            </Text>
             <RefreshCountdownBadge seconds={refreshInSec} />
           </View>
           <TaskStatusKpiRow
@@ -1117,12 +1111,9 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: 12,
     marginBottom: 4,
-  },
-  titleText: {
-    flexShrink: 1,
   },
   refreshBadge: {
     flexDirection: 'row',
