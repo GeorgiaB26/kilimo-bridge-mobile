@@ -12,6 +12,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -229,8 +230,13 @@ export function FarmerTasksScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<TaskSortMode>('due_asc');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [deepLinkHighlightId, setDeepLinkHighlightId] = useState<string | null>(null);
   const countdownSecRef = useRef(REFRESH_INTERVAL_SEC);
   const hasLoadedRef = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const cardListOffsetRef = useRef(0);
+  const cardOffsetsRef = useRef<Record<string, number>>({});
+  const pendingScrollTaskIdRef = useRef<string | null>(null);
 
   const loadPendingRecalls = useCallback(async () => {
     setPendingRecalls(await listPendingTaskRecalls());
@@ -486,6 +492,7 @@ export function FarmerTasksScreen() {
   );
 
   useEffect(() => {
+    if (loading) return;
     if (statusFilter === 'rejected' && categoryCounts.rejected === 0) {
       navigation.setParams({ statusFilter: undefined });
     }
@@ -496,6 +503,7 @@ export function FarmerTasksScreen() {
       navigation.setParams({ statusFilter: undefined });
     }
   }, [
+    loading,
     statusFilter,
     categoryCounts.rejected,
     categoryCounts.submitted_for_approval,
@@ -504,20 +512,65 @@ export function FarmerTasksScreen() {
 
   const toggleStatusFilter = (key: StatusFilterKey) => {
     setExpandedTaskId(null);
+    setDeepLinkHighlightId(null);
     navigation.setParams({
       statusFilter: statusFilter === key ? undefined : key,
     });
   };
+
+  const scrollToTaskCard = useCallback((taskId: string) => {
+    const y = cardOffsetsRef.current[taskId];
+    if (y == null || !scrollRef.current) return false;
+    scrollRef.current.scrollTo({ y: Math.max(0, y - 16), animated: true });
+    return true;
+  }, []);
+
+  const scheduleScrollToTask = useCallback(
+    (taskId: string) => {
+      pendingScrollTaskIdRef.current = taskId;
+      const attempt = () => {
+        if (pendingScrollTaskIdRef.current !== taskId) return;
+        if (scrollToTaskCard(taskId)) {
+          pendingScrollTaskIdRef.current = null;
+        }
+      };
+      requestAnimationFrame(attempt);
+      setTimeout(attempt, 120);
+      setTimeout(attempt, 350);
+      setTimeout(attempt, 700);
+    },
+    [scrollToTaskCard]
+  );
 
   useEffect(() => {
     if (!scrollTargetId || loading || tasks.length === 0) return;
     const task = tasks.find((t) => t.id === scrollTargetId);
     if (!task) return;
     setExpandedTaskId(task.id);
+    setDeepLinkHighlightId(task.id);
+    scheduleScrollToTask(task.id);
     navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
-  }, [scrollTargetId, tasks, loading, navigation]);
+  }, [scrollTargetId, tasks, loading, navigation, scheduleScrollToTask]);
+
+  const onCardListLayout = useCallback((e: LayoutChangeEvent) => {
+    cardListOffsetRef.current = e.nativeEvent.layout.y;
+  }, []);
+
+  const onTaskCardLayout = useCallback(
+    (taskId: string, e: LayoutChangeEvent) => {
+      const y = cardListOffsetRef.current + e.nativeEvent.layout.y;
+      cardOffsetsRef.current[taskId] = y;
+      if (pendingScrollTaskIdRef.current === taskId) {
+        if (scrollToTaskCard(taskId)) {
+          pendingScrollTaskIdRef.current = null;
+        }
+      }
+    },
+    [scrollToTaskCard]
+  );
 
   const toggleExpanded = (taskId: string) => {
+    setDeepLinkHighlightId(null);
     setExpandedTaskId((prev) => (prev === taskId ? null : taskId));
   };
 
@@ -575,7 +628,7 @@ export function FarmerTasksScreen() {
     const assigner =
       item.assigned_by_name?.trim() ||
       (isAgentAssignment(item) ? 'Your field agent' : 'Program team');
-    const highlighted = scrollTargetId === item.id;
+    const highlighted = deepLinkHighlightId === item.id;
     const expanded = expandedTaskId === item.id;
     const statusNorm = normalizeTaskStatus(item.status);
     const project = projectLabel(item);
@@ -584,16 +637,16 @@ export function FarmerTasksScreen() {
     const submissionNotes = item.notes?.trim() || '';
 
     return (
-      <KBCard
-        key={item.id}
-        elevated={false}
-        onPress={() => toggleExpanded(item.id)}
-        style={
-          highlighted
-            ? { ...styles.card, borderWidth: 2, borderColor: COLORS.primary }
-            : styles.card
-        }
-      >
+      <View key={item.id} onLayout={(e) => onTaskCardLayout(item.id, e)}>
+        <KBCard
+          elevated={false}
+          onPress={() => toggleExpanded(item.id)}
+          style={
+            highlighted
+              ? { ...styles.card, borderWidth: 2, borderColor: COLORS.primary }
+              : styles.card
+          }
+        >
         <View style={styles.cardHeader}>
           <View style={styles.cardTitleBlock}>
             <View style={styles.taskTitleRow}>
@@ -715,6 +768,7 @@ export function FarmerTasksScreen() {
           </View>
         ) : null}
       </KBCard>
+      </View>
     );
   };
 
@@ -734,6 +788,7 @@ export function FarmerTasksScreen() {
     <View style={styles.root}>
       <FarmerInboxHeaderBar />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
@@ -906,7 +961,9 @@ export function FarmerTasksScreen() {
             </KBCard>
           ) : null
         ) : (
-          <View style={styles.cardList}>{visibleTasks.map((item) => renderTask(item))}</View>
+          <View style={styles.cardList} onLayout={onCardListLayout}>
+            {visibleTasks.map((item) => renderTask(item))}
+          </View>
         )}
       </ScrollView>
 
