@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { View, Pressable, StyleSheet, Platform } from 'react-native';
 import { Text } from '@/components/ui/text';
 
@@ -38,24 +38,6 @@ const REJECTED_KPI: KpiCardDef = {
   countColor: '#C62828',
 };
 
-const KPI_LABEL_MAX_FONT = 10;
-const KPI_LABEL_MIN_FONT = 5.5;
-const KPI_LABEL_CHAR_WIDTH = 0.72;
-
-function kpiLabelFontSizeForWidth(labelWidth: number, labels: string[]): number {
-  if (labelWidth <= 0) return KPI_LABEL_MAX_FONT;
-  const longest = Math.max(1, ...labels.map((l) => l.length));
-  const letterSpacing = 0.15;
-  let size = KPI_LABEL_MAX_FONT;
-  while (size > KPI_LABEL_MIN_FONT) {
-    const estimated =
-      longest * size * KPI_LABEL_CHAR_WIDTH + Math.max(0, longest - 1) * letterSpacing;
-    if (estimated <= labelWidth) return Math.round(size * 10) / 10;
-    size -= 0.25;
-  }
-  return KPI_LABEL_MIN_FONT;
-}
-
 /**
  * Chunk visible KPIs into rows:
  * 1–4 → one row; 5 → 3+2; 6 → 3+3; more → wrap every 3.
@@ -81,10 +63,9 @@ type Props = {
  * Status KPI cards for Tasks screens.
  * SUBMITTED FOR APPROVAL and REJECTED are omitted when count is 0.
  * Layout wraps by visible count: 4 on one line; 5 → 3+2; 6 → 3+3.
+ * Labels are a fixed 10px and may wrap; cards in a row stretch to equal height.
  */
 export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
-  const [kpiLabelWidth, setKpiLabelWidth] = useState(0);
-
   const visibleCards = useMemo(() => {
     const cards = [...BASE_KPI_CARDS];
     if (counts.submitted_for_approval > 0) {
@@ -99,20 +80,6 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
 
   const rows = useMemo(() => chunkKpiRows(visibleCards), [visibleCards]);
   const columnsPerRow = visibleCards.length <= 4 ? visibleCards.length : 3;
-
-  const kpiLabelFontSize = useMemo(
-    () =>
-      kpiLabelFontSizeForWidth(
-        kpiLabelWidth,
-        visibleCards.map((c) => c.label)
-      ),
-    [kpiLabelWidth, visibleCards]
-  );
-
-  const onKpiLabelLayout = useCallback((width: number) => {
-    if (width <= 0) return;
-    setKpiLabelWidth((prev) => (Math.abs(prev - width) < 0.5 ? prev : width));
-  }, []);
 
   return (
     <View style={styles.kpiStack}>
@@ -136,20 +103,9 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
                   Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
                 ]}
               >
-                <View
-                  style={styles.kpiLabelWrap}
-                  onLayout={(e) => onKpiLabelLayout(e.nativeEvent.layout.width)}
-                >
-                  <Text
-                    style={[styles.kpiLabel, { fontSize: kpiLabelFontSize }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={KPI_LABEL_MIN_FONT / KPI_LABEL_MAX_FONT}
-                    allowFontScaling={false}
-                  >
-                    {kpi.label}
-                  </Text>
-                </View>
+                <Text style={styles.kpiLabel} allowFontScaling={false}>
+                  {kpi.label}
+                </Text>
                 <View style={[styles.kpiBadge, { backgroundColor: kpi.badgeBg }]}>
                   <Text style={[styles.kpiCount, { color: kpi.countColor }]}>{count}</Text>
                 </View>
@@ -175,6 +131,7 @@ const styles = StyleSheet.create({
   },
   kpiRow: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     gap: 8,
   },
   kpiCard: {
@@ -187,6 +144,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EEEEEE',
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -201,13 +159,10 @@ const styles = StyleSheet.create({
     borderColor: '#1A4D3E',
     borderWidth: 2,
   },
-  kpiLabelWrap: {
-    width: '100%',
-    marginBottom: 8,
-    overflow: 'hidden',
-  },
   kpiLabel: {
     width: '100%',
+    marginBottom: 8,
+    fontSize: 10,
     fontWeight: '700',
     color: '#666666',
     letterSpacing: 0.15,
