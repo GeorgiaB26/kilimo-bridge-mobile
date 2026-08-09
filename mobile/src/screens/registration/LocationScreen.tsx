@@ -73,6 +73,7 @@ export function LocationScreen({ navigation }: Props) {
         onSelect={(district) => updateForm({ district, subCounty: '', parish: '' })}
         required
         error={errors.district}
+        searchable
       />
       <PickerField
         label={labels[1]}
@@ -82,6 +83,7 @@ export function LocationScreen({ navigation }: Props) {
         required
         error={errors.subCounty}
         placeholder={formData.district ? `Select ${labels[1].toLowerCase()}` : `Select ${labels[0].toLowerCase()} first`}
+        searchable
       />
       {level3Options.length > 0 ? (
         <PickerField
@@ -92,6 +94,7 @@ export function LocationScreen({ navigation }: Props) {
           required
           error={errors.parish}
           placeholder={formData.subCounty ? `Select ${labels[2].toLowerCase()}` : `Select ${labels[1].toLowerCase()} first`}
+          searchable
         />
       ) : (
         <FormField
