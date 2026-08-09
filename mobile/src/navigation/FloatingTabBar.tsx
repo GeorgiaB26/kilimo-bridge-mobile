@@ -26,8 +26,10 @@ export const AGENT_TAB_ICONS: FloatingTabIconMap = {
 
 const HORIZONTAL_MARGIN = 16;
 const BOTTOM_MARGIN = 12;
-const PILL_RADIUS = 28;
-const ICON_HIT = 36;
+/** Large enough that ends are full semicircles regardless of bar height (stadium pill). */
+const PILL_RADIUS = 999;
+const ICON_HIT = 28;
+const ICON_SIZE = 18;
 
 type Props = BottomTabBarProps & {
   icons?: FloatingTabIconMap;
@@ -93,7 +95,7 @@ export function FloatingTabBar({ state, descriptors, navigation, icons = FARMER_
                   style={styles.tab}
                 >
                   <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-                    <Ionicons name={iconName} size={22} color={focused ? '#fff' : color} />
+                    <Ionicons name={iconName} size={ICON_SIZE} color={focused ? '#fff' : color} />
                   </View>
                   <Text
                     numberOfLines={1}
@@ -155,16 +157,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingHorizontal: 8,
-    paddingTop: 10,
-    paddingBottom: 8,
-    minHeight: 64,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 56,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
   },
   iconWrap: {
     width: ICON_HIT,
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',
   },
