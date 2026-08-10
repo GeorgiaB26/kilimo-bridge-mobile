@@ -105,7 +105,7 @@ export function MessageDetailScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <View style={[styles.header, isSupportTicket && styles.supportHeader]}>
+      <View style={styles.header}>
         <Pressable
           onPress={() => {
             if (navigation.canGoBack()) {
@@ -142,7 +142,7 @@ export function MessageDetailScreen() {
             You can still read the conversation. To ask something new, start a fresh support request.
           </Text>
           <Pressable style={styles.newRequestBtn} onPress={() => setSupportOpen(true)}>
-            <Text style={styles.newRequestText}>Start a new support request</Text>
+            <Text className="text-[13px] font-bold text-white">Start a new support request</Text>
           </Pressable>
         </View>
       ) : null}
@@ -252,9 +252,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 4,
   },
-  supportHeader: {
-    backgroundColor: '#1F4E78',
-  },
   backBtn: { padding: 4 },
   headerTitles: { flex: 1 },
   headerTitle: { color: '#fff', fontWeight: '700', fontSize: 16 },
@@ -298,7 +295,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
   },
-  newRequestText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   loader: { marginTop: 40 },
   list: { flex: 1 },
   listContent: { padding: 12, paddingBottom: 8 },
