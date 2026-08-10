@@ -10,6 +10,10 @@ type Props = {
   iconColor?: string;
   /** Optional settings gear (same size/spacing as messages & notifications). */
   onSettingsPress?: () => void;
+  /** Override default navigate-to-MessagesFlow (e.g. Support switches to Messages tab). */
+  onMessagesPress?: () => void;
+  /** When set, replaces the generic unread-message badge (e.g. support unread_open). */
+  messageCountOverride?: number;
 };
 
 function UnreadBadge({ count }: { count: number }) {
@@ -31,9 +35,13 @@ export function MessagesNotificationsHeaderIcons({
   notificationsRoute = 'NotificationsFlow',
   iconColor = '#fff',
   onSettingsPress,
+  onMessagesPress,
+  messageCountOverride,
 }: Props) {
   const navigation = useNavigation();
   const { messageCount, notificationCount } = useUnreadInboxCounts();
+  const displayMessageCount =
+    typeof messageCountOverride === 'number' ? messageCountOverride : messageCount;
 
   const openFlow = (route: string) => {
     let nav = navigation as NavigationProp<ParamListBase> | undefined;
@@ -49,13 +57,19 @@ export function MessagesNotificationsHeaderIcons({
   return (
     <View style={styles.row}>
       <Pressable
-        onPress={() => openFlow(messagesRoute)}
+        onPress={() => {
+          if (onMessagesPress) {
+            onMessagesPress();
+            return;
+          }
+          openFlow(messagesRoute);
+        }}
         style={styles.hit}
         accessibilityLabel="Messages"
         accessibilityHint="Open messages"
       >
         <Ionicons name="chatbubbles-outline" size={ICON_SIZE} color={iconColor} />
-        {messageCount > 0 ? <UnreadBadge count={messageCount} /> : null}
+        {displayMessageCount > 0 ? <UnreadBadge count={displayMessageCount} /> : null}
       </Pressable>
       <Pressable
         onPress={() => openFlow(notificationsRoute)}

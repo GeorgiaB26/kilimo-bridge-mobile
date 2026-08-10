@@ -175,7 +175,7 @@ export function SupportDashboardScreen() {
       ) : null}
 
       <Pressable style={[styles.inboxBtn, webPressable]} onPress={() => openInbox('open')}>
-        <Text style={styles.inboxBtnText}>Open ticket inbox</Text>
+        <Text className="text-[15px] font-bold text-white">Open ticket inbox</Text>
       </Pressable>
     </ScrollView>
   );
@@ -234,5 +234,4 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  inboxBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

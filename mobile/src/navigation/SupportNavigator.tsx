@@ -1,14 +1,12 @@
 import React from 'react';
-import { View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { COLORS } from '../constants';
 import { FloatingTabBar, SUPPORT_TAB_ICONS } from './FloatingTabBar';
 import { SupportDashboardScreen } from '../screens/support/SupportDashboardScreen';
 import { SupportMessagesScreen } from '../screens/support/SupportMessagesScreen';
 import { SupportTicketDetailScreen } from '../screens/support/SupportTicketDetailScreen';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
-import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
+import { SupportHeaderIcons, SUPPORT_BLUE } from './SupportHeaderIcons';
 import type {
   SupportMessagesStackParamList,
   SupportRootStackParamList,
@@ -19,11 +17,15 @@ const Tab = createBottomTabNavigator<SupportTabParamList>();
 const RootStack = createNativeStackNavigator<SupportRootStackParamList>();
 const MessagesStack = createNativeStackNavigator<SupportMessagesStackParamList>();
 
+function SupportNotificationsStack() {
+  return <NotificationsStackNavigator headerColor={SUPPORT_BLUE} />;
+}
+
 function SupportMessagesStackNavigator() {
   return (
     <MessagesStack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: '#1F4E78' },
+        headerStyle: { backgroundColor: SUPPORT_BLUE },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '600' },
       }}
@@ -31,7 +33,10 @@ function SupportMessagesStackNavigator() {
       <MessagesStack.Screen
         name="SupportTicketsList"
         component={SupportMessagesScreen}
-        options={{ title: 'Support inbox' }}
+        options={{
+          title: 'Support inbox',
+          headerRight: () => <SupportHeaderIcons />,
+        }}
       />
       <MessagesStack.Screen
         name="SupportTicketDetail"
@@ -48,15 +53,11 @@ function SupportTabNavigator() {
       tabBar={(props) => <FloatingTabBar {...props} icons={SUPPORT_TAB_ICONS} />}
       screenOptions={({ route }) => ({
         headerShown: route.name === 'Messages' ? false : true,
-        headerStyle: { backgroundColor: '#1F4E78' },
+        headerStyle: { backgroundColor: SUPPORT_BLUE },
         headerTintColor: '#fff',
         headerTitle: 'KB Support',
         headerTitleStyle: { fontWeight: '600' },
-        headerRight: () => (
-          <View style={{ marginRight: 16 }}>
-            <MessagesNotificationsHeaderIcons iconColor="#fff" />
-          </View>
-        ),
+        headerRight: () => <SupportHeaderIcons />,
         sceneStyle: { paddingBottom: 88 },
       })}
     >
@@ -78,7 +79,7 @@ export function SupportNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="MainTabs" component={SupportTabNavigator} />
-      <RootStack.Screen name="NotificationsFlow" component={NotificationsStackNavigator} />
+      <RootStack.Screen name="NotificationsFlow" component={SupportNotificationsStack} />
     </RootStack.Navigator>
   );
 }

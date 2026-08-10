@@ -7,11 +7,16 @@ import type { NotificationsStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<NotificationsStackParamList>();
 
-export function NotificationsStackNavigator() {
+type Props = {
+  /** Header background — Support desk uses blue; farmer/agent keep green primary. */
+  headerColor?: string;
+};
+
+export function NotificationsStackNavigator({ headerColor = COLORS.primary }: Props) {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: COLORS.primary },
+        headerStyle: { backgroundColor: headerColor },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '600' },
       }}
