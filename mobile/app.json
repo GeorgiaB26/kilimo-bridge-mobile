@@ -16,7 +16,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.kilimobridge.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -24,6 +25,11 @@
     },
     "plugins": [
       "expo-sqlite"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1e2fd0c7-16c0-459a-aba3-4fa7552345fa"
+      }
+    }
   }
 }
