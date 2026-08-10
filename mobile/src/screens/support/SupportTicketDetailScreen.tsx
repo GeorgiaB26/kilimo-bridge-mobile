@@ -182,7 +182,11 @@ export function SupportTicketDetailScreen() {
                 {!mine && item.sender_name ? (
                   <Text style={styles.senderName}>{item.sender_name}</Text>
                 ) : null}
-                <Text style={[styles.bubbleText, mine && styles.sentText]}>{item.content}</Text>
+                {mine ? (
+                  <RNText style={[styles.bubbleText, styles.sentText]}>{item.content}</RNText>
+                ) : (
+                  <Text style={styles.bubbleText}>{item.content}</Text>
+                )}
                 {item.attachment_preview_url ? (
                   <Image
                     source={{ uri: item.attachment_preview_url }}
@@ -190,9 +194,13 @@ export function SupportTicketDetailScreen() {
                     resizeMode="cover"
                   />
                 ) : null}
-                <Text style={[styles.time, mine && styles.sentTime]}>
-                  {formatMessageTime(item.created_at)}
-                </Text>
+                {mine ? (
+                  <RNText style={[styles.time, styles.sentTime]}>
+                    {formatMessageTime(item.created_at)}
+                  </RNText>
+                ) : (
+                  <Text style={styles.time}>{formatMessageTime(item.created_at)}</Text>
+                )}
               </View>
             );
           }}

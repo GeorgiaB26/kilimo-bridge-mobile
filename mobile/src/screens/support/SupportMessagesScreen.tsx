@@ -97,7 +97,11 @@ export function SupportMessagesScreen() {
               style={[styles.filterChip, active && styles.filterChipActive]}
               onPress={() => setFilter(f.key)}
             >
-              <Text style={[styles.filterText, active && styles.filterTextActive]}>{f.label}</Text>
+              <Text
+                className={`text-[13px] font-semibold ${active ? 'text-white' : 'text-[#333333]'}`}
+              >
+                {f.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -205,8 +209,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F4E78',
     borderColor: '#1F4E78',
   },
-  filterText: { fontSize: 13, fontWeight: '600', color: '#333' },
-  filterTextActive: { color: '#fff' },
   loader: { marginTop: 40 },
   errorBox: { padding: 16, alignItems: 'center' },
   error: { color: '#c0392b', textAlign: 'center' },
