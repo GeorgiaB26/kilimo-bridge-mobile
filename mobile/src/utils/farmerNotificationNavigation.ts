@@ -97,16 +97,28 @@ function navigateSupportTicketThread(
   const resolved = type.includes('resolved');
 
   if (options?.isSupportDesk) {
+    // Seed list → detail so Back returns to the inbox, not Dashboard.
     root.dispatch(
       CommonActions.navigate({
         name: 'MainTabs',
         params: {
           screen: 'Messages',
           params: {
-            screen: 'SupportTicketDetail',
-            params: {
-              threadId,
-              status: resolved ? 'resolved' : 'open',
+            state: {
+              routes: [
+                {
+                  name: 'SupportTicketsList',
+                  params: { statusFilter: resolved ? 'resolved' : 'open' },
+                },
+                {
+                  name: 'SupportTicketDetail',
+                  params: {
+                    threadId,
+                    status: resolved ? 'resolved' : 'open',
+                  },
+                },
+              ],
+              index: 1,
             },
           },
         },
@@ -119,11 +131,19 @@ function navigateSupportTicketThread(
     CommonActions.navigate({
       name: 'MessagesFlow',
       params: {
-        screen: 'MessageDetail',
-        params: {
-          threadId,
-          contextType: SUPPORT_TICKET_CONTEXT,
-          supportStatus: resolved ? 'resolved' : undefined,
+        state: {
+          routes: [
+            { name: 'MessagesList' },
+            {
+              name: 'MessageDetail',
+              params: {
+                threadId,
+                contextType: SUPPORT_TICKET_CONTEXT,
+                supportStatus: resolved ? 'resolved' : 'open',
+              },
+            },
+          ],
+          index: 1,
         },
       },
     })

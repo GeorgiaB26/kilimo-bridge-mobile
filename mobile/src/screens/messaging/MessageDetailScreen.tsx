@@ -9,10 +9,12 @@ import {
   Platform,
   StyleSheet,
   Image,
+  Text as RNText,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import { getThreadMessages, sendThreadMessage } from '../../api/client';
@@ -32,11 +34,12 @@ type MessageRow = {
 };
 
 type Route = RouteProp<MessagesStackParamList, 'MessageDetail'>;
+type Nav = NativeStackNavigationProp<MessagesStackParamList, 'MessageDetail'>;
 
 const POLL_MS = 8000;
 
 export function MessageDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { threadId, title: paramTitle, contextType: paramContext, supportStatus: paramStatus } =
     route.params;
@@ -103,18 +106,28 @@ export function MessageDetailScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={[styles.header, isSupportTicket && styles.supportHeader]}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+        <Pressable
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+              return;
+            }
+            navigation.navigate('MessagesList');
+          }}
+          style={styles.backBtn}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="chevron-back" size={26} color="#fff" />
         </Pressable>
         <View style={styles.headerTitles}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
+          <RNText style={styles.headerTitle} numberOfLines={1}>
             {headerLabel}
-          </Text>
+          </RNText>
           {isSupportTicket ? (
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
+            <RNText style={styles.headerSubtitle} numberOfLines={1}>
               Support · {isResolved ? 'Resolved' : 'Open'}
               {otherName ? ` · ${otherName}` : ''}
-            </Text>
+            </RNText>
           ) : null}
         </View>
       </View>
@@ -198,7 +211,7 @@ export function MessageDetailScreen() {
             onPress={handleSend}
             disabled={sending}
           >
-            <Text style={styles.sendText}>{sending ? '…' : 'Send'}</Text>
+            <Text className="font-bold text-white">{sending ? '…' : 'Send'}</Text>
           </Pressable>
         </View>
       )}
@@ -208,13 +221,19 @@ export function MessageDetailScreen() {
         onClose={() => setSupportOpen(false)}
         onCreated={(newThreadId) => {
           navigation.dispatch(
-            CommonActions.navigate({
-              name: 'MessageDetail',
-              params: {
-                threadId: newThreadId,
-                contextType: SUPPORT_TICKET_CONTEXT,
-                supportStatus: 'open',
-              },
+            CommonActions.reset({
+              index: 1,
+              routes: [
+                { name: 'MessagesList' },
+                {
+                  name: 'MessageDetail',
+                  params: {
+                    threadId: newThreadId,
+                    contextType: SUPPORT_TICKET_CONTEXT,
+                    supportStatus: 'open',
+                  },
+                },
+              ],
             })
           );
         }}
@@ -229,15 +248,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 12,
-    gap: 8,
+    gap: 4,
   },
   supportHeader: {
     backgroundColor: '#1F4E78',
   },
   backBtn: { padding: 4 },
-  backText: { color: '#fff', fontWeight: '600' },
   headerTitles: { flex: 1 },
   headerTitle: { color: '#fff', fontWeight: '700', fontSize: 16 },
   headerSubtitle: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },

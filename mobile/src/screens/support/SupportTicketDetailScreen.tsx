@@ -10,9 +10,11 @@ import {
   StyleSheet,
   Image,
   Alert,
+  Text as RNText,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
@@ -28,11 +30,12 @@ import { formatMessageTime } from '../../constants/notifications';
 import type { SupportMessagesStackParamList } from '../../navigation/types';
 
 type Route = RouteProp<SupportMessagesStackParamList, 'SupportTicketDetail'>;
+type Nav = NativeStackNavigationProp<SupportMessagesStackParamList, 'SupportTicketDetail'>;
 
 const POLL_MS = 8000;
 
 export function SupportTicketDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { threadId, subject: paramSubject, status: paramStatus } = route.params;
 
@@ -70,6 +73,11 @@ export function SupportTicketDetailScreen() {
       return () => clearInterval(timer);
     }, [load])
   );
+
+  /** Always return to the inbox list — deep links often have no list under this screen. */
+  const goToInbox = () => {
+    navigation.navigate('SupportTicketsList', { statusFilter: isResolved ? 'resolved' : 'open' });
+  };
 
   const handleSend = async () => {
     const text = newMessage.trim();
@@ -121,18 +129,23 @@ export function SupportTicketDetailScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+        <Pressable
+          onPress={goToInbox}
+          style={styles.backBtn}
+          accessibilityLabel="Back to inbox"
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-back" size={26} color="#fff" />
         </Pressable>
         <View style={styles.headerTitles}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
+          <RNText style={styles.headerTitle} numberOfLines={1}>
             {subject}
-          </Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>
+          </RNText>
+          <RNText style={styles.headerSubtitle} numberOfLines={1}>
             {isResolved ? 'Resolved' : 'Open'}
             {ticket?.requester_name ? ` · ${ticket.requester_name}` : ''}
             {ticket?.requester_phone ? ` · ${ticket.requester_phone}` : ''}
-          </Text>
+          </RNText>
         </View>
         {!isResolved ? (
           <Pressable
@@ -140,7 +153,7 @@ export function SupportTicketDetailScreen() {
             onPress={confirmResolve}
             disabled={resolving}
           >
-            <Text style={styles.resolveText}>{resolving ? '…' : 'Resolve'}</Text>
+            <RNText style={styles.resolveText}>{resolving ? '…' : 'Resolve'}</RNText>
           </Pressable>
         ) : null}
       </View>
@@ -148,7 +161,9 @@ export function SupportTicketDetailScreen() {
       {isResolved ? (
         <View style={styles.resolvedBanner}>
           <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.success} />
-          <Text style={styles.resolvedText}>This ticket is resolved. Replies are still allowed for follow-up.</Text>
+          <Text style={styles.resolvedText}>
+            This ticket is resolved. Replies are still allowed for follow-up.
+          </Text>
         </View>
       ) : null}
 
@@ -202,7 +217,7 @@ export function SupportTicketDetailScreen() {
           onPress={handleSend}
           disabled={sending || !canReply}
         >
-          <Text style={styles.sendText}>{sending ? '…' : 'Send'}</Text>
+          <RNText style={styles.sendText}>{sending ? '…' : 'Send'}</RNText>
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -215,12 +230,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1F4E78',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 12,
-    gap: 8,
+    gap: 4,
   },
-  backBtn: { padding: 4 },
-  backText: { color: '#fff', fontWeight: '600' },
+  backBtn: { padding: 4, marginRight: 2 },
   headerTitles: { flex: 1 },
   headerTitle: { color: '#fff', fontWeight: '700', fontSize: 16 },
   headerSubtitle: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },

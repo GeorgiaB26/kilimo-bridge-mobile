@@ -314,15 +314,25 @@ export function FarmerDashboardSupportSection(_props: {
   const [supportOpen, setSupportOpen] = useState(false);
 
   const openCreatedTicket = (threadId: string) => {
+    // Stay on the farmer shell — open Messages with list under the new thread
+    // so Back returns to the inbox (not a different account / tab).
     navigation.dispatch(
       CommonActions.navigate({
         name: 'MessagesFlow',
         params: {
-          screen: 'MessageDetail',
-          params: {
-            threadId,
-            contextType: 'support_ticket',
-            supportStatus: 'open',
+          state: {
+            routes: [
+              { name: 'MessagesList' },
+              {
+                name: 'MessageDetail',
+                params: {
+                  threadId,
+                  contextType: 'support_ticket',
+                  supportStatus: 'open',
+                },
+              },
+            ],
+            index: 1,
           },
         },
       })

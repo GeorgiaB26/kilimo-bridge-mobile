@@ -364,11 +364,19 @@ export function AgentDashboardScreen() {
             CommonActions.navigate({
               name: 'MessagesFlow',
               params: {
-                screen: 'MessageDetail',
-                params: {
-                  threadId,
-                  contextType: 'support_ticket',
-                  supportStatus: 'open',
+                state: {
+                  routes: [
+                    { name: 'MessagesList' },
+                    {
+                      name: 'MessageDetail',
+                      params: {
+                        threadId,
+                        contextType: 'support_ticket',
+                        supportStatus: 'open',
+                      },
+                    },
+                  ],
+                  index: 1,
                 },
               },
             })
