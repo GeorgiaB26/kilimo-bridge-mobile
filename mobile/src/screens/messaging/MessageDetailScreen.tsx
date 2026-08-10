@@ -8,8 +8,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Image,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
@@ -17,6 +19,8 @@ import { getThreadMessages, sendThreadMessage } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { formatMessageTime } from '../../constants/notifications';
 import type { MessagesStackParamList } from '../../navigation/types';
+import { ContactSupportModal } from '../../components/ContactSupportModal';
+import { SUPPORT_TICKET_CONTEXT } from '../../../shared/src/supportDesk';
 
 type MessageRow = {
   id: string;
@@ -24,6 +28,7 @@ type MessageRow = {
   created_at: string;
   sender_name?: string;
   is_mine?: boolean;
+  attachment_url?: string | null;
 };
 
 type Route = RouteProp<MessagesStackParamList, 'MessageDetail'>;
@@ -33,19 +38,33 @@ const POLL_MS = 8000;
 export function MessageDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<Route>();
-  const { threadId } = route.params;
+  const { threadId, title: paramTitle, contextType: paramContext, supportStatus: paramStatus } =
+    route.params;
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [otherName, setOtherName] = useState('Conversation');
+  const [threadTitle, setThreadTitle] = useState<string | null>(paramTitle ?? null);
+  const [contextType, setContextType] = useState<string | null>(paramContext ?? null);
+  const [supportStatus, setSupportStatus] = useState<string | null>(paramStatus ?? null);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [supportOpen, setSupportOpen] = useState(false);
+
+  const isSupportTicket = contextType === SUPPORT_TICKET_CONTEXT;
+  const isResolved = isSupportTicket && supportStatus === 'resolved';
+  const headerLabel = isSupportTicket
+    ? threadTitle?.trim() || otherName || 'Support request'
+    : otherName;
 
   const load = useCallback(async () => {
     try {
       const data = await getThreadMessages(threadId);
       setMessages(data.messages ?? []);
       if (data.otherUser?.name) setOtherName(data.otherUser.name);
+      if (data.title !== undefined) setThreadTitle(data.title);
+      if (data.context_type !== undefined) setContextType(data.context_type);
+      if (data.support_status !== undefined) setSupportStatus(data.support_status);
       setError(null);
     } catch (err) {
       setError(extractApiError(err, 'Could not load messages'));
@@ -64,7 +83,7 @@ export function MessageDetailScreen() {
 
   const handleSend = async () => {
     const text = newMessage.trim();
-    if (!text || sending) return;
+    if (!text || sending || isResolved) return;
     setSending(true);
     try {
       await sendThreadMessage(threadId, text);
@@ -83,26 +102,70 @@ export function MessageDetailScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <View style={styles.header}>
+      <View style={[styles.header, isSupportTicket && styles.supportHeader]}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>{otherName}</Text>
+        <View style={styles.headerTitles}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {headerLabel}
+          </Text>
+          {isSupportTicket ? (
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              Support · {isResolved ? 'Resolved' : 'Open'}
+              {otherName ? ` · ${otherName}` : ''}
+            </Text>
+          ) : null}
+        </View>
       </View>
+
+      {isResolved ? (
+        <View style={styles.resolvedBanner}>
+          <View style={styles.resolvedRow}>
+            <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.success} />
+            <Text style={styles.resolvedTitle}>This support request is resolved</Text>
+          </View>
+          <Text style={styles.resolvedMessage}>
+            You can still read the conversation. To ask something new, start a fresh support request.
+          </Text>
+          <Pressable style={styles.newRequestBtn} onPress={() => setSupportOpen(true)}>
+            <Text style={styles.newRequestText}>Start a new support request</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {loading && messages.length === 0 ? (
         <ActivityIndicator style={styles.loader} color={COLORS.primary} />
+      ) : error && messages.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable style={styles.retryBtn} onPress={load}>
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </View>
       ) : (
         <FlatList
           style={styles.list}
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No messages in this conversation yet.</Text>
+          }
           renderItem={({ item }) => {
             const mine = item.is_mine;
+            const attachment = item.attachment_url?.trim();
+            const attachmentIsUrl =
+              !!attachment &&
+              (attachment.startsWith('http://') || attachment.startsWith('https://'));
             return (
               <View style={[styles.bubble, mine ? styles.sent : styles.received]}>
                 <Text style={[styles.bubbleText, mine && styles.sentText]}>{item.content}</Text>
+                {attachmentIsUrl ? (
+                  <Image source={{ uri: attachment }} style={styles.attachment} resizeMode="cover" />
+                ) : attachment ? (
+                  <Text style={[styles.attachmentHint, mine && styles.sentText]}>📷 Photo attached</Text>
+                ) : null}
                 <Text style={[styles.time, mine && styles.sentTime]}>
                   {formatMessageTime(item.created_at)}
                 </Text>
@@ -112,26 +175,50 @@ export function MessageDetailScreen() {
         />
       )}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error && messages.length > 0 ? <Text style={styles.error}>{error}</Text> : null}
 
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message..."
-          placeholderTextColor={COLORS.muted}
-          value={newMessage}
-          onChangeText={setNewMessage}
-          multiline
-          maxLength={2000}
-        />
-        <Pressable
-          style={[styles.sendBtn, sending && styles.sendDisabled]}
-          onPress={handleSend}
-          disabled={sending}
-        >
-          <Text style={styles.sendText}>{sending ? '…' : 'Send'}</Text>
-        </Pressable>
-      </View>
+      {isResolved ? (
+        <View style={styles.readOnlyBar}>
+          <Text style={styles.readOnlyText}>Messaging is closed on resolved tickets.</Text>
+        </View>
+      ) : (
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type a message..."
+            placeholderTextColor={COLORS.muted}
+            value={newMessage}
+            onChangeText={setNewMessage}
+            multiline
+            maxLength={2000}
+            editable={!sending}
+          />
+          <Pressable
+            style={[styles.sendBtn, sending && styles.sendDisabled]}
+            onPress={handleSend}
+            disabled={sending}
+          >
+            <Text style={styles.sendText}>{sending ? '…' : 'Send'}</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <ContactSupportModal
+        visible={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        onCreated={(newThreadId) => {
+          navigation.dispatch(
+            CommonActions.navigate({
+              name: 'MessageDetail',
+              params: {
+                threadId: newThreadId,
+                contextType: SUPPORT_TICKET_CONTEXT,
+                supportStatus: 'open',
+              },
+            })
+          );
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -146,9 +233,54 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 8,
   },
+  supportHeader: {
+    backgroundColor: '#1F4E78',
+  },
   backBtn: { padding: 4 },
   backText: { color: '#fff', fontWeight: '600' },
-  headerTitle: { color: '#fff', fontWeight: '700', fontSize: 16, flex: 1 },
+  headerTitles: { flex: 1 },
+  headerTitle: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  headerSubtitle: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  emptyState: { padding: 24, alignItems: 'center' },
+  emptyText: { textAlign: 'center', color: COLORS.muted, paddingVertical: 24 },
+  retryBtn: {
+    marginTop: 12,
+    backgroundColor: '#1F4E78',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryText: { color: '#fff', fontWeight: '700' },
+  attachment: {
+    width: 180,
+    height: 140,
+    borderRadius: 8,
+    marginTop: 8,
+    backgroundColor: '#ddd',
+  },
+  attachmentHint: { fontSize: 12, marginTop: 6, color: COLORS.muted },
+  resolvedBanner: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    padding: 14,
+    marginHorizontal: 12,
+    marginTop: 12,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#A5D6A7',
+  },
+  resolvedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  resolvedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.success },
+  resolvedMessage: { fontSize: 13, color: COLORS.text, lineHeight: 18 },
+  newRequestBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: '#1F4E78',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  newRequestText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   loader: { marginTop: 40 },
   list: { flex: 1 },
   listContent: { padding: 12, paddingBottom: 8 },
@@ -200,4 +332,16 @@ const styles = StyleSheet.create({
   },
   sendDisabled: { opacity: 0.6 },
   sendText: { color: '#fff', fontWeight: '700' },
+  readOnlyBar: {
+    padding: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  readOnlyText: {
+    textAlign: 'center',
+    color: COLORS.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });

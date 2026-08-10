@@ -25,7 +25,9 @@ export type AuditAction =
   | 'banking.verify_farmer_id'
   | 'data.access'
   | 'user.create'
-  | 'permission.denied';
+  | 'permission.denied'
+  | 'support.ticket_created'
+  | 'support.ticket_resolved';
 
 export type AuditCategory = 'auth' | 'financial' | 'agent' | 'farmer_data' | 'system';
 

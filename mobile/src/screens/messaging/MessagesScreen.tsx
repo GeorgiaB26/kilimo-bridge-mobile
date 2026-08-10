@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
-  FlatList,
+  SectionList,
   TextInput,
   Pressable,
   ActivityIndicator,
@@ -19,26 +19,23 @@ import {
   getMessageContacts,
   getMessageThreads,
   startMessageThread,
+  type MessageThreadRow,
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import { formatTimeAgo } from '../../constants/notifications';
 import type { MessagesStackParamList } from '../../navigation/types';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import {
   getReadCache,
   loadWithReadCache,
   READ_CACHE_KEYS,
 } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { SUPPORT_TICKET_CONTEXT } from '../../../shared/src/supportDesk';
 
-type ThreadRow = {
-  id: string;
-  other_user_name: string;
-  last_message_content: string | null;
-  last_message_at: string | null;
-  unread_count: number;
-};
+type ThreadRow = MessageThreadRow;
 
 type ThreadsPayload = { threads?: ThreadRow[] };
 
@@ -46,14 +43,32 @@ type Nav = NativeStackNavigationProp<MessagesStackParamList, 'MessagesList'>;
 
 const POLL_MS = 10000;
 
+function isSupportTicket(thread: ThreadRow): boolean {
+  return thread.context_type === SUPPORT_TICKET_CONTEXT;
+}
+
 function filterThreads(threads: ThreadRow[], query: string): ThreadRow[] {
   const q = query.trim().toLowerCase();
   if (!q) return threads;
   return threads.filter((t) => {
     const name = (t.other_user_name ?? '').toLowerCase();
     const preview = (t.last_message_content ?? '').toLowerCase();
-    return name.includes(q) || preview.includes(q);
+    const title = (t.title ?? '').toLowerCase();
+    const supportHint = isSupportTicket(t) ? 'support ticket' : '';
+    return (
+      name.includes(q) ||
+      preview.includes(q) ||
+      title.includes(q) ||
+      supportHint.includes(q)
+    );
   });
+}
+
+function threadDisplayName(item: ThreadRow): string {
+  if (isSupportTicket(item)) {
+    return item.title?.trim() || 'Support request';
+  }
+  return item.other_user_name || 'Conversation';
 }
 
 export function MessagesScreen() {
@@ -74,10 +89,9 @@ export function MessagesScreen() {
     const q = search.trim();
     try {
       if (q) {
-        // Online search uses the API; offline falls back to filtering the cached inbox list.
         try {
           const data = await getMessageThreads(q);
-          setThreads((data.threads ?? []) as ThreadRow[]);
+          setThreads(data.threads ?? []);
           setCacheFetchedAt(null);
           setError(null);
         } catch (err) {
@@ -86,7 +100,7 @@ export function MessagesScreen() {
             userScope
           );
           if (cached) {
-            setThreads(filterThreads((cached.payload.threads ?? []) as ThreadRow[], q));
+            setThreads(filterThreads(cached.payload.threads ?? [], q));
             setCacheFetchedAt(cached.fetchedAt);
             setError(null);
           } else {
@@ -99,10 +113,10 @@ export function MessagesScreen() {
           userScope,
           fetchLive: async () => {
             const data = await getMessageThreads();
-            return { threads: (data.threads ?? []) as ThreadRow[] };
+            return { threads: data.threads ?? [] };
           },
         });
-        setThreads((result.data.threads ?? []) as ThreadRow[]);
+        setThreads(result.data.threads ?? []);
         setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
         setError(null);
       }
@@ -147,6 +161,83 @@ export function MessagesScreen() {
     } catch (err) {
       setError(extractApiError(err, 'Could not start conversation'));
     }
+  };
+
+  const sections = useMemo(() => {
+    const support = threads.filter(isSupportTicket);
+    const conversations = threads.filter((t) => !isSupportTicket(t));
+    const result: Array<{ title: string; data: ThreadRow[] }> = [];
+    if (support.length > 0) {
+      result.push({ title: 'Support tickets', data: support });
+    }
+    if (conversations.length > 0) {
+      result.push({ title: 'Conversations', data: conversations });
+    } else if (support.length === 0) {
+      result.push({ title: 'Conversations', data: [] });
+    }
+    return result;
+  }, [threads]);
+
+  const openThread = (item: ThreadRow) => {
+    navigation.navigate('MessageDetail', {
+      threadId: item.id,
+      title: item.title,
+      contextType: item.context_type,
+      supportStatus: item.support_status,
+    });
+  };
+
+  const renderThread = ({ item }: { item: ThreadRow }) => {
+    const support = isSupportTicket(item);
+    const resolved = support && item.support_status === 'resolved';
+    return (
+      <Pressable
+        style={[styles.threadCard, support && styles.supportThreadCard]}
+        onPress={() => openThread(item)}
+      >
+        {support ? <View style={styles.supportAccent} /> : null}
+        <View style={[styles.avatar, support && styles.supportAvatar]}>
+          {support ? (
+            <Ionicons name="headset-outline" size={22} color="#fff" />
+          ) : (
+            <Text style={styles.avatarText}>
+              {item.other_user_name?.charAt(0)?.toUpperCase() ?? '?'}
+            </Text>
+          )}
+        </View>
+        <View style={styles.threadBody}>
+          <View style={styles.threadHeader}>
+            <Text style={styles.participantName} numberOfLines={1}>
+              {threadDisplayName(item)}
+            </Text>
+            {item.last_message_at ? (
+              <Text style={styles.timestamp}>{formatTimeAgo(item.last_message_at)}</Text>
+            ) : null}
+          </View>
+          {support ? (
+            <View style={styles.supportMetaRow}>
+              <KBStatusChip
+                label={resolved ? 'Resolved' : 'Open'}
+                variant={resolved ? 'success' : 'warning'}
+              />
+              <Text style={styles.supportWith} numberOfLines={1}>
+                with {item.other_user_name}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={styles.preview} numberOfLines={1}>
+            {item.last_message_content ?? 'No messages yet'}
+          </Text>
+        </View>
+        {item.unread_count > 0 ? (
+          <View style={styles.badge}>
+            <RNText style={styles.badgeText} allowFontScaling={false}>
+              {item.unread_count > 99 ? '99+' : item.unread_count}
+            </RNText>
+          </View>
+        ) : null}
+      </Pressable>
+    );
   };
 
   return (
@@ -223,9 +314,10 @@ export function MessagesScreen() {
       ) : error && threads.length === 0 ? (
         <Text style={styles.errorText}>{error}</Text>
       ) : (
-        <FlatList
-          data={threads}
+        <SectionList
+          sections={sections}
           keyExtractor={(item) => item.id}
+          stickySectionHeadersEnabled={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
@@ -234,38 +326,12 @@ export function MessagesScreen() {
               <Text style={styles.empty}> to message someone.</Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.threadCard}
-              onPress={() => navigation.navigate('MessageDetail', { threadId: item.id })}
-            >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {item.other_user_name?.charAt(0)?.toUpperCase() ?? '?'}
-                </Text>
-              </View>
-              <View style={styles.threadBody}>
-                <View style={styles.threadHeader}>
-                  <Text style={styles.participantName} numberOfLines={1}>
-                    {item.other_user_name}
-                  </Text>
-                  {item.last_message_at ? (
-                    <Text style={styles.timestamp}>{formatTimeAgo(item.last_message_at)}</Text>
-                  ) : null}
-                </View>
-                <Text style={styles.preview} numberOfLines={1}>
-                  {item.last_message_content ?? 'No messages yet'}
-                </Text>
-              </View>
-              {item.unread_count > 0 ? (
-                <View style={styles.badge}>
-                  <RNText style={styles.badgeText} allowFontScaling={false}>
-                    {item.unread_count > 99 ? '99+' : item.unread_count}
-                  </RNText>
-                </View>
-              ) : null}
-            </Pressable>
-          )}
+          renderSectionHeader={({ section }) =>
+            section.data.length > 0 ? (
+              <Text style={styles.sectionHeader}>{section.title}</Text>
+            ) : null
+          }
+          renderItem={renderThread}
         />
       )}
     </View>
@@ -316,6 +382,16 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   empty: { textAlign: 'center', color: COLORS.muted },
+  sectionHeader: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: COLORS.muted,
+  },
   threadCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -326,6 +402,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e8ecea',
+    overflow: 'hidden',
+  },
+  supportThreadCard: {
+    backgroundColor: '#F7FBFF',
+    borderColor: '#C5D7EB',
+  },
+  supportAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#1F4E78',
   },
   avatar: {
     width: 44,
@@ -336,11 +425,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+  supportAvatar: {
+    backgroundColor: '#1F4E78',
+  },
   avatarText: { color: '#fff', fontWeight: '700', fontSize: 18 },
   threadBody: { flex: 1 },
   threadHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   participantName: { fontWeight: '700', fontSize: 15, flex: 1 },
   timestamp: { fontSize: 12, color: COLORS.muted },
+  supportMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  supportWith: { flex: 1, fontSize: 12, color: COLORS.muted },
   preview: { fontSize: 14, color: COLORS.muted, marginTop: 4 },
   badge: {
     backgroundColor: '#FFD700',

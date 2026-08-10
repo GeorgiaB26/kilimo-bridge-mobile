@@ -1,7 +1,11 @@
 import { Platform } from 'react-native';
 import { api } from '../api/client';
 
-export type UploadPurpose = 'farmer_registration' | 'task_evidence' | 'farmer_profile';
+export type UploadPurpose =
+  | 'farmer_registration'
+  | 'task_evidence'
+  | 'farmer_profile'
+  | 'support_attachment';
 export type UploadContentType = 'image/jpeg' | 'image/png' | 'image/webp';
 
 export interface PresignUploadResult {

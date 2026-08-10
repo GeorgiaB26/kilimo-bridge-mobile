@@ -24,6 +24,11 @@ export const AGENT_TAB_ICONS: FloatingTabIconMap = {
   Profile: 'person',
 };
 
+export const SUPPORT_TAB_ICONS: FloatingTabIconMap = {
+  Dashboard: 'stats-chart',
+  Messages: 'chatbubbles',
+};
+
 const HORIZONTAL_MARGIN = 16;
 const BOTTOM_MARGIN = 12;
 /** Large enough that ends are full semicircles regardless of bar height (stadium pill). */

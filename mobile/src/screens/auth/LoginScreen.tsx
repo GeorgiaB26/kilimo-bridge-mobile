@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ComponentType } from 'react';
 import { View, ScrollView, ActivityIndicator, Pressable, Linking } from 'react-native';
-import { Briefcase, Globe, Sprout, UserRound } from 'lucide-react-native';
+import { Briefcase, Globe, Headset, Sprout, UserRound } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ import { useRegistrationStore } from '../../store/registrationStore';
 import { clearAllSessionData } from '../../utils/session';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import type { AuthStackParamList } from '../../navigation/types';
+import { SUPPORT_DESK_PHONE } from '../../../shared/src/supportDesk';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -44,28 +45,30 @@ function LoginTypeCard({
   subtitle: string;
   onPress: () => void;
   disabled?: boolean;
-  variant: 'farmer' | 'agent';
+  variant: 'farmer' | 'agent' | 'support';
 }) {
-  const iconColor = variant === 'farmer' ? '#FFFFFF' : '#1A4D3E';
+  const filled = variant === 'farmer' || variant === 'support';
+  const borderBg =
+    variant === 'farmer'
+      ? 'border-[#1A4D3E] bg-[#1A4D3E]'
+      : variant === 'support'
+        ? 'border-[#1F4E78] bg-[#1F4E78]'
+        : 'border-[#1A4D3E] bg-white';
+  const iconColor = filled ? '#FFFFFF' : '#1A4D3E';
+  const titleColor = filled ? 'text-white' : 'text-[#1A4D3E]';
+  const subtitleColor = filled ? 'text-white/85' : 'text-[#757575]';
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      className={`mb-3 rounded-xl border-2 p-4 ${
-        variant === 'farmer' ? 'border-[#1A4D3E] bg-[#1A4D3E]' : 'border-[#1A4D3E] bg-white'
-      } ${disabled ? 'opacity-60' : 'active:opacity-90'}`}
+      className={`mb-3 rounded-xl border-2 p-4 ${borderBg} ${disabled ? 'opacity-60' : 'active:opacity-90'}`}
     >
       <View className="flex-row items-center gap-1.5">
         <Icon size={18} color={iconColor} />
-        <Text
-          className={`text-base font-bold ${variant === 'farmer' ? 'text-white' : 'text-[#1A4D3E]'}`}
-        >
-          {title}
-        </Text>
+        <Text className={`text-base font-bold ${titleColor}`}>{title}</Text>
       </View>
-      <Text className={`mt-1 text-sm ${variant === 'farmer' ? 'text-white/85' : 'text-[#757575]'}`}>
-        Phone: {subtitle}
-      </Text>
+      <Text className={`mt-1 text-sm ${subtitleColor}`}>Phone: {subtitle}</Text>
     </Pressable>
   );
 }
@@ -227,6 +230,14 @@ export function LoginScreen({ navigation }: Props) {
         variant="agent"
         disabled={loading}
         onPress={() => quickLogin(DEMO_AGENT, 'Field Agent')}
+      />
+      <LoginTypeCard
+        Icon={Headset}
+        title="SUPPORT LOGIN"
+        subtitle={SUPPORT_DESK_PHONE}
+        variant="support"
+        disabled={loading}
+        onPress={() => quickLogin(SUPPORT_DESK_PHONE, 'Support')}
       />
 
       <Pressable onPress={openPortal} className="mb-4 py-2">

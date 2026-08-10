@@ -4,7 +4,7 @@
  * Initials avatars and file:// device URIs are never valid for registration or display.
  */
 
-const R2_OBJECT_KEY_RE = /^(farmers|tasks)\/[A-Za-z0-9._\-/]+$/;
+const R2_OBJECT_KEY_RE = /^(farmers|tasks|support)\/[A-Za-z0-9._\-/]+$/;
 
 export function isR2ObjectKey(url?: string | null): boolean {
   if (!url?.trim()) return false;

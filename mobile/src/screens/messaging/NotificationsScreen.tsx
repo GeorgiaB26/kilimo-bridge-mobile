@@ -23,6 +23,7 @@ import { navigateFromNotification } from '../../utils/farmerNotificationNavigati
 import { useAuthStore, isAgentRole } from '../../store/authStore';
 import { useUnreadInboxCounts } from '../../hooks/useUnreadInboxCounts';
 import type { NotificationsStackParamList } from '../../navigation/types';
+import { isSupportDeskUser } from '../../../shared/src/supportDesk';
 
 type NotificationRow = {
   id: string;
@@ -44,6 +45,10 @@ export function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
   const user = useAuthStore((s) => s.user);
   const isAgent = user != null && isAgentRole(user.role);
+  const isSupportDesk = isSupportDeskUser({
+    userId: user?.userId,
+    phoneNumber: user?.phoneNumber,
+  });
   const { refresh: refreshUnreadCounts } = useUnreadInboxCounts();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
@@ -97,7 +102,7 @@ export function NotificationsScreen() {
     } else {
       await refreshUnreadCounts();
     }
-    navigateFromNotification(navigation, item, { isAgent });
+    navigateFromNotification(navigation, item, { isAgent, isSupportDesk });
   };
 
   const handleClearAll = async () => {

@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Pressable,
   StyleSheet,
-  Linking,
 } from 'react-native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
@@ -13,6 +13,7 @@ import { formatFarmerStatus } from '../../utils/farmerStatus';
 import type { FarmerProject } from '../../types/farmerProject';
 import { FarmerProfilePhoto } from '../FarmerProfilePhoto';
 import { FarmerStatusChip } from '../agent/FarmerStatusChip';
+import { ContactSupportModal } from '../ContactSupportModal';
 import {
   TaskStatusKpiRow,
   type TaskStatusKpiKey,
@@ -305,27 +306,39 @@ export function FarmerDashboardRecentPayments({
   );
 }
 
-export function FarmerDashboardSupportSection({
-  farmerName,
-  farmerPhone,
-}: {
+export function FarmerDashboardSupportSection(_props: {
   farmerName?: string;
   farmerPhone?: string;
 } = {}) {
-  const handleContactSupport = () => {
-    const email = 'support@kilimobridge.org';
-    const subject = 'Kilimo Bridge Farmer Support Request';
-    const body = `Farmer: ${farmerName ?? 'Farmer'}\nPhone: ${farmerPhone ?? 'Not provided'}\n\nIssue: `;
-    Linking.openURL(
-      `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  const navigation = useNavigation();
+  const [supportOpen, setSupportOpen] = useState(false);
+
+  const openCreatedTicket = (threadId: string) => {
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'MessagesFlow',
+        params: {
+          screen: 'MessageDetail',
+          params: {
+            threadId,
+            contextType: 'support_ticket',
+            supportStatus: 'open',
+          },
+        },
+      })
     );
   };
 
   return (
     <View style={styles.supportSection}>
-      <Pressable style={styles.supportButton} onPress={handleContactSupport}>
+      <Pressable style={styles.supportButton} onPress={() => setSupportOpen(true)}>
         <Text style={styles.supportButtonText}>Contact Support</Text>
       </Pressable>
+      <ContactSupportModal
+        visible={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        onCreated={openCreatedTicket}
+      />
     </View>
   );
 }

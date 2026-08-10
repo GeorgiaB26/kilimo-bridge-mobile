@@ -112,7 +112,36 @@ export type AgentRootStackParamList = {
 
 export type MessagesStackParamList = {
   MessagesList: undefined;
-  MessageDetail: { threadId: string };
+  MessageDetail: {
+    threadId: string;
+    /** Optional hints from the list; detail API is source of truth. */
+    title?: string | null;
+    contextType?: string | null;
+    supportStatus?: string | null;
+  };
+};
+
+export type SupportMessagesStackParamList = {
+  SupportTicketsList:
+    | {
+        statusFilter?: 'open' | 'resolved' | 'all';
+      }
+    | undefined;
+  SupportTicketDetail: {
+    threadId: string;
+    subject?: string | null;
+    status?: string | null;
+  };
+};
+
+export type SupportTabParamList = {
+  Dashboard: undefined;
+  Messages: NavigatorScreenParams<SupportMessagesStackParamList> | undefined;
+};
+
+export type SupportRootStackParamList = {
+  MainTabs: NavigatorScreenParams<SupportTabParamList> | undefined;
+  NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
 };
 
 export type NotificationsStackParamList = {

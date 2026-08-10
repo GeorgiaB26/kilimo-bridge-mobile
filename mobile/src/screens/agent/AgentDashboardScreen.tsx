@@ -17,6 +17,7 @@ import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { KBCard } from '../../components/ui/KBCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
+import { ContactSupportModal } from '../../components/ContactSupportModal';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
@@ -104,6 +105,7 @@ export function AgentDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [supportOpen, setSupportOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -345,6 +347,34 @@ export function AgentDashboardScreen() {
           <Text>Activity log</Text>
         </Button>
       </View>
+
+      <Pressable
+        className="mt-4 items-center rounded-lg border border-[#EEE] bg-white px-4 py-3"
+        onPress={() => setSupportOpen(true)}
+        style={webPressable}
+      >
+        <Text className="text-sm font-semibold text-[#1F4E78]">Contact Support</Text>
+      </Pressable>
+
+      <ContactSupportModal
+        visible={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        onCreated={(threadId) => {
+          navigation.dispatch(
+            CommonActions.navigate({
+              name: 'MessagesFlow',
+              params: {
+                screen: 'MessageDetail',
+                params: {
+                  threadId,
+                  contextType: 'support_ticket',
+                  supportStatus: 'open',
+                },
+              },
+            })
+          );
+        }}
+      />
     </ScrollView>
   );
 }

@@ -40,6 +40,9 @@ export const NOTIFICATION_CONFIG: Record<
   registration_approved: { Icon: CircleCheck, title: 'Registration Approved', color: '#70AD47' },
   registration_rejected: { Icon: CircleX, title: 'Registration Rejected', color: '#E74C3C' },
   message_received: { Icon: MessageCircle, title: 'New Message', color: '#4472C4' },
+  support_ticket_created: { Icon: MessageCircle, title: 'New Support Ticket', color: '#1F4E78' },
+  support_ticket_reply: { Icon: MessageCircle, title: 'Support Ticket Update', color: '#1F4E78' },
+  support_ticket_resolved: { Icon: CircleCheck, title: 'Support Ticket Resolved', color: '#70AD47' },
   info: { Icon: Info, title: 'Notification', color: '#4472C4' },
 };
 

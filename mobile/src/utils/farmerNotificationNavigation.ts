@@ -1,5 +1,6 @@
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
+import { SUPPORT_TICKET_CONTEXT } from '../../shared/src/supportDesk';
 
 export type FarmerNotification = {
   id: string;
@@ -40,6 +41,35 @@ function contextId(notification: FarmerNotification): string | undefined {
   );
 }
 
+/** Resolve support ticket thread id from context or `/support/tickets/:id` action_url. */
+export function supportThreadIdFromNotification(
+  notification: FarmerNotification
+): string | undefined {
+  const type = notificationType(notification);
+  const contextType = (notification.context_type ?? '').toLowerCase();
+  const id = contextId(notification);
+  const url = notification.action_url ?? '';
+  const fromUrl = /\/support\/tickets\/([^/?#]+)/i.exec(url)?.[1];
+
+  if (contextType === SUPPORT_TICKET_CONTEXT || contextType === 'support_ticket') {
+    return id ?? fromUrl;
+  }
+  if (
+    type.includes('support_ticket') ||
+    type === 'support_ticket_resolved' ||
+    type === 'support_ticket_created' ||
+    type === 'support_ticket_reply'
+  ) {
+    return id ?? fromUrl;
+  }
+  if (fromUrl) return fromUrl;
+  return undefined;
+}
+
+function isSupportTicketNotification(notification: FarmerNotification): boolean {
+  return Boolean(supportThreadIdFromNotification(notification));
+}
+
 function navigateMainTab(
   root: NavigationProp<ParamListBase>,
   screen: string,
@@ -56,6 +86,50 @@ function navigateMainTab(
   );
 }
 
+function navigateSupportTicketThread(
+  root: NavigationProp<ParamListBase>,
+  notification: FarmerNotification,
+  options?: { isSupportDesk?: boolean }
+): void {
+  const threadId = supportThreadIdFromNotification(notification);
+  if (!threadId) return;
+  const type = notificationType(notification);
+  const resolved = type.includes('resolved');
+
+  if (options?.isSupportDesk) {
+    root.dispatch(
+      CommonActions.navigate({
+        name: 'MainTabs',
+        params: {
+          screen: 'Messages',
+          params: {
+            screen: 'SupportTicketDetail',
+            params: {
+              threadId,
+              status: resolved ? 'resolved' : 'open',
+            },
+          },
+        },
+      })
+    );
+    return;
+  }
+
+  root.dispatch(
+    CommonActions.navigate({
+      name: 'MessagesFlow',
+      params: {
+        screen: 'MessageDetail',
+        params: {
+          threadId,
+          contextType: SUPPORT_TICKET_CONTEXT,
+          supportStatus: resolved ? 'resolved' : undefined,
+        },
+      },
+    })
+  );
+}
+
 /** Navigate from a notification tap to the related screen (farmer or field agent app). */
 export function navigateFromFarmerNotification(
   navigation: NavigationProp<ParamListBase>,
@@ -65,6 +139,11 @@ export function navigateFromFarmerNotification(
   const contextType = (notification.context_type ?? '').toLowerCase();
   const contextIdValue = contextId(notification);
   const root = getRootNavigation(navigation);
+
+  if (isSupportTicketNotification(notification)) {
+    navigateSupportTicketThread(root, notification);
+    return;
+  }
 
   const isMessage =
     type === 'message' ||
@@ -153,12 +232,25 @@ export function navigateFromFarmerNotification(
   }
 }
 
-/** Agent app: payments/projects tabs may be missing — fall back to Profile/Dashboard. */
+/** Agent / support-desk apps: payments/projects tabs may be missing — fall back appropriately. */
 export function navigateFromNotification(
   navigation: NavigationProp<ParamListBase>,
   notification: FarmerNotification,
-  options?: { isAgent?: boolean }
+  options?: { isAgent?: boolean; isSupportDesk?: boolean }
 ): void {
+  if (options?.isSupportDesk) {
+    const root = getRootNavigation(navigation);
+    if (isSupportTicketNotification(notification)) {
+      navigateSupportTicketThread(root, notification, { isSupportDesk: true });
+      return;
+    }
+    navigateMainTab(root, 'Messages', {
+      screen: 'SupportTicketsList',
+      params: { statusFilter: 'open' },
+    });
+    return;
+  }
+
   if (!options?.isAgent) {
     navigateFromFarmerNotification(navigation, notification);
     return;
@@ -167,6 +259,11 @@ export function navigateFromNotification(
   const type = notificationType(notification);
   const contextType = (notification.context_type ?? '').toLowerCase();
   const root = getRootNavigation(navigation);
+
+  if (isSupportTicketNotification(notification)) {
+    navigateSupportTicketThread(root, notification);
+    return;
+  }
 
   const isMessage =
     type === 'message' ||

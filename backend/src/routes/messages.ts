@@ -112,16 +112,26 @@ router.post(
   '/threads/:threadId/messages',
   authenticate,
   asyncHandler(async (req, res) => {
-    const { content } = req.body as { content?: string };
-    if (!content?.trim()) {
+    const { content, attachment_url } = req.body as {
+      content?: string;
+      attachment_url?: string;
+    };
+    if (!content?.trim() && !attachment_url?.trim()) {
       res.status(400).json({ error: 'content is required' });
       return;
     }
     try {
-      const message = await sendThreadMessage(req.params.threadId, req.user!.userId, content);
+      const message = await sendThreadMessage(
+        req.params.threadId,
+        req.user!.userId,
+        content ?? '',
+        attachment_url
+      );
       res.status(201).json({ message });
     } catch (err) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not send message' });
+      const msg = err instanceof Error ? err.message : 'Could not send message';
+      const status = msg.includes('resolved') ? 403 : 400;
+      res.status(status).json({ error: msg });
     }
   })
 );

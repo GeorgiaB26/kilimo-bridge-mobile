@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
-import { hasPermission, Permission } from '../../../shared/src/roles';
+import { hasPermission, Permission, isAgentRole, isAdminRole } from '../../../shared/src/roles';
+import { isSupportDeskUser } from '../../../shared/src/supportDesk';
 import { logAudit } from '../services/auditService';
 import {
   ALLOWED_CONTENT_TYPES,
@@ -18,7 +19,12 @@ import {
 const router = Router();
 router.use(authenticate);
 
-const UPLOAD_PURPOSES: UploadPurpose[] = ['farmer_registration', 'task_evidence', 'farmer_profile'];
+const UPLOAD_PURPOSES: UploadPurpose[] = [
+  'farmer_registration',
+  'task_evidence',
+  'farmer_profile',
+  'support_attachment',
+];
 
 function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
@@ -41,9 +47,18 @@ function deny(req: Request, res: Response, permission: string): void {
   res.status(403).json({ error: 'Insufficient permissions' });
 }
 
-function permissionForPurpose(purpose: UploadPurpose): Permission {
+function canUploadSupportAttachment(req: Request): boolean {
+  const user = req.user;
+  if (!user) return false;
+  if (isSupportDeskUser({ userId: user.userId, phoneNumber: user.phoneNumber })) return true;
+  if (user.role === 'farmer' || isAgentRole(user.role) || isAdminRole(user.role)) return true;
+  return false;
+}
+
+function permissionForPurpose(purpose: UploadPurpose): Permission | null {
   if (purpose === 'farmer_registration') return 'farmers.write';
   if (purpose === 'farmer_profile') return 'farmers.read.own';
+  if (purpose === 'support_attachment') return null;
   return 'tasks.submit';
 }
 
@@ -52,11 +67,14 @@ function parsePurposeBody(req: Request, res: Response): {
   contentType: AllowedContentType;
   farmerTaskId?: string;
   farmerId?: string;
+  supportThreadId?: string;
 } | null {
   const purpose = req.body?.purpose as UploadPurpose | undefined;
   const contentType = req.body?.contentType as AllowedContentType | undefined;
   const farmerTaskId =
     typeof req.body?.farmerTaskId === 'string' ? req.body.farmerTaskId : undefined;
+  const supportThreadId =
+    typeof req.body?.supportThreadId === 'string' ? req.body.supportThreadId.trim() : undefined;
 
   if (!purpose || !UPLOAD_PURPOSES.includes(purpose)) {
     res.status(400).json({
@@ -84,7 +102,23 @@ function parsePurposeBody(req: Request, res: Response): {
     }
   }
 
-  return { purpose, contentType, farmerTaskId, farmerId };
+  return { purpose, contentType, farmerTaskId, farmerId, supportThreadId };
+}
+
+function assertUploadAllowed(req: Request, res: Response, purpose: UploadPurpose): boolean {
+  if (purpose === 'support_attachment') {
+    if (!canUploadSupportAttachment(req)) {
+      deny(req, res, 'support_attachment');
+      return false;
+    }
+    return true;
+  }
+  const permission = permissionForPurpose(purpose);
+  if (!permission || !req.user || !hasPermission(req.user.role, permission)) {
+    deny(req, res, permission ?? purpose);
+    return false;
+  }
+  return true;
 }
 
 router.post(
@@ -105,11 +139,7 @@ router.post(
       return;
     }
 
-    const permission = permissionForPurpose(parsed.purpose);
-    if (!req.user || !hasPermission(req.user.role, permission)) {
-      deny(req, res, permission);
-      return;
-    }
+    if (!assertUploadAllowed(req, res, parsed.purpose)) return;
 
     try {
       const result = await createPresignedUpload({
@@ -117,6 +147,8 @@ router.post(
         contentType: parsed.contentType,
         farmerTaskId: parsed.farmerTaskId,
         farmerId: parsed.farmerId,
+        supportThreadId: parsed.supportThreadId,
+        uploaderUserId: req.user!.userId,
         contentLength,
       });
       res.json(result);
@@ -164,11 +196,7 @@ router.post(
     const parsed = parsePurposeBody(req, res);
     if (!parsed) return;
 
-    const permission = permissionForPurpose(parsed.purpose);
-    if (!req.user || !hasPermission(req.user.role, permission)) {
-      deny(req, res, permission);
-      return;
-    }
+    if (!assertUploadAllowed(req, res, parsed.purpose)) return;
 
     const base64Raw = typeof req.body?.base64 === 'string' ? req.body.base64 : '';
     const base64 = base64Raw.includes(',') ? base64Raw.split(',').pop()! : base64Raw;
@@ -192,6 +220,8 @@ router.post(
         body,
         farmerTaskId: parsed.farmerTaskId,
         farmerId: parsed.farmerId,
+        supportThreadId: parsed.supportThreadId,
+        uploaderUserId: req.user!.userId,
       });
       res.json(result);
     } catch (err) {

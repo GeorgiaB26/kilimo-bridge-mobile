@@ -239,6 +239,95 @@ export async function submitFarmerHelpRequest(message: string) {
   return data;
 }
 
+export async function createSupportTicket(body: {
+  subject: string;
+  description: string;
+  attachmentKeys?: string[];
+}) {
+  const { data } = await api.post<{
+    threadId: string;
+    ticket: SupportTicketSummary;
+  }>('/support/tickets', body);
+  return data;
+}
+
+export type SupportTicketStatus = 'open' | 'resolved';
+
+export type SupportTicketSummary = {
+  thread_id: string;
+  subject: string;
+  status: SupportTicketStatus;
+  created_by_user_id: string;
+  requester_role: string | null;
+  requester_name: string | null;
+  requester_phone: string | null;
+  resolved_at: string | null;
+  resolved_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+  last_message_content: string | null;
+  unread_count: number;
+};
+
+export type SupportTicketMessage = {
+  id: string;
+  thread_id: string;
+  sender_id: string;
+  content: string;
+  attachment_url: string | null;
+  attachment_preview_url?: string | null;
+  created_at: string;
+  sender_name?: string;
+  is_mine?: boolean;
+};
+
+export type SupportTicketStats = {
+  open: number;
+  resolved: number;
+  total: number;
+  unread_open: number;
+};
+
+export async function getSupportStats() {
+  const { data } = await api.get<{ stats: SupportTicketStats }>('/support/stats');
+  return data;
+}
+
+export async function listSupportTickets(status?: SupportTicketStatus) {
+  const { data } = await api.get<{ tickets: SupportTicketSummary[] }>('/support/tickets', {
+    params: status ? { status } : undefined,
+  });
+  return data;
+}
+
+export async function getSupportTicket(threadId: string) {
+  const { data } = await api.get<{
+    ticket: SupportTicketSummary;
+    messages: SupportTicketMessage[];
+    can_reply: boolean;
+  }>(`/support/tickets/${threadId}`);
+  return data;
+}
+
+export async function replySupportTicket(
+  threadId: string,
+  body: { content: string; attachmentKeys?: string[] }
+) {
+  const { data } = await api.post<{ message: SupportTicketMessage }>(
+    `/support/tickets/${threadId}/messages`,
+    body
+  );
+  return data;
+}
+
+export async function resolveSupportTicket(threadId: string) {
+  const { data } = await api.post<{ ticket: SupportTicketSummary }>(
+    `/support/tickets/${threadId}/resolve`
+  );
+  return data;
+}
+
 export async function getAgentHelpRequests() {
   const { data } = await api.get('/agents/help-requests');
   return data;
@@ -361,11 +450,22 @@ export async function getFarmerNotifications() {
 }
 
 // Messaging & notifications (unified API)
+export type MessageThreadRow = {
+  id: string;
+  title?: string | null;
+  context_type?: string | null;
+  support_status?: string | null;
+  other_user_name: string;
+  last_message_content: string | null;
+  last_message_at: string | null;
+  unread_count: number;
+};
+
 export async function getMessageThreads(search?: string) {
   const { data } = await api.get('/messages/threads', {
     params: search ? { search } : undefined,
   });
-  return data as { threads: Array<Record<string, unknown>> };
+  return data as { threads: MessageThreadRow[] };
 }
 
 export async function getMessageContacts() {
@@ -387,8 +487,12 @@ export async function getThreadMessages(threadId: string) {
       created_at: string;
       sender_name?: string;
       is_mine?: boolean;
+      attachment_url?: string | null;
     }>;
     otherUser: { id: string; name: string } | null;
+    title?: string | null;
+    context_type?: string | null;
+    support_status?: string | null;
   };
 }
 

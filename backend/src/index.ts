@@ -9,8 +9,10 @@ import { seedAggregationCentres } from './services/aggregationCentreService';
 import { ensureFarmerHelpRequestsTable } from './services/farmerHelpRequestService';
 import { ensureAgentTasksTable } from './services/agentDashboardService';
 import { ensureMessagingTables } from './services/messagingService';
+import { ensureSupportTicketTables } from './services/supportTicketService';
 import { ensureFarmerTaskAssignerColumn } from './services/hierarchyService';
 import messagesRoutes from './routes/messages';
+import supportRoutes from './routes/support';
 import notificationsRoutes from './routes/notifications';
 import { backfillLegacyIdNumberHashes } from './services/farmerService';
 import { validateProductionEnv } from './validateEnv';
@@ -91,6 +93,7 @@ async function runSchemaEnsures(): Promise<void> {
   await ensureFarmerHelpRequestsTable();
   await ensureAgentTasksTable();
   await ensureMessagingTables();
+  await ensureSupportTicketTables();
   await ensureFarmerTaskAssignerColumn();
 }
 
@@ -149,6 +152,7 @@ function mountApiRoutes(): void {
   app.use('/api/banking', bankingRoutes);
   app.use('/api/agents', agentRoutes);
   app.use('/api/messages', messagesRoutes);
+  app.use('/api/support', supportRoutes);
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/webhooks', equityWebhookRouter);
