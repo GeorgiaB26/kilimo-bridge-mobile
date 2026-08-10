@@ -822,13 +822,16 @@ async function notifyFarmerOfHierarchyTaskReview(
   if (!farmerUser?.user_id) return;
 
   const taskName = task.name ?? 'your task';
-  const title = outcome === 'approved' ? 'Task approved' : 'Task rejected';
+  const title =
+    outcome === 'approved'
+      ? 'Task approved'
+      : 'Task QC Check Failed';
   const message =
     outcome === 'approved'
       ? `Your field agent approved "${taskName}".`
-      : `Your field agent rejected "${taskName}".${
-          rejectionReason?.trim() ? ` Reason: ${rejectionReason.trim()}.` : ''
-        } Please resubmit.`;
+      : `Your task "${taskName}" failed its quality check. Reason: ${
+          rejectionReason?.trim() || 'Quality check did not pass'
+        }`;
 
   try {
     const { createNotification } = await import('./notificationService');
@@ -836,9 +839,10 @@ async function notifyFarmerOfHierarchyTaskReview(
       userId: farmerUser.user_id,
       title,
       message,
-      type: outcome === 'approved' ? 'task_approved' : 'task_rejected',
+      type: outcome === 'approved' ? 'task_approved' : 'task_qc_failed',
       contextType: 'farmer_task',
       contextId: task.id,
+      actionUrl: `/tasks/${task.id}`,
       priority: 'high',
     });
   } catch {

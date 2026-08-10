@@ -219,19 +219,30 @@ export function navigateFromFarmerNotification(
     contextType === 'farmer_task' ||
     type === 'task_assigned' ||
     type === 'task_rejected' ||
+    type === 'task_qc_failed' ||
     type === 'task_approved'
   ) {
     const params: Record<string, unknown> = {};
     if (contextIdValue) {
       params.taskId = contextIdValue;
       params.highlightTaskId = contextIdValue;
-      // Rejected: open Edit/submit so they can fix evidence. Assigned: expand details only
-      // so the farmer can read the task before choosing Start.
-      if (type === 'task_rejected' || type.includes('rejected')) {
+      // Rejected / QC failed: open Edit/submit so they can fix evidence.
+      if (
+        type === 'task_rejected' ||
+        type === 'task_qc_failed' ||
+        type.includes('rejected') ||
+        (notification.title ?? '').toLowerCase().includes('qc')
+      ) {
         params.openSubmitModal = true;
+        params.fromNotification = true;
       }
     }
-    if (type === 'task_rejected' || type.includes('rejected')) {
+    if (
+      type === 'task_rejected' ||
+      type === 'task_qc_failed' ||
+      type.includes('rejected') ||
+      (notification.title ?? '').toLowerCase().includes('qc')
+    ) {
       params.statusFilter = 'rejected';
     }
     navigateMainTab(root, 'Tasks', Object.keys(params).length ? params : undefined);

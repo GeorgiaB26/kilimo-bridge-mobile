@@ -28,6 +28,7 @@ import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
+import { FarmerTaskQcFailureCard } from '../../components/farmer/FarmerTaskQcFailureCard';
 import { OutboxTaskRecallCard } from '../../components/OutboxTaskRecallCard';
 import { OutboxTaskStartCard } from '../../components/OutboxTaskStartCard';
 import {
@@ -860,7 +861,7 @@ export function FarmerTasksScreen() {
             ) : null}
 
             {statusNorm === 'rejected' && item.rejection_reason ? (
-              <Text className="mt-2 text-sm text-destructive">{item.rejection_reason}</Text>
+              <FarmerTaskQcFailureCard reason={item.rejection_reason} />
             ) : null}
 
             {isSubmittedForApproval(item.status) ? (

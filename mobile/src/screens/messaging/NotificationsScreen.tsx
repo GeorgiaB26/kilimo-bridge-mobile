@@ -20,10 +20,9 @@ import {
 import { extractApiError } from '../../utils/feedback';
 import { NOTIFICATION_CONFIG, formatTimeAgo } from '../../constants/notifications';
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
-import { useAuthStore, isAgentRole } from '../../store/authStore';
+import { useAuthStore } from '../../store/authStore';
 import { useUnreadInboxCounts } from '../../hooks/useUnreadInboxCounts';
 import type { NotificationsStackParamList } from '../../navigation/types';
-import { isSupportDeskUser } from '../../../shared/src/supportDesk';
 
 type NotificationRow = {
   id: string;
@@ -44,11 +43,7 @@ const POLL_MS = 10000;
 export function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
   const user = useAuthStore((s) => s.user);
-  const isAgent = user != null && isAgentRole(user.role);
-  const isSupportDesk = isSupportDeskUser({
-    userId: user?.userId,
-    phoneNumber: user?.phoneNumber,
-  });
+  const isAgent = user?.role === 'agent' || user?.role === 'field_officer';
   const { refresh: refreshUnreadCounts } = useUnreadInboxCounts();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
@@ -102,7 +97,7 @@ export function NotificationsScreen() {
     } else {
       await refreshUnreadCounts();
     }
-    navigateFromNotification(navigation, item, { isAgent, isSupportDesk });
+    navigateFromNotification(navigation, item, { isAgent });
   };
 
   const handleClearAll = async () => {
@@ -123,21 +118,13 @@ export function NotificationsScreen() {
             style={[styles.filterBtn, filter === 'all' && styles.filterActive]}
             onPress={() => setFilter('all')}
           >
-            <Text
-              className={`text-[13px] font-semibold ${filter === 'all' ? 'text-white' : 'text-[#757575]'}`}
-            >
-              All
-            </Text>
+            <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>All</Text>
           </Pressable>
           <Pressable
             style={[styles.filterBtn, filter === 'unread' && styles.filterActive]}
             onPress={() => setFilter('unread')}
           >
-            <Text
-              className={`text-[13px] font-semibold ${
-                filter === 'unread' ? 'text-white' : 'text-[#757575]'
-              }`}
-            >
+            <Text style={[styles.filterText, filter === 'unread' && styles.filterTextActive]}>
               Unread
             </Text>
           </Pressable>
@@ -180,6 +167,11 @@ export function NotificationsScreen() {
                   <Text style={styles.cardTitle}>{item.title || config.title}</Text>
                   <Text style={styles.cardMessage} numberOfLines={2}>{item.message}</Text>
                   <Text style={styles.cardTime}>{formatTimeAgo(item.created_at)}</Text>
+                  {(item.type === 'task_qc_failed' ||
+                    item.context_type === 'farmer_task' ||
+                    item.title?.toLowerCase().includes('qc')) && (
+                    <Text style={styles.tapHint}>Tap to view task details →</Text>
+                  )}
                 </View>
                 {!item.is_read ? (
                   <Pressable
@@ -213,14 +205,14 @@ const styles = StyleSheet.create({
   },
   filterRow: { flexDirection: 'row', gap: 8 },
   filterBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     backgroundColor: '#f0f0f0',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   filterActive: { backgroundColor: COLORS.primary },
+  filterText: { fontSize: 13, fontWeight: '600', color: COLORS.muted },
+  filterTextActive: { color: '#fff' },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   actionBtn: { padding: 4 },
   actionText: { color: COLORS.primary, fontWeight: '600', fontSize: 13 },
@@ -245,6 +237,12 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4 },
   cardMessage: { fontSize: 13, color: '#444', lineHeight: 18 },
   cardTime: { fontSize: 12, color: COLORS.muted, marginTop: 6 },
+  tapHint: {
+    fontSize: 12,
+    color: COLORS.primary,
+    marginTop: 8,
+    fontWeight: '600',
+  },
   markReadBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -255,7 +253,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#FFD700',
+    backgroundColor: '#E74C3C',
     marginLeft: 4,
     marginTop: 4,
   },

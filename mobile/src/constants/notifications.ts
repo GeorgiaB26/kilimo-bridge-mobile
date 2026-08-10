@@ -9,8 +9,8 @@ import {
   Mail,
   MessageCircle,
   Tractor,
+  TriangleAlert,
 } from 'lucide-react-native';
-import { formatCleanDate } from '../utils/greeting';
 
 export type NotificationIcon = ComponentType<{ size?: number | string; color?: string }>;
 
@@ -28,11 +28,11 @@ export const NOTIFICATION_CONFIG: Record<
   task_completed: { Icon: CircleCheck, title: 'Task Completed', color: '#70AD47' },
   task_started: { Icon: CircleCheck, title: 'Farmer Started Task', color: '#70AD47' },
   task_status_updated: { Icon: ClipboardList, title: 'Task Updated', color: '#4472C4' },
-  success: { Icon: CircleCheck, title: 'Update', color: '#70AD47' },
-  warning: { Icon: CircleHelp, title: 'Attention Needed', color: '#FFC000' },
-  task_approved: { Icon: CircleCheck, title: 'Task Approved', color: '#70AD47' },
+  task_qc_failed: { Icon: CircleX, title: 'Task QC Check Failed', color: '#E74C3C' },
   task_rejected: { Icon: CircleX, title: 'Task Rejected', color: '#E74C3C' },
-  task: { Icon: ClipboardList, title: 'Task Update', color: '#4472C4' },
+  error: { Icon: CircleX, title: 'Alert', color: '#E74C3C' },
+  success: { Icon: CircleCheck, title: 'Update', color: '#70AD47' },
+  warning: { Icon: TriangleAlert, title: 'Attention Needed', color: '#FFC000' },
   payment_ready: { Icon: Banknote, title: 'Payment Ready', color: '#FFC000' },
   payment: { Icon: Banknote, title: 'Payment Update', color: '#FFC000' },
   payment_processed: { Icon: Banknote, title: 'Payment Processed', color: '#FFC000' },
@@ -44,9 +44,6 @@ export const NOTIFICATION_CONFIG: Record<
   registration_approved: { Icon: CircleCheck, title: 'Registration Approved', color: '#70AD47' },
   registration_rejected: { Icon: CircleX, title: 'Registration Rejected', color: '#E74C3C' },
   message_received: { Icon: MessageCircle, title: 'New Message', color: '#4472C4' },
-  support_ticket_created: { Icon: MessageCircle, title: 'New Support Ticket', color: '#1F4E78' },
-  support_ticket_reply: { Icon: MessageCircle, title: 'Support Ticket Update', color: '#1F4E78' },
-  support_ticket_resolved: { Icon: CircleCheck, title: 'Support Ticket Resolved', color: '#70AD47' },
   info: { Icon: Info, title: 'Notification', color: '#4472C4' },
 };
 
@@ -61,7 +58,7 @@ export function formatTimeAgo(value: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return formatCleanDate(value);
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 export function formatMessageTime(value: string): string {
