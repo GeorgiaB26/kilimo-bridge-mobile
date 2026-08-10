@@ -69,6 +69,9 @@ import {
   syncAllPendingTaskStarts,
   type PendingTaskStartView,
 } from '../../services/submitTaskStartOutbox';
+import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
+import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
+import { navigateFromFarmerNotification } from '../../utils/farmerNotificationNavigation';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 type StatusFilterKey = TaskStatusKpiKey;
@@ -249,6 +252,9 @@ export function FarmerTasksScreen() {
     taskId: string;
     openEdit: boolean;
   } | null>(null);
+
+  const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
+    useTaskNotificationBanners();
 
   const loadPendingRecalls = useCallback(async () => {
     setPendingRecalls(await listPendingTaskRecalls());
@@ -1060,6 +1066,30 @@ export function FarmerTasksScreen() {
           ) : null}
 
           {error ? <FarmerOfflineBanner message={error} /> : null}
+          {taskNotifications.length > 0 ? (
+            <View style={styles.notifBlock}>
+              <Text className="mb-2 text-sm font-bold text-[#4472C4]">
+                {taskNotifications.length} task update
+                {taskNotifications.length > 1 ? 's' : ''}
+              </Text>
+              {taskNotifications.map((notif) => (
+                <TaskNotificationBanner
+                  key={notif.id}
+                  notification={notif}
+                  onPress={() => {
+                    dismissTaskNotification(notif.id);
+                    navigateFromFarmerNotification(navigation, {
+                      id: notif.id,
+                      type: notif.type,
+                      context_type: notif.context_type ?? 'agent_task',
+                      context_id: notif.context_id,
+                    });
+                  }}
+                  onDismiss={() => dismissTaskNotification(notif.id)}
+                />
+              ))}
+            </View>
+          ) : null}
           {pendingStarts.length > 0 ? (
             <View style={styles.pendingQueue}>
               <Text className="mb-2 text-sm font-semibold text-foreground">
@@ -1348,6 +1378,12 @@ const styles = StyleSheet.create({
   },
   openBtn: {
     marginTop: 12,
+  },
+  notifBlock: {
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
   },
   modalOverlay: {
     flex: 1,

@@ -4,6 +4,10 @@ import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { createNotification } from './notificationService';
+import {
+  notifyAgentOnFarmerTaskStarted,
+  notifyFarmersOnAgentTaskStatusChange,
+} from './taskActivityService';
 import { countOverlappingStatusKpis, compareDueDates } from '../utils/taskCategorization';
 
 export interface AgentPersonalTask {
@@ -423,6 +427,16 @@ export async function startAgentTaskByFarmer(
   if (!updated) {
     throw Object.assign(new Error('Task not found after start'), { statusCode: 500 });
   }
+
+  await notifyAgentOnFarmerTaskStarted({
+    taskId,
+    taskName: row.name,
+    farmerId,
+    agentUserId: row.agent_user_id,
+    statusBefore: row.status,
+    statusAfter: 'in_progress',
+  });
+
   return updated;
 }
 
@@ -590,6 +604,7 @@ export async function updateAgentPersonalTask(
   }
 
   const dueDate = data.due_date ? normalizeAgentTaskDueDate(data.due_date) : undefined;
+  const statusBefore = existing.status;
 
   await query(
     `
@@ -613,7 +628,20 @@ export async function updateAgentPersonalTask(
     ]
   );
 
-  return getAgentPersonalTask(taskId, agentUserId);
+  const updated = await getAgentPersonalTask(taskId, agentUserId);
+  if (updated && status && status !== statusBefore) {
+    const farmerIds = parseAssignedFarmerIds(updated.assigned_farmer_ids);
+    await notifyFarmersOnAgentTaskStatusChange({
+      taskId,
+      taskName: updated.name,
+      agentUserId,
+      assignedFarmerIds: farmerIds,
+      statusBefore,
+      statusAfter: status,
+    });
+  }
+
+  return updated;
 }
 
 export async function updateAgentPersonalTaskReminder(

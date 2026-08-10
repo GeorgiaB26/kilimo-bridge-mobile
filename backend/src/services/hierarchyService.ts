@@ -659,6 +659,8 @@ export async function startFarmerTask(
     [day, farmerTaskId, farmerId]
   );
 
+  await notifyAgentsOfFarmerTaskStarted(farmerTaskId);
+
   return getFarmerTask(farmerTaskId);
 }
 
@@ -700,6 +702,41 @@ export async function recallFarmerTask(farmerTaskId: string, farmerId: string) {
   const updated = await getFarmerTask(farmerTaskId);
   await notifyAgentsOfFarmerTaskRecall(farmerTaskId);
   return updated;
+}
+
+/** Notify field agents that a farmer started a program hierarchy task. */
+export async function notifyAgentsOfFarmerTaskStarted(farmerTaskId: string): Promise<void> {
+  const task = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+    farmer_name?: string;
+  } | null;
+  if (!task?.farmer_id || !task.id) return;
+
+  const agentUserIds = await resolveAgentUserIdsForFarmer(task.farmer_id);
+  if (agentUserIds.length === 0) return;
+
+  const { createNotification } = await import('./notificationService');
+  const farmerName = task.farmer_name ?? 'A farmer';
+  const taskName = task.name ?? 'a task';
+
+  for (const userId of agentUserIds) {
+    try {
+      await createNotification({
+        userId,
+        title: 'Farmer Started Task',
+        message: `${farmerName} has started: ${taskName}`,
+        type: 'success',
+        contextType: 'farmer_task',
+        contextId: task.id,
+        actionUrl: `/tasks/${task.id}`,
+        priority: 'high',
+      });
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 /** Notify field agents that a farmer withdrew hierarchy evidence before review. */
