@@ -234,6 +234,12 @@ export async function getFarmerAssignedTasks(params?: {
   }
 }
 
+/** Start a field-agent-assigned task (not_started → in_progress). Notifies the agent. */
+export async function startFarmerAgentTask(taskId: string) {
+  const { data } = await api.patch(`/farmer/agent-tasks/${taskId}/start`);
+  return data;
+}
+
 export async function submitFarmerHelpRequest(message: string) {
   const { data } = await api.post('/farmer/help-requests', { message });
   return data;

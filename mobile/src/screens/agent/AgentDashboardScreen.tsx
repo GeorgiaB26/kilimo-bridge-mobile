@@ -24,6 +24,9 @@ import { extractApiError } from '../../utils/feedback';
 import { APP_BUILD } from '../../constants/build';
 import { API_BASE_URL } from '../../constants';
 import type { AgentTabParamList } from '../../navigation/types';
+import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
+import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
+import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
 
 type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
 
@@ -102,6 +105,8 @@ export function AgentDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
+    useTaskNotificationBanners();
 
   const load = useCallback(async () => {
     try {
@@ -177,6 +182,31 @@ export function AgentDashboardScreen() {
         <View className="mb-3 rounded-lg border border-[#EF4444] bg-[#FFEBEE] p-3">
           <Text className="text-sm font-semibold text-[#EF4444]">{loadError}</Text>
           <Text className="mt-1 text-xs text-[#757575]">Pull down to retry or check API connection above.</Text>
+        </View>
+      ) : null}
+
+      {taskNotifications.length > 0 ? (
+        <View className="mb-3 rounded-lg border border-[#C8E6C9] bg-[#E8F5E9] p-3">
+          <Text className="mb-2 text-sm font-bold text-[#1A4D3E]">
+            {taskNotifications.length} farmer task update
+            {taskNotifications.length > 1 ? 's' : ''}
+          </Text>
+          {taskNotifications.map((notif) => (
+            <TaskNotificationBanner
+              key={notif.id}
+              notification={notif}
+              onPress={() => {
+                dismissTaskNotification(notif.id);
+                navigateFromNotification(navigation, {
+                  id: notif.id,
+                  type: notif.type,
+                  context_type: notif.context_type ?? 'agent_task',
+                  context_id: notif.context_id,
+                }, { isAgent: true });
+              }}
+              onDismiss={() => dismissTaskNotification(notif.id)}
+            />
+          ))}
         </View>
       ) : null}
 

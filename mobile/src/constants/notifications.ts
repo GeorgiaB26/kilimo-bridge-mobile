@@ -9,6 +9,7 @@ import {
   Mail,
   MessageCircle,
   Tractor,
+  TriangleAlert,
 } from 'lucide-react-native';
 
 export type NotificationIcon = ComponentType<{ size?: number | string; color?: string }>;
@@ -25,6 +26,10 @@ export const NOTIFICATION_CONFIG: Record<
   help_response: { Icon: CircleHelp, title: 'Support Response', color: '#9966CC' },
   task_assigned: { Icon: CircleCheck, title: 'New Task Assigned', color: '#4472C4' },
   task_completed: { Icon: CircleCheck, title: 'Task Completed', color: '#70AD47' },
+  task_started: { Icon: CircleCheck, title: 'Farmer Started Task', color: '#70AD47' },
+  task_status_updated: { Icon: ClipboardList, title: 'Task Updated', color: '#4472C4' },
+  success: { Icon: CircleCheck, title: 'Update', color: '#70AD47' },
+  warning: { Icon: TriangleAlert, title: 'Attention Needed', color: '#FFC000' },
   payment_ready: { Icon: Banknote, title: 'Payment Ready', color: '#FFC000' },
   payment: { Icon: Banknote, title: 'Payment Update', color: '#FFC000' },
   payment_processed: { Icon: Banknote, title: 'Payment Processed', color: '#FFC000' },

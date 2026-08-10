@@ -8,6 +8,7 @@ import { ensureDemoFarmerPortal, ensureDemoAgentPassword } from './ensureDemoFar
 import { seedAggregationCentres } from './services/aggregationCentreService';
 import { ensureFarmerHelpRequestsTable } from './services/farmerHelpRequestService';
 import { ensureAgentTasksTable } from './services/agentDashboardService';
+import { ensureTaskActivityLogTable } from './services/taskActivityService';
 import { ensureMessagingTables } from './services/messagingService';
 import { ensureFarmerTaskAssignerColumn } from './services/hierarchyService';
 import messagesRoutes from './routes/messages';
@@ -90,6 +91,7 @@ app.listen(PORT, HOST, () => {
 async function runSchemaEnsures(): Promise<void> {
   await ensureFarmerHelpRequestsTable();
   await ensureAgentTasksTable();
+  await ensureTaskActivityLogTable();
   await ensureMessagingTables();
   await ensureFarmerTaskAssignerColumn();
 }

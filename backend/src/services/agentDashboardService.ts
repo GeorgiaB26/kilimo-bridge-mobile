@@ -4,6 +4,10 @@ import { getFarmersInRegion } from './agentService';
 import { fromDbTaskStatus } from './hierarchyService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { createNotification } from './notificationService';
+import {
+  notifyAgentOnFarmerTaskStarted,
+  notifyFarmersOnAgentTaskStatusChange,
+} from './taskActivityService';
 import { countTaskCategories, compareDueDates } from '../utils/taskCategorization';
 
 export interface AgentPersonalTask {
@@ -311,6 +315,8 @@ export async function updateAgentPersonalTask(
 
   const dueDate = data.due_date ? normalizeAgentTaskDueDate(data.due_date) : undefined;
 
+  const statusBefore = existing.status;
+
   await query(
     `
     UPDATE agent_tasks SET
@@ -333,7 +339,56 @@ export async function updateAgentPersonalTask(
     ]
   );
 
-  return getAgentPersonalTask(taskId, agentUserId);
+  const updated = await getAgentPersonalTask(taskId, agentUserId);
+  if (updated && status && status !== statusBefore) {
+    const farmerIds = parseAssignedFarmerIds(updated.assigned_farmer_ids);
+    await notifyFarmersOnAgentTaskStatusChange({
+      taskId,
+      taskName: updated.name,
+      agentUserId,
+      assignedFarmerIds: farmerIds,
+      statusBefore,
+      statusAfter: status,
+    });
+  }
+
+  return updated;
+}
+
+/** Farmer marks an agent-assigned task as in progress (start). */
+export async function startFarmerAgentTask(
+  taskId: string,
+  farmerId: string
+): Promise<AgentPersonalTask | null> {
+  const existing = await queryOne<AgentPersonalTask>(
+    'SELECT * FROM agent_tasks WHERE id = $1',
+    [taskId]
+  );
+  if (!existing) return null;
+
+  const assignedIds = parseAssignedFarmerIds(existing.assigned_farmer_ids);
+  if (!assignedIds.includes(farmerId)) return null;
+
+  if (existing.status !== 'not_started') {
+    throw new Error('Task can only be started from not started status');
+  }
+
+  await query(
+    `UPDATE agent_tasks SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
+    [taskId]
+  );
+
+  await notifyAgentOnFarmerTaskStarted({
+    taskId,
+    taskName: existing.name,
+    farmerId,
+    agentUserId: existing.agent_user_id,
+    statusBefore: existing.status,
+    statusAfter: 'in_progress',
+  });
+
+  const row = await queryOne<AgentPersonalTask>('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
+  return row ? enrichPersonalTask(row) : null;
 }
 
 export async function updateAgentPersonalTaskReminder(

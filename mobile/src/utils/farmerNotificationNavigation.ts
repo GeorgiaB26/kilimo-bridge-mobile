@@ -177,7 +177,12 @@ export function navigateFromNotification(
   }
 
   if (type.includes('task') || contextType === 'task' || type === 'task_assigned') {
-    navigateMainTab(root, 'Tasks', { filter: 'all' });
+    const taskId = contextId(notification);
+    navigateMainTab(
+      root,
+      'Tasks',
+      taskId ? { filter: 'all', taskId, highlightTaskId: taskId } : { filter: 'all' }
+    );
     return;
   }
 

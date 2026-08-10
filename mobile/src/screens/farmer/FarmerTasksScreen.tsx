@@ -12,8 +12,8 @@ import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
 import { COLORS } from '../../constants';
-import { getFarmerAssignedTasks } from '../../api/client';
-import { extractApiError } from '../../utils/feedback';
+import { getFarmerAssignedTasks, startFarmerAgentTask } from '../../api/client';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { KBCard } from '../../components/ui/KBCard';
@@ -31,6 +31,9 @@ import {
 import { formatDisplayDate, formatCleanDate } from '../../utils/greeting';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerTabParamList } from '../../navigation/types';
+import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
+import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
+import { navigateFromFarmerNotification } from '../../utils/farmerNotificationNavigation';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 
@@ -80,6 +83,9 @@ export function FarmerTasksScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
+  const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
+  const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
+    useTaskNotificationBanners();
 
   const load = useCallback(async () => {
     try {
@@ -122,6 +128,20 @@ export function FarmerTasksScreen() {
         `Status: ${displayStatus(item.status)}`,
       ].join('\n\n')
     );
+  };
+
+  const handleStartAgentTask = async (item: ExtendedTaskRow) => {
+    if (startingTaskId) return;
+    setStartingTaskId(item.id);
+    try {
+      await startFarmerAgentTask(item.id);
+      showMessage('Task started', 'Your field agent has been notified.');
+      await load();
+    } catch (err: unknown) {
+      showMessage('Could not start task', extractApiError(err, 'Please try again'));
+    } finally {
+      setStartingTaskId(null);
+    }
   };
 
   const onRefresh = () => {
@@ -228,7 +248,9 @@ export function FarmerTasksScreen() {
         elevated={false}
         onPress={
           agentTask
-            ? () => showAgentTaskDetail(item)
+            ? normalizeTaskStatus(item.status) === 'not-started'
+              ? undefined
+              : () => showAgentTaskDetail(item)
             : openable
               ? () => setSubmitTask(item)
               : undefined
@@ -278,8 +300,27 @@ export function FarmerTasksScreen() {
 
         {agentTask ? (
           <Text className="mt-2 text-sm text-muted-foreground">
-            Assigned by your field agent — tap for details
+            Assigned by your field agent
+            {normalizeTaskStatus(item.status) === 'not-started' ? ' — start when you begin work' : ''}
           </Text>
+        ) : null}
+
+        {agentTask && normalizeTaskStatus(item.status) === 'not-started' ? (
+          <Button
+            mode="contained"
+            buttonColor={COLORS.primary}
+            loading={startingTaskId === item.id}
+            onPress={() => handleStartAgentTask(item)}
+            style={styles.openBtn}
+          >
+            Start task
+          </Button>
+        ) : null}
+
+        {agentTask && normalizeTaskStatus(item.status) !== 'not-started' ? (
+          <Button mode="outlined" onPress={() => showAgentTaskDetail(item)} style={styles.openBtn}>
+            View details
+          </Button>
         ) : null}
 
         {normalizeTaskStatus(item.status) === 'rejected' && item.rejection_reason ? (
@@ -343,6 +384,30 @@ export function FarmerTasksScreen() {
               {categoryCounts.notStarted} not started · {categoryCounts.completed} completed · updates every 30s
             </Text>
             {error ? <FarmerOfflineBanner message={error} /> : null}
+            {taskNotifications.length > 0 ? (
+              <View style={styles.notifBlock}>
+                <Text className="mb-2 text-sm font-bold text-[#4472C4]">
+                  {taskNotifications.length} task update
+                  {taskNotifications.length > 1 ? 's' : ''}
+                </Text>
+                {taskNotifications.map((notif) => (
+                  <TaskNotificationBanner
+                    key={notif.id}
+                    notification={notif}
+                    onPress={() => {
+                      dismissTaskNotification(notif.id);
+                      navigateFromFarmerNotification(navigation, {
+                        id: notif.id,
+                        type: notif.type,
+                        context_type: notif.context_type ?? 'agent_task',
+                        context_id: notif.context_id,
+                      });
+                    }}
+                    onDismiss={() => dismissTaskNotification(notif.id)}
+                  />
+                ))}
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -417,5 +482,11 @@ const styles = StyleSheet.create({
   },
   openBtn: {
     marginTop: 12,
+  },
+  notifBlock: {
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
   },
 });

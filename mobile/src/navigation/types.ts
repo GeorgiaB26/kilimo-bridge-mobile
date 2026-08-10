@@ -81,6 +81,8 @@ export type AgentTabParamList = {
   Tasks: {
     filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
     openAdd?: boolean;
+    taskId?: string;
+    highlightTaskId?: string;
   } | undefined;
   Audit: undefined;
   Profile: undefined;

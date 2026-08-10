@@ -12,6 +12,7 @@ import { getUserNotifications } from '../services/notificationService';
 import { updateFarmerLocation, updateFarmerPicture } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
 import { createFarmerHelpRequest } from '../services/farmerHelpRequestService';
+import { startFarmerAgentTask } from '../services/agentDashboardService';
 import hierarchyFarmerRoutes from './hierarchyFarmer';
 
 const router = Router();
@@ -75,6 +76,24 @@ router.get(
     });
     logFarmerDataAccess(req, 'assigned_tasks', req.user.farmerId);
     res.json({ tasks, count: tasks.length });
+  })
+);
+
+/** Farmer starts a field-agent-assigned task (not_started → in_progress). */
+router.patch(
+  '/agent-tasks/:taskId/start',
+  asyncHandler(async (req, res) => {
+    if (!req.user?.farmerId) {
+      res.status(400).json({ error: 'No farmer profile linked to this account' });
+      return;
+    }
+    const task = await startFarmerAgentTask(req.params.taskId, req.user.farmerId);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found or not assigned to you' });
+      return;
+    }
+    logFarmerDataAccess(req, 'agent_task_start', req.user.farmerId);
+    res.json({ task, message: 'Task started' });
   })
 );
 
