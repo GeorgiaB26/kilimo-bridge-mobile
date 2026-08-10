@@ -420,7 +420,36 @@ export async function sendThreadMessage(
     [threadId, senderId]
   );
 
+  const isSupportThread = Boolean(supportTicket);
+  let supportSenderIsDesk = false;
+  if (isSupportThread) {
+    const { isSupportDeskUser } = await import('../../../shared/src/supportDesk');
+    const phoneRow = await queryOne<{ phone_number: string }>(
+      `SELECT phone_number FROM users WHERE user_id::text = $1::text`,
+      [senderId]
+    );
+    supportSenderIsDesk = isSupportDeskUser({
+      userId: senderId,
+      phoneNumber: phoneRow?.phone_number,
+    });
+  }
+
   for (const recipient of recipients) {
+    if (isSupportThread) {
+      // Keep support-ticket replies on the same notification type / deep-link as /api/support replies
+      // so farmer↔desk taps open the ticket thread in each app shell.
+      await createNotification({
+        userId: recipient.user_id,
+        title: supportSenderIsDesk ? 'Support replied' : 'New reply on support ticket',
+        message: `${sender?.name ?? 'Someone'}: ${(trimmed || 'Photo').slice(0, 120)}`,
+        type: 'support_ticket_reply',
+        contextType: 'support_ticket',
+        contextId: threadId,
+        actionUrl: `/support/tickets/${threadId}`,
+      });
+      continue;
+    }
+
     const settings = await getNotificationSettings(recipient.user_id);
     if (settings.notify_messages && settings.messages_enabled) {
       await createNotification({

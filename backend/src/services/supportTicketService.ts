@@ -485,7 +485,7 @@ export async function replyToSupportTicket(params: {
     sender?.name ?? 'Someone',
     content || 'Sent a photo',
     'support_ticket_reply',
-    'Support ticket update'
+    desk ? 'Support replied' : 'New reply on support ticket'
   );
 
   const row = await queryOne<SupportTicketMessage>(
