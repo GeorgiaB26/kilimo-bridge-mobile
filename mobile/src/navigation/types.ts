@@ -17,9 +17,12 @@ export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
   Tasks: {
-    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed';
+    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed' | 'rejected';
     highlightTaskId?: string;
     taskId?: string;
+    /** Open submit/resubmit modal after deep-link (e.g. QC failure notification). */
+    openSubmitModal?: boolean;
+    fromNotification?: boolean;
   } | undefined;
   Payments: { highlightPaymentId?: string } | undefined;
   Profile: undefined;

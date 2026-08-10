@@ -167,6 +167,11 @@ export function NotificationsScreen() {
                   <Text style={styles.cardTitle}>{item.title || config.title}</Text>
                   <Text style={styles.cardMessage} numberOfLines={2}>{item.message}</Text>
                   <Text style={styles.cardTime}>{formatTimeAgo(item.created_at)}</Text>
+                  {(item.type === 'task_qc_failed' ||
+                    item.context_type === 'farmer_task' ||
+                    item.title?.toLowerCase().includes('qc')) && (
+                    <Text style={styles.tapHint}>Tap to view task details →</Text>
+                  )}
                 </View>
                 {!item.is_read ? (
                   <Pressable
@@ -232,6 +237,12 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4 },
   cardMessage: { fontSize: 13, color: '#444', lineHeight: 18 },
   cardTime: { fontSize: 12, color: COLORS.muted, marginTop: 6 },
+  tapHint: {
+    fontSize: 12,
+    color: COLORS.primary,
+    marginTop: 8,
+    fontWeight: '600',
+  },
   markReadBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,

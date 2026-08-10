@@ -4,6 +4,8 @@ import { CommonActions } from '@react-navigation/native';
 export type FarmerNotification = {
   id: string;
   type: string;
+  title?: string;
+  message?: string;
   context_type?: string | null;
   context_id?: string | null;
   action_url?: string | null;
@@ -32,11 +34,29 @@ function notificationType(notification: FarmerNotification): string {
   return raw.toLowerCase();
 }
 
+function contextIdFromActionUrl(actionUrl?: string | null): string | undefined {
+  if (!actionUrl?.trim()) return undefined;
+  const match = actionUrl.trim().match(/\/tasks\/([^/?#]+)/i);
+  return match?.[1];
+}
+
 function contextId(notification: FarmerNotification): string | undefined {
   return (
     notification.context_id ??
     notification.related_id ??
+    contextIdFromActionUrl(notification.action_url) ??
     undefined
+  );
+}
+
+function isTaskQcOrRejectedNotification(notification: FarmerNotification): boolean {
+  const type = notificationType(notification);
+  const title = (notification.title ?? '').toLowerCase();
+  return (
+    type === 'task_qc_failed' ||
+    type === 'task_rejected' ||
+    type.includes('rejected') ||
+    (type === 'error' && title.includes('qc'))
   );
 }
 
@@ -53,6 +73,32 @@ function navigateMainTab(
         params,
       },
     })
+  );
+}
+
+function navigateToFarmerTask(
+  root: NavigationProp<ParamListBase>,
+  notification: FarmerNotification,
+  contextIdValue: string | undefined
+): void {
+  const type = notificationType(notification);
+  const qcOrRejected = isTaskQcOrRejectedNotification(notification);
+  const params: Record<string, unknown> = {};
+
+  if (contextIdValue) {
+    params.taskId = contextIdValue;
+    params.highlightTaskId = contextIdValue;
+    if (qcOrRejected) {
+      params.openSubmitModal = true;
+      params.fromNotification = true;
+      params.statusFilter = 'rejected';
+    }
+  }
+
+  navigateMainTab(
+    root,
+    'Tasks',
+    Object.keys(params).length > 0 ? params : undefined
   );
 }
 
@@ -117,13 +163,11 @@ export function navigateFromFarmerNotification(
     type.includes('task') ||
     contextType === 'task' ||
     contextType === 'agent_task' ||
-    type === 'task_assigned'
+    contextType === 'farmer_task' ||
+    type === 'task_assigned' ||
+    isTaskQcOrRejectedNotification(notification)
   ) {
-    navigateMainTab(
-      root,
-      'Tasks',
-      contextIdValue ? { taskId: contextIdValue, highlightTaskId: contextIdValue } : undefined
-    );
+    navigateToFarmerTask(root, notification, contextIdValue);
     return;
   }
 
@@ -176,7 +220,13 @@ export function navigateFromNotification(
     return;
   }
 
-  if (type.includes('task') || contextType === 'task' || type === 'task_assigned') {
+  if (
+    type.includes('task') ||
+    contextType === 'task' ||
+    contextType === 'agent_task' ||
+    contextType === 'farmer_task' ||
+    type === 'task_assigned'
+  ) {
     const taskId = contextId(notification);
     navigateMainTab(
       root,

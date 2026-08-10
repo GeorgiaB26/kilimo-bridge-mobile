@@ -501,7 +501,46 @@ export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: s
     UPDATE farmer_tasks SET status = 'rejected', rejection_reason = $1, updated_at = NOW()
     WHERE id = $2
   `, [rejection_reason, farmerTaskId]);
+  await notifyFarmerTaskQcFailed(farmerTaskId, rejection_reason);
   return getFarmerTask(farmerTaskId);
+}
+
+/** In-app notification when a farmer task fails QC / is rejected by reviewer. */
+export async function notifyFarmerTaskQcFailed(
+  farmerTaskId: string,
+  rejectionReason: string
+): Promise<void> {
+  const task = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+  } | null;
+  if (!task?.farmer_id || !task.id) return;
+
+  const farmerUser = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE farmer_id = $1 LIMIT 1',
+    [task.farmer_id]
+  );
+  if (!farmerUser?.user_id) return;
+
+  const taskName = task.name ?? 'Your task';
+  const reason = rejectionReason.trim() || 'Quality check did not pass';
+  const { createNotification } = await import('./notificationService');
+
+  try {
+    await createNotification({
+      userId: farmerUser.user_id,
+      title: 'Task QC Check Failed',
+      message: `Your task "${taskName}" failed its quality check. Reason: ${reason}`,
+      type: 'task_qc_failed',
+      contextType: 'farmer_task',
+      contextId: task.id,
+      actionUrl: `/tasks/${task.id}`,
+      priority: 'high',
+    });
+  } catch {
+    // best-effort — SMS may still have been sent from route handler
+  }
 }
 
 export async function getHierarchyDashboardStats() {

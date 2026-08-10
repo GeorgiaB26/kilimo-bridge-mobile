@@ -19,6 +19,7 @@ import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHead
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
+import { FarmerTaskQcFailureCard } from '../../components/farmer/FarmerTaskQcFailureCard';
 import type { FarmerTaskRow } from '../../components/farmer/FarmerProjectTasksSection';
 import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
@@ -76,6 +77,8 @@ export function FarmerTasksScreen() {
   const navigation = useNavigation();
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
+  const openSubmitModalParam = route.params?.openSubmitModal === true;
+  const fromNotification = route.params?.fromNotification === true;
   const listRef = useRef<SectionList>(null);
   const { formatAmount } = useCurrency();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
@@ -220,8 +223,13 @@ export function FarmerTasksScreen() {
     } else if (canOpenTask(task.status)) {
       setSubmitTask(task);
     }
-    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
-  }, [scrollTargetId, tasks, loading, navigation, sections]);
+    navigation.setParams({
+      taskId: undefined,
+      highlightTaskId: undefined,
+      openSubmitModal: undefined,
+      fromNotification: undefined,
+    });
+  }, [scrollTargetId, tasks, loading, navigation, sections, openSubmitModalParam]);
 
   const filterLabel =
     statusFilter === 'overdue'
@@ -232,7 +240,9 @@ export function FarmerTasksScreen() {
           ? 'Not started tasks'
           : statusFilter === 'completed'
             ? 'Completed tasks'
-            : null;
+            : statusFilter === 'rejected'
+              ? 'Tasks needing review'
+              : null;
 
   const renderTask = (item: ExtendedTaskRow) => {
     const agentTask = isAgentAssignment(item);
@@ -324,7 +334,13 @@ export function FarmerTasksScreen() {
         ) : null}
 
         {normalizeTaskStatus(item.status) === 'rejected' && item.rejection_reason ? (
-          <Text className="mt-2 text-sm text-destructive">{item.rejection_reason}</Text>
+          <FarmerTaskQcFailureCard reason={item.rejection_reason} />
+        ) : null}
+
+        {fromNotification && highlighted && normalizeTaskStatus(item.status) === 'rejected' ? (
+          <Text className="mt-2 text-xs font-semibold text-[#4472C4]">
+            Opened from notification — review QC feedback and resubmit below.
+          </Text>
         ) : null}
 
         {normalizeTaskStatus(item.status) === 'submitted-for-approval' ? (
