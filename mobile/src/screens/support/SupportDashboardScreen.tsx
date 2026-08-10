@@ -132,7 +132,7 @@ export function SupportDashboardScreen() {
         <MetricCard
           Icon={Hourglass}
           iconColor="#E67E22"
-          label="Open"
+          label="Unresolved, ongoing"
           value={stats?.open ?? 0}
           color="#E67E22"
           onPress={() => openInbox('open')}
@@ -140,7 +140,7 @@ export function SupportDashboardScreen() {
         <MetricCard
           Icon={MailOpen}
           iconColor="#1F4E78"
-          label="Unread open"
+          label="Not started"
           value={stats?.unread_open ?? 0}
           color="#1F4E78"
           onPress={() => openInbox('open')}
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   metricValue: { marginTop: 6, fontSize: 28, fontWeight: '700', color: '#333' },
-  metricLabel: { marginTop: 2, fontSize: 12, color: '#757575' },
+  metricLabel: { marginTop: 2, fontSize: 12, color: '#757575', lineHeight: 16 },
   inboxBtn: {
     marginTop: 12,
     backgroundColor: '#1F4E78',
