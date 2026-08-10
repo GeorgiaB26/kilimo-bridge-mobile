@@ -12,7 +12,9 @@ const TASK_TYPES = new Set([
   'task_completed',
   'task_started',
   'task_status_updated',
-  'info',
+  'task_qc_failed',
+  'task_rejected',
+  'error',
   'success',
   'warning',
 ]);
