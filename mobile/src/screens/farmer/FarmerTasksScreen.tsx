@@ -153,13 +153,22 @@ export function FarmerTasksScreen() {
   };
 
   const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
-  const displayCategories = useMemo(
-    () =>
-      statusFilter
-        ? pickCategorizedTasks(categorized, statusFilter as TaskCategoryFilter)
-        : categorized,
-    [categorized, statusFilter]
-  );
+  const displayCategories = useMemo(() => {
+    if (statusFilter === 'rejected') {
+      const rejected = tasks.filter(
+        (t) => normalizeTaskStatus(t.status) === 'rejected'
+      );
+      return {
+        overdue: [],
+        inProgress: [],
+        notStarted: rejected,
+        completed: [],
+      };
+    }
+    return statusFilter
+      ? pickCategorizedTasks(categorized, statusFilter as TaskCategoryFilter)
+      : categorized;
+  }, [categorized, statusFilter, tasks]);
 
   const categoryCounts = useMemo(() => ({
     overdue: categorized.overdue.length,
