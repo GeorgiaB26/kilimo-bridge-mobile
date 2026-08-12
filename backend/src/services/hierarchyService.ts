@@ -840,7 +840,7 @@ async function notifyFarmerOfHierarchyTaskReview(
       title,
       message,
       type: outcome === 'approved' ? 'task_approved' : 'task_qc_failed',
-      contextType: 'farmer_task',
+      contextType: outcome === 'approved' ? 'farmer_task' : 'task',
       contextId: task.id,
       actionUrl: `/tasks/${task.id}`,
       priority: 'high',

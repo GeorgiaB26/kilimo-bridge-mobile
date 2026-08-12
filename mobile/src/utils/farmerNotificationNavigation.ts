@@ -5,6 +5,8 @@ import { SUPPORT_TICKET_CONTEXT } from '../../shared/src/supportDesk';
 export type FarmerNotification = {
   id: string;
   type: string;
+  title?: string;
+  message?: string;
   context_type?: string | null;
   context_id?: string | null;
   action_url?: string | null;
@@ -33,11 +35,29 @@ function notificationType(notification: FarmerNotification): string {
   return raw.toLowerCase();
 }
 
+function contextIdFromActionUrl(actionUrl?: string | null): string | undefined {
+  if (!actionUrl?.trim()) return undefined;
+  const match = actionUrl.trim().match(/\/tasks\/([^/?#]+)/i);
+  return match?.[1];
+}
+
 function contextId(notification: FarmerNotification): string | undefined {
   return (
     notification.context_id ??
     notification.related_id ??
+    contextIdFromActionUrl(notification.action_url) ??
     undefined
+  );
+}
+
+function isTaskQcOrRejectedNotification(notification: FarmerNotification): boolean {
+  const type = notificationType(notification);
+  const title = (notification.title ?? '').toLowerCase();
+  return (
+    type === 'task_qc_failed' ||
+    type === 'task_rejected' ||
+    type.includes('rejected') ||
+    (type === 'error' && title.includes('qc'))
   );
 }
 
@@ -83,6 +103,33 @@ function navigateMainTab(
         params,
       },
     })
+  );
+}
+
+function navigateToFarmerTask(
+  root: NavigationProp<ParamListBase>,
+  notification: FarmerNotification,
+  contextIdValue: string | undefined
+): void {
+  if (contextIdValue) {
+    root.dispatch(
+      CommonActions.navigate({
+        name: 'TaskDetail',
+        params: { taskId: contextIdValue, fromNotification: true },
+      })
+    );
+    return;
+  }
+
+  const qcOrRejected = isTaskQcOrRejectedNotification(notification);
+  const params: Record<string, unknown> = {};
+  if (qcOrRejected) {
+    params.statusFilter = 'rejected';
+  }
+  navigateMainTab(
+    root,
+    'Tasks',
+    Object.keys(params).length > 0 ? params : undefined
   );
 }
 
@@ -220,32 +267,10 @@ export function navigateFromFarmerNotification(
     type === 'task_assigned' ||
     type === 'task_rejected' ||
     type === 'task_qc_failed' ||
-    type === 'task_approved'
+    type === 'task_approved' ||
+    isTaskQcOrRejectedNotification(notification)
   ) {
-    const params: Record<string, unknown> = {};
-    if (contextIdValue) {
-      params.taskId = contextIdValue;
-      params.highlightTaskId = contextIdValue;
-      // Rejected / QC failed: open Edit/submit so they can fix evidence.
-      if (
-        type === 'task_rejected' ||
-        type === 'task_qc_failed' ||
-        type.includes('rejected') ||
-        (notification.title ?? '').toLowerCase().includes('qc')
-      ) {
-        params.openSubmitModal = true;
-        params.fromNotification = true;
-      }
-    }
-    if (
-      type === 'task_rejected' ||
-      type === 'task_qc_failed' ||
-      type.includes('rejected') ||
-      (notification.title ?? '').toLowerCase().includes('qc')
-    ) {
-      params.statusFilter = 'rejected';
-    }
-    navigateMainTab(root, 'Tasks', Object.keys(params).length ? params : undefined);
+    navigateToFarmerTask(root, notification, contextIdValue);
     return;
   }
 
