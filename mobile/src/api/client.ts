@@ -216,6 +216,20 @@ export async function getFarmerDashboard() {
   return data;
 }
 
+/** View-only: farmer's own aggregation centre (name, location, contact). */
+export async function getFarmerMyCentre(): Promise<{
+  centre: {
+    name: string;
+    location: string;
+    managerName: string | null;
+    managerPhone: string | null;
+    country: string | null;
+  } | null;
+}> {
+  const { data } = await api.get('/farmer/my-centre');
+  return data;
+}
+
 /** All tasks for this farmer (program hierarchy + field agent assignments). */
 export async function getFarmerAssignedTasks(params?: {
   status?: string;
@@ -828,6 +842,14 @@ export async function getFarmerPaymentPending() {
 export async function getCentreDashboard(centreId?: string) {
   const path = centreId ? `/aggregation/centre/${centreId}/dashboard` : '/aggregation/centre/dashboard';
   const { data } = await api.get(path);
+  return data;
+}
+
+/** View-only: aggregation centres in the logged-in agent's district. */
+export async function getAgentCentresInDistrict(): Promise<{
+  centres: Array<{ centre_id: string; name: string; location: string }>;
+}> {
+  const { data } = await api.get('/aggregation/centres/in-district');
   return data;
 }
 

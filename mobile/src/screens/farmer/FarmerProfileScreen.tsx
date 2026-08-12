@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { APP_BUILD } from '../../constants/build';
-import { getFarmerDashboard, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
+import { getFarmerDashboard, getFarmerMyCentre, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
@@ -103,6 +103,14 @@ export function FarmerProfileScreen() {
   const [assignedTasks, setAssignedTasks] = useState<ProfileTaskRow[]>([]);
   const [assignedTaskCount, setAssignedTaskCount] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(true);
+  const [myCentre, setMyCentre] = useState<{
+    name: string;
+    location: string;
+    managerName: string | null;
+    managerPhone: string | null;
+    country: string | null;
+  } | null>(null);
+  const [myCentreLoading, setMyCentreLoading] = useState(true);
 
   const loadProfile = useCallback(() => {
     getFarmerDashboard()
@@ -124,11 +132,22 @@ export function FarmerProfileScreen() {
         setAssignedTasks([]);
         setTasksLoading(false);
       });
+
+    getFarmerMyCentre()
+      .then((d) => {
+        setMyCentre(d.centre ?? null);
+        setMyCentreLoading(false);
+      })
+      .catch(() => {
+        setMyCentre(null);
+        setMyCentreLoading(false);
+      });
   }, [selectCountry]);
 
   useFocusEffect(
     useCallback(() => {
       setTasksLoading(true);
+      setMyCentreLoading(true);
       loadProfile();
       const interval = setInterval(loadProfile, 30000);
       return () => clearInterval(interval);
@@ -214,15 +233,10 @@ export function FarmerProfileScreen() {
     contacts?.fieldAgent?.name ?? farmer?.registered_agent_name ?? null;
   const fieldAgentPhone =
     contacts?.fieldAgent?.phone ?? farmer?.registered_agent_phone ?? null;
-  const centreName =
-    farmer?.aggregation_center ?? contacts?.aggregationCentre?.name ?? null;
-  const centreLocation =
-    contacts?.aggregationCentre?.location ?? farmer?.centre_location ?? null;
-  const centreManager = contacts?.aggregationCentre?.managerName;
-  const centrePhone =
-    contacts?.aggregationCentre?.managerPhone ??
-    contacts?.fieldAgent?.phone ??
-    farmer?.registered_agent_phone;
+  const displayCentreName = myCentre?.name ?? null;
+  const displayCentreLocation = myCentre?.location || null;
+  const displayCentreManager = myCentre?.managerName ?? null;
+  const displayCentrePhone = myCentre?.managerPhone ?? null;
   const bankingName =
     contacts?.bankingAgent?.name ?? farmer?.banking_agent_name ?? 'Payments desk';
   const bankingPhone =
@@ -377,6 +391,40 @@ export function FarmerProfileScreen() {
         <ProfileRow icon="business" label="Membership group" value={farmer?.membership_group_name} />
       </View>
 
+      <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">My Centre</Text>
+      <View className="mb-5 overflow-hidden rounded-xl bg-white">
+        {myCentreLoading ? (
+          <View className="items-center p-6">
+            <ActivityIndicator color="#1A4D3E" />
+          </View>
+        ) : displayCentreName ? (
+          <>
+            <ProfileRow icon="storefront" label="Centre name" value={displayCentreName} />
+            {displayCentreLocation ? (
+              <>
+                <Divider />
+                <ProfileRow icon="map" label="Location" value={displayCentreLocation} />
+              </>
+            ) : null}
+            {displayCentreManager || displayCentrePhone ? (
+              <>
+                <Divider />
+                <ProfileRow
+                  icon="call"
+                  label="Contact"
+                  value={displayCentreManager ?? 'Centre manager'}
+                  subValue={displayCentrePhone}
+                />
+              </>
+            ) : null}
+          </>
+        ) : (
+          <Text className="p-4 text-sm text-[#757575]">
+            No aggregation centre is assigned to your profile yet.
+          </Text>
+        )}
+      </View>
+
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Your support team</Text>
       <View className="mb-5 overflow-hidden rounded-xl bg-white">
         <ProfileRow
@@ -391,26 +439,7 @@ export function FarmerProfileScreen() {
             <ProfileRow
               icon="storefront"
               label="Agent centre"
-              value={contacts?.fieldAgent?.aggregationCenter ?? centreName ?? '—'}
-            />
-          </>
-        ) : null}
-        <Divider />
-        <ProfileRow icon="location" label="Aggregation centre" value={centreName ?? 'Not set'} />
-        {centreLocation ? (
-          <>
-            <Divider />
-            <ProfileRow icon="map" label="Centre location" value={centreLocation} />
-          </>
-        ) : null}
-        {centreManager || centrePhone ? (
-          <>
-            <Divider />
-            <ProfileRow
-              icon="call"
-              label="Centre contact"
-              value={centreManager ?? 'Centre manager'}
-              subValue={centrePhone}
+              value={contacts?.fieldAgent?.aggregationCenter ?? displayCentreName ?? '—'}
             />
           </>
         ) : null}

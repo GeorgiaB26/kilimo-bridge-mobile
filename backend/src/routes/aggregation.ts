@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission } from '../middleware/auth';
-import { getAllAggregationCentres } from '../services/aggregationCentreService';
+import { getAllAggregationCentres, listAggregationCentresByDistrict } from '../services/aggregationCentreService';
 import {
   listCentreInventory,
   receiveDelivery,
@@ -85,6 +85,27 @@ router.post(
 );
 
 router.use(authenticate);
+
+/** View-only: aggregation centres in the agent's district (location_level_1 match). */
+router.get(
+  '/centres/in-district',
+  requirePermission('centres.read'),
+  asyncHandler(async (req, res) => {
+    const district = typeof req.user?.district === 'string' ? req.user.district.trim() : '';
+    if (!district) {
+      res.json({ centres: [] });
+      return;
+    }
+    const rows = await listAggregationCentresByDistrict(district);
+    res.json({
+      centres: rows.map((c) => ({
+        centre_id: c.centre_id,
+        name: c.name,
+        location: [c.location_level_1, c.location_level_2, c.region].filter(Boolean).join(', '),
+      })),
+    });
+  })
+);
 
 async function resolveCentreId(req: Request): Promise<string | null> {
   if (req.params.centreId) return req.params.centreId;

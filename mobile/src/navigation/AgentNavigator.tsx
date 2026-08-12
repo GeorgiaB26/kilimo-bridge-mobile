@@ -8,6 +8,7 @@ import { AgentTasksScreen } from '../screens/agent/AgentTasksScreen';
 import { AgentFarmersStackNavigator } from './AgentFarmersStackNavigator';
 import { AgentAuditScreen } from '../screens/agent/AgentAuditScreen';
 import { AgentProfileScreen } from '../screens/agent/AgentProfileScreen';
+import { AgentCentresScreen } from '../screens/agent/AgentCentresScreen';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
@@ -83,6 +84,17 @@ export function AgentNavigator() {
       <RootStack.Screen name="MainTabs" component={AgentTabNavigator} />
       <RootStack.Screen name="MessagesFlow" component={MessagesStackNavigator} />
       <RootStack.Screen name="NotificationsFlow" component={NotificationsStackNavigator} />
+      <RootStack.Screen
+        name="CentresList"
+        component={AgentCentresScreen}
+        options={{
+          headerShown: true,
+          title: 'Centres in my district',
+          headerStyle: { backgroundColor: COLORS.primary },
+          headerTintColor: '#fff',
+          headerTitleStyle: { fontWeight: '600' },
+        }}
+      />
     </RootStack.Navigator>
   );
 }

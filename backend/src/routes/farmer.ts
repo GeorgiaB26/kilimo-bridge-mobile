@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requireRole } from '../middleware/auth';
+import { authenticate, requireRole, requirePermission } from '../middleware/auth';
 import {
   getFarmerDashboard,
   getFarmerProjects,
@@ -11,7 +11,7 @@ import {
 import { getUserNotifications } from '../services/notificationService';
 import { updateFarmerLocation, updateFarmerPicture } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
-import { createFarmerHelpRequest } from '../services/farmerHelpRequestService';
+import { createFarmerHelpRequest, getFarmerMyCentre } from '../services/farmerHelpRequestService';
 import hierarchyFarmerRoutes from './hierarchyFarmer';
 
 const router = Router();
@@ -54,6 +54,21 @@ router.get(
       return;
     }
     logFarmerDataAccess(req, 'dashboard', req.user.farmerId);
+    res.json(data);
+  })
+);
+
+/** View-only: farmer's own aggregation centre (name, location, contact). */
+router.get(
+  '/my-centre',
+  requirePermission('centres.read.own'),
+  asyncHandler(async (req, res) => {
+    if (!req.user?.farmerId) {
+      res.status(400).json({ error: 'No farmer profile linked to this account' });
+      return;
+    }
+    const data = await getFarmerMyCentre(req.user.farmerId);
+    logFarmerDataAccess(req, 'my_centre', req.user.farmerId);
     res.json(data);
   })
 );

@@ -368,6 +368,37 @@ async function resolveAggregationCentre(name: string | null) {
   };
 }
 
+/** View-only: farmer's assigned centre via farmers.aggregation_center name match. */
+export async function getFarmerMyCentre(farmerId: string): Promise<{
+  centre: {
+    name: string;
+    location: string;
+    managerName: string | null;
+    managerPhone: string | null;
+    country: string | null;
+  } | null;
+}> {
+  const farmer = await queryOne<{ aggregation_center: string | null }>(
+    `SELECT aggregation_center FROM farmers WHERE farmer_id = $1`,
+    [farmerId]
+  );
+  const name = farmer?.aggregation_center?.trim() || null;
+  if (!name) return { centre: null };
+
+  const resolved = await resolveAggregationCentre(name);
+  if (!resolved?.centreId) return { centre: null };
+
+  return {
+    centre: {
+      name: resolved.name,
+      location: resolved.location,
+      managerName: resolved.managerName,
+      managerPhone: resolved.managerPhone,
+      country: resolved.country,
+    },
+  };
+}
+
 export async function createFarmerHelpRequest(farmerId: string, message: string) {
   const trimmed = message.trim();
   if (!trimmed) throw new Error('Please write a short message for your field agent.');

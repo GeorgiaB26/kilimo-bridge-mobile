@@ -1,7 +1,9 @@
 import React, { useCallback, useLayoutEffect, useState } from 'react';
 import { View, ScrollView, Linking, Alert, Modal, Pressable, Switch } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
+import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TextInput } from 'react-native-paper';
 import {
   ChevronRight,
@@ -12,6 +14,7 @@ import {
   MessageCircle,
   Phone,
   Star,
+  Store,
   X,
 } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
@@ -21,7 +24,7 @@ import { getAgentDashboard, getNotificationSettings, updateNotificationSettings 
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
-import type { AgentTabParamList } from '../../navigation/types';
+import type { AgentRootStackParamList, AgentTabParamList } from '../../navigation/types';
 
 const USEFUL_DOCUMENTS = [
   { name: 'User Guide v2.1', size: '2.3 MB', type: 'PDF' },
@@ -31,8 +34,24 @@ const USEFUL_DOCUMENTS = [
   { name: 'Common Issues & Solutions', size: '1.5 MB', type: 'PDF' },
 ];
 
+type ProfileNav = CompositeNavigationProp<
+  BottomTabNavigationProp<AgentTabParamList, 'Profile'>,
+  NativeStackNavigationProp<AgentRootStackParamList>
+>;
+
+function openRootScreen(navigation: ProfileNav, route: keyof AgentRootStackParamList) {
+  let nav: NavigationProp<ParamListBase> | undefined = navigation;
+  while (nav) {
+    if (nav.getState().routeNames.includes(route)) {
+      nav.navigate(route);
+      return;
+    }
+    nav = nav.getParent();
+  }
+}
+
 export function AgentProfileScreen() {
-  const navigation = useNavigation<BottomTabNavigationProp<AgentTabParamList, 'Profile'>>();
+  const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [pm, setPm] = useState<{ name: string; phone: string } | null>(null);
@@ -157,6 +176,18 @@ export function AgentProfileScreen() {
           <Row label="Region" value={user?.region ?? user?.district} />
           <Row label="District" value={user?.district} />
           <Row label="Aggregation centre" value={user?.aggregationCenter} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View centres in my district"
+            className="mt-2 flex-row items-center justify-between border-t border-[#F0F0F0] pt-3"
+            onPress={() => openRootScreen(navigation, 'CentresList')}
+          >
+            <View className="flex-row items-center gap-1.5">
+              <Store size={16} color="#1A4D3E" />
+              <Text className="text-sm font-semibold text-[#1A4D3E]">Centres in my district</Text>
+            </View>
+            <ChevronRight size={16} color="#1A4D3E" />
+          </Pressable>
         </KBCard>
 
         <KBCard style={{ marginBottom: 12 }}>

@@ -70,6 +70,8 @@ export const PERMISSIONS = {
   'tasks.submit': ['farmer'] as UserRole[],
   'tasks.approve': ['agent', 'admin', 'super_admin', 'platform_admin'] as UserRole[],
   'centres.read': ['agent', 'admin', 'super_admin', 'platform_admin'] as UserRole[],
+  /** Farmer may view only their own assigned aggregation centre (name/location/contact). */
+  'centres.read.own': ['farmer'] as UserRole[],
   'centres.manage': ['agent', 'admin', 'super_admin', 'platform_admin'] as UserRole[],
 
   // Banking H2H

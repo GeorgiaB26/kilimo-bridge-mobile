@@ -110,6 +110,8 @@ export type AgentRootStackParamList = {
   MainTabs: NavigatorScreenParams<AgentTabParamList> | undefined;
   MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
   NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
+  /** View-only list of aggregation centres in the agent's district. */
+  CentresList: undefined;
 };
 
 export type MessagesStackParamList = {
