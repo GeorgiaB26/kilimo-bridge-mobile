@@ -81,20 +81,22 @@ function navigateToFarmerTask(
   notification: FarmerNotification,
   contextIdValue: string | undefined
 ): void {
-  const type = notificationType(notification);
-  const qcOrRejected = isTaskQcOrRejectedNotification(notification);
-  const params: Record<string, unknown> = {};
-
   if (contextIdValue) {
-    params.taskId = contextIdValue;
-    params.highlightTaskId = contextIdValue;
-    if (qcOrRejected) {
-      params.openSubmitModal = true;
-      params.fromNotification = true;
-      params.statusFilter = 'rejected';
-    }
+    const fromNotification = true;
+    root.dispatch(
+      CommonActions.navigate({
+        name: 'TaskDetail',
+        params: { taskId: contextIdValue, fromNotification },
+      })
+    );
+    return;
   }
 
+  const qcOrRejected = isTaskQcOrRejectedNotification(notification);
+  const params: Record<string, unknown> = {};
+  if (qcOrRejected) {
+    params.statusFilter = 'rejected';
+  }
   navigateMainTab(
     root,
     'Tasks',

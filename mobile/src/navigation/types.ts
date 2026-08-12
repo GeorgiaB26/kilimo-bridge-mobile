@@ -32,6 +32,8 @@ export type FarmerRootStackParamList = {
   MainTabs: NavigatorScreenParams<FarmerTabParamList> | undefined;
   MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
   NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
+  /** Full task detail — opened from QC / task notifications. */
+  TaskDetail: { taskId: string; fromNotification?: boolean };
 };
 
 export type AdminTabParamList = {

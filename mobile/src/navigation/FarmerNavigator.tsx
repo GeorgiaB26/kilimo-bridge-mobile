@@ -7,6 +7,7 @@ import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
+import { FarmerTaskDetailScreen } from '../screens/farmer/FarmerTaskDetailScreen';
 import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
@@ -74,6 +75,7 @@ export function FarmerNavigator() {
       <FarmerCurrencySync />
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="MainTabs" component={FarmerTabNavigator} />
+        <RootStack.Screen name="TaskDetail" component={FarmerTaskDetailScreen} />
         <RootStack.Screen name="MessagesFlow" component={MessagesStackNavigator} />
         <RootStack.Screen name="NotificationsFlow" component={NotificationsStackNavigator} />
       </RootStack.Navigator>

@@ -533,7 +533,7 @@ export async function notifyFarmerTaskQcFailed(
       title: 'Task QC Check Failed',
       message: `Your task "${taskName}" failed its quality check. Reason: ${reason}`,
       type: 'task_qc_failed',
-      contextType: 'farmer_task',
+      contextType: 'task',
       contextId: task.id,
       actionUrl: `/tasks/${task.id}`,
       priority: 'high',

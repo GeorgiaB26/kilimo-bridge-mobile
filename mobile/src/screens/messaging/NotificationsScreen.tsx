@@ -170,7 +170,7 @@ export function NotificationsScreen() {
                   {(item.type === 'task_qc_failed' ||
                     item.context_type === 'farmer_task' ||
                     item.title?.toLowerCase().includes('qc')) && (
-                    <Text style={styles.tapHint}>Tap to view task details →</Text>
+                    <Text style={styles.tapHint}>Tap to view →</Text>
                   )}
                 </View>
                 {!item.is_read ? (
