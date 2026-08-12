@@ -18,8 +18,8 @@ import { extractApiError } from '../../utils/feedback';
 import { formatCleanDate, formatDisplayDate } from '../../utils/greeting';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
-import { FarmerTaskQcFailureCard } from './FarmerTaskQcFailureCard';
-import { FarmerTaskSubmitModal } from './FarmerTaskSubmitModal';
+import { FarmerTaskQcFailureCard } from '../../components/farmer/FarmerTaskQcFailureCard';
+import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerRootStackParamList } from '../../navigation/types';
 
