@@ -14,6 +14,7 @@ import { listAgentTasksAssignedToFarmer } from './agentDashboardService';
 
 export type FarmerPortalTaskRow = {
   id: string;
+  task_id?: string;
   name: string;
   status: string;
   due_date?: string | null;
@@ -64,6 +65,7 @@ function mapAgentTaskToFarmerRow(
 function mapHierarchyTaskToFarmerRow(row: Record<string, unknown>): FarmerPortalTaskRow {
   return {
     id: String(row.id),
+    task_id: row.task_id != null ? String(row.task_id) : undefined,
     name: String(row.name ?? ''),
     status: String(row.status ?? 'not-started'),
     due_date: row.due_date as string | null | undefined,
