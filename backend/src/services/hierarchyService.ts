@@ -446,21 +446,48 @@ const FARMER_TASK_DETAIL_SQL = `
     JOIN program_projects pp ON pp.id = ft.program_project_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id`;
 
-export async function getFarmerTask(farmerTaskId: string) {
+/** Row shape returned by FARMER_TASK_DETAIL_SQL (status mapped for API consumers). */
+export type FarmerTaskDetailRow = {
+  id: string;
+  task_id?: string;
+  farmer_id?: string;
+  name?: string;
+  description?: string;
+  status?: string;
+  task_order?: number;
+  payment_value_kes?: number;
+  due_date?: string | null;
+  program_project_name?: string;
+  farmer_name?: string;
+  farmer_phone?: string;
+  photo_evidence_url?: string | null;
+  notes?: string | null;
+  approved_date?: string | null;
+  rejection_reason?: string | null;
+  submitted_date?: string | null;
+  farmer_started_at?: string | null;
+  assigned_at?: string | null;
+  created_at?: string | null;
+};
+
+export async function getFarmerTask(farmerTaskId: string): Promise<FarmerTaskDetailRow | null> {
   const row = await queryOne(`${FARMER_TASK_DETAIL_SQL} WHERE ft.id = $1`, [farmerTaskId]);
   if (!row) return null;
-  return mapFarmerTaskRow(row as { status?: string });
+  return mapFarmerTaskRow(row as FarmerTaskDetailRow);
 }
 
 /** Resolve by farmer_tasks.id or program tasks.id (task template) for one farmer. */
-export async function getFarmerTaskForFarmer(farmerId: string, taskRef: string) {
+export async function getFarmerTaskForFarmer(
+  farmerId: string,
+  taskRef: string
+): Promise<FarmerTaskDetailRow | null> {
   const row = await queryOne(
     `${FARMER_TASK_DETAIL_SQL}
      WHERE ft.farmer_id = $1 AND (ft.id = $2 OR ft.task_id = $2)`,
     [farmerId, taskRef]
   );
   if (!row) return null;
-  return mapFarmerTaskRow(row as { status?: string });
+  return mapFarmerTaskRow(row as FarmerTaskDetailRow);
 }
 
 /** User ids of field agents who should review this farmer's hierarchy tasks. */
