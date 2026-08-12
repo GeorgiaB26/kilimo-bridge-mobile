@@ -619,6 +619,12 @@ export async function getFarmerHierarchyTask(farmerTaskId: string) {
   return data;
 }
 
+/** GET /api/farmer/tasks/:id — accepts farmer_tasks.id or program task template id. */
+export async function getFarmerPortalTask(taskRef: string) {
+  const { data } = await api.get(`/farmer/tasks/${taskRef}`);
+  return data;
+}
+
 export async function getFarmerTaskApprovalStatus(farmerTaskId: string) {
   const { data } = await api.get(`/farmer/tasks/${farmerTaskId}/approval-status`);
   return data;

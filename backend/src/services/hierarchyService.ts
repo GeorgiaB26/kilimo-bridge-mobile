@@ -411,16 +411,27 @@ export async function assignFarmersToProject(
   return { assigned, farmer_ids: farmerIds, task_ids: taskRows.map((t) => t.id) };
 }
 
-export async function getFarmerTask(farmerTaskId: string) {
-  const row = await queryOne(`
+const FARMER_TASK_DETAIL_SQL = `
     SELECT ft.*, t.name, t.description, t.task_order, t.payment_value_kes, t.due_date,
       pp.name AS program_project_name, f.name AS farmer_name, f.phone_number AS farmer_phone
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     JOIN program_projects pp ON pp.id = ft.program_project_id
-    JOIN farmers f ON f.farmer_id = ft.farmer_id
-    WHERE ft.id = $1
-  `, [farmerTaskId]);
+    JOIN farmers f ON f.farmer_id = ft.farmer_id`;
+
+export async function getFarmerTask(farmerTaskId: string) {
+  const row = await queryOne(`${FARMER_TASK_DETAIL_SQL} WHERE ft.id = $1`, [farmerTaskId]);
+  if (!row) return null;
+  return mapFarmerTaskRow(row as { status?: string });
+}
+
+/** Resolve a farmer assignment by farmer_tasks.id or program tasks.id (task template). */
+export async function getFarmerTaskForFarmer(farmerId: string, taskRef: string) {
+  const row = await queryOne(
+    `${FARMER_TASK_DETAIL_SQL}
+     WHERE ft.farmer_id = $1 AND (ft.id = $2 OR ft.task_id = $2)`,
+    [farmerId, taskRef]
+  );
   if (!row) return null;
   return mapFarmerTaskRow(row as { status?: string });
 }

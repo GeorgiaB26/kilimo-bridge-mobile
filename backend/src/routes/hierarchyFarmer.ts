@@ -3,7 +3,7 @@ import { authenticate, requirePermission } from '../middleware/auth';
 import {
   listFarmerProgramProjects,
   listFarmerTasks,
-  getFarmerTask,
+  getFarmerTaskForFarmer,
   submitFarmerTask,
 } from '../services/hierarchyService';
 import { listAllFarmerAssignedTasks } from '../services/farmerPortalService';
@@ -35,6 +35,7 @@ async function mapFarmerTaskRow(row: Record<string, unknown>) {
     typeof row.photo_evidence_url === 'string' ? row.photo_evidence_url : null;
   return {
     id: row.id,
+    task_id: row.task_id,
     name: row.name,
     payment: row.payment_value_kes,
     payment_value_kes: row.payment_value_kes,
@@ -99,8 +100,9 @@ router.get(
   '/tasks/:farmerTaskId/approval-status',
   requirePermission('hierarchy.read.own'),
   asyncHandler(async (req, res) => {
-    const task = (await getFarmerTask(req.params.farmerTaskId)) as {
-      farmer_id?: string;
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = (await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId)) as {
       status?: string;
       approved_date?: string | null;
       rejection_reason?: string | null;
@@ -108,10 +110,6 @@ router.get(
     } | null;
     if (!task) {
       res.status(404).json({ error: 'Task not found' });
-      return;
-    }
-    if (task.farmer_id !== req.user?.farmerId) {
-      res.status(403).json({ error: 'Not your task' });
       return;
     }
     res.json({
@@ -128,8 +126,9 @@ router.get(
   '/tasks/:farmerTaskId/status',
   requirePermission('hierarchy.read.own'),
   asyncHandler(async (req, res) => {
-    const task = (await getFarmerTask(req.params.farmerTaskId)) as {
-      farmer_id?: string;
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = (await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId)) as {
       status?: string;
       approved_date?: string | null;
       rejection_reason?: string | null;
@@ -137,10 +136,6 @@ router.get(
     } | null;
     if (!task) {
       res.status(404).json({ error: 'Task not found' });
-      return;
-    }
-    if (task.farmer_id !== req.user?.farmerId) {
-      res.status(403).json({ error: 'Not your task' });
       return;
     }
     res.json({
@@ -156,13 +151,11 @@ router.get(
   '/tasks/:farmerTaskId',
   requirePermission('hierarchy.read.own'),
   asyncHandler(async (req, res) => {
-    const task = (await getFarmerTask(req.params.farmerTaskId)) as { farmer_id?: string } | null;
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId);
     if (!task) {
       res.status(404).json({ error: 'Task not found' });
-      return;
-    }
-    if (task.farmer_id !== req.user?.farmerId) {
-      res.status(403).json({ error: 'Not your task' });
       return;
     }
     res.json(await mapFarmerTaskRow(task as Record<string, unknown>));
@@ -173,17 +166,19 @@ router.post(
   '/tasks/:farmerTaskId/submit-completion',
   requirePermission('tasks.submit'),
   asyncHandler(async (req, res) => {
-    const task = (await getFarmerTask(req.params.farmerTaskId)) as {
-      farmer_id?: string;
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = (await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId)) as {
+      id?: string;
       name?: string;
       farmer_phone?: string;
     } | null;
-    if (!task || task.farmer_id !== req.user?.farmerId) {
-      res.status(403).json({ error: 'Not your task' });
+    if (!task?.id) {
+      res.status(404).json({ error: 'Task not found' });
       return;
     }
     const { photo_url, notes } = req.body;
-    const updated = await submitFarmerTask(req.params.farmerTaskId, { photo_url, notes });
+    const updated = await submitFarmerTask(task.id, { photo_url, notes });
     if (task.farmer_phone) {
       sendSms(task.farmer_phone, `Task "${task.name}" submitted for approval. Awaiting review.`);
     }
@@ -246,13 +241,11 @@ router.get(
   '/hierarchy/tasks/:farmerTaskId',
   requirePermission('hierarchy.read.own'),
   asyncHandler(async (req, res) => {
-    const task = (await getFarmerTask(req.params.farmerTaskId)) as { farmer_id?: string } | null;
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId);
     if (!task) {
       res.status(404).json({ error: 'Task not found' });
-      return;
-    }
-    if (task.farmer_id !== req.user?.farmerId) {
-      res.status(403).json({ error: 'Not your task' });
       return;
     }
     const photo_evidence_url = await resolvePhotoUrlForDisplay(
@@ -268,17 +261,19 @@ router.post(
   '/hierarchy/tasks/:farmerTaskId/submit',
   requirePermission('tasks.submit'),
   asyncHandler(async (req, res) => {
-    const task = (await getFarmerTask(req.params.farmerTaskId)) as {
-      farmer_id?: string;
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = (await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId)) as {
+      id?: string;
       name?: string;
       farmer_phone?: string;
     } | null;
-    if (!task || task.farmer_id !== req.user?.farmerId) {
-      res.status(403).json({ error: 'Not your task' });
+    if (!task?.id) {
+      res.status(404).json({ error: 'Task not found' });
       return;
     }
     const { photo_url, notes } = req.body;
-    const updated = await submitFarmerTask(req.params.farmerTaskId, { photo_url, notes });
+    const updated = await submitFarmerTask(task.id, { photo_url, notes });
     if (task.farmer_phone) {
       sendSms(task.farmer_phone, `Task "${task.name}" submitted for approval. Awaiting review.`);
     }

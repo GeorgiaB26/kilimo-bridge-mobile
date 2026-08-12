@@ -13,7 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
-import { getFarmerAssignedTasks, getFarmerHierarchyTask } from '../../api/client';
+import { getFarmerAssignedTasks, getFarmerHierarchyTask, getFarmerPortalTask } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { formatCleanDate, formatDisplayDate } from '../../utils/greeting';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
@@ -28,6 +28,7 @@ type DetailNav = NativeStackNavigationProp<FarmerRootStackParamList, 'TaskDetail
 
 type TaskDetail = {
   id: string;
+  task_id?: string;
   name: string;
   description?: string | null;
   status: string;
@@ -57,6 +58,55 @@ function evidenceUri(task: TaskDetail): string | null {
   return null;
 }
 
+function normalizeTaskRef(id: string): string {
+  return id.trim().toLowerCase();
+}
+
+function taskRefMatches(row: TaskDetail, taskRef: string): boolean {
+  const ref = normalizeTaskRef(taskRef);
+  if (normalizeTaskRef(String(row.id)) === ref) return true;
+  if (row.task_id && normalizeTaskRef(String(row.task_id)) === ref) return true;
+  return false;
+}
+
+function mapDetailFromApi(
+  detail: Record<string, unknown>,
+  fromList?: TaskDetail,
+  taskRef?: string
+): TaskDetail {
+  return {
+    ...(fromList ?? {}),
+    ...detail,
+    id: String(detail.id ?? fromList?.id ?? taskRef ?? ''),
+    name: String(detail.name ?? fromList?.name ?? 'Task'),
+    status: String(detail.status ?? fromList?.status ?? 'not-started'),
+    task_id: detail.task_id != null ? String(detail.task_id) : fromList?.task_id,
+    assigned_by_name: fromList?.assigned_by_name ?? (detail.assigned_by_name as string | undefined),
+    program_project_name:
+      fromList?.program_project_name ?? (detail.program_project_name as string | undefined),
+    rejection_reason:
+      (detail.rejection_reason as string | null | undefined) ?? fromList?.rejection_reason,
+    photo_evidence_url:
+      (detail.photo_evidence_url as string | null | undefined) ?? fromList?.photo_evidence_url,
+    photo_url: (detail.photo_url as string | null | undefined) ?? fromList?.photo_url,
+    source: fromList?.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
+  };
+}
+
+async function fetchTaskDetailFromApi(taskRef: string, fromList?: TaskDetail): Promise<TaskDetail | null> {
+  const loaders = [getFarmerHierarchyTask, getFarmerPortalTask];
+  for (const load of loaders) {
+    try {
+      const detail = await load(taskRef);
+      return mapDetailFromApi(detail as Record<string, unknown>, fromList, taskRef);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== 403 && status !== 404) throw err;
+    }
+  }
+  return null;
+}
+
 export function FarmerTaskDetailScreen() {
   const route = useRoute<DetailRoute>();
   const navigation = useNavigation<DetailNav>();
@@ -73,28 +123,12 @@ export function FarmerTaskDetailScreen() {
     try {
       let loaded: TaskDetail | null = null;
       const listRes = await getFarmerAssignedTasks();
-      const fromList = (listRes.tasks ?? []).find(
-        (row: TaskDetail) => String(row.id) === taskId
+      const fromList = (listRes.tasks ?? []).find((row: TaskDetail) =>
+        taskRefMatches(row, taskId)
       ) as TaskDetail | undefined;
 
       if (fromList?.source !== 'agent_assignment') {
-        try {
-          const detail = await getFarmerHierarchyTask(taskId);
-          loaded = {
-            ...(fromList ?? {}),
-            ...detail,
-            id: String(detail.id ?? taskId),
-            name: String(detail.name ?? fromList?.name ?? 'Task'),
-            status: String(detail.status ?? fromList?.status ?? 'not-started'),
-            assigned_by_name: fromList?.assigned_by_name ?? detail.assigned_by_name,
-            program_project_name:
-              fromList?.program_project_name ?? detail.program_project_name,
-            source: 'hierarchy',
-          };
-        } catch (err: unknown) {
-          const status = (err as { response?: { status?: number } })?.response?.status;
-          if (status !== 403 && status !== 404) throw err;
-        }
+        loaded = await fetchTaskDetailFromApi(taskId, fromList);
       }
 
       if (!loaded && fromList) {
