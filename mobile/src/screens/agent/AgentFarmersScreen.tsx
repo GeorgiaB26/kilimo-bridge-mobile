@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Sprout } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import {
   listPendingRegistrationOutbox,
@@ -38,8 +37,8 @@ import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanne
 import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchAgentFarmersForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
-
 type FarmerRow = {
   farmer_id: string;
   name: string;
@@ -102,10 +101,7 @@ export function AgentFarmersScreen() {
         loadWithReadCache<{ farmers?: FarmerRow[] }>({
           cacheKey: READ_CACHE_KEYS.agentFarmers,
           userScope,
-          fetchLive: async () => {
-            const farmersRes = await api.get('/agents/farmers');
-            return farmersRes.data;
-          },
+          fetchLive: fetchAgentFarmersForCache,
         }),
       ]);
       setPending(pendingRegs);

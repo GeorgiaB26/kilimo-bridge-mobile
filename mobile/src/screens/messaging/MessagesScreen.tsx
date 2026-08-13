@@ -32,6 +32,7 @@ import {
   loadWithReadCache,
   READ_CACHE_KEYS,
 } from '../../services/offlineReadCache';
+import { fetchMessageThreadsForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { SUPPORT_TICKET_CONTEXT } from '../../../shared/src/supportDesk';
 
@@ -111,10 +112,7 @@ export function MessagesScreen() {
         const result = await loadWithReadCache<ThreadsPayload>({
           cacheKey: READ_CACHE_KEYS.messageThreads,
           userScope,
-          fetchLive: async () => {
-            const data = await getMessageThreads();
-            return { threads: data.threads ?? [] };
-          },
+          fetchLive: fetchMessageThreadsForCache,
         });
         setThreads(result.data.threads ?? []);
         setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);

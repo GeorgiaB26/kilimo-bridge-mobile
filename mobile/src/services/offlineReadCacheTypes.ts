@@ -16,6 +16,8 @@ export const READ_CACHE_KEYS = {
   farmerProjects: 'farmer:projects',
   farmerTasks: (programProjectId: string) => `farmer:tasks:${programProjectId}`,
   agentFarmers: 'agent:farmers',
+  agentDashboard: 'agent:dashboard',
+  agentTasks: 'agent:tasks',
   farmerPayments: 'farmer:payments',
   messageThreads: 'messages:threads',
   adminDashboard: 'admin:dashboard',

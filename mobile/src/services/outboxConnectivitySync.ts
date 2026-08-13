@@ -1,7 +1,11 @@
 /**
- * App-root connectivity sync: when the device returns online, drain the sync outbox.
- * On-focus / manual Push remain as additional safety nets.
+ * App-root connectivity sync: when the device returns online, drain the sync outbox
+ * and warm role-relevant READ caches. On-focus / manual Push remain as additional
+ * safety nets for the outbox.
+ *
+ * Warm runs fully in the background — never awaited by outbox or UI.
  */
+import { AppState, type AppStateStatus, type NativeEventSubscription } from 'react-native';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { getAuthToken } from '../api/client';
 import { listOutbox, resetOutboxForManualRetry } from './offlineOutbox';
@@ -9,6 +13,10 @@ import {
   processReadyOutbox,
   type ProcessReadyOutboxResult,
 } from './offlineOutboxProcessor';
+import {
+  warmReadCachesForCurrentUser,
+  type WarmReadCacheReason,
+} from './readCacheWarmup';
 
 export function isNetInfoOnline(state: NetInfoState): boolean {
   if (state.isConnected === false) return false;
@@ -18,10 +26,54 @@ export function isNetInfoOnline(state: NetInfoState): boolean {
 }
 
 let syncInFlight: Promise<ProcessReadyOutboxResult> | null = null;
-let unsubscribe: (() => void) | null = null;
+let unsubscribeNetInfo: (() => void) | null = null;
+let appStateSub: NativeEventSubscription | null = null;
 let lastOnline: boolean | null = null;
+let appState: AppStateStatus = AppState.currentState;
+/** True after we have handled the launch-time online seed (warm-once). */
+let didLaunchWarmAttempt = false;
 /** Resolves when the latest reconnect-triggered sync finishes (for proofs). */
 let lastReconnectSync: Promise<ProcessReadyOutboxResult> | null = null;
+
+/** Fire-and-forget warm — never blocks outbox or callers. */
+function fireWarmInBackground(
+  options: { force?: boolean; reason: WarmReadCacheReason }
+): void {
+  void warmReadCachesForCurrentUser(options).catch(() => {
+    /* background — per-key errors already isolated inside warmer */
+  });
+}
+
+/**
+ * Schedule a warm if the device appears online.
+ * Used after setAuth / loadStoredAuth; respects throttle (no force).
+ */
+export function scheduleReadCacheWarmIfOnline(
+  reason: WarmReadCacheReason = 'auth'
+): void {
+  void (async () => {
+    try {
+      let online = lastOnline;
+      if (online === null) {
+        const state = await NetInfo.fetch();
+        online = isNetInfoOnline(state);
+        if (lastOnline === null) lastOnline = online;
+      }
+      if (!online) return;
+      fireWarmInBackground({ reason });
+    } catch {
+      /* ignore — auth path must not fail because warm scheduling failed */
+    }
+  })();
+}
+
+function maybeWarmOnLaunchIfOnline(online: boolean): void {
+  if (didLaunchWarmAttempt) return;
+  didLaunchWarmAttempt = true;
+  if (online) {
+    fireWarmInBackground({ reason: 'launch' });
+  }
+}
 
 /**
  * Same work the NetInfo offline→online transition runs.
@@ -68,8 +120,11 @@ function handleNetInfoChange(state: NetInfoState): void {
   const wasOnline = lastOnline;
   lastOnline = online;
 
-  // First event: seed state only (do not treat app start as a reconnect).
-  if (wasOnline === null) return;
+  // First event: seed state + launch warm if already online (outbox still skips).
+  if (wasOnline === null) {
+    maybeWarmOnLaunchIfOnline(online);
+    return;
+  }
   if (!wasOnline && online) {
     lastReconnectSync = syncOutboxAfterReconnect().catch((err) => {
       // Background sync — surface errors via outbox lastError / Push UI
@@ -81,36 +136,73 @@ function handleNetInfoChange(state: NetInfoState): void {
         results: [{ ok: false as const, error: String(err) }],
       };
     });
+    // Reconnect: bypass throttle so stale caches refresh after a gap.
+    fireWarmInBackground({ force: true, reason: 'reconnect' });
   }
+}
+
+function handleAppStateChange(nextState: AppStateStatus): void {
+  const was = appState;
+  appState = nextState;
+  const becameActive =
+    (was === 'inactive' || was === 'background') && nextState === 'active';
+  if (!becameActive) return;
+  if (lastOnline === true) {
+    fireWarmInBackground({ reason: 'foreground' });
+    return;
+  }
+  if (lastOnline === false) return;
+  // Connectivity not seeded yet — check once, still respect throttle.
+  void NetInfo.fetch()
+    .then((state) => {
+      const online = isNetInfoOnline(state);
+      if (lastOnline === null) lastOnline = online;
+      if (online) fireWarmInBackground({ reason: 'foreground' });
+    })
+    .catch(() => {});
 }
 
 /** Idempotent — safe to call from App mount. */
 export function startOutboxConnectivitySync(): () => void {
-  if (unsubscribe) return stopOutboxConnectivitySync;
+  if (unsubscribeNetInfo) return stopOutboxConnectivitySync;
 
   lastOnline = null;
-  unsubscribe = NetInfo.addEventListener(handleNetInfoChange);
+  didLaunchWarmAttempt = false;
+  appState = AppState.currentState;
 
-  // Seed current connectivity without triggering a sync.
+  unsubscribeNetInfo = NetInfo.addEventListener(handleNetInfoChange);
+  appStateSub = AppState.addEventListener('change', handleAppStateChange);
+
+  // Seed current connectivity without treating it as a reconnect for outbox.
   void NetInfo.fetch()
     .then((state) => {
+      const online = isNetInfoOnline(state);
       if (lastOnline === null) {
-        lastOnline = isNetInfoOnline(state);
+        lastOnline = online;
+        maybeWarmOnLaunchIfOnline(online);
       }
     })
     .catch(() => {
-      if (lastOnline === null) lastOnline = true;
+      if (lastOnline === null) {
+        lastOnline = true;
+        maybeWarmOnLaunchIfOnline(true);
+      }
     });
 
   return stopOutboxConnectivitySync;
 }
 
 export function stopOutboxConnectivitySync(): void {
-  if (unsubscribe) {
-    unsubscribe();
-    unsubscribe = null;
+  if (unsubscribeNetInfo) {
+    unsubscribeNetInfo();
+    unsubscribeNetInfo = null;
+  }
+  if (appStateSub) {
+    appStateSub.remove();
+    appStateSub = null;
   }
   lastOnline = null;
+  didLaunchWarmAttempt = false;
 }
 
 /** Test helper: seed listener as offline (after startOutboxConnectivitySync). */

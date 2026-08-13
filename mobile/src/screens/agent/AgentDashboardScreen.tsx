@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { View, ScrollView, RefreshControl, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -18,8 +18,8 @@ import { Button } from '@/components/ui/button';
 import { KBCard } from '../../components/ui/KBCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { ContactSupportModal } from '../../components/ContactSupportModal';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { useAuthStore } from '../../store/authStore';
-import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { formatCleanDate } from '../../utils/greeting';
 import {
@@ -30,12 +30,15 @@ import type { AgentTabParamList } from '../../navigation/types';
 import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
 import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchAgentDashboardForCache } from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
 
 const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
-type DashboardData = Awaited<ReturnType<typeof getAgentDashboard>>;
+type DashboardData = Awaited<ReturnType<typeof fetchAgentDashboardForCache>>;
 
 type TaskFilter = TaskStatusKpiKey | 'all';
 
@@ -104,26 +107,38 @@ function SectionHeading({
 export function AgentDashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const navigation = useNavigation<Nav>();
+  const userScope = useReadCacheUserScope();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
+  const hasLoadedRef = useRef(false);
   const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
     useTaskNotificationBanners();
 
   const load = useCallback(async () => {
     try {
-      const summary = await getAgentDashboard();
-      setData(summary);
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.agentDashboard,
+        userScope,
+        fetchLive: fetchAgentDashboardForCache,
+      });
+      setData(result.data);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setLoadError(null);
+      hasLoadedRef.current = true;
     } catch (err: unknown) {
-      setData(null);
-      setLoadError(extractApiError(err, 'Could not load dashboard'));
+      if (!hasLoadedRef.current) {
+        setData(null);
+        setCacheFetchedAt(null);
+        setLoadError(extractApiError(err, 'Could not load dashboard'));
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -179,6 +194,7 @@ export function AgentDashboardScreen() {
       contentContainerClassName="p-4 pb-10"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
       {loadError ? (
         <View className="mb-3 rounded-lg border border-[#EF4444] bg-[#FFEBEE] p-3">
           <Text className="text-sm font-semibold text-[#EF4444]">{loadError}</Text>

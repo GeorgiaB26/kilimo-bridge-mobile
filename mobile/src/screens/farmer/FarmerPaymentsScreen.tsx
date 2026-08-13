@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
-import { getFarmerPayments } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
@@ -19,6 +18,7 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { formatDisplayDate } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerPaymentsForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type Route = RouteProp<FarmerTabParamList, 'Payments'>;
@@ -78,7 +78,7 @@ export function FarmerPaymentsScreen() {
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerPayments,
         userScope,
-        fetchLive: () => getFarmerPayments(),
+        fetchLive: fetchFarmerPaymentsForCache,
       });
       const d = result.data;
       setPayments((d.payments ?? []) as FarmerPaymentRow[]);

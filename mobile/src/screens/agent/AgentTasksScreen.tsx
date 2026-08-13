@@ -28,12 +28,10 @@ import { Text } from '@/components/ui/text';
 import {
   createAgentPersonalTask,
   getAgentHelpRequests,
-  getAgentTasks,
   resolveAgentHelpRequest,
   setAgentTaskReminder,
   updateAgentPersonalTask,
 } from '../../api/client';
-import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { isTaskOverdue, categorizeTasks, countOverlappingStatusKpis, isTaskCompletedStatus } from '../../utils/taskCategorization';
 import type { CategorizedTasks } from '../../utils/taskCategorization';
@@ -42,7 +40,14 @@ import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { AddAgentTaskModal } from '../../components/agent/AddAgentTaskModal';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import {
+  fetchAgentFarmersForCache,
+  fetchAgentTasksForCache,
+} from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
 import { OutboxAgentTaskApprovalCard } from '../../components/OutboxAgentTaskApprovalCard';
 import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
@@ -379,6 +384,7 @@ function TaskSection({
 export function AgentTasksScreen() {
   const route = useRoute<RouteProp<AgentTabParamList, 'Tasks'>>();
   const navigation = useNavigation<NavigationProp<AgentTabParamList>>();
+  const userScope = useReadCacheUserScope();
   const [farmerTasks, setFarmerTasks] = useState<UnifiedTask[]>([]);
   const [personalTasks, setPersonalTasks] = useState<UnifiedTask[]>([]);
   const [helpRequests, setHelpRequests] = useState<
@@ -387,6 +393,7 @@ export function AgentTasksScreen() {
   const [farmers, setFarmers] = useState<Array<{ farmer_id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -526,20 +533,27 @@ export function AgentTasksScreen() {
   const load = useCallback(async () => {
     try {
       const [tasksResult, helpResult, farmersResult] = await Promise.all([
-        getAgentTasks()
-          .then((tasksData) => ({ ok: true as const, tasksData }))
+        loadWithReadCache({
+          cacheKey: READ_CACHE_KEYS.agentTasks,
+          userScope,
+          fetchLive: fetchAgentTasksForCache,
+        })
+          .then((result) => ({ ok: true as const, result }))
           .catch(() => ({ ok: false as const })),
         getAgentHelpRequests()
           .then((helpData) => ({ ok: true as const, helpData }))
           .catch(() => ({ ok: false as const })),
-        api
-          .get('/agents/farmers')
-          .then((farmersRes) => ({ ok: true as const, farmersRes }))
+        loadWithReadCache<{ farmers?: Array<{ farmer_id: string; name: string }> }>({
+          cacheKey: READ_CACHE_KEYS.agentFarmers,
+          userScope,
+          fetchLive: fetchAgentFarmersForCache,
+        })
+          .then((result) => ({ ok: true as const, result }))
           .catch(() => ({ ok: false as const })),
       ]);
 
       if (tasksResult.ok) {
-        const tasksData = tasksResult.tasksData;
+        const tasksData = tasksResult.result.data;
         const ft = (tasksData.farmer_tasks ?? []).map((t: Record<string, unknown>) => ({
           id: String(t.id),
           name: String(t.name ?? ''),
@@ -560,6 +574,12 @@ export function AgentTasksScreen() {
         );
         setFarmerTasks(ft);
         setPersonalTasks(pt);
+        setCacheFetchedAt(
+          tasksResult.result.fromCache ? tasksResult.result.fetchedAt : null
+        );
+        hasLoadedRef.current = true;
+      } else if (!hasLoadedRef.current) {
+        setCacheFetchedAt(null);
       }
 
       if (helpResult.ok) {
@@ -568,7 +588,7 @@ export function AgentTasksScreen() {
 
       if (farmersResult.ok) {
         setFarmers(
-          (farmersResult.farmersRes.data.farmers ?? []).map(
+          (farmersResult.result.data.farmers ?? []).map(
             (f: { farmer_id: string; name: string }) => ({
               farmer_id: f.farmer_id,
               name: f.name,
@@ -577,10 +597,9 @@ export function AgentTasksScreen() {
         );
       }
     } finally {
-      hasLoadedRef.current = true;
       setLoading(false);
     }
-  }, []);
+  }, [userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1036,6 +1055,7 @@ export function AgentTasksScreen() {
         contentContainerClassName="p-4 pb-10"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         <Pressable
           onPress={() => setAddModalOpen(true)}
           className="mb-3 h-12 items-center justify-center rounded-lg bg-[#FFD700]"

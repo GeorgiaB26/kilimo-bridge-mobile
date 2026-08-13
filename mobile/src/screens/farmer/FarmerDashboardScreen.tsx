@@ -6,12 +6,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { FarmerLocationPrompt } from '../../components/FarmerLocationPrompt';
-import {
-  getFarmerDashboard,
-  getFarmerPayments,
-  getFarmerHierarchyProjects,
-  getFarmerAssignedTasks,
-} from '../../api/client';
+import { getFarmerPayments, getFarmerHierarchyProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
@@ -30,6 +25,7 @@ import {
   FarmerDashboardSupportSection,
 } from '../../components/farmer/FarmerDashboardSections';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type DashboardNav = CompositeNavigationProp<
@@ -104,19 +100,7 @@ export function FarmerDashboardScreen() {
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerDashboard,
         userScope,
-        fetchLive: async () => {
-          const dashboard = await getFarmerDashboard();
-          let recentTasks = dashboard.recentTasks ?? dashboard.assignedTasks ?? [];
-          if (!recentTasks.length) {
-            try {
-              const tasksRes = await getFarmerAssignedTasks();
-              recentTasks = (tasksRes.tasks ?? []).slice(0, 3);
-            } catch {
-              /* keep dashboard-only data */
-            }
-          }
-          return { ...dashboard, recentTasks };
-        },
+        fetchLive: fetchFarmerDashboardForCache,
       });
       setData(result.data as DashboardData);
       setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);

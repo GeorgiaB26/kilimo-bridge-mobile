@@ -80,6 +80,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     await AsyncStorage.setItem(TOKEN_KEY, token);
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
     set({ token, user, isAuthenticated: true, isLoading: false });
+    // Background read-cache warm when online — never block login.
+    void import('../services/outboxConnectivitySync')
+      .then(({ scheduleReadCacheWarmIfOnline }) => {
+        scheduleReadCacheWarmIfOnline('auth');
+      })
+      .catch(() => {});
   },
 
   logout: async () => {
@@ -132,6 +138,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: true,
         isLoading: false,
       });
+      // Background warm when online — fire after local session is restored.
+      void import('../services/outboxConnectivitySync')
+        .then(({ scheduleReadCacheWarmIfOnline }) => {
+          scheduleReadCacheWarmIfOnline('auth');
+        })
+        .catch(() => {});
 
       try {
         const { user } = await fetchMe();

@@ -4,7 +4,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
-import { getFarmerHierarchyProjects, getFarmerProjectTasks } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { KBCard } from '../ui/KBCard';
 import { KBStatusChip } from '../ui/KBStatusChip';
@@ -28,6 +27,10 @@ import {
 } from '../../services/submitTaskRecallOutbox';
 import { OutboxTaskRecallCard } from '../OutboxTaskRecallCard';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import {
+  fetchFarmerProjectTasksForCache,
+  fetchFarmerProjectsForCache,
+} from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { OfflineCachedDataBanner } from '../OfflineCachedDataBanner';
 
@@ -95,7 +98,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerProjects,
         userScope,
-        fetchLive: () => getFarmerHierarchyProjects(),
+        fetchLive: fetchFarmerProjectsForCache,
       });
       return result.data.projects?.[0]?.id ?? null;
     } catch {
@@ -144,7 +147,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerTasks(pid),
         userScope,
-        fetchLive: () => getFarmerProjectTasks(pid),
+        fetchLive: () => fetchFarmerProjectTasksForCache(pid),
       });
       const list = (result.data.tasks ?? []) as FarmerTaskRow[];
       list.sort((a, b) => a.task_order - b.task_order);

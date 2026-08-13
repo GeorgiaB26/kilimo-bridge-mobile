@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
-import { getFarmerHierarchyProjects, getFarmerProjects } from '../../api/client';
+import { getFarmerProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
@@ -17,6 +17,7 @@ import { formatProjectStatus, formatDisplayDate, formatProjectDate } from '../..
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerProjectsForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type Tab = 'active' | 'completed';
@@ -51,7 +52,7 @@ export function FarmerProjectsScreen() {
     loadWithReadCache({
       cacheKey: READ_CACHE_KEYS.farmerProjects,
       userScope,
-      fetchLive: () => getFarmerHierarchyProjects(),
+      fetchLive: fetchFarmerProjectsForCache,
     })
       .then((result) => {
         const list = result.data.projects ?? [];
