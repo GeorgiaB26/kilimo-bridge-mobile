@@ -1,7 +1,5 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ScrollView, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { StepIndicator } from '../components/StepIndicator';
 import { COLORS } from '../constants';
 import { CountrySelectionScreen } from '../screens/registration/CountrySelectionScreen';
@@ -12,6 +10,7 @@ import { DetailsScreen } from '../screens/registration/DetailsScreen';
 import { ProjectsScreen } from '../screens/registration/ProjectsScreen';
 import { PhotoScreen } from '../screens/registration/PhotoScreen';
 import { ConfirmScreen } from '../screens/registration/ConfirmScreen';
+import { RegistrationKeyboardLayout } from './RegistrationKeyboardLayout';
 import type { RegistrationStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RegistrationStackParamList>();
@@ -35,24 +34,17 @@ function withFarmerLayout<P extends object>(
 ) {
   return function WrappedScreen(props: P) {
     const step = FARMER_STEP_MAP[routeName] ?? 0;
-    const body =
-      routeName === 'Confirm' ? (
-        <Screen {...props} />
-      ) : (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Screen {...props} />
-        </ScrollView>
-      );
+    const isConfirm = routeName === 'Confirm';
 
     return (
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <StepIndicator currentStep={step} totalSteps={8} labels={FARMER_STEP_LABELS} />
-        {body}
-      </SafeAreaView>
+      <RegistrationKeyboardLayout
+        scrollable={!isConfirm}
+        header={
+          <StepIndicator currentStep={step} totalSteps={8} labels={FARMER_STEP_LABELS} />
+        }
+      >
+        <Screen {...props} />
+      </RegistrationKeyboardLayout>
     );
   };
 }
@@ -83,9 +75,3 @@ export function AgentFarmerRegistrationNavigator() {
     </Stack.Navigator>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32 },
-});

@@ -1,13 +1,13 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../constants';
 import { AgentFarmersScreen } from '../screens/agent/AgentFarmersScreen';
 import { AgentFarmerProfileScreen } from '../screens/agent/AgentFarmerProfileScreen';
 import { AgentRegisterTypeScreen } from '../screens/agent/AgentRegisterTypeScreen';
 import { FieldAgentRegistrationScreen } from '../screens/registration/FieldAgentRegistrationScreen';
 import { AgentFarmerRegistrationNavigator } from './AgentFarmerRegistrationNavigator';
+import { RegistrationKeyboardLayout } from './RegistrationKeyboardLayout';
 import { RegisterNewFarmerButton } from '../components/agent/RegisterNewFarmerButton';
 import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import type { AgentFarmersStackParamList } from './types';
@@ -17,15 +17,9 @@ const Stack = createNativeStackNavigator<AgentFarmersStackParamList>();
 function withAgentFormLayout<P extends object>(Screen: React.ComponentType<P>) {
   return function WrappedScreen(props: P) {
     return (
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Screen {...props} />
-        </ScrollView>
-      </SafeAreaView>
+      <RegistrationKeyboardLayout>
+        <Screen {...props} />
+      </RegistrationKeyboardLayout>
     );
   };
 }
@@ -83,9 +77,6 @@ export function AgentFarmersStackNavigator() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32 },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',

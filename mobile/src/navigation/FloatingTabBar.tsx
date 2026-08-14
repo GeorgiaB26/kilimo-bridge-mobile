@@ -1,5 +1,5 @@
-import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,10 +31,32 @@ export const SUPPORT_TAB_ICONS: FloatingTabIconMap = {
 
 const HORIZONTAL_MARGIN = 16;
 const BOTTOM_MARGIN = 12;
+/** Matches `styles.row.minHeight` — keep in sync with the pill layout below. */
+const PILL_MIN_HEIGHT = 56;
+/** Extra space above the pill so content is not flush against the blur. */
+const SCENE_CLEARANCE_GAP = 12;
 /** Large enough that ends are full semicircles regardless of bar height (stadium pill). */
 const PILL_RADIUS = 999;
 const ICON_HIT = 28;
 const ICON_SIZE = 18;
+
+/**
+ * Vertical space consumed by the absolute FloatingTabBar (safe-area + margin + pill).
+ * Use for tab `sceneStyle.paddingBottom` so scroll content clears the bar.
+ */
+export function floatingTabBarClearance(bottomInset: number): number {
+  const bottomPad = Math.max(bottomInset, 8) + BOTTOM_MARGIN;
+  return bottomPad + PILL_MIN_HEIGHT + SCENE_CLEARANCE_GAP;
+}
+
+/** Hook for Tab.Navigator `sceneStyle` — replaces the old fixed `paddingBottom: 88`. */
+export function useFloatingTabBarSceneStyle(): ViewStyle {
+  const insets = useSafeAreaInsets();
+  return useMemo(
+    () => ({ paddingBottom: floatingTabBarClearance(insets.bottom) }),
+    [insets.bottom]
+  );
+}
 
 type Props = BottomTabBarProps & {
   icons?: FloatingTabIconMap;
@@ -164,7 +186,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    minHeight: 56,
+    minHeight: PILL_MIN_HEIGHT,
   },
   tab: {
     flex: 1,

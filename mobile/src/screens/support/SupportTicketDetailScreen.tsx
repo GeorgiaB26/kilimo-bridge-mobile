@@ -13,6 +13,7 @@ import {
   Text as RNText,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -41,6 +42,7 @@ const POLL_MS = 8000;
 export function SupportTicketDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const { threadId, subject: paramSubject, status: paramStatus } = route.params;
 
   const [ticket, setTicket] = useState<SupportTicketSummary | null>(null);
@@ -213,7 +215,7 @@ export function SupportTicketDetailScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, { paddingBottom: 10 + Math.max(insets.bottom, 0) }]}>
         <TextInput
           style={styles.input}
           placeholder={canReply ? 'Reply to requester…' : 'Replies closed'}

@@ -9,7 +9,7 @@ import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FarmerTaskDetailScreen } from '../screens/farmer/FarmerTaskDetailScreen';
-import { FloatingTabBar, FARMER_TAB_ICONS } from './FloatingTabBar';
+import { FloatingTabBar, FARMER_TAB_ICONS, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
@@ -40,6 +40,8 @@ function HeaderInboxIcons() {
 }
 
 function FarmerTabNavigator() {
+  const tabSceneStyle = useFloatingTabBarSceneStyle();
+
   return (
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} icons={FARMER_TAB_ICONS} />}
@@ -50,7 +52,7 @@ function FarmerTabNavigator() {
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '600' },
         headerRight: () => <HeaderInboxIcons />,
-        sceneStyle: { paddingBottom: 88 },
+        sceneStyle: tabSceneStyle,
       })}
     >
       <Tab.Screen

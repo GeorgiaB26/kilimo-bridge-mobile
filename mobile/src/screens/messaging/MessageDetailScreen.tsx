@@ -6,11 +6,11 @@ import {
   Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Image,
   Text as RNText,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -45,6 +45,7 @@ const POLL_MS = 8000;
 export function MessageDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const { threadId, title: paramTitle, contextType: paramContext, supportStatus: paramStatus } =
     route.params;
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -195,11 +196,11 @@ export function MessageDetailScreen() {
       {error && messages.length > 0 ? <Text style={styles.error}>{error}</Text> : null}
 
       {isResolved ? (
-        <View style={styles.readOnlyBar}>
+        <View style={[styles.readOnlyBar, { paddingBottom: 12 + Math.max(insets.bottom, 0) }]}>
           <Text style={styles.readOnlyText}>Messaging is closed on resolved tickets.</Text>
         </View>
       ) : (
-        <View style={styles.inputRow}>
+        <View style={[styles.inputRow, { paddingBottom: 10 + Math.max(insets.bottom, 0) }]}>
           <TextInput
             style={styles.input}
             placeholder="Type a message..."

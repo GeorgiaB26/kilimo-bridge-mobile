@@ -13,7 +13,7 @@ import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import { AgentTabScene } from './AgentTabScene';
-import { FloatingTabBar, AGENT_TAB_ICONS } from './FloatingTabBar';
+import { FloatingTabBar, AGENT_TAB_ICONS, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import type { AgentRootStackParamList, AgentTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<AgentTabParamList>();
@@ -32,6 +32,8 @@ function withAgentTabScene<P extends object>(Component: React.ComponentType<P>) 
 }
 
 function AgentTabNavigator() {
+  const tabSceneStyle = useFloatingTabBarSceneStyle();
+
   return (
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} icons={AGENT_TAB_ICONS} />}
@@ -46,7 +48,7 @@ function AgentTabNavigator() {
             <MessagesNotificationsHeaderIcons iconColor="#fff" />
           </View>
         ),
-        sceneStyle: { paddingBottom: 88 },
+        sceneStyle: tabSceneStyle,
       })}
     >
       <Tab.Screen

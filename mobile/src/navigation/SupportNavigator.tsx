@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { FloatingTabBar, SUPPORT_TAB_ICONS } from './FloatingTabBar';
+import { FloatingTabBar, SUPPORT_TAB_ICONS, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import { SupportDashboardScreen } from '../screens/support/SupportDashboardScreen';
 import { SupportMessagesScreen } from '../screens/support/SupportMessagesScreen';
 import { SupportTicketDetailScreen } from '../screens/support/SupportTicketDetailScreen';
@@ -48,6 +48,8 @@ function SupportMessagesStackNavigator() {
 }
 
 function SupportTabNavigator() {
+  const tabSceneStyle = useFloatingTabBarSceneStyle();
+
   return (
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} icons={SUPPORT_TAB_ICONS} />}
@@ -58,7 +60,7 @@ function SupportTabNavigator() {
         headerTitle: 'KB Support',
         headerTitleStyle: { fontWeight: '600' },
         headerRight: () => <SupportHeaderIcons />,
-        sceneStyle: { paddingBottom: 88 },
+        sceneStyle: tabSceneStyle,
       })}
     >
       <Tab.Screen
