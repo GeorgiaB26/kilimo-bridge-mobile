@@ -38,6 +38,26 @@ let didLaunchWarmAttempt = false;
 /** Resolves when the latest reconnect-triggered sync finishes (for proofs). */
 let lastReconnectSync: Promise<ProcessReadyOutboxResult> | null = null;
 
+type ConnectivityListener = (online: boolean) => void;
+const connectivityListeners = new Set<ConnectivityListener>();
+
+function notifyConnectivityListeners(online: boolean): void {
+  for (const listener of connectivityListeners) {
+    listener(online);
+  }
+}
+
+/** Subscribe to online/offline changes from the shared NetInfo listener. */
+export function subscribeToConnectivity(listener: ConnectivityListener): () => void {
+  connectivityListeners.add(listener);
+  if (lastOnline !== null) {
+    listener(lastOnline);
+  }
+  return () => {
+    connectivityListeners.delete(listener);
+  };
+}
+
 /** Fire-and-forget warm — never blocks outbox or callers. */
 function fireWarmInBackground(
   options: { force?: boolean; reason: WarmReadCacheReason }
@@ -136,6 +156,7 @@ function handleNetInfoChange(state: NetInfoState): void {
   const online = isNetInfoOnline(state);
   const wasOnline = lastOnline;
   lastOnline = online;
+  notifyConnectivityListeners(online);
 
   // First event: seed state + launch warm if already online (outbox still skips).
   if (wasOnline === null) {
@@ -200,12 +221,14 @@ export function startOutboxConnectivitySync(): () => void {
       const online = isNetInfoOnline(state);
       if (lastOnline === null) {
         lastOnline = online;
+        notifyConnectivityListeners(online);
         maybeWarmOnLaunchIfOnline(online);
       }
     })
     .catch(() => {
       if (lastOnline === null) {
         lastOnline = true;
+        notifyConnectivityListeners(true);
         maybeWarmOnLaunchIfOnline(true);
       }
     });
@@ -229,6 +252,7 @@ export function stopOutboxConnectivitySync(): void {
 /** Test helper: seed listener as offline (after startOutboxConnectivitySync). */
 export function __setConnectivityOnlineForTests(online: boolean): void {
   lastOnline = online;
+  notifyConnectivityListeners(online);
 }
 
 /**
