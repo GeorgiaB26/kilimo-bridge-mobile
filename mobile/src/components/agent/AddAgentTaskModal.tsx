@@ -1,18 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import {
   View,
-  Modal,
   ScrollView,
   Pressable,
   Platform,
   TextInput as RNTextInput,
-  KeyboardAvoidingView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { Square, SquareCheck, X } from 'lucide-react-native';
 import { TextInput } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { maskDdMmYyyyInput, parseAgentTaskDueDateInput, DISPLAY_DATE_FORMAT } from '../../utils/agentTaskDate';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
@@ -140,27 +139,13 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
   };
 
   return (
-    <Modal
+    <KeyboardBottomSheet
       visible={visible}
-      animationType="none"
-      transparent
       onRequestClose={handleClose}
-      statusBarTranslucent
+      backdropPressDisabled={loading}
+      avoidingViewStyle={webOverlay}
+      sheetClassName="max-h-[90%] rounded-t-2xl bg-white"
     >
-      <KeyboardAvoidingView
-        className="flex-1 justify-end bg-black/40"
-        style={webOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss"
-          onPress={handleClose}
-          className="flex-1"
-          disabled={loading}
-          style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : undefined}
-        />
-        <View className="max-h-[90%] rounded-t-2xl bg-white">
           <View className="flex-row items-center justify-between border-b border-[#E8E8E8] px-5 py-4">
             <Text className="text-lg font-bold text-[#333333]">Create task</Text>
             <Pressable onPress={handleClose} hitSlop={12} disabled={loading}>
@@ -323,9 +308,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
               <Text className="font-semibold text-[#333333]">Cancel</Text>
             </Pressable>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </KeyboardBottomSheet>
   );
 }
 

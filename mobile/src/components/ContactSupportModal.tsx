@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Modal,
   View,
   TextInput,
   Image,
   Pressable,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
 } from 'react-native';
@@ -15,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { createSupportTicket } from '../api/client';
 import { uploadPhotoToR2 } from '../services/uploadToR2';
 import { extractApiError, showMessage } from '../utils/feedback';
@@ -160,12 +159,12 @@ export function ContactSupportModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
-      <KeyboardAvoidingView
-        className="flex-1 justify-end bg-black/40"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View className="max-h-[92%] rounded-t-2xl bg-white px-5 pb-8 pt-5">
+    <KeyboardBottomSheet
+      visible={visible}
+      onRequestClose={handleClose}
+      backdropPressDisabled={submitting}
+      sheetClassName="max-h-[92%] rounded-t-2xl bg-white px-5 pb-8 pt-5"
+    >
           <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-lg font-bold text-[#1A4D3E]">Contact Support</Text>
             <Button variant="ghost" disabled={submitting} onPress={handleClose}>
@@ -258,9 +257,7 @@ export function ContactSupportModal({
               )}
             </Button>
           </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </KeyboardBottomSheet>
   );
 }
 

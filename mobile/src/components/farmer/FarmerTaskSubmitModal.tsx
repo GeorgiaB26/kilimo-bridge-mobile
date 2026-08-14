@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, Image, StyleSheet, Modal, TextInput, Pressable, ScrollView, Platform,
+  View, Text, Image, StyleSheet, TextInput, Pressable, Platform,
 } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { COLORS } from '../../constants';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { submitFarmerTaskWithOutbox } from '../../services/submitFarmerTaskOutbox';
@@ -167,9 +168,14 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const hasPrefill = Boolean(task?.initialNotes?.trim() || task?.initialPhotoUri);
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={close}>
-      <View style={styles.overlay}>
-        <ScrollView style={styles.card} contentContainerStyle={styles.content}>
+    <KeyboardBottomSheet
+      visible={visible}
+      onRequestClose={close}
+      scrollable
+      backdropPressDisabled={submitting || picking}
+      sheetStyle={styles.card}
+      scrollViewProps={{ contentContainerStyle: styles.content }}
+    >
           <Pressable onPress={close} style={styles.closeRow}>
             <View style={styles.closeContent}>
               <X size={16} color={COLORS.muted} />
@@ -255,14 +261,11 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
               </Button>
             </>
           ) : null}
-        </ScrollView>
-      </View>
-    </Modal>
+    </KeyboardBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   card: { maxHeight: '92%', backgroundColor: COLORS.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   content: { padding: 20, paddingBottom: 40 },
   closeRow: { alignSelf: 'flex-end', marginBottom: 4 },

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Modal, ScrollView, Pressable, Alert, Platform, TextInput, Image } from 'react-native';
+import { View, Pressable, Alert, Platform, TextInput, Image } from 'react-native';
 import { Bell, X } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { KBCard } from '../ui/KBCard';
 import { KBStatusChip } from '../ui/KBStatusChip';
+import { KeyboardBottomSheet } from '../ui/KeyboardBottomSheet';
 import { formatCleanDate } from '../../utils/greeting';
 import {
   isSubmittedForApprovalStatus,
@@ -133,19 +134,14 @@ export function AgentTaskDetailModal({
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
-      <View
-        className="flex-1 justify-end bg-black/40"
-        style={Platform.OS === 'web' ? { zIndex: 1000 } : undefined}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss"
-          onPress={onClose}
-          className="flex-1"
-          style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : undefined}
-        />
-        <View className="max-h-[92%] rounded-t-2xl bg-white p-5">
+    <KeyboardBottomSheet
+      visible={visible}
+      onRequestClose={onClose}
+      scrollable
+      backdropPressDisabled={acting || loading}
+      avoidingViewStyle={Platform.OS === 'web' ? { zIndex: 1000 } : undefined}
+      sheetClassName="max-h-[92%] rounded-t-2xl bg-white p-5"
+    >
           <View className="mb-4 flex-row items-start justify-between gap-3">
             <View className="flex-1">
               <Text className="text-lg font-bold text-[#333333]">{task.name}</Text>
@@ -161,7 +157,6 @@ export function AgentTaskDetailModal({
             </Pressable>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled">
             {task.description ? (
               <Text className="mb-3 text-sm leading-5 text-[#333333]">{task.description}</Text>
             ) : null}
@@ -321,9 +316,6 @@ export function AgentTaskDetailModal({
             <Button variant="outline" className="h-11" onPress={onClose}>
               <Text>Close</Text>
             </Button>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </KeyboardBottomSheet>
   );
 }

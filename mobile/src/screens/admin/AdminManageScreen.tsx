@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, ScrollView, RefreshControl, Alert, Pressable, TextInput, Modal,
+  View, ScrollView, RefreshControl, Alert, Pressable, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Menu, Button as PaperButton } from 'react-native-paper';
@@ -9,6 +9,7 @@ import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { AdminFormModal } from '../../components/admin/AdminFormModal';
 import { KBCard } from '../../components/ui/KBCard';
+import { KeyboardBottomSheet } from '../../components/ui/KeyboardBottomSheet';
 import { extractApiError } from '../../utils/feedback';
 import { formatCleanDate } from '../../utils/greeting';
 import {
@@ -453,9 +454,13 @@ export function AdminManageScreen() {
         />
       ) : null}
 
-      <Modal visible={assignModalOpen} transparent animationType="none">
-        <View className="flex-1 justify-center bg-black/45 p-4">
-          <View className="max-h-[85%] rounded-xl bg-white p-5">
+      <KeyboardBottomSheet
+        visible={assignModalOpen}
+        onRequestClose={() => setAssignModalOpen(false)}
+        variant="center"
+        scrollable
+        sheetClassName="rounded-xl bg-white p-5"
+      >
             <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Assign {selectedFarmer?.name}</Text>
             <Menu visible={assignProjectMenuOpen} onDismiss={() => setAssignProjectMenuOpen(false)} anchor={
               <PaperButton mode="outlined" onPress={() => setAssignProjectMenuOpen(true)} style={{ marginBottom: 12, alignSelf: 'flex-start' }}>
@@ -509,9 +514,7 @@ export function AdminManageScreen() {
             <Button variant="ghost" className="mt-1" onPress={() => setAssignModalOpen(false)}>
               <Text>Cancel</Text>
             </Button>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardBottomSheet>
     </View>
   );
 }

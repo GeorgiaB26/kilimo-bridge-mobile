@@ -19,6 +19,10 @@ import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import {
+  KEYBOARD_AVOIDING_BEHAVIOR,
+  screenKeyboardVerticalOffset,
+} from '../../utils/keyboardAvoiding';
+import {
   getSupportTicket,
   replySupportTicket,
   resolveSupportTicket,
@@ -125,8 +129,8 @@ export function SupportTicketDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+      keyboardVerticalOffset={screenKeyboardVerticalOffset(90)}
     >
       <View style={styles.header}>
         <Pressable

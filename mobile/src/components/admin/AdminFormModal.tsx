@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import {
-  View, Text, Modal, StyleSheet, ScrollView, Pressable, TextInput as RNTextInput,
+  View, Text, StyleSheet, Pressable, TextInput as RNTextInput,
 } from 'react-native';
 import { Button, Menu } from 'react-native-paper';
 import { X } from 'lucide-react-native';
 import { COLORS } from '../../constants';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 
 export interface FormFieldOption {
   value: string;
@@ -65,71 +66,73 @@ export function AdminFormModal({
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          <Pressable onPress={onClose} style={styles.closeRow}>
-            <View style={styles.closeContent}>
-              <X size={16} color={COLORS.muted} />
-              <Text style={styles.close}>Close</Text>
-            </View>
-          </Pressable>
-          <Text style={styles.title}>{title}</Text>
-          <ScrollView style={styles.fields}>
-            {fields.map((f) => (
-              <View key={f.key} style={styles.field}>
-                <Text style={styles.label}>
-                  {f.label}{f.required ? ' *' : ''}
-                </Text>
-                {f.type === 'select' && f.options ? (
-                  <Menu
-                    visible={openSelect === f.key}
-                    onDismiss={() => setOpenSelect(null)}
-                    anchor={
-                      <Pressable style={styles.selectBtn} onPress={() => setOpenSelect(f.key)}>
-                        <Text style={styles.selectText}>
-                          {f.options.find((o) => o.value === values[f.key])?.label ?? 'Select...'}
-                        </Text>
-                      </Pressable>
-                    }
-                  >
-                    {f.options.map((o) => (
-                      <Menu.Item
-                        key={o.value}
-                        title={o.label}
-                        onPress={() => {
-                          setValues((v) => ({ ...v, [f.key]: o.value }));
-                          setOpenSelect(null);
-                        }}
-                      />
-                    ))}
-                  </Menu>
-                ) : (
-                  <RNTextInput
-                    style={[styles.input, f.multiline && styles.multiline]}
-                    value={values[f.key] ?? ''}
-                    onChangeText={(t) => setValues((v) => ({ ...v, [f.key]: t }))}
-                    placeholder={f.placeholder}
-                    multiline={f.multiline}
-                    numberOfLines={f.multiline ? 3 : 1}
-                    keyboardType={f.keyboardType ?? 'default'}
-                  />
-                )}
-              </View>
-            ))}
-          </ScrollView>
-          <Button mode="contained" onPress={submit} loading={saving} buttonColor={COLORS.primary}>
-            {submitLabel}
-          </Button>
+    <KeyboardBottomSheet
+      visible={visible}
+      onRequestClose={onClose}
+      variant="center"
+      scrollable
+      backdropPressDisabled={saving}
+      sheetClassName="rounded-xl bg-white p-5"
+      sheetStyle={styles.card}
+      scrollViewProps={{ style: styles.fields }}
+    >
+      <Pressable onPress={onClose} style={styles.closeRow}>
+        <View style={styles.closeContent}>
+          <X size={16} color={COLORS.muted} />
+          <Text style={styles.close}>Close</Text>
         </View>
-      </View>
-    </Modal>
+      </Pressable>
+      <Text style={styles.title}>{title}</Text>
+      {fields.map((f) => (
+        <View key={f.key} style={styles.field}>
+          <Text style={styles.label}>
+            {f.label}{f.required ? ' *' : ''}
+          </Text>
+          {f.type === 'select' && f.options ? (
+            <Menu
+              visible={openSelect === f.key}
+              onDismiss={() => setOpenSelect(null)}
+              anchor={
+                <Pressable style={styles.selectBtn} onPress={() => setOpenSelect(f.key)}>
+                  <Text style={styles.selectText}>
+                    {f.options.find((o) => o.value === values[f.key])?.label ?? 'Select...'}
+                  </Text>
+                </Pressable>
+              }
+            >
+              {f.options.map((o) => (
+                <Menu.Item
+                  key={o.value}
+                  title={o.label}
+                  onPress={() => {
+                    setValues((v) => ({ ...v, [f.key]: o.value }));
+                    setOpenSelect(null);
+                  }}
+                />
+              ))}
+            </Menu>
+          ) : (
+            <RNTextInput
+              style={[styles.input, f.multiline && styles.multiline]}
+              value={values[f.key] ?? ''}
+              onChangeText={(t) => setValues((v) => ({ ...v, [f.key]: t }))}
+              placeholder={f.placeholder}
+              multiline={f.multiline}
+              numberOfLines={f.multiline ? 3 : 1}
+              keyboardType={f.keyboardType ?? 'default'}
+            />
+          )}
+        </View>
+      ))}
+      <Button mode="contained" onPress={submit} loading={saving} buttonColor={COLORS.primary}>
+        {submitLabel}
+      </Button>
+    </KeyboardBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 },
-  card: { backgroundColor: COLORS.background, borderRadius: 12, padding: 20, maxHeight: '85%' },
+  card: { maxHeight: '85%' },
   closeRow: { alignSelf: 'flex-end' },
   closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 15 },

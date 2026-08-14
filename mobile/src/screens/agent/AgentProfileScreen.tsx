@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useState } from 'react';
-import { View, ScrollView, Linking, Alert, Modal, Pressable, Switch } from 'react-native';
+import { View, ScrollView, Linking, Alert, Pressable, Switch } from 'react-native';
 import { useFocusEffect, useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -23,6 +23,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard, getNotificationSettings, updateNotificationSettings } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
+import { KeyboardBottomSheet } from '../../components/ui/KeyboardBottomSheet';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 import type { AgentRootStackParamList, AgentTabParamList } from '../../navigation/types';
 
@@ -306,9 +307,11 @@ export function AgentProfileScreen() {
         </Button>
       </ScrollView>
 
-      <Modal visible={settingsOpen} animationType="none" transparent onRequestClose={() => setSettingsOpen(false)}>
-        <View className="flex-1 justify-end bg-black/40">
-          <View className="rounded-t-2xl bg-white p-5">
+      <KeyboardBottomSheet
+        visible={settingsOpen}
+        onRequestClose={() => setSettingsOpen(false)}
+        sheetClassName="rounded-t-2xl bg-white p-5"
+      >
             <View className="mb-4 flex-row items-center justify-between">
               <Text className="text-lg font-bold">Edit profile</Text>
               <Pressable onPress={() => setSettingsOpen(false)}>
@@ -331,9 +334,7 @@ export function AgentProfileScreen() {
             <Button variant="outline" onPress={() => setSettingsOpen(false)}>
               <Text>Cancel</Text>
             </Button>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardBottomSheet>
     </>
   );
 }

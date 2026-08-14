@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, ScrollView, RefreshControl, ActivityIndicator, Alert, Modal, TextInput,
+  View, ScrollView, RefreshControl, ActivityIndicator, Alert, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SegmentedButtons } from 'react-native-paper';
@@ -16,6 +16,7 @@ import { extractApiError } from '../../utils/feedback';
 import { formatCleanDate } from '../../utils/greeting';
 import { useAuthStore } from '../../store/authStore';
 import { KBCard } from '../../components/ui/KBCard';
+import { KeyboardBottomSheet } from '../../components/ui/KeyboardBottomSheet';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { OutboxCentreQcCard } from '../../components/OutboxCentreQcCard';
 import {
@@ -299,9 +300,14 @@ export function AggregationCentreDashboardScreen() {
         ))
       )}
 
-      <Modal visible={!!receiveModal} transparent animationType="none">
-        <View className="flex-1 justify-center bg-black/50 p-5">
-          <View className="rounded-xl bg-white p-5">
+      <KeyboardBottomSheet
+        visible={!!receiveModal}
+        onRequestClose={() => setReceiveModal(null)}
+        variant="center"
+        scrollable
+        overlayClassName="flex-1 justify-center bg-black/50 p-5"
+        sheetClassName="rounded-xl bg-white p-5"
+      >
             <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Receive delivery</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">Farmer: {receiveModal?.farmer_name}</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">Task: {receiveModal?.task_name}</Text>
@@ -315,13 +321,17 @@ export function AggregationCentreDashboardScreen() {
             <Button variant="ghost" onPress={() => setReceiveModal(null)}>
               <Text>Cancel</Text>
             </Button>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardBottomSheet>
 
-      <Modal visible={!!qcModal} transparent animationType="none">
-        <View className="flex-1 justify-center bg-black/50 p-5">
-          <View className="rounded-xl bg-white p-5">
+      <KeyboardBottomSheet
+        visible={!!qcModal}
+        onRequestClose={() => setQcModal(null)}
+        variant="center"
+        scrollable
+        backdropPressDisabled={qcActing}
+        overlayClassName="flex-1 justify-center bg-black/50 p-5"
+        sheetClassName="rounded-xl bg-white p-5"
+      >
             <Text className="mb-3 text-xl font-bold text-[#1A4D3E]">Quality check</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">{qcModal?.product_name} · {qcModal?.quantity_received} {qcModal?.unit}</Text>
             <TextInput className="mb-2.5 mt-2 min-h-[72px] rounded-lg border border-[#E0E0E0] bg-[#F5F5F5] p-2.5" placeholder="Quality assessment (required)" value={qcNotes} onChangeText={setQcNotes} multiline textAlignVertical="top" />
@@ -335,9 +345,7 @@ export function AggregationCentreDashboardScreen() {
             <Button variant="ghost" onPress={() => setQcModal(null)} disabled={qcActing}>
               <Text>Cancel</Text>
             </Button>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardBottomSheet>
     </ScrollView>
   );
 }

@@ -6,11 +6,9 @@ import {
   StyleSheet,
   Image,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -19,6 +17,7 @@ import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { Text } from '@/components/ui/text';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { Button } from 'react-native-paper';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { COLORS } from '../../constants';
@@ -1215,48 +1214,41 @@ export function FarmerTasksScreen() {
         )}
       </ScrollView>
 
-      <Modal
+      <KeyboardBottomSheet
         visible={!!startTask}
-        animationType="none"
-        transparent
         onRequestClose={() => setStartTask(null)}
+        backdropPressDisabled={!!startingId}
+        overlayClassName="flex-1 justify-end bg-black/45"
+        sheetStyle={styles.startModalCard}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalOverlay}
+        <Text className="text-lg font-bold text-foreground">Start Task</Text>
+        <Text className="mt-1 text-sm text-muted-foreground">{startTask?.name}</Text>
+        <Text className="mt-4 text-xs font-semibold text-muted-foreground">
+          When did you start? ({DISPLAY_DATE_FORMAT})
+        </Text>
+        <TextInput
+          value={startDateInput}
+          onChangeText={(text) => setStartDateInput(maskDdMmYyyyInput(text))}
+          placeholder={DISPLAY_DATE_FORMAT}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="numbers-and-punctuation"
+          style={styles.dateInput}
+        />
+        <Button
+          mode="contained"
+          buttonColor={COLORS.primary}
+          loading={!!startingId}
+          disabled={!!startingId}
+          onPress={() => void handleConfirmStart()}
+          style={styles.openBtn}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setStartTask(null)} />
-          <View style={styles.startModalCard}>
-            <Text className="text-lg font-bold text-foreground">Start Task</Text>
-            <Text className="mt-1 text-sm text-muted-foreground">{startTask?.name}</Text>
-            <Text className="mt-4 text-xs font-semibold text-muted-foreground">
-              When did you start? ({DISPLAY_DATE_FORMAT})
-            </Text>
-            <TextInput
-              value={startDateInput}
-              onChangeText={(text) => setStartDateInput(maskDdMmYyyyInput(text))}
-              placeholder={DISPLAY_DATE_FORMAT}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="numbers-and-punctuation"
-              style={styles.dateInput}
-            />
-            <Button
-              mode="contained"
-              buttonColor={COLORS.primary}
-              loading={!!startingId}
-              disabled={!!startingId}
-              onPress={() => void handleConfirmStart()}
-              style={styles.openBtn}
-            >
-              Confirm start
-            </Button>
-            <Button mode="text" onPress={() => setStartTask(null)} disabled={!!startingId}>
-              Cancel
-            </Button>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          Confirm start
+        </Button>
+        <Button mode="text" onPress={() => setStartTask(null)} disabled={!!startingId}>
+          Cancel
+        </Button>
+      </KeyboardBottomSheet>
 
       <FarmerTaskSubmitModal
         task={
@@ -1410,11 +1402,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E8E8E8',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
   },
   startModalCard: {
     backgroundColor: '#FFFFFF',

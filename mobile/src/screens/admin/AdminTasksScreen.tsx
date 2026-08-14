@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, FlatList, SectionList, RefreshControl, ActivityIndicator,
-  Modal, TextInput, Pressable, ScrollView, Alert,
+  TextInput, Pressable, Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { X } from 'lucide-react-native';
@@ -14,6 +14,7 @@ import {
 } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
+import { KeyboardBottomSheet } from '../../components/ui/KeyboardBottomSheet';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
@@ -388,9 +389,13 @@ export function AdminTasksScreen() {
         />
       )}
 
-      <Modal visible={!!selected} animationType="none" transparent onRequestClose={() => setSelected(null)}>
-        <View className="flex-1 justify-end bg-black/50">
-          <ScrollView className="max-h-[85%] rounded-t-2xl bg-white" contentContainerClassName="p-5 pb-10">
+      <KeyboardBottomSheet
+        visible={!!selected}
+        onRequestClose={() => setSelected(null)}
+        scrollable
+        backdropPressDisabled={acting}
+        sheetClassName="max-h-[85%] rounded-t-2xl bg-white p-5 pb-10"
+      >
             <Pressable onPress={() => setSelected(null)} className="mb-2 self-end">
               <View className="flex-row items-center gap-1">
                 <X size={16} color="#757575" />
@@ -440,9 +445,7 @@ export function AdminTasksScreen() {
                 ) : null}
               </>
             ) : null}
-          </ScrollView>
-        </View>
-      </Modal>
+      </KeyboardBottomSheet>
     </View>
   );
 }
