@@ -18,6 +18,9 @@ import {
   type WarmReadCacheReason,
 } from './readCacheWarmup';
 
+const IS_DEV =
+  typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+
 export function isNetInfoOnline(state: NetInfoState): boolean {
   if (state.isConnected === false) return false;
   // null means unknown — treat as online so we don't miss a reconnect window
@@ -39,8 +42,15 @@ let lastReconnectSync: Promise<ProcessReadyOutboxResult> | null = null;
 function fireWarmInBackground(
   options: { force?: boolean; reason: WarmReadCacheReason }
 ): void {
-  void warmReadCachesForCurrentUser(options).catch(() => {
-    /* background — per-key errors already isolated inside warmer */
+  if (IS_DEV) {
+    console.log(`[read-cache warm] trigger (${options.reason})`, {
+      force: options.force === true,
+    });
+  }
+  void warmReadCachesForCurrentUser(options).catch((err) => {
+    if (IS_DEV) {
+      console.warn(`[read-cache warm] trigger failed (${options.reason})`, err);
+    }
   });
 }
 
@@ -59,10 +69,17 @@ export function scheduleReadCacheWarmIfOnline(
         online = isNetInfoOnline(state);
         if (lastOnline === null) lastOnline = online;
       }
-      if (!online) return;
+      if (!online) {
+        if (IS_DEV) {
+          console.log(`[read-cache warm] schedule skipped (${reason}): device offline`);
+        }
+        return;
+      }
       fireWarmInBackground({ reason });
-    } catch {
-      /* ignore — auth path must not fail because warm scheduling failed */
+    } catch (err) {
+      if (IS_DEV) {
+        console.warn(`[read-cache warm] schedule failed (${reason})`, err);
+      }
     }
   })();
 }
@@ -159,7 +176,11 @@ function handleAppStateChange(nextState: AppStateStatus): void {
       if (lastOnline === null) lastOnline = online;
       if (online) fireWarmInBackground({ reason: 'foreground' });
     })
-    .catch(() => {});
+    .catch((err) => {
+      if (IS_DEV) {
+        console.warn('[read-cache warm] foreground schedule failed', err);
+      }
+    });
 }
 
 /** Idempotent — safe to call from App mount. */

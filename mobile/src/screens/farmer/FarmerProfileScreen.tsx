@@ -17,9 +17,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { APP_BUILD } from '../../constants/build';
-import { getFarmerDashboard, getFarmerMyCentre, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
+import { getFarmerMyCentre, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
 import { useAuthStore } from '../../store/authStore';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
@@ -32,6 +33,9 @@ import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
 import { useCurrency } from '../../context/CurrencyContext';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type SupportContacts = {
   fieldAgent?: {
@@ -69,11 +73,32 @@ function profileTaskStatus(status?: string): string {
 
 type ProfileNav = BottomTabNavigationProp<FarmerTabParamList, 'Profile'>;
 
+type MyCentreState = {
+  name: string;
+  location: string;
+  managerName: string | null;
+  managerPhone: string | null;
+  country: string | null;
+};
+
+function centreFromDashboardContacts(contacts: SupportContacts | null): MyCentreState | null {
+  const agg = contacts?.aggregationCentre;
+  if (!agg?.name) return null;
+  return {
+    name: agg.name,
+    location: agg.location ?? '',
+    managerName: agg.managerName ?? null,
+    managerPhone: agg.managerPhone ?? null,
+    country: null,
+  };
+}
+
 export function FarmerProfileScreen() {
   const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { currency, currencyInfo, selectCountry } = useCurrency();
+  const userScope = useReadCacheUserScope();
   const [farmer, setFarmer] = useState<{
     name: string;
     phone_number: string;
@@ -94,6 +119,7 @@ export function FarmerProfileScreen() {
   const [contacts, setContacts] = useState<SupportContacts | null>(null);
   const [notifications, setNotifications] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpLoading, setHelpLoading] = useState(false);
   const [pendingUri, setPendingUri] = useState<string | null>(null);
@@ -103,53 +129,59 @@ export function FarmerProfileScreen() {
   const [assignedTasks, setAssignedTasks] = useState<ProfileTaskRow[]>([]);
   const [assignedTaskCount, setAssignedTaskCount] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(true);
-  const [myCentre, setMyCentre] = useState<{
-    name: string;
-    location: string;
-    managerName: string | null;
-    managerPhone: string | null;
-    country: string | null;
-  } | null>(null);
+  const [myCentre, setMyCentre] = useState<MyCentreState | null>(null);
   const [myCentreLoading, setMyCentreLoading] = useState(true);
 
-  const loadProfile = useCallback(() => {
-    getFarmerDashboard()
-      .then((d) => {
-        setFarmer(d.farmer);
-        setContacts(d.contacts ?? null);
-        setAssignedTasks((d.assignedTasks ?? d.recentTasks ?? []) as ProfileTaskRow[]);
-        setAssignedTaskCount(
-          typeof d.assignedTaskCount === 'number'
-            ? d.assignedTaskCount
-            : (d.assignedTasks ?? d.recentTasks ?? []).length
-        );
-        if (d.farmer?.country) selectCountry(d.farmer.country);
-        setError(null);
-        setTasksLoading(false);
-      })
-      .catch((err: unknown) => {
-        setError(extractApiError(err, 'Could not load profile'));
-        setAssignedTasks([]);
-        setTasksLoading(false);
-      });
+  const loadProfile = useCallback(async () => {
+    setTasksLoading(true);
+    setMyCentreLoading(true);
 
-    getFarmerMyCentre()
-      .then((d) => {
-        setMyCentre(d.centre ?? null);
-        setMyCentreLoading(false);
-      })
-      .catch(() => {
-        setMyCentre(null);
-        setMyCentreLoading(false);
+    let centreFallback: MyCentreState | null = null;
+
+    try {
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerDashboard,
+        userScope,
+        fetchLive: fetchFarmerDashboardForCache,
       });
-  }, [selectCountry]);
+      const d = result.data;
+      setFarmer(d.farmer);
+      setContacts(d.contacts ?? null);
+      setAssignedTasks((d.assignedTasks ?? d.recentTasks ?? []) as ProfileTaskRow[]);
+      setAssignedTaskCount(
+        typeof d.assignedTaskCount === 'number'
+          ? d.assignedTaskCount
+          : (d.assignedTasks ?? d.recentTasks ?? []).length
+      );
+      if (d.farmer?.country) selectCountry(d.farmer.country);
+      centreFallback = centreFromDashboardContacts(d.contacts ?? null);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      setError(null);
+    } catch (err: unknown) {
+      setFarmer(null);
+      setContacts(null);
+      setAssignedTasks([]);
+      setAssignedTaskCount(0);
+      setCacheFetchedAt(null);
+      setError(extractApiError(err, 'Could not load profile'));
+    } finally {
+      setTasksLoading(false);
+    }
+
+    try {
+      const centreRes = await getFarmerMyCentre();
+      setMyCentre(centreRes.centre ?? null);
+    } catch {
+      setMyCentre(centreFallback);
+    } finally {
+      setMyCentreLoading(false);
+    }
+  }, [selectCountry, userScope]);
 
   useFocusEffect(
     useCallback(() => {
-      setTasksLoading(true);
-      setMyCentreLoading(true);
-      loadProfile();
-      const interval = setInterval(loadProfile, 30000);
+      void loadProfile();
+      const interval = setInterval(() => void loadProfile(), 30000);
       return () => clearInterval(interval);
     }, [loadProfile])
   );
@@ -262,7 +294,8 @@ export function FarmerProfileScreen() {
 
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
-      {error ? <FarmerOfflineBanner message={error} /> : null}
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+      {error && !farmer ? <FarmerOfflineBanner message={error} /> : null}
       <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">
         <Pressable
           onPress={() => void takeVerificationPhoto()}

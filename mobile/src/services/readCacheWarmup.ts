@@ -11,11 +11,15 @@ import {
   fetchAgentFarmersForCache,
   fetchAgentTasksForCache,
   fetchFarmerDashboardForCache,
+  fetchFarmerAssignedTasksForCache,
   fetchFarmerPaymentsForCache,
   fetchFarmerProjectTasksForCache,
   fetchFarmerProjectsForCache,
   fetchMessageThreadsForCache,
 } from './readCacheFetchers';
+
+const IS_DEV =
+  typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
 
 /** Min gap between full warms for the same userScope (mid of planned 5–10 min). */
 export const READ_CACHE_WARM_THROTTLE_MS = 7 * 60 * 1000;
@@ -63,6 +67,54 @@ type WarmJob = {
 
 let warmInFlight: Promise<WarmReadCachesResult> | null = null;
 const lastWarmAtByScope = new Map<string, number>();
+
+function logWarmKeyFailure(
+  cacheKey: string,
+  error: string | undefined,
+  triggerReason?: WarmReadCacheReason
+): void {
+  if (!IS_DEV) return;
+  console.warn(
+    `[read-cache warm] key failed (${triggerReason ?? 'unknown'}): ${cacheKey}`,
+    error ?? 'unknown error'
+  );
+}
+
+function logWarmCycleSummary(
+  result: WarmReadCachesResult,
+  triggerReason?: WarmReadCacheReason
+): void {
+  if (!IS_DEV) return;
+
+  const label = triggerReason ?? 'unknown';
+  if (result.skipped) {
+    console.log(`[read-cache warm] skipped (${label}): ${result.skipReason ?? 'unknown'}`, {
+      userScope: result.userScope,
+    });
+    return;
+  }
+
+  const succeeded = result.warmed.filter((row) => row.ok).length;
+  const failed = result.warmed.length - succeeded;
+  console.log(
+    `[read-cache warm] complete (${label}): ${succeeded} ok, ${failed} failed`,
+    { userScope: result.userScope, total: result.warmed.length }
+  );
+
+  for (const row of result.warmed) {
+    if (!row.ok) {
+      logWarmKeyFailure(row.cacheKey, row.error, triggerReason);
+    }
+  }
+}
+
+function logWarmCycleThrew(triggerReason: WarmReadCacheReason | undefined, err: unknown): void {
+  if (!IS_DEV) return;
+  console.warn(
+    `[read-cache warm] cycle threw (${triggerReason ?? 'unknown'})`,
+    err instanceof Error ? err.message : err
+  );
+}
 
 function resolveUserScope(): { userScope: string; role: string } | null {
   if (!getAuthToken()) return null;
@@ -159,6 +211,10 @@ async function prepareFarmerWarm(
       fetchLive: fetchFarmerDashboardForCache,
     },
     {
+      cacheKey: READ_CACHE_KEYS.farmerAssignedTasks,
+      fetchLive: fetchFarmerAssignedTasksForCache,
+    },
+    {
       cacheKey: READ_CACHE_KEYS.farmerPayments,
       fetchLive: fetchFarmerPaymentsForCache,
     },
@@ -240,16 +296,39 @@ export async function warmReadCachesForCurrentUser(
 
   const resolved = resolveUserScope();
   if (!resolved) {
-    return { skipped: true, skipReason: 'no_auth', userScope: null, warmed: [] };
+    const result: WarmReadCachesResult = {
+      skipped: true,
+      skipReason: 'no_auth',
+      userScope: null,
+      warmed: [],
+    };
+    logWarmCycleSummary(result, options.reason);
+    return result;
   }
 
   const { userScope, role } = resolved;
   const lastAt = lastWarmAtByScope.get(userScope) ?? 0;
   if (!options.force && Date.now() - lastAt < READ_CACHE_WARM_THROTTLE_MS) {
-    return { skipped: true, skipReason: 'throttled', userScope, warmed: [] };
+    const result: WarmReadCachesResult = {
+      skipped: true,
+      skipReason: 'throttled',
+      userScope,
+      warmed: [],
+    };
+    logWarmCycleSummary(result, options.reason);
+    return result;
   }
 
-  warmInFlight = (async () => warmOnce(userScope, role))();
+  warmInFlight = (async () => {
+    try {
+      const result = await warmOnce(userScope, role);
+      logWarmCycleSummary(result, options.reason);
+      return result;
+    } catch (err) {
+      logWarmCycleThrew(options.reason, err);
+      throw err;
+    }
+  })();
 
   try {
     return await warmInFlight;

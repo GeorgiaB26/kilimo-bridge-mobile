@@ -14,6 +14,7 @@ export interface ReadCacheEntry<T = unknown> {
 export const READ_CACHE_KEYS = {
   farmerDashboard: 'farmer:dashboard',
   farmerProjects: 'farmer:projects',
+  farmerAssignedTasks: 'farmer:assigned-tasks',
   farmerTasks: (programProjectId: string) => `farmer:tasks:${programProjectId}`,
   agentFarmers: 'agent:farmers',
   agentDashboard: 'agent:dashboard',

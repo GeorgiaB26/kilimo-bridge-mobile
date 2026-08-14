@@ -4,7 +4,6 @@
  * Schema lives in `kilimo_offline.db` alongside the legacy `pending_registrations`
  * table. Callers should not wire screens to this module until the outbox API is reviewed.
  */
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   OUTBOX_MAX_ATTEMPTS,
@@ -19,6 +18,7 @@ import {
   type OutboxStatus,
   type OutboxStatusCounts,
 } from './offlineOutboxTypes';
+import { getOfflineSqliteDb, type OfflineSqliteDb } from './offlineSqlite';
 
 export type {
   EnqueueOutboxInput,
@@ -38,14 +38,7 @@ export {
   makeOutboxId,
 } from './offlineOutboxTypes';
 
-const DB_NAME = 'kilimo_offline.db';
 const ASYNC_FALLBACK_KEY = 'kilimo_sync_outbox_v1';
-
-type OfflineSqliteDb = {
-  execAsync: (sql: string) => Promise<void>;
-  getAllAsync: <T>(sql: string, params?: (string | number | null)[]) => Promise<T[]>;
-  runAsync: (sql: string, params?: (string | number | null)[]) => Promise<unknown>;
-};
 
 type OutboxRow = {
   id: string;
@@ -61,45 +54,6 @@ type OutboxRow = {
   updated_at: string;
   synced_at: string | null;
 };
-
-let dbReady = false;
-let sqliteDb: OfflineSqliteDb | null = null;
-
-async function initDb(): Promise<void> {
-  if (dbReady) return;
-  if (Platform.OS === 'web') {
-    dbReady = true;
-    return;
-  }
-  try {
-    const { openDatabaseAsync } = await import('expo-sqlite');
-    const database = await openDatabaseAsync(DB_NAME);
-    sqliteDb = database as unknown as OfflineSqliteDb;
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS sync_outbox (
-        id TEXT PRIMARY KEY NOT NULL,
-        action_type TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        photo_local_uri TEXT,
-        photo_base64 TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        attempt_count INTEGER NOT NULL DEFAULT 0,
-        next_attempt_at TEXT,
-        last_error TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        synced_at TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_sync_outbox_status_next
-        ON sync_outbox (status, next_attempt_at);
-      CREATE INDEX IF NOT EXISTS idx_sync_outbox_action
-        ON sync_outbox (action_type);
-    `);
-  } catch {
-    sqliteDb = null;
-  }
-  dbReady = true;
-}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -161,10 +115,9 @@ async function saveToAsync(items: OutboxItem[]): Promise<void> {
   }
 }
 
-async function upsertSqlite(item: OutboxItem): Promise<void> {
-  if (!sqliteDb) return;
+async function upsertSqlite(db: OfflineSqliteDb, item: OutboxItem): Promise<void> {
   const row = itemToRow(item);
-  await sqliteDb.runAsync(
+  await db.runAsync(
     `INSERT OR REPLACE INTO sync_outbox (
       id, action_type, payload_json, photo_local_uri, photo_base64,
       status, attempt_count, next_attempt_at, last_error, created_at, updated_at, synced_at
@@ -190,7 +143,7 @@ async function upsertSqlite(item: OutboxItem): Promise<void> {
  * Enqueue a write for later sync. Photo bytes stay local until a sync worker runs.
  */
 export async function enqueueOutbox(input: EnqueueOutboxInput): Promise<OutboxItem> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const createdAt = nowIso();
   const item: OutboxItem = {
     id: input.id?.trim() || makeOutboxId(),
@@ -215,12 +168,12 @@ export async function enqueueOutbox(input: EnqueueOutboxInput): Promise<OutboxIt
     return item;
   }
 
-  await upsertSqlite(item);
+  await upsertSqlite(sqliteDb, item);
   return item;
 }
 
 export async function getOutboxItem(id: string): Promise<OutboxItem | null> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   if (!sqliteDb) {
     return (await listFromAsync()).find((i) => i.id === id) ?? null;
   }
@@ -232,7 +185,7 @@ export async function getOutboxItem(id: string): Promise<OutboxItem | null> {
 }
 
 export async function listOutbox(options: ListOutboxOptions = {}): Promise<OutboxItem[]> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const includeSynced = options.includeSynced === true;
   const statusFilter = options.status
     ? Array.isArray(options.status)
@@ -318,7 +271,7 @@ export async function claimNextOutboxItem(): Promise<OutboxItem | null> {
  * Respects terminal failed (max attempts); ignores backoff delay (manual force).
  */
 export async function claimOutboxItem(id: string): Promise<OutboxItem | null> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const existing = await getOutboxItem(id);
   if (!existing) return null;
   if (existing.status === 'synced') return null;
@@ -340,12 +293,12 @@ export async function claimOutboxItem(id: string): Promise<OutboxItem | null> {
     await saveToAsync(items.map((i) => (i.id === id ? updated : i)));
     return updated;
   }
-  await upsertSqlite(updated);
+  await upsertSqlite(sqliteDb, updated);
   return updated;
 }
 
 export async function markOutboxSynced(id: string): Promise<OutboxItem | null> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const existing = await getOutboxItem(id);
   if (!existing) return null;
   const now = nowIso();
@@ -362,7 +315,7 @@ export async function markOutboxSynced(id: string): Promise<OutboxItem | null> {
     await saveToAsync(items.map((i) => (i.id === id ? updated : i)));
     return updated;
   }
-  await upsertSqlite(updated);
+  await upsertSqlite(sqliteDb, updated);
   return updated;
 }
 
@@ -371,7 +324,7 @@ export async function markOutboxSynced(id: string): Promise<OutboxItem | null> {
  * When attemptCount reaches OUTBOX_MAX_ATTEMPTS, nextAttemptAt is cleared (terminal until manual retry).
  */
 export async function markOutboxFailed(id: string, error: string): Promise<OutboxItem | null> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const existing = await getOutboxItem(id);
   if (!existing) return null;
 
@@ -393,7 +346,7 @@ export async function markOutboxFailed(id: string, error: string): Promise<Outbo
     await saveToAsync(items.map((i) => (i.id === id ? updated : i)));
     return updated;
   }
-  await upsertSqlite(updated);
+  await upsertSqlite(sqliteDb, updated);
   return updated;
 }
 
@@ -405,7 +358,7 @@ export async function markOutboxNeedsReview(
   id: string,
   message: string
 ): Promise<OutboxItem | null> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const existing = await getOutboxItem(id);
   if (!existing) return null;
   const now = nowIso();
@@ -421,13 +374,13 @@ export async function markOutboxNeedsReview(
     await saveToAsync(items.map((i) => (i.id === id ? updated : i)));
     return updated;
   }
-  await upsertSqlite(updated);
+  await upsertSqlite(sqliteDb, updated);
   return updated;
 }
 
 /** Manual retry: reset scheduling without clearing attempt history. */
 export async function resetOutboxForManualRetry(id: string): Promise<OutboxItem | null> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const existing = await getOutboxItem(id);
   if (!existing || existing.status === 'synced') return null;
   // Conflicts stay terminal until dismissed — do not convert to pending.
@@ -446,12 +399,12 @@ export async function resetOutboxForManualRetry(id: string): Promise<OutboxItem 
     await saveToAsync(items.map((i) => (i.id === id ? updated : i)));
     return updated;
   }
-  await upsertSqlite(updated);
+  await upsertSqlite(sqliteDb, updated);
   return updated;
 }
 
 export async function deleteOutboxItem(id: string): Promise<void> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   if (!sqliteDb) {
     const items = await listFromAsync();
     await saveToAsync(items.filter((i) => i.id !== id));
@@ -462,7 +415,7 @@ export async function deleteOutboxItem(id: string): Promise<void> {
 
 /** Remove synced rows older than `olderThanMs` (default 7 days). */
 export async function purgeSyncedOutbox(olderThanMs = 7 * 24 * 60 * 60 * 1000): Promise<number> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const cutoff = Date.now() - olderThanMs;
   if (!sqliteDb) {
     const items = await listFromAsync();
@@ -495,7 +448,7 @@ export async function purgeSyncedOutbox(olderThanMs = 7 * 24 * 60 * 60 * 1000): 
 export async function reclaimStaleUploading(
   olderThanMs = OUTBOX_STALE_UPLOADING_MS
 ): Promise<number> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const cutoff = Date.now() - olderThanMs;
   const uploading = await listOutbox({ status: 'uploading', includeSynced: false });
   let reclaimed = 0;
@@ -514,7 +467,7 @@ export async function reclaimStaleUploading(
       const items = await listFromAsync();
       await saveToAsync(items.map((i) => (i.id === item.id ? updated : i)));
     } else {
-      await upsertSqlite(updated);
+      await upsertSqlite(sqliteDb, updated);
     }
     reclaimed += 1;
   }
@@ -524,6 +477,7 @@ export async function reclaimStaleUploading(
 /** Trim synced / oversized queue rows (AsyncStorage fallback on web builds). */
 export async function pruneOutboxStorage(): Promise<void> {
   await purgeSyncedOutbox(0);
+  const sqliteDb = await getOfflineSqliteDb();
   if (!sqliteDb) {
     const items = await listFromAsync();
     await saveToAsync(items);

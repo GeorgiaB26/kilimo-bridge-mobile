@@ -22,9 +22,9 @@ import { Text } from '@/components/ui/text';
 import { Button } from 'react-native-paper';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { COLORS } from '../../constants';
-import { getFarmerAssignedTasks } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
@@ -73,6 +73,9 @@ import {
 import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
 import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
 import { navigateFromFarmerNotification } from '../../utils/farmerNotificationNavigation';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerAssignedTasksForCache } from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
 type StatusFilterKey = TaskStatusKpiKey;
@@ -221,10 +224,12 @@ export function FarmerTasksScreen() {
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
   const openSubmitModalParam = route.params?.openSubmitModal === true;
   const { formatAmount } = useCurrency();
+  const userScope = useReadCacheUserScope();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [startTask, setStartTask] = useState<ExtendedTaskRow | null>(null);
@@ -267,25 +272,35 @@ export function FarmerTasksScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await getFarmerAssignedTasks();
-      const list = (data.tasks ?? []) as ExtendedTaskRow[];
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerAssignedTasks,
+        userScope,
+        fetchLive: fetchFarmerAssignedTasksForCache,
+      });
+      const list = (result.data.tasks ?? []) as ExtendedTaskRow[];
       setTasks(list);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setError(null);
       hasLoadedRef.current = true;
     } catch (err: unknown) {
       setTasks([]);
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Could not load tasks'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [userScope]);
 
   const softRefresh = useCallback(async () => {
-    await syncAllPendingTaskStarts();
-    await syncAllPendingTaskRecalls();
-    await loadPendingStarts();
-    await loadPendingRecalls();
+    try {
+      await syncAllPendingTaskStarts();
+      await syncAllPendingTaskRecalls();
+      await loadPendingStarts();
+      await loadPendingRecalls();
+    } catch {
+      /* Outbox sync must not block the task list or leave loading stuck. */
+    }
     await load();
   }, [load, loadPendingRecalls, loadPendingStarts]);
 
@@ -1075,6 +1090,7 @@ export function FarmerTasksScreen() {
             </View>
           ) : null}
 
+          {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
           {error ? <FarmerOfflineBanner message={error} /> : null}
           {taskNotifications.length > 0 ? (
             <View style={styles.notifBlock}>

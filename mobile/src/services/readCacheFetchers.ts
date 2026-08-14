@@ -34,6 +34,10 @@ export async function fetchFarmerProjectsForCache() {
   return getFarmerHierarchyProjects();
 }
 
+export async function fetchFarmerAssignedTasksForCache() {
+  return getFarmerAssignedTasks();
+}
+
 export async function fetchFarmerPaymentsForCache() {
   return getFarmerPayments();
 }
