@@ -7,8 +7,9 @@ import { COLORS } from '../constants';
 import { CountrySelectionScreen } from '../screens/registration/CountrySelectionScreen';
 import { BasicInfoScreen } from '../screens/registration/BasicInfoScreen';
 import { LocationScreen } from '../screens/registration/LocationScreen';
-import { MembershipScreen } from '../screens/registration/MembershipScreen';
+import { CorporateInfoScreen } from '../screens/registration/CorporateInfoScreen';
 import { DetailsScreen } from '../screens/registration/DetailsScreen';
+import { MembershipScreen } from '../screens/registration/MembershipScreen';
 import { ProjectsScreen } from '../screens/registration/ProjectsScreen';
 import { PhotoScreen } from '../screens/registration/PhotoScreen';
 import { ConfirmScreen } from '../screens/registration/ConfirmScreen';
@@ -16,13 +17,23 @@ import type { RegistrationStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RegistrationStackParamList>();
 
-const FARMER_STEP_LABELS = ['Country', 'Basic Info', 'Location', 'Membership', 'Details', 'Projects', 'Photo', 'Confirm'];
+const FARMER_STEP_LABELS = [
+  'Country',
+  'Basic Info',
+  'Location',
+  'Membership',
+  'Details',
+  'Projects',
+  'Photo',
+  'Confirm',
+];
 
 const FARMER_STEP_MAP: Partial<Record<keyof RegistrationStackParamList, number>> = {
   Country: 0,
   BasicInfo: 1,
   Location: 2,
   Membership: 3,
+  CorporateInfo: 4,
   Details: 4,
   Projects: 5,
   Photo: 6,
@@ -76,6 +87,7 @@ export function AgentFarmerRegistrationNavigator() {
       <Stack.Screen name="BasicInfo" component={withFarmerLayout(BasicInfoScreen, 'BasicInfo')} />
       <Stack.Screen name="Location" component={withFarmerLayout(LocationScreen, 'Location')} />
       <Stack.Screen name="Membership" component={withFarmerLayout(MembershipScreen, 'Membership')} />
+      <Stack.Screen name="CorporateInfo" component={withFarmerLayout(CorporateInfoScreen, 'CorporateInfo')} />
       <Stack.Screen name="Details" component={withFarmerLayout(DetailsScreen, 'Details')} />
       <Stack.Screen name="Projects" component={withFarmerLayout(ProjectsScreen, 'Projects')} />
       <Stack.Screen name="Photo" component={withFarmerLayout(PhotoScreen, 'Photo')} />

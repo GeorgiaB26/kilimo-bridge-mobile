@@ -9,7 +9,11 @@ import { logAudit } from './auditService';
 import { assignAggregationCentre } from './aggregationCentreService';
 import { linkFarmerToUser } from './userService';
 import { PENDING_LOCATION_LABEL } from '../../../shared/src/constants';
-import { enrollFarmerInProgramProjects, getFarmerProjectSummaries } from './farmerProgramService';
+import {
+  enrollFarmerInProgramProjects,
+  enrollFarmerInProjectById,
+  getFarmerProjectSummaries,
+} from './farmerProgramService';
 import { isOwnFarmerProfilePhotoKey, resolvePhotoUrlForDisplay } from './r2StorageService';
 import { validateFarmerPhotoRequired } from '../../../shared/src/farmerPhoto';
 
@@ -175,16 +179,42 @@ export async function createFarmer(
   const membershipType = input.membershipType ?? 'Active';
   const registeredByAgentId = await resolveRegisteredByAgentId(registeredBy);
   const farmerStatus = mapFarmerStatus(membershipType, !!registeredByAgentId);
+  const registrationCategory = input.registrationCategory ?? 'individual';
+  const membershipStatus = 'pending_verification';
+  const ward = (input.ward ?? input.parish)?.trim() || null;
+  const parish = input.parish ?? ward;
+  const familySizeRaw = input.familySize;
+  const familySize =
+    familySizeRaw !== undefined && familySizeRaw !== null && String(familySizeRaw).trim() !== ''
+      ? parseInt(String(familySizeRaw), 10)
+      : null;
+  const dependantsRaw = input.numberOfDependants;
+  const numberOfDependants =
+    dependantsRaw !== undefined && dependantsRaw !== null && String(dependantsRaw).trim() !== ''
+      ? parseInt(String(dependantsRaw), 10)
+      : null;
+  const specialNeeds =
+    input.specialNeeds === true ||
+    input.specialNeeds === 'yes' ||
+    input.specialNeeds === 'Yes' ||
+    input.specialNeeds === 'true';
 
   await query(
     `INSERT INTO farmers (
       farmer_id, key, name, gender, id_number_encrypted, id_number_hash, bank_account_encrypted,
       membership_group_id, aggregation_center, phone_number, phone_country_prefix,
-      country, district, sub_county, parish, village,
-      membership_type, occupation, size_of_land,
+      country, district, sub_county, parish, village, ward,
+      membership_type, registration_category, membership_category, membership_status,
+      occupation, profession, size_of_land, land_unit, farm_input_required,
+      family_size, number_of_dependants, special_needs, project_location_gps, currency,
+      project_enrolment_sector, project_enrolment_programme, project_enrolment_project,
+      organization_name, organization_registration_number, tax_pin,
+      contact_person_name, contact_person_role, contact_person_email,
       picture_url, status, registered_by_agent_id
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+      $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
+      $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43
     )`,
     [
       farmerId,
@@ -201,16 +231,45 @@ export async function createFarmer(
       country,
       input.district,
       input.subCounty,
-      input.parish ?? null,
+      parish ?? null,
       input.village ?? null,
+      ward,
       membershipType,
+      registrationCategory,
+      input.membershipCategory ?? null,
+      membershipStatus,
       input.occupation ?? null,
+      input.profession ?? null,
       input.sizeOfLand ?? null,
+      input.landUnit ?? 'Ha',
+      input.farmInputRequired ?? null,
+      familySize,
+      numberOfDependants,
+      specialNeeds,
+      input.projectLocationGps ?? null,
+      input.currency ?? null,
+      input.projectEnrolmentSectorId ?? null,
+      input.projectEnrolmentProgramId ?? null,
+      input.projectEnrolmentProjectId ?? null,
+      input.organizationName ?? null,
+      input.organizationRegistrationNumber ?? null,
+      input.taxPin ?? null,
+      input.contactPersonName ?? null,
+      input.contactPersonRole ?? null,
+      input.contactPersonEmail ?? null,
       input.picture ?? null,
       farmerStatus,
       registeredByAgentId,
     ]
   );
+
+  if (
+    registrationCategory === 'individual' &&
+    !input.skipProjectEnrolment &&
+    input.projectEnrolmentProjectId?.trim()
+  ) {
+    await enrollFarmerInProjectById(farmerId, input.projectEnrolmentProjectId.trim());
+  }
 
   await logAudit({
     userId: registeredBy,

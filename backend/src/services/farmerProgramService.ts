@@ -188,6 +188,21 @@ export async function ensureProgramProjectByName(name: string): Promise<string> 
   return createdId;
 }
 
+/** Enroll farmer in an existing program_project by id (mobile registration cascade). */
+export async function enrollFarmerInProjectById(
+  farmerId: string,
+  programProjectId: string
+): Promise<void> {
+  const trimmed = programProjectId?.trim();
+  if (!trimmed) return;
+  const exists = await queryOne<{ id: string }>(
+    'SELECT id FROM program_projects WHERE id = $1',
+    [trimmed]
+  );
+  if (!exists) throw new Error('Selected program project not found');
+  await assignFarmersToProject(trimmed, [farmerId]);
+}
+
 export async function enrollFarmerInProgramProjects(
   farmerId: string,
   projectNames: Array<string | undefined | null>

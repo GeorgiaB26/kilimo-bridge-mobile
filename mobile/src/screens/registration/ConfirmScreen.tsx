@@ -26,6 +26,7 @@ type FarmerRegScreen =
   | 'BasicInfo'
   | 'Location'
   | 'Membership'
+  | 'CorporateInfo'
   | 'Details'
   | 'Projects'
   | 'Photo';
@@ -33,6 +34,12 @@ type FarmerRegScreen =
 const STEP_SCREENS: FarmerRegScreen[] = [
   'Country', 'BasicInfo', 'Location', 'Membership', 'Details', 'Projects', 'Photo',
 ];
+
+function registrationCategoryLabel(category?: string): string {
+  if (category === 'corporate') return 'Corporate / organization';
+  if (category === 'individual') return 'Individual member';
+  return category ?? '—';
+}
 
 function SummaryRow({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
   return (
@@ -125,6 +132,12 @@ export function ConfirmScreen({ navigation }: Props) {
     }, 100);
   };
 
+  const isCorporate = formData.registrationCategory === 'corporate';
+  const membershipStep: FarmerRegScreen = 'Membership';
+  const detailsStep: FarmerRegScreen = isCorporate ? 'CorporateInfo' : 'Details';
+  const projectsStep: FarmerRegScreen = 'Projects';
+  const landLabel = formData.sizeOfLand ? `${formData.sizeOfLand} ${formData.landUnit ?? 'Ha'}` : '';
+
   return (
     <>
       <View className="flex-1 px-4 pb-4">
@@ -183,20 +196,106 @@ export function ConfirmScreen({ navigation }: Props) {
             {formData.village ? (
               <SummaryRow label={labels[3]} value={formData.village} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
             ) : null}
-            <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-            <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter ?? ''} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-            <SummaryRow label="Membership Type" value={formData.membershipType ?? 'Active'} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-            {formData.profession ? (
-              <SummaryRow label="Profession" value={formData.profession} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+            <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(membershipStep)} />
+            <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter ?? ''} onEdit={() => navigation.navigate(membershipStep)} />
+            <SummaryRow
+              label="Registration category"
+              value={registrationCategoryLabel(formData.registrationCategory)}
+              onEdit={() => navigation.navigate(membershipStep)}
+            />
+            {formData.membershipCategory ? (
+              <SummaryRow
+                label={isCorporate ? 'Organization category' : 'Occupation category'}
+                value={formData.membershipCategory}
+                onEdit={() => navigation.navigate(membershipStep)}
+              />
             ) : null}
+            {isCorporate ? (
+              <>
+                <SummaryRow
+                  label="Organization name"
+                  value={formData.organizationName ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                <SummaryRow
+                  label="Registration number"
+                  value={formData.organizationRegistrationNumber ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                <SummaryRow label="Tax PIN" value={formData.taxPin ?? ''} onEdit={() => navigation.navigate('CorporateInfo')} />
+                <SummaryRow
+                  label="Contact person"
+                  value={formData.contactPersonName ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                <SummaryRow
+                  label="Contact role"
+                  value={formData.contactPersonRole ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                {formData.contactPersonEmail ? (
+                  <SummaryRow
+                    label="Contact email"
+                    value={formData.contactPersonEmail}
+                    onEdit={() => navigation.navigate('CorporateInfo')}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <>
+                {formData.ward ? (
+                  <SummaryRow label="Ward" value={formData.ward} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.familySize ? (
+                  <SummaryRow label="Family size" value={formData.familySize} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.numberOfDependants ? (
+                  <SummaryRow
+                    label="Dependants"
+                    value={formData.numberOfDependants}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {formData.profession ? (
+                  <SummaryRow label="Profession" value={formData.profession} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.specialNeeds ? (
+                  <SummaryRow
+                    label="Special needs"
+                    value={formData.specialNeeds === 'yes' ? 'Yes' : 'No'}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {landLabel ? (
+                  <SummaryRow label="Size of land" value={landLabel} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.farmInputRequired ? (
+                  <SummaryRow
+                    label="Farm input required"
+                    value={formData.farmInputRequired}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {formData.projectLocationGps ? (
+                  <SummaryRow
+                    label="Project GPS"
+                    value={formData.projectLocationGps}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {!formData.skipProjectEnrolment && formData.projectEnrolmentProjectId ? (
+                  <SummaryRow
+                    label="Project enrolment"
+                    value="Selected"
+                    onEdit={() => navigation.navigate(projectsStep)}
+                  />
+                ) : formData.skipProjectEnrolment ? (
+                  <SummaryRow label="Project enrolment" value="Skipped" onEdit={() => navigation.navigate(projectsStep)} />
+                ) : null}
+              </>
+            )}
             {formData.occupation ? (
-              <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
-            ) : null}
-            {formData.sizeOfLand ? (
-              <SummaryRow label="Land (acres)" value={formData.sizeOfLand} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
-            ) : null}
-            {formData.project1 ? (
-              <SummaryRow label="Project 1" value={formData.project1} onEdit={() => navigation.navigate(STEP_SCREENS[5])} />
+              <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(detailsStep)} />
             ) : null}
             <SummaryRow
               label="Photo"
