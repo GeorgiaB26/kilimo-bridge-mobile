@@ -48,6 +48,7 @@
     "@types/react": "~19.2.2",
     "babel-preset-expo": "~57.0.0",
     "prettier-plugin-tailwindcss": "^0.5.11",
+    "sharp": "^0.35.3",
     "tailwindcss": "^3.4.17",
     "typescript": "~6.0.3"
   },
@@ -56,7 +57,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:web": "expo export --platform web"
+    "build:web": "expo export --platform web",
+    "generate-icons": "node scripts/generate-app-icons.mjs"
   },
   "private": true
 }
