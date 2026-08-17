@@ -69,36 +69,32 @@ router.get(
   authenticate,
   requirePermission('farmers.read'),
   asyncHandler(async (_req, res) => {
-    const sectors = await listSectors();
-    const programs = await listPrograms();
-    const projects = await listProgramProjects();
+    type SectorRow = { id: string; name: string; description?: string | null };
+    type ProgramRow = { id: string; name: string; sector_id: string; description?: string | null };
+    type ProjectRow = { id: string; name: string; program_id: string; description?: string | null };
+
+    const sectors = (await listSectors()) as SectorRow[];
+    const programs = (await listPrograms()) as ProgramRow[];
+    const projects = (await listProgramProjects()) as ProjectRow[];
+
     res.json({
-      sectors: sectors.map((s: { id: string; name: string; description?: string | null }) => ({
+      sectors: sectors.map((s) => ({
         id: s.id,
         name: s.name,
         description: s.description ?? null,
       })),
-      programs: programs.map(
-        (p: { id: string; name: string; sector_id: string; description?: string | null }) => ({
-          id: p.id,
-          name: p.name,
-          sector_id: p.sector_id,
-          description: p.description ?? null,
-        })
-      ),
-      projects: projects.map(
-        (pp: {
-          id: string;
-          name: string;
-          program_id: string;
-          description?: string | null;
-        }) => ({
-          id: pp.id,
-          name: pp.name,
-          program_id: pp.program_id,
-          description: pp.description ?? null,
-        })
-      ),
+      programs: programs.map((p) => ({
+        id: p.id,
+        name: p.name,
+        sector_id: p.sector_id,
+        description: p.description ?? null,
+      })),
+      projects: projects.map((pp) => ({
+        id: pp.id,
+        name: pp.name,
+        program_id: pp.program_id,
+        description: pp.description ?? null,
+      })),
     });
   })
 );
