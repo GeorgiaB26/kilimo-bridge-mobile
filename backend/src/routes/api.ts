@@ -22,6 +22,11 @@ import { COUNTRY_LIST, LOCATION_DATA } from '../../../shared/src/regional';
 import { AGGREGATION_CENTRES } from '../../../shared/src/locations/aggregationCentres';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { queryOne } from '../db/database';
+import {
+  listSectors,
+  listPrograms,
+  listProgramProjects,
+} from '../services/hierarchyService';
 
 const router = Router();
 const upload = multer({
@@ -58,6 +63,45 @@ router.get('/reference', asyncHandler(async (_req, res) => {
     })),
   });
 }));
+
+router.get(
+  '/reference/project-hierarchy',
+  authenticate,
+  requirePermission('farmers.read'),
+  asyncHandler(async (_req, res) => {
+    const sectors = await listSectors();
+    const programs = await listPrograms();
+    const projects = await listProgramProjects();
+    res.json({
+      sectors: sectors.map((s: { id: string; name: string; description?: string | null }) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description ?? null,
+      })),
+      programs: programs.map(
+        (p: { id: string; name: string; sector_id: string; description?: string | null }) => ({
+          id: p.id,
+          name: p.name,
+          sector_id: p.sector_id,
+          description: p.description ?? null,
+        })
+      ),
+      projects: projects.map(
+        (pp: {
+          id: string;
+          name: string;
+          program_id: string;
+          description?: string | null;
+        }) => ({
+          id: pp.id,
+          name: pp.name,
+          program_id: pp.program_id,
+          description: pp.description ?? null,
+        })
+      ),
+    });
+  })
+);
 
 router.get('/farmers', authenticate, requirePermission('farmers.read'), asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 100;
@@ -99,20 +143,78 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
     idNumber: input.idNumber,
     membershipGroup: input.membershipGroup,
     aggregationCenter: input.aggregationCenter,
+    aggregationCentreId: input.aggregationCentreId,
     phone: input.phone,
     country: input.country || 'Kenya',
+    currency: input.currency,
     district: input.district,
     subCounty: input.subCounty,
     parish: input.parish,
     village: input.village,
+    ward: input.ward,
+    registrationCategory: input.registrationCategory,
+    membershipCategory: input.membershipCategory,
     membershipType: input.membershipType,
     occupation: input.occupation,
+    profession: input.profession,
     sizeOfLand: input.sizeOfLand,
+    landUnit: input.landUnit,
+    farmInputRequired: input.farmInputRequired,
+    familySize: input.familySize,
+    numberOfDependants: input.numberOfDependants,
+    specialNeeds: input.specialNeeds,
+    projectLocationGps: input.projectLocationGps,
+    organizationName: input.organizationName,
+    organizationRegistrationNumber: input.organizationRegistrationNumber,
+    taxPin: input.taxPin,
+    contactPersonName: input.contactPersonName,
+    contactPersonRole: input.contactPersonRole,
+    contactPersonEmail: input.contactPersonEmail,
+    projectEnrolmentSectorId: input.projectEnrolmentSectorId,
+    projectEnrolmentProgramId: input.projectEnrolmentProgramId,
+    projectEnrolmentProjectId: input.projectEnrolmentProjectId,
+    skipProjectEnrolment: input.skipProjectEnrolment,
     project1: input.project1,
     project2: input.project2,
     project3: input.project3,
-    picture: input.pictureUri,
+    picture: input.pictureUri ?? input.picture,
   };
+
+  if (!farmerInput.membershipCategory?.trim()) {
+    res.status(400).json({
+      success: false,
+      errors: [{ field: 'membershipCategory', value: '', error: 'Membership category is required' }],
+    });
+    return;
+  }
+
+  const isCorporate = farmerInput.registrationCategory === 'corporate';
+  if (isCorporate) {
+    const corpErrors: Array<{ field: string; value: string; error: string }> = [];
+    if (!farmerInput.organizationName?.trim()) {
+      corpErrors.push({ field: 'organizationName', value: '', error: 'Organization name is required' });
+    }
+    if (!farmerInput.organizationRegistrationNumber?.trim()) {
+      corpErrors.push({
+        field: 'organizationRegistrationNumber',
+        value: '',
+        error: 'Registration number is required',
+      });
+    }
+    if (!farmerInput.taxPin?.trim()) {
+      corpErrors.push({ field: 'taxPin', value: '', error: 'Tax PIN is required' });
+    }
+    if (!farmerInput.contactPersonName?.trim()) {
+      corpErrors.push({ field: 'contactPersonName', value: '', error: 'Contact person name is required' });
+    }
+    if (!farmerInput.contactPersonRole?.trim()) {
+      corpErrors.push({ field: 'contactPersonRole', value: '', error: 'Contact person role is required' });
+    }
+    if (corpErrors.length > 0) {
+      res.status(400).json({ success: false, errors: corpErrors });
+      return;
+    }
+  }
 
   const result = validateFarmerRow(farmerInput, {
     existingPhones: existing.phones,

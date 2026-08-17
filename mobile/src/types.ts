@@ -9,13 +9,38 @@ export interface RegistrationFormData {
   subCounty: string;
   parish?: string;
   village?: string;
+  ward?: string;
   membershipGroup: string;
   aggregationCenter?: string;
   aggregationCentreId?: string;
+  /** Individual vs corporate — immutable registration category (not Active/Inactive). */
+  registrationCategory?: 'individual' | 'corporate';
+  /** Legacy CSV membership type — not collected on mobile; backend defaults Active. */
   membershipType?: string;
+  membershipCategory?: string;
+  membershipCategoryOther?: string;
+  corporateCategoryGroup?: string;
+  corporateCategorySub?: string;
+  corporateCategoryOther?: string;
   profession?: string;
   occupation?: string;
   sizeOfLand?: string;
+  landUnit?: 'Ha' | 'Acres';
+  farmInputRequired?: string;
+  familySize?: string;
+  numberOfDependants?: string;
+  specialNeeds?: 'yes' | 'no';
+  projectLocationGps?: string;
+  organizationName?: string;
+  organizationRegistrationNumber?: string;
+  taxPin?: string;
+  contactPersonName?: string;
+  contactPersonRole?: string;
+  contactPersonEmail?: string;
+  projectEnrolmentSectorId?: string;
+  projectEnrolmentProgramId?: string;
+  projectEnrolmentProjectId?: string;
+  skipProjectEnrolment?: boolean;
   pictureBase64?: string;
   project1?: string;
   project2?: string;
