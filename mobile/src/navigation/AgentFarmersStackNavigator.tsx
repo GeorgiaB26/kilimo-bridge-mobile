@@ -17,7 +17,7 @@ const Stack = createNativeStackNavigator<AgentFarmersStackParamList>();
 function withAgentFormLayout<P extends object>(Screen: React.ComponentType<P>) {
   return function WrappedScreen(props: P) {
     return (
-      <RegistrationKeyboardLayout>
+      <RegistrationKeyboardLayout tabBarCleared>
         <Screen {...props} />
       </RegistrationKeyboardLayout>
     );

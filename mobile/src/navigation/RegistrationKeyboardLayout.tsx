@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { KeyboardAvoidingView, ScrollView, StyleSheet, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  KEYBOARD_AVOIDING_BEHAVIOR,
+  PADDING_KEYBOARD_AVOIDING_BEHAVIOR,
   screenKeyboardVerticalOffset,
   useScrollFocusedInputIntoView,
 } from '../utils/keyboardAvoiding';
@@ -18,6 +18,12 @@ type Props = {
   /** When true, wrap children in ScrollView (most steps). Confirm uses its own scroll. */
   scrollable?: boolean;
   contentContainerStyle?: ViewStyle;
+  /**
+   * Parent already clears the home indicator + floating tab bar
+   * (agent Farmers tab). Skip SafeAreaView bottom padding so it does not
+   * stack on that clearance. Public signup (no tab bar) leaves this false.
+   */
+  tabBarCleared?: boolean;
 };
 
 /**
@@ -29,6 +35,7 @@ export function RegistrationKeyboardLayout({
   header,
   scrollable = true,
   contentContainerStyle,
+  tabBarCleared = false,
 }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const onScroll = useScrollFocusedInputIntoView(scrollRef, scrollable);
@@ -51,10 +58,10 @@ export function RegistrationKeyboardLayout({
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={styles.safe} edges={tabBarCleared ? [] : ['bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+        behavior={PADDING_KEYBOARD_AVOIDING_BEHAVIOR}
         keyboardVerticalOffset={screenKeyboardVerticalOffset(REGISTRATION_HEADER_OFFSET)}
       >
         {header}

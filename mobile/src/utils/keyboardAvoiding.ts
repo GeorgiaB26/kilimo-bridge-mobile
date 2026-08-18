@@ -7,6 +7,7 @@ import {
   Keyboard,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
+  type KeyboardEvent,
 } from 'react-native';
 
 /** KeyboardAvoidingView behavior — enabled on Android (not undefined). */
@@ -15,6 +16,12 @@ export const KEYBOARD_AVOIDING_BEHAVIOR = Platform.select({
   android: 'height' as const,
   default: 'height' as const,
 });
+
+/**
+ * Android `height` fights `adjustResize`. Use for bottom sheets and registration.
+ * Full-screen composers still use KEYBOARD_AVOIDING_BEHAVIOR.
+ */
+export const PADDING_KEYBOARD_AVOIDING_BEHAVIOR = 'padding' as const;
 
 /** Offset for bottom-sheet modals inside a translucent status-bar Modal. */
 export function modalKeyboardVerticalOffset(): number {
@@ -50,12 +57,13 @@ function isWindowMeasurable(value: unknown): value is WindowMeasurable {
 }
 
 /**
- * Scroll a sheet ScrollView so the focused TextInput sits in the KAV-shrunk
- * viewport. Last fields keep ~80px below them visible (Notes + Submit).
+ * Scroll so the focused TextInput sits above the keyboard (and in the ScrollView).
+ * `keyboardTop` is `event.endCoordinates.screenY` from keyboard show.
  */
 export function scrollFocusedInputIntoView(
   scrollView: ScrollView | null,
   contentOffsetY: number,
+  keyboardTop?: number,
 ): void {
   if (!scrollView || Platform.OS === 'web') return;
   const focused = TextInput.State.currentlyFocusedInput?.();
@@ -69,7 +77,11 @@ export function scrollFocusedInputIntoView(
         return;
       }
       const visTop = sy;
-      const visBottom = sy + sh;
+      const scrollBottom = sy + sh;
+      const visBottom =
+        keyboardTop != null && keyboardTop > visTop
+          ? Math.min(scrollBottom, keyboardTop)
+          : scrollBottom;
       let delta = 0;
       if (iy + ih + BELOW_FIELD_PADDING > visBottom - EDGE_PADDING) {
         delta = iy + ih + BELOW_FIELD_PADDING - (visBottom - EDGE_PADDING);
@@ -99,12 +111,13 @@ export function useScrollFocusedInputIntoView(
   useEffect(() => {
     if (!enabled || Platform.OS === 'web') return;
 
-    const run = () => {
+    const run = (event?: KeyboardEvent) => {
+      const keyboardTop = event?.endCoordinates?.screenY;
       requestAnimationFrame(() => {
-        scrollFocusedInputIntoView(scrollRef.current, contentOffsetYRef.current);
+        scrollFocusedInputIntoView(scrollRef.current, contentOffsetYRef.current, keyboardTop);
       });
       setTimeout(() => {
-        scrollFocusedInputIntoView(scrollRef.current, contentOffsetYRef.current);
+        scrollFocusedInputIntoView(scrollRef.current, contentOffsetYRef.current, keyboardTop);
       }, SHEET_SCROLL_INTO_VIEW_DELAY_MS);
     };
 
