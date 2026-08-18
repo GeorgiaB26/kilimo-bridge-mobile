@@ -21,8 +21,6 @@ import { KBCard } from '../../components/ui/KBCard';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
-import { APP_BUILD } from '../../constants/build';
-import { API_BASE_URL } from '../../constants';
 import type { AgentTabParamList } from '../../navigation/types';
 import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
 import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
@@ -158,17 +156,10 @@ export function AgentDashboardScreen() {
       contentContainerClassName="p-4 pb-10"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <View className="mb-3 rounded-lg bg-[#1A4D3E] px-3 py-2">
-        <Text className="text-xs font-semibold text-white">Release {APP_BUILD}</Text>
-        <Text className="text-[10px] text-white/75" numberOfLines={1}>
-          API: {API_BASE_URL}
-        </Text>
-      </View>
-
       {loadError ? (
         <View className="mb-3 rounded-lg border border-[#EF4444] bg-[#FFEBEE] p-3">
           <Text className="text-sm font-semibold text-[#EF4444]">{loadError}</Text>
-          <Text className="mt-1 text-xs text-[#757575]">Pull down to retry or check API connection above.</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Pull down to retry.</Text>
         </View>
       ) : null}
 
