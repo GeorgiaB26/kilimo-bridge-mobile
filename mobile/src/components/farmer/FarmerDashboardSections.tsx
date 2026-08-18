@@ -2,18 +2,19 @@ import React, { useState } from 'react';
 import {
   View,
   Pressable,
+  Platform,
   StyleSheet,
 } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronRight } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
-import { COLORS } from '../../constants';
 import { formatProjectDate } from '../../utils/greeting';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
 import type { FarmerProject } from '../../types/farmerProject';
 import { FarmerProfilePhoto } from '../FarmerProfilePhoto';
 import { FarmerStatusChip } from '../agent/FarmerStatusChip';
 import { ContactSupportModal } from '../ContactSupportModal';
+import { KBCard } from '../ui/KBCard';
 import {
   TaskStatusKpiRow,
   type TaskStatusKpiKey,
@@ -62,6 +63,8 @@ type PaymentRow = {
   payment_status: string;
   created_at?: string;
 };
+
+const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
 type Props = {
   farmer?: FarmerProfile | null;
@@ -198,42 +201,40 @@ export function FarmerDashboardRecentTasks({
   onTasksPress: () => void;
   onTaskPress?: (taskId: string) => void;
 }) {
-  const recent = tasks ?? [];
-  if (!recent.length) {
-    return (
-      <View style={styles.snapshotsContainer}>
-        <Text style={styles.snapshotsTitle}>Recent tasks</Text>
-        <Text style={styles.emptyText}>No tasks assigned yet.</Text>
-        <Pressable style={styles.viewAllTasks} onPress={onTasksPress}>
-          <Text style={styles.viewAllTasksText}>View tasks →</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const recent = (tasks ?? []).slice(0, 5);
 
   return (
-    <View style={styles.snapshotsContainer}>
-      <Text style={styles.snapshotsTitle}>Recent tasks</Text>
-      {recent.map((task) => (
-        <Pressable
-          key={task.id}
-          style={styles.recentCard}
-          onPress={() => (onTaskPress ? onTaskPress(task.id) : onTasksPress())}
-        >
-          <Text style={styles.recentTitle}>{task.name}</Text>
-          <Text style={styles.recentMeta}>
-            {task.assigned_by_name ?? 'Program team'}
-            {task.due_date ? ` · Due ${formatProjectDate(task.due_date)}` : ''}
-          </Text>
-          {task.program_project_name ? (
-            <Text style={styles.recentMeta}>{task.program_project_name}</Text>
-          ) : null}
-        </Pressable>
-      ))}
-      <Pressable style={styles.viewAllTasks} onPress={onTasksPress}>
-        <Text style={styles.viewAllTasksText}>View all tasks →</Text>
+    <KBCard style={{ marginHorizontal: 12 }}>
+      <Pressable
+        onPress={onTasksPress}
+        className="flex-row items-center justify-between"
+        style={webPressable}
+      >
+        <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
+        <ChevronRight size={16} color="#1A4D3E" />
       </Pressable>
-    </View>
+      {recent.length > 0 ? (
+        recent.map((task) => (
+          <Pressable
+            key={task.id}
+            onPress={() => (onTaskPress ? onTaskPress(task.id) : onTasksPress())}
+            className="mt-2 border-t border-[#EEE] pt-2"
+            style={webPressable}
+          >
+            <Text className="text-sm font-semibold text-[#333333]">{task.name}</Text>
+            <Text className="text-xs text-[#757575]">
+              {task.assigned_by_name ?? 'Program team'}
+              {task.due_date ? ` · Due ${formatProjectDate(task.due_date)}` : ''}
+            </Text>
+            {task.program_project_name ? (
+              <Text className="text-xs text-[#757575]">{task.program_project_name}</Text>
+            ) : null}
+          </Pressable>
+        ))
+      ) : (
+        <Text className="mt-2 text-sm text-[#757575]">No tasks assigned yet.</Text>
+      )}
+    </KBCard>
   );
 }
 
@@ -241,38 +242,52 @@ export function FarmerDashboardRecentProjects({
   projects,
   formatAmount,
   onProjectPress,
+  onProjectsPress,
 }: {
   projects: FarmerProject[];
   formatAmount: (n: number) => string;
   onProjectPress: (project: FarmerProject) => void;
+  onProjectsPress: () => void;
 }) {
-  if (projects.length === 0) {
-    return <Text style={styles.emptyText}>No active projects yet.</Text>;
-  }
+  const recent = projects.slice(0, 5);
 
   return (
-    <>
-      {projects.slice(0, 3).map((p, i) => (
-        <Pressable
-          key={p.id ?? `${p.project_name}-${i}`}
-          style={styles.recentCard}
-          onPress={() => onProjectPress(p)}
-        >
-          <View style={styles.recentRow}>
-            <Text style={styles.recentTitle} numberOfLines={2}>{p.project_name}</Text>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-          </View>
-          {p.start_date || p.due_date ? (
-            <Text style={styles.recentMeta}>
-              {p.start_date ? `Start: ${formatProjectDate(p.start_date)}` : ''}
-              {p.start_date && p.due_date ? ' · ' : ''}
-              {p.due_date ? `End: ${formatProjectDate(p.due_date)}` : ''}
+    <KBCard style={{ marginHorizontal: 12 }}>
+      <Pressable
+        onPress={onProjectsPress}
+        className="flex-row items-center justify-between"
+        style={webPressable}
+      >
+        <Text className="text-sm font-bold text-[#333333]">
+          Recent projects ({projects.length})
+        </Text>
+        <ChevronRight size={16} color="#1A4D3E" />
+      </Pressable>
+      {recent.length > 0 ? (
+        recent.map((p, i) => (
+          <Pressable
+            key={p.id ?? `${p.project_name}-${i}`}
+            onPress={() => onProjectPress(p)}
+            className="mt-2 border-t border-[#EEE] pt-2"
+            style={webPressable}
+          >
+            <Text className="text-sm font-semibold text-[#333333]" numberOfLines={2}>
+              {p.project_name}
             </Text>
-          ) : null}
-          <Text style={styles.recentAmount}>{formatAmount(p.payment_amount)}</Text>
-        </Pressable>
-      ))}
-    </>
+            <Text className="text-xs text-[#757575]">
+              {p.start_date || p.due_date
+                ? `${p.start_date ? `Start ${formatProjectDate(p.start_date)}` : ''}${
+                    p.start_date && p.due_date ? ' · ' : ''
+                  }${p.due_date ? `End ${formatProjectDate(p.due_date)}` : ''}`
+                : p.status ?? 'Active'}
+              {` · ${formatAmount(p.payment_amount)}`}
+            </Text>
+          </Pressable>
+        ))
+      ) : (
+        <Text className="mt-2 text-sm text-[#757575]">No active projects yet.</Text>
+      )}
+    </KBCard>
   );
 }
 

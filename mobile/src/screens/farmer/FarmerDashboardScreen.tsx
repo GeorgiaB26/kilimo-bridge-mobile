@@ -238,14 +238,14 @@ export function FarmerDashboardScreen() {
           onTaskPress={(taskId) => goToTasks(undefined, taskId)}
         />
 
-        <View style={{ paddingHorizontal: 12, marginVertical: 12 }}>
-          <Text className="mb-3 text-base font-bold text-[#1F4E78]">Recent Projects</Text>
-          <FarmerDashboardRecentProjects
-            projects={data?.activeProjects ?? []}
-            formatAmount={formatAmount}
-            onProjectPress={openProjectDetail}
-          />
-        </View>
+        <FarmerDashboardRecentProjects
+          projects={data?.activeProjects ?? []}
+          formatAmount={formatAmount}
+          onProjectPress={openProjectDetail}
+          onProjectsPress={() =>
+            navigation.navigate('Projects', { screen: 'ProjectsList' })
+          }
+        />
 
         <View style={{ paddingHorizontal: 12, marginVertical: 12 }}>
           <Text className="mb-3 text-base font-bold text-[#1F4E78]">Recent Payments</Text>
