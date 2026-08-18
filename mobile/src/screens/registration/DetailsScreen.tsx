@@ -90,7 +90,7 @@ export function DetailsScreen({ navigation }: Props) {
       <PickerField
         label="Special needs"
         value={formData.specialNeeds ?? 'no'}
-        options={SPECIAL_NEEDS_OPTIONS}
+        options={[...SPECIAL_NEEDS_OPTIONS]}
         onSelect={(specialNeeds) => updateForm({ specialNeeds: specialNeeds as 'yes' | 'no' })}
       />
       <View className="flex-row gap-2">

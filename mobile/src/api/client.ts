@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
-import type { RegistrationFormData } from '../types';
+import type { FarmerRegistrationPayload } from '../types';
 import type { AuthUser } from '../store/authStore';
 
 export const api = axios.create({
@@ -146,7 +146,7 @@ export async function fetchProjectHierarchy(): Promise<{
   return data;
 }
 
-export async function registerFarmer(farmerData: RegistrationFormData) {
+export async function registerFarmer(farmerData: FarmerRegistrationPayload) {
   const { data } = await api.post('/farmers/register', farmerData);
   return data;
 }
@@ -381,8 +381,61 @@ export async function resolveAgentHelpRequest(requestId: string) {
   return data;
 }
 
-export async function getAgentDashboard() {
-  const { data } = await api.get('/agents/dashboard');
+export type AgentDashboardRecentTask = {
+  id: string;
+  name: string;
+  status: string;
+  due_date?: string | null;
+  farmer_name?: string;
+  source?: 'farmer' | 'personal';
+};
+
+export type AgentDashboardOverdueHighlight = {
+  id: string;
+  name: string;
+  daysOverdue: number;
+};
+
+export type AgentDashboardSummary = {
+  agent: {
+    region: string;
+    district?: string;
+  };
+  farmers: {
+    total: number;
+    pending_review: number;
+    pending_field_verification: number;
+    pending_verification: number;
+    verified: number;
+    inactive: number;
+    rejected: number;
+  };
+  tasks: {
+    overdue_count: number;
+    in_progress_count: number;
+    not_started_count: number;
+    submitted_for_approval_count: number;
+    completed_count: number;
+    rejected_count: number;
+    total_count: number;
+    overdue: AgentDashboardOverdueHighlight[];
+    recent: AgentDashboardRecentTask[];
+    /** Legacy cached payloads before in_progress_count existed. */
+    upcoming_count?: number;
+  };
+  recent_farmers: Array<{
+    farmer_id: string;
+    name: string;
+    phone_number?: string;
+    district?: string;
+    sub_county?: string;
+    status?: string;
+  }>;
+  project_manager: { name: string; phone: string } | null;
+};
+
+export async function getAgentDashboard(): Promise<AgentDashboardSummary> {
+  const { data } = await api.get<AgentDashboardSummary>('/agents/dashboard');
   return data;
 }
 

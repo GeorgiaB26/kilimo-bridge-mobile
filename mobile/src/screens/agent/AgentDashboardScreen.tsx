@@ -149,21 +149,8 @@ export function AgentDashboardScreen() {
 
   const farmers = data?.farmers;
   const tasks = data?.tasks;
-  const recentFarmers = (data as { recent_farmers?: Array<{
-    farmer_id: string;
-    name: string;
-    phone_number?: string;
-    district?: string;
-    sub_county?: string;
-    status?: string;
-  }> })?.recent_farmers ?? [];
-  const recentTasks = (tasks as { recent?: Array<{
-    id: string;
-    name: string;
-    due_date?: string;
-    farmer_name?: string;
-    status?: string;
-  }> })?.recent ?? tasks?.overdue ?? [];
+  const recentFarmers = data?.recent_farmers ?? [];
+  const recentTasks = tasks?.recent ?? [];
 
   return (
     <ScrollView
@@ -267,7 +254,7 @@ export function AgentDashboardScreen() {
           Icon={Hourglass}
           iconColor="#2563EB"
           label="In progress"
-          value={tasks?.in_progress_count ?? (tasks as { upcoming_count?: number })?.upcoming_count ?? 0}
+          value={tasks?.in_progress_count ?? tasks?.upcoming_count ?? 0}
           color="#2563EB"
           onPress={() => goToTasks('in_progress')}
         />
@@ -299,7 +286,7 @@ export function AgentDashboardScreen() {
             }}
           >
             <Text className="text-sm font-bold text-[#EF4444]">Overdue highlights</Text>
-            {tasks?.overdue?.map((t: { id: string; name?: string; daysOverdue?: number }) => (
+            {tasks?.overdue?.map((t) => (
               <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
                 • {t.name ?? 'Task'}
                 {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
