@@ -16,7 +16,7 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
   return (
     <View className="flex-1 items-center justify-center bg-[#1A4D3E] p-6">
       <View className="mb-3 items-center rounded-xl bg-white p-4">
-        <KilimoLogo width={260} height={72} />
+        <KilimoLogo size={180} />
       </View>
       <Text className="mb-2 text-lg font-bold text-white">Kilimo Bridge Platform</Text>
       <Text className="mb-10 text-base text-white/85">Earn · Grow · Get Paid</Text>

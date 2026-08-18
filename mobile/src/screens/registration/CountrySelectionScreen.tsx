@@ -46,7 +46,7 @@ export function CountrySelectionScreen({ navigation }: Props) {
 
   return (
     <View>
-      <KilimoLogo width={200} height={54} style={{ marginBottom: 8 }} />
+      <KilimoLogo size={88} style={{ marginBottom: 8 }} />
       <ScreenHeader title="Select Your Country" subtitle="Choose where you farm" />
       {selectedCurrency ? (
         <View className="mb-3 flex-row items-center gap-2 rounded-lg bg-[#E8F5F0] p-3">
