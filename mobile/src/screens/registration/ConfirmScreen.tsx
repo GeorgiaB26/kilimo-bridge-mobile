@@ -22,6 +22,7 @@ import {
   specialVulnerabilitiesForSubmit,
 } from '../../components/registration/RefugeeRegistrationFields';
 import { extractApiError, showMessage } from '../../utils/feedback';
+import { submitFarmerRegistration } from '../../services/submitFarmerRegistration';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Confirm'>;
