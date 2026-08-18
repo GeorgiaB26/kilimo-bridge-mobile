@@ -6,10 +6,19 @@ export const UPLOAD_URL_EXPIRES_SECONDS = 10 * 60; // 10 minutes
 export const READ_URL_EXPIRES_SECONDS = 60 * 60; // 1 hour
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 
-export const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const ALLOWED_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+] as const;
 export type AllowedContentType = (typeof ALLOWED_CONTENT_TYPES)[number];
 
-export type UploadPurpose = 'farmer_registration' | 'task_evidence' | 'farmer_profile';
+export type UploadPurpose =
+  | 'farmer_registration'
+  | 'task_evidence'
+  | 'farmer_profile'
+  | 'refugee_document';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -75,6 +84,7 @@ function getS3Client(): S3Client {
 function extensionForContentType(contentType: AllowedContentType): string {
   if (contentType === 'image/png') return 'png';
   if (contentType === 'image/webp') return 'webp';
+  if (contentType === 'application/pdf') return 'pdf';
   return 'jpg';
 }
 
@@ -96,6 +106,9 @@ export function buildObjectKey(
       throw new Error('farmerId is required for farmer_profile uploads');
     }
     return `farmers/${opts.farmerId.trim()}/profile/${id}.${ext}`;
+  }
+  if (purpose === 'refugee_document') {
+    return `farmers/refugee-docs/${id}.${ext}`;
   }
   return `farmers/registration/${id}.${ext}`;
 }

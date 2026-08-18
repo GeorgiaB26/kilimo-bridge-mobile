@@ -117,6 +117,7 @@ export type RegistrationStackParamList = {
   BasicInfo: undefined;
   Location: undefined;
   Membership: undefined;
+  RefugeeInfo: undefined;
   CorporateInfo: undefined;
   Details: undefined;
   Projects: undefined;

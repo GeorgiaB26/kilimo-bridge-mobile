@@ -173,7 +173,7 @@ export function AgentFarmersScreen() {
       ListHeaderComponent={
         <View>
           <Text className="text-[22px] font-bold text-[#1A4D3E]">
-            Farmers in {user?.district ?? 'your region'}
+            Members in {user?.district ?? 'your region'}
           </Text>
           <Text className="mb-3 text-sm text-[#757575]">
             Aggregation centre: {user?.aggregationCenter ?? '—'}
@@ -249,7 +249,7 @@ export function AgentFarmersScreen() {
             </View>
           ) : null}
 
-          <Text className="mb-2 text-[17px] font-bold text-[#333333]">Registered farmers</Text>
+          <Text className="mb-2 text-[17px] font-bold text-[#333333]">Registered members</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -262,7 +262,7 @@ export function AgentFarmersScreen() {
           <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
           <View className="mt-0.5 flex-row items-center gap-1.5">
             <Sprout size={14} color="#757575" />
-            <Text className="text-[13px] text-[#757575]">Farmer · {item.phone_number}</Text>
+            <Text className="text-[13px] text-[#757575]">Member · {item.phone_number}</Text>
           </View>
           <View className="mt-2">
             <FarmerStatusChip status={item.status} />
@@ -273,8 +273,8 @@ export function AgentFarmersScreen() {
       ListEmptyComponent={
         <Text className="text-[#757575]">
           {filterLabel
-            ? `No farmers match the “${filterLabel}” filter.`
-            : 'No farmers in your region yet. Use REGISTER NEW FARMER in the header.'}
+            ? `No members match the “${filterLabel}” filter.`
+            : 'No members in your region yet. Use REGISTER NEW MEMBER in the header.'}
         </Text>
       }
     />

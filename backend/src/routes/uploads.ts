@@ -18,7 +18,12 @@ import {
 const router = Router();
 router.use(authenticate);
 
-const UPLOAD_PURPOSES: UploadPurpose[] = ['farmer_registration', 'task_evidence', 'farmer_profile'];
+const UPLOAD_PURPOSES: UploadPurpose[] = [
+  'farmer_registration',
+  'task_evidence',
+  'farmer_profile',
+  'refugee_document',
+];
 
 function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
@@ -42,7 +47,7 @@ function deny(req: Request, res: Response, permission: string): void {
 }
 
 function permissionForPurpose(purpose: UploadPurpose): Permission {
-  if (purpose === 'farmer_registration') return 'farmers.write';
+  if (purpose === 'farmer_registration' || purpose === 'refugee_document') return 'farmers.write';
   if (purpose === 'farmer_profile') return 'farmers.read.own';
   return 'tasks.submit';
 }

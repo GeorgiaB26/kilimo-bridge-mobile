@@ -15,6 +15,7 @@ import {
   membershipCategoryForSubmit,
 } from '../../components/registration/MembershipCategoryFields';
 import { CURRENCY_OPTIONS } from '../../constants/registrationCategories';
+import { REFUGEE_MEMBERSHIP_CATEGORY } from '../../constants/refugeeRegistration';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Membership'>;
@@ -108,6 +109,8 @@ export function MembershipScreen({ navigation }: Props) {
     updateForm({ membershipCategory: membershipCategory ?? formData.membershipCategory });
     if (formData.registrationCategory === 'corporate') {
       navigation.navigate('CorporateInfo');
+    } else if (formData.membershipCategory === REFUGEE_MEMBERSHIP_CATEGORY) {
+      navigation.navigate('RefugeeInfo');
     } else {
       navigation.navigate('Details');
     }

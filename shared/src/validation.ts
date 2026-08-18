@@ -54,6 +54,13 @@ export interface FarmerInput {
   projectEnrolmentProgramId?: string;
   projectEnrolmentProjectId?: string;
   skipProjectEnrolment?: boolean;
+  refugeeStatusDocumentUrl?: string;
+  humanitarianAssistanceType?: string;
+  preferredLanguage?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  specialVulnerabilities?: string;
+  isRefugee?: boolean;
   project1?: string;
   project2?: string;
   project3?: string;

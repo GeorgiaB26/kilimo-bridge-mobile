@@ -174,6 +174,18 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
     project2: input.project2,
     project3: input.project3,
     picture: input.pictureUri ?? input.picture,
+    refugeeStatusDocumentUrl: input.refugeeStatusDocumentUrl,
+    humanitarianAssistanceType: input.humanitarianAssistanceType,
+    preferredLanguage: input.preferredLanguage,
+    emergencyContactName: input.emergencyContactName,
+    emergencyContactPhone: input.emergencyContactPhone,
+    specialVulnerabilities:
+      typeof input.specialVulnerabilities === 'string'
+        ? input.specialVulnerabilities
+        : Array.isArray(input.specialVulnerabilities)
+          ? input.specialVulnerabilities.join(', ')
+          : undefined,
+    isRefugee: input.membershipCategory?.trim() === 'Refugee',
   };
 
   if (!farmerInput.membershipCategory?.trim()) {
@@ -208,6 +220,58 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
     }
     if (corpErrors.length > 0) {
       res.status(400).json({ success: false, errors: corpErrors });
+      return;
+    }
+  }
+
+  const isRefugee = farmerInput.membershipCategory?.trim() === 'Refugee';
+  if (isRefugee) {
+    const refugeeErrors: Array<{ field: string; value: string; error: string }> = [];
+    if (!farmerInput.refugeeStatusDocumentUrl?.trim()) {
+      refugeeErrors.push({
+        field: 'refugeeStatusDocumentUrl',
+        value: '',
+        error: 'Refugee status document is required',
+      });
+    }
+    if (!farmerInput.humanitarianAssistanceType?.trim()) {
+      refugeeErrors.push({
+        field: 'humanitarianAssistanceType',
+        value: '',
+        error: 'Humanitarian assistance type is required',
+      });
+    }
+    if (!farmerInput.emergencyContactName?.trim()) {
+      refugeeErrors.push({
+        field: 'emergencyContactName',
+        value: '',
+        error: 'Emergency contact name is required',
+      });
+    }
+    if (!farmerInput.emergencyContactPhone?.trim()) {
+      refugeeErrors.push({
+        field: 'emergencyContactPhone',
+        value: '',
+        error: 'Emergency contact phone is required',
+      });
+    } else if (farmerInput.emergencyContactPhone.trim() === farmerInput.phone?.trim()) {
+      refugeeErrors.push({
+        field: 'emergencyContactPhone',
+        value: farmerInput.emergencyContactPhone,
+        error: 'Emergency contact phone must be different from member phone',
+      });
+    }
+    const emergencyName = farmerInput.emergencyContactName?.trim().toLowerCase();
+    const memberName = farmerInput.name?.trim().toLowerCase();
+    if (emergencyName && memberName && emergencyName === memberName) {
+      refugeeErrors.push({
+        field: 'emergencyContactName',
+        value: farmerInput.emergencyContactName ?? '',
+        error: 'Emergency contact cannot be the same as member name',
+      });
+    }
+    if (refugeeErrors.length > 0) {
+      res.status(400).json({ success: false, errors: refugeeErrors });
       return;
     }
   }

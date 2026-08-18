@@ -15,7 +15,12 @@ import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCountryConfig, generateFarmerId } from '../../constants/regional';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
-import { submitFarmerRegistration } from '../../services/submitFarmerRegistration';
+import { isRefugeeCategory } from '../../constants/refugeeRegistration';
+import {
+  humanitarianAssistanceForSubmit,
+  preferredLanguageForSubmit,
+  specialVulnerabilitiesForSubmit,
+} from '../../components/registration/RefugeeRegistrationFields';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
@@ -26,6 +31,7 @@ type FarmerRegScreen =
   | 'BasicInfo'
   | 'Location'
   | 'Membership'
+  | 'RefugeeInfo'
   | 'CorporateInfo'
   | 'Details'
   | 'Projects'
@@ -106,7 +112,7 @@ export function ConfirmScreen({ navigation }: Props) {
         farmerId: result.farmerId,
         kbFarmerId: result.kbFarmerId ?? kbFarmerId,
       });
-      showMessage('Farmer registered', `${formData.name} was registered successfully.`);
+      showMessage('Member registered', `${formData.name} was registered successfully.`);
     } catch (err: unknown) {
       const msg = extractApiError(err, 'Please check your details and try again.');
       setSubmitError(msg);
@@ -133,7 +139,9 @@ export function ConfirmScreen({ navigation }: Props) {
   };
 
   const isCorporate = formData.registrationCategory === 'corporate';
+  const isRefugee = isRefugeeCategory(formData.membershipCategory);
   const membershipStep: FarmerRegScreen = 'Membership';
+  const refugeeStep: FarmerRegScreen = 'RefugeeInfo';
   const detailsStep: FarmerRegScreen = isCorporate ? 'CorporateInfo' : 'Details';
   const projectsStep: FarmerRegScreen = 'Projects';
   const landLabel = formData.sizeOfLand ? `${formData.sizeOfLand} ${formData.landUnit ?? 'Ha'}` : '';
@@ -165,7 +173,7 @@ export function ConfirmScreen({ navigation }: Props) {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text className="font-semibold text-white">Register farmer</Text>
+              <Text className="font-semibold text-white">Register member</Text>
             )}
           </Pressable>
         </View>
@@ -209,6 +217,48 @@ export function ConfirmScreen({ navigation }: Props) {
                 value={formData.membershipCategory}
                 onEdit={() => navigation.navigate(membershipStep)}
               />
+            ) : null}
+            {isRefugee ? (
+              <>
+                <SummaryRow
+                  label="Refugee document"
+                  value={
+                    formData.refugeeStatusDocumentUrl ||
+                    formData.refugeeStatusDocumentUri ||
+                    formData.refugeeStatusDocumentBase64
+                      ? 'Uploaded'
+                      : 'Missing'
+                  }
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Assistance type"
+                  value={humanitarianAssistanceForSubmit(formData) ?? formData.humanitarianAssistanceType ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Preferred language"
+                  value={preferredLanguageForSubmit(formData) ?? formData.preferredLanguage ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Emergency contact"
+                  value={formData.emergencyContactName ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Emergency phone"
+                  value={formData.emergencyContactPhone ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                {specialVulnerabilitiesForSubmit(formData) ? (
+                  <SummaryRow
+                    label="Vulnerabilities"
+                    value={specialVulnerabilitiesForSubmit(formData)!}
+                    onEdit={() => navigation.navigate(refugeeStep)}
+                  />
+                ) : null}
+              </>
             ) : null}
             {isCorporate ? (
               <>

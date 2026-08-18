@@ -221,7 +221,7 @@ export function AgentDashboardScreen() {
       <View className="mb-4 flex-row gap-2">
         <MetricCard
           Icon={Users}
-          label="Farmers registered"
+          label="Members registered"
           value={farmers?.total ?? 0}
           onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
         />
@@ -320,7 +320,7 @@ export function AgentDashboardScreen() {
         <KBCard style={{ marginBottom: 12 }}>
           <View className="flex-row items-center justify-between">
             <Text className="text-sm font-bold text-[#333333]">
-              My farmers ({farmers?.total ?? recentFarmers.length})
+              My members ({farmers?.total ?? recentFarmers.length})
             </Text>
             <ChevronRight size={16} color="#1A4D3E" />
           </View>
@@ -334,7 +334,7 @@ export function AgentDashboardScreen() {
               </View>
             ))
           ) : (
-            <Text className="mt-2 text-sm text-[#757575]">No farmers in your region yet.</Text>
+            <Text className="mt-2 text-sm text-[#757575]">No members in your region yet.</Text>
           )}
         </KBCard>
       </Pressable>
@@ -378,7 +378,7 @@ export function AgentDashboardScreen() {
           className="h-10"
           onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
         >
-          <Text>View farmers</Text>
+          <Text>View members</Text>
         </Button>
         <Button variant="outline" className="h-10" onPress={() => navigateNested(navigation, 'Audit')}>
           <Text>Activity log</Text>

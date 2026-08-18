@@ -9,6 +9,7 @@ import {
   INDIVIDUAL_MEMBERSHIP_CATEGORIES,
   type CorporateCategoryGroup,
 } from '../../constants/registrationCategories';
+import { REFUGEE_MEMBERSHIP_CATEGORY } from '../../constants/refugeeRegistration';
 import type { RegistrationFormData } from '../../types';
 
 type Props = {
@@ -120,7 +121,23 @@ export function MembershipCategoryFields({ formData, updateForm, errors }: Props
             value={formData.membershipCategory ?? ''}
             options={[...INDIVIDUAL_MEMBERSHIP_CATEGORIES]}
             onSelect={(membershipCategory) =>
-              updateForm({ membershipCategory, membershipCategoryOther: '' })
+              updateForm({
+                membershipCategory,
+                membershipCategoryOther: '',
+                ...(membershipCategory !== REFUGEE_MEMBERSHIP_CATEGORY
+                  ? {
+                      refugeeStatusDocumentUrl: '',
+                      refugeeStatusDocumentUri: undefined,
+                      refugeeStatusDocumentBase64: undefined,
+                      humanitarianAssistanceType: '',
+                      humanitarianAssistanceOther: '',
+                      emergencyContactName: '',
+                      emergencyContactPhone: '',
+                      specialVulnerabilities: [],
+                      specialVulnerabilitiesOther: '',
+                    }
+                  : {}),
+              })
             }
             required
             error={errors.membershipCategory}
@@ -134,6 +151,14 @@ export function MembershipCategoryFields({ formData, updateForm, errors }: Props
               required
               error={errors.membershipCategoryOther}
             />
+          ) : null}
+          {formData.membershipCategory === REFUGEE_MEMBERSHIP_CATEGORY ? (
+            <View className="mb-3 rounded-lg border border-[#1A4D3E] bg-[#F0F7F4] p-3">
+              <Text className="text-sm text-[#333333]">
+                You selected Refugee — additional humanitarian assistance fields are required on the
+                next step (document upload, emergency contact, assistance type).
+              </Text>
+            </View>
           ) : null}
         </>
       )}
