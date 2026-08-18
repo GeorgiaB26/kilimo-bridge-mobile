@@ -251,30 +251,6 @@ export function AgentDashboardScreen() {
         />
       </View>
 
-      {(tasks?.overdue_count ?? 0) > 0 ? (
-        <Pressable onPress={() => goToTasks('overdue')} style={webPressable}>
-          <KBCard
-            style={{
-              marginBottom: 12,
-              borderLeftWidth: 4,
-              borderLeftColor: '#EF4444',
-            }}
-          >
-            <Text className="text-sm font-bold text-[#EF4444]">Overdue highlights</Text>
-            {tasks?.overdue?.map((t) => (
-              <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
-                • {t.name ?? 'Task'}
-                {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
-              </Text>
-            ))}
-            <View className="mt-2 flex-row items-center gap-1">
-              <Text className="text-sm font-semibold text-[#1A4D3E]">View overdue tasks</Text>
-              <ChevronRight size={16} color="#1A4D3E" />
-            </View>
-          </KBCard>
-        </Pressable>
-      ) : null}
-
       <Pressable
         onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
         style={webPressable}
