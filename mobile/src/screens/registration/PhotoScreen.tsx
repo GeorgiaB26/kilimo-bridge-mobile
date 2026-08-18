@@ -71,7 +71,7 @@ export function PhotoScreen({ navigation }: Props) {
   const hasPhoto = !!formData.pictureBase64;
 
   return (
-    <View className="flex-1">
+    <View>
       <ScreenHeader
         title="Verification photo"
         subtitle="Required — take a clear photo of the farmer's face"

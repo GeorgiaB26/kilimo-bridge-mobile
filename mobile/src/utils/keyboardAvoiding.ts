@@ -1,4 +1,13 @@
-import { Platform, StatusBar, ScrollView, TextInput } from 'react-native';
+import { useEffect, useRef, type RefObject } from 'react';
+import {
+  Platform,
+  StatusBar,
+  ScrollView,
+  TextInput,
+  Keyboard,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+} from 'react-native';
 
 /** KeyboardAvoidingView behavior — enabled on Android (not undefined). */
 export const KEYBOARD_AVOIDING_BEHAVIOR = Platform.select({
@@ -74,4 +83,48 @@ export function scrollFocusedInputIntoView(
       });
     });
   });
+}
+
+/**
+ * Keyboard show → scroll focused input into view. Used by KeyboardBottomSheet
+ * and RegistrationKeyboardLayout so both share the same timing and measure logic.
+ */
+export function useScrollFocusedInputIntoView(
+  scrollRef: RefObject<ScrollView | null>,
+  enabled: boolean,
+  onScrollProp?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void,
+): (e: NativeSyntheticEvent<NativeScrollEvent>) => void {
+  const contentOffsetYRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled || Platform.OS === 'web') return;
+
+    const run = () => {
+      requestAnimationFrame(() => {
+        scrollFocusedInputIntoView(scrollRef.current, contentOffsetYRef.current);
+      });
+      setTimeout(() => {
+        scrollFocusedInputIntoView(scrollRef.current, contentOffsetYRef.current);
+      }, SHEET_SCROLL_INTO_VIEW_DELAY_MS);
+    };
+
+    const subs = [
+      Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+        run,
+      ),
+    ];
+    if (Platform.OS === 'ios') {
+      subs.push(Keyboard.addListener('keyboardDidShow', run));
+    }
+
+    return () => {
+      subs.forEach((s) => s.remove());
+    };
+  }, [enabled, scrollRef]);
+
+  return (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    contentOffsetYRef.current = e.nativeEvent.contentOffset.y;
+    onScrollProp?.(e);
+  };
 }

@@ -23,7 +23,7 @@ export function ProjectsScreen({ navigation }: Props) {
   }, []);
 
   return (
-    <View className="flex-1">
+    <View>
       <ScreenHeader title="Projects" subtitle="Assign projects (optional)" />
       <PickerField
         label="Project 1"

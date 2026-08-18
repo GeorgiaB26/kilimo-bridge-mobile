@@ -64,7 +64,7 @@ export function LocationScreen({ navigation }: Props) {
   };
 
   return (
-    <View className="flex-1">
+    <View>
       <ScreenHeader title="Location" subtitle={`Where are you based in ${formData.country}?`} />
       <PickerField
         label={labels[0]}

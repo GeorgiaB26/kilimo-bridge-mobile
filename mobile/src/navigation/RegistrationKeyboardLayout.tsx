@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { KeyboardAvoidingView, ScrollView, StyleSheet, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   KEYBOARD_AVOIDING_BEHAVIOR,
   screenKeyboardVerticalOffset,
+  useScrollFocusedInputIntoView,
 } from '../utils/keyboardAvoiding';
 import { COLORS } from '../constants';
 
@@ -29,12 +30,19 @@ export function RegistrationKeyboardLayout({
   scrollable = true,
   contentContainerStyle,
 }: Props) {
+  const scrollRef = useRef<ScrollView>(null);
+  const onScroll = useScrollFocusedInputIntoView(scrollRef, scrollable);
+
   const body = scrollable ? (
     <ScrollView
+      ref={scrollRef}
       style={styles.scroll}
       contentContainerStyle={[styles.content, contentContainerStyle]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
+      nestedScrollEnabled
+      scrollEventThrottle={16}
+      onScroll={onScroll}
     >
       {children}
     </ScrollView>

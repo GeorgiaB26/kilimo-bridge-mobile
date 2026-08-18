@@ -98,7 +98,7 @@ export function MembershipScreen({ navigation }: Props) {
   const centreNames = centres.map((c) => c.name);
 
   return (
-    <View className="flex-1">
+    <View>
       <ScreenHeader title="Membership" subtitle="Cooperative and aggregation centre" />
       <PickerField
         label="Membership Group"

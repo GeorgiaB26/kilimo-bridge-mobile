@@ -29,7 +29,7 @@ export function DetailsScreen({ navigation }: Props) {
   };
 
   return (
-    <View className="flex-1">
+    <View>
       <ScreenHeader title="Farmer details" subtitle="Occupation and land size" />
       <FormField
         label="Profession (optional)"

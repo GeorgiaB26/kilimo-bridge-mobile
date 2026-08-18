@@ -63,7 +63,7 @@ export function BasicInfoScreen({ navigation }: Props) {
   };
 
   return (
-    <View className="flex-1">
+    <View>
       <ScreenHeader title="Basic Info" subtitle={`Registering in ${formData.country}`} />
       <FormField
         label="Full Name"

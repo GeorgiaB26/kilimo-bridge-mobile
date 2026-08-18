@@ -1,23 +1,19 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import {
   Modal,
   View,
   Pressable,
   ScrollView,
   KeyboardAvoidingView,
-  Keyboard,
   Platform,
   StyleSheet,
-  type NativeSyntheticEvent,
-  type NativeScrollEvent,
   type ScrollViewProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import {
   modalKeyboardVerticalOffset,
-  scrollFocusedInputIntoView,
-  SHEET_SCROLL_INTO_VIEW_DELAY_MS,
+  useScrollFocusedInputIntoView,
 } from '../../utils/keyboardAvoiding';
 
 /**
@@ -81,7 +77,11 @@ export function KeyboardBottomSheet({
     : 'max-h-[85%] rounded-xl bg-white p-5';
 
   const innerScrollRef = useRef<ScrollView>(null);
-  const contentOffsetYRef = useRef(0);
+  const handleScroll = useScrollFocusedInputIntoView(
+    innerScrollRef,
+    visible && scrollable,
+    scrollViewProps?.onScroll,
+  );
 
   const setScrollRef = (node: ScrollView | null) => {
     innerScrollRef.current = node;
@@ -91,38 +91,6 @@ export function KeyboardBottomSheet({
     } else {
       (scrollViewRef as React.MutableRefObject<ScrollView | null>).current = node;
     }
-  };
-
-  useEffect(() => {
-    if (!visible || !scrollable || Platform.OS === 'web') return;
-
-    const run = () => {
-      requestAnimationFrame(() => {
-        scrollFocusedInputIntoView(innerScrollRef.current, contentOffsetYRef.current);
-      });
-      setTimeout(() => {
-        scrollFocusedInputIntoView(innerScrollRef.current, contentOffsetYRef.current);
-      }, SHEET_SCROLL_INTO_VIEW_DELAY_MS);
-    };
-
-    const subs = [
-      Keyboard.addListener(
-        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-        run,
-      ),
-    ];
-    if (Platform.OS === 'ios') {
-      subs.push(Keyboard.addListener('keyboardDidShow', run));
-    }
-
-    return () => {
-      subs.forEach((s) => s.remove());
-    };
-  }, [visible, scrollable]);
-
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    contentOffsetYRef.current = e.nativeEvent.contentOffset.y;
-    scrollViewProps?.onScroll?.(e);
   };
 
   const {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Pressable, ScrollView } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ export function CountrySelectionScreen({ navigation }: Props) {
   };
 
   return (
-    <View className="flex-1">
+    <View>
       <KilimoLogo width={200} height={54} style={{ marginBottom: 8 }} />
       <ScreenHeader title="Select Your Country" subtitle="Choose where you farm" />
       {selectedCurrency ? (
@@ -57,7 +57,7 @@ export function CountrySelectionScreen({ navigation }: Props) {
           </Text>
         </View>
       ) : null}
-      <ScrollView className="mb-2 flex-1" showsVerticalScrollIndicator={false}>
+      <View className="mb-2">
         {COUNTRY_LIST.map((country) => {
           const selected = formData.country === country.name;
           const currency = getCurrencyForCountry(country.name);
@@ -86,7 +86,7 @@ export function CountrySelectionScreen({ navigation }: Props) {
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
       {error ? <Text className="mb-2 text-sm text-[#D32F2F]">{error}</Text> : null}
       <Button className="mt-1 h-12 bg-[#1A4D3E]" onPress={handleNext}>
         <Text className="text-white">Next</Text>
