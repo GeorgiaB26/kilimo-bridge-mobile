@@ -159,7 +159,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
         </View>
       }
       footer={
-        <View className="flex-row gap-2 border-t border-[#E8E8E8] bg-white px-5 py-4">
+        <View style={styles.footerRow}>
           <Pressable
             onPress={handleSubmit}
             disabled={loading}
@@ -316,8 +316,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 8,
   },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
   submitBtn: {
     flex: 1,
+    minWidth: 120,
     height: 48,
     borderRadius: 8,
     backgroundColor: '#1A4D3E',

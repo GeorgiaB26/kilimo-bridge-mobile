@@ -165,7 +165,10 @@ export function KeyboardBottomSheet({
         ) : null}
         <View
           className={sheetClassName ?? defaultSheetClass}
-          style={withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0)}
+          style={[
+            isBottom ? styles.sheetStretch : null,
+            withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0),
+          ]}
         >
           {header}
           {sheetBody}
@@ -193,6 +196,10 @@ const styles = StyleSheet.create({
   },
   scrollFill: {
     flexShrink: 1,
+  },
+  sheetStretch: {
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerWrap: {
     width: '100%',
