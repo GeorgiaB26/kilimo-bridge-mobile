@@ -6,14 +6,19 @@ export const UPLOAD_URL_EXPIRES_SECONDS = 10 * 60; // 10 minutes
 export const READ_URL_EXPIRES_SECONDS = 60 * 60; // 1 hour
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 
-export const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const ALLOWED_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+] as const;
 export type AllowedContentType = (typeof ALLOWED_CONTENT_TYPES)[number];
 
 export type UploadPurpose =
   | 'farmer_registration'
   | 'task_evidence'
   | 'farmer_profile'
-  | 'support_attachment';
+  | 'refugee_document';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -79,13 +84,14 @@ function getS3Client(): S3Client {
 function extensionForContentType(contentType: AllowedContentType): string {
   if (contentType === 'image/png') return 'png';
   if (contentType === 'image/webp') return 'webp';
+  if (contentType === 'application/pdf') return 'pdf';
   return 'jpg';
 }
 
 export function buildObjectKey(
   purpose: UploadPurpose,
   contentType: AllowedContentType,
-  opts?: { farmerTaskId?: string; farmerId?: string; supportThreadId?: string; uploaderUserId?: string }
+  opts?: { farmerTaskId?: string; farmerId?: string }
 ): string {
   const id = randomUUID();
   const ext = extensionForContentType(contentType);
@@ -101,12 +107,8 @@ export function buildObjectKey(
     }
     return `farmers/${opts.farmerId.trim()}/profile/${id}.${ext}`;
   }
-  if (purpose === 'support_attachment') {
-    const scope =
-      opts?.supportThreadId?.trim() ||
-      opts?.uploaderUserId?.trim() ||
-      'pending';
-    return `support/${scope}/${id}.${ext}`;
+  if (purpose === 'refugee_document') {
+    return `farmers/refugee-docs/${id}.${ext}`;
   }
   return `farmers/registration/${id}.${ext}`;
 }
@@ -121,7 +123,7 @@ export function isOwnFarmerProfilePhotoKey(objectKey: string, farmerId: string):
 export function isR2ObjectKey(value?: string | null): boolean {
   if (!value?.trim()) return false;
   const v = value.trim();
-  return /^(farmers|tasks|support)\//.test(v) && !v.includes('://');
+  return /^(farmers|tasks)\//.test(v) && !v.includes('://');
 }
 
 /**
@@ -155,8 +157,6 @@ export async function createPresignedUpload(params: {
   contentType: AllowedContentType;
   farmerTaskId?: string;
   farmerId?: string;
-  supportThreadId?: string;
-  uploaderUserId?: string;
   contentLength?: number;
 }): Promise<{
   uploadUrl: string;
@@ -178,8 +178,6 @@ export async function createPresignedUpload(params: {
   const objectKey = buildObjectKey(params.purpose, params.contentType, {
     farmerTaskId: params.farmerTaskId,
     farmerId: params.farmerId,
-    supportThreadId: params.supportThreadId,
-    uploaderUserId: params.uploaderUserId,
   });
   const client = getS3Client();
   const command = new PutObjectCommand({
@@ -221,8 +219,6 @@ export async function uploadObjectDirect(params: {
   body: Buffer;
   farmerTaskId?: string;
   farmerId?: string;
-  supportThreadId?: string;
-  uploaderUserId?: string;
 }): Promise<{ objectKey: string; previewUrl: string; contentType: AllowedContentType; size: number }> {
   if (!isR2Configured()) {
     throw new Error('Cloudflare R2 is not configured');
@@ -243,8 +239,6 @@ export async function uploadObjectDirect(params: {
   const objectKey = buildObjectKey(params.purpose, params.contentType, {
     farmerTaskId: params.farmerTaskId,
     farmerId: params.farmerId,
-    supportThreadId: params.supportThreadId,
-    uploaderUserId: params.uploaderUserId,
   });
   const client = getS3Client();
   await client.send(

@@ -34,7 +34,13 @@ import type { RegistrationFormData } from '../types';
 import { extractApiError } from '../utils/feedback';
 import { assertExpected, OutboxNeedsReviewError } from './offlineOutboxExpected';
 import type { OutboxActionType, OutboxItem } from './offlineOutboxTypes';
-import { uploadBase64PhotoToR2, uploadPhotoToR2 } from './uploadToR2';
+import { uploadBase64PhotoToR2, uploadPhotoToR2, uploadRefugeeDocumentToR2 } from './uploadToR2';
+import {
+  humanitarianAssistanceForSubmit,
+  preferredLanguageForSubmit,
+  specialVulnerabilitiesForSubmit,
+} from '../components/registration/RefugeeRegistrationFields';
+import { isRefugeeCategory } from '../constants/refugeeRegistration';
 
 export interface FarmerRegistrationOutboxPayload {
   formData: RegistrationFormData;
@@ -478,13 +484,34 @@ async function resolvePhotoObjectKey(
   throw new Error('A photo is required before this outbox item can sync');
 }
 
+async function resolveRefugeeDocumentKey(formData: RegistrationFormData): Promise<string> {
+  const existing = formData.refugeeStatusDocumentUrl?.trim();
+  if (existing && /^(farmers|tasks)\//.test(existing)) {
+    return existing;
+  }
+  const uploaded = await uploadRefugeeDocumentToR2({
+    localUri: formData.refugeeStatusDocumentUri,
+    base64: formData.refugeeStatusDocumentBase64,
+  });
+  return uploaded.objectKey;
+}
+
 async function handleFarmerRegistration(item: OutboxItem): Promise<OutboxHandlerResult> {
   const { formData } = asRegistrationPayload(item.payload);
   const objectKey = await resolvePhotoObjectKey(item, 'farmer_registration');
+  const isRefugee = isRefugeeCategory(formData.membershipCategory);
+  const refugeeDocKey = isRefugee ? await resolveRefugeeDocumentKey(formData) : undefined;
   return registerFarmer({
     ...formData,
     pictureUri: objectKey,
     pictureBase64: undefined,
+    refugeeStatusDocumentUrl: refugeeDocKey ?? formData.refugeeStatusDocumentUrl,
+    refugeeStatusDocumentBase64: undefined,
+    refugeeStatusDocumentUri: undefined,
+    humanitarianAssistanceType:
+      humanitarianAssistanceForSubmit(formData) ?? formData.humanitarianAssistanceType,
+    preferredLanguage: preferredLanguageForSubmit(formData) ?? formData.preferredLanguage,
+    specialVulnerabilities: specialVulnerabilitiesForSubmit(formData),
   });
 }
 

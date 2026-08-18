@@ -1,46 +1,40 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import type { ComponentType } from 'react';
 import { View, ScrollView, RefreshControl, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import {
+  Ban,
   Calendar,
   ChartColumn,
   CircleCheck,
   ChevronRight,
   Hourglass,
+  TriangleAlert,
   User,
   Users,
 } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { KBCard } from '../../components/ui/KBCard';
-import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
-import { ContactSupportModal } from '../../components/ContactSupportModal';
-import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { useAuthStore } from '../../store/authStore';
+import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
-import { formatCleanDate } from '../../utils/greeting';
-import {
-  TaskStatusKpiRow,
-  type TaskStatusKpiKey,
-} from '../../components/TaskStatusKpiRow';
+import { APP_BUILD } from '../../constants/build';
+import { API_BASE_URL } from '../../constants';
 import type { AgentTabParamList } from '../../navigation/types';
 import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
 import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
-import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
-import { fetchAgentDashboardForCache } from '../../services/readCacheFetchers';
-import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
 
 const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
-type DashboardData = Awaited<ReturnType<typeof fetchAgentDashboardForCache>>;
+type DashboardData = Awaited<ReturnType<typeof getAgentDashboard>>;
 
-type TaskFilter = TaskStatusKpiKey | 'all';
+type TaskFilter = 'overdue' | 'in_progress' | 'not_started' | 'completed';
 
 function navigateNested(
   navigation: Nav,
@@ -107,38 +101,25 @@ function SectionHeading({
 export function AgentDashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const navigation = useNavigation<Nav>();
-  const userScope = useReadCacheUserScope();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
-  const [supportOpen, setSupportOpen] = useState(false);
-  const hasLoadedRef = useRef(false);
   const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
     useTaskNotificationBanners();
 
   const load = useCallback(async () => {
     try {
-      const result = await loadWithReadCache({
-        cacheKey: READ_CACHE_KEYS.agentDashboard,
-        userScope,
-        fetchLive: fetchAgentDashboardForCache,
-      });
-      setData(result.data);
-      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      const summary = await getAgentDashboard();
+      setData(summary);
       setLoadError(null);
-      hasLoadedRef.current = true;
     } catch (err: unknown) {
-      if (!hasLoadedRef.current) {
-        setData(null);
-        setCacheFetchedAt(null);
-        setLoadError(extractApiError(err, 'Could not load dashboard'));
-      }
+      setData(null);
+      setLoadError(extractApiError(err, 'Could not load dashboard'));
     } finally {
       setLoading(false);
     }
-  }, [userScope]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -154,12 +135,8 @@ export function AgentDashboardScreen() {
     setRefreshing(false);
   };
 
-  const goToTasks = (filter?: TaskFilter) => {
-    if (!filter || filter === 'all') {
-      navigation.navigate('Tasks');
-      return;
-    }
-    navigation.navigate('Tasks', { filter });
+  const goToTasks = (filter: TaskFilter | 'all') => {
+    navigateNested(navigation, 'Tasks', { filter });
   };
 
   if (loading) {
@@ -194,11 +171,42 @@ export function AgentDashboardScreen() {
       contentContainerClassName="p-4 pb-10"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+      <View className="mb-3 rounded-lg bg-[#1A4D3E] px-3 py-2">
+        <Text className="text-xs font-semibold text-white">Release {APP_BUILD}</Text>
+        <Text className="text-[10px] text-white/75" numberOfLines={1}>
+          API: {API_BASE_URL}
+        </Text>
+      </View>
+
       {loadError ? (
         <View className="mb-3 rounded-lg border border-[#EF4444] bg-[#FFEBEE] p-3">
           <Text className="text-sm font-semibold text-[#EF4444]">{loadError}</Text>
-          <Text className="mt-1 text-xs text-[#757575]">Pull down to retry or check your connection.</Text>
+          <Text className="mt-1 text-xs text-[#757575]">Pull down to retry or check API connection above.</Text>
+        </View>
+      ) : null}
+
+      {taskNotifications.length > 0 ? (
+        <View className="mb-3 rounded-lg border border-[#C8E6C9] bg-[#E8F5E9] p-3">
+          <Text className="mb-2 text-sm font-bold text-[#1A4D3E]">
+            {taskNotifications.length} farmer task update
+            {taskNotifications.length > 1 ? 's' : ''}
+          </Text>
+          {taskNotifications.map((notif) => (
+            <TaskNotificationBanner
+              key={notif.id}
+              notification={notif}
+              onPress={() => {
+                dismissTaskNotification(notif.id);
+                navigateFromNotification(navigation, {
+                  id: notif.id,
+                  type: notif.type,
+                  context_type: notif.context_type ?? 'agent_task',
+                  context_id: notif.context_id,
+                }, { isAgent: true });
+              }}
+              onDismiss={() => dismissTaskNotification(notif.id)}
+            />
+          ))}
         </View>
       ) : null}
 
@@ -213,7 +221,7 @@ export function AgentDashboardScreen() {
       <View className="mb-4 flex-row gap-2">
         <MetricCard
           Icon={Users}
-          label="Farmers registered"
+          label="Members registered"
           value={farmers?.total ?? 0}
           onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
         />
@@ -246,128 +254,109 @@ export function AgentDashboardScreen() {
       </View>
 
       <SectionHeading Icon={Calendar}>Task snapshots</SectionHeading>
-      <View className="mb-4">
-        <TaskStatusKpiRow
-          counts={{
-            overdue: tasks?.overdue_count ?? 0,
-            in_progress:
-              tasks?.in_progress_count ??
-              (tasks as { upcoming_count?: number })?.upcoming_count ??
-              0,
-            not_started: tasks?.not_started_count ?? 0,
-            submitted_for_approval: tasks?.submitted_for_approval_count ?? 0,
-            rejected: tasks?.rejected_count ?? 0,
-            completed: tasks?.completed_count ?? 0,
-          }}
-          selected={null}
-          onSelect={(key) => goToTasks(key)}
+      <View className="mb-2 flex-row gap-2">
+        <MetricCard
+          Icon={TriangleAlert}
+          iconColor="#EF4444"
+          label="Overdue"
+          value={tasks?.overdue_count ?? 0}
+          color="#EF4444"
+          onPress={() => goToTasks('overdue')}
+        />
+        <MetricCard
+          Icon={Hourglass}
+          iconColor="#2563EB"
+          label="In progress"
+          value={tasks?.in_progress_count ?? (tasks as { upcoming_count?: number })?.upcoming_count ?? 0}
+          color="#2563EB"
+          onPress={() => goToTasks('in_progress')}
+        />
+      </View>
+      <View className="mb-4 flex-row gap-2">
+        <MetricCard
+          Icon={Ban}
+          label="Not started"
+          value={tasks?.not_started_count ?? 0}
+          onPress={() => goToTasks('not_started')}
+        />
+        <MetricCard
+          Icon={CircleCheck}
+          iconColor="#10B981"
+          label="Completed"
+          value={tasks?.completed_count ?? 0}
+          color="#10B981"
+          onPress={() => goToTasks('completed')}
         />
       </View>
 
-      <KBCard style={{ marginBottom: 12 }}>
-        <Pressable
-          onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
-          className="flex-row items-center justify-between"
-          style={webPressable}
-        >
-          <Text className="text-sm font-bold text-[#333333]">
-            My farmers ({farmers?.total ?? recentFarmers.length})
-          </Text>
-          <ChevronRight size={16} color="#1A4D3E" />
-        </Pressable>
-        {recentFarmers.length > 0 ? (
-          recentFarmers.map((f) => (
-            <Pressable
-              key={f.farmer_id}
-              onPress={() =>
-                navigateNested(navigation, 'Farmers', {
-                  screen: 'FarmerProfile',
-                  params: { farmerId: f.farmer_id, name: f.name },
-                })
-              }
-              className="mt-3 flex-row items-center justify-between border-t border-[#EEE] pt-3"
-              style={webPressable}
-            >
-              <View className="flex-1 pr-2">
-                <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
-                <View className="mt-1.5 flex-row flex-wrap items-center gap-2">
-                  <Text className="text-xs text-[#757575]">
-                    {f.district ?? f.sub_county ?? '—'}
-                  </Text>
-                  <FarmerStatusChip status={f.status} compact />
-                </View>
-              </View>
+      {(tasks?.overdue_count ?? 0) > 0 ? (
+        <Pressable onPress={() => goToTasks('overdue')} style={webPressable}>
+          <KBCard
+            style={{
+              marginBottom: 12,
+              borderLeftWidth: 4,
+              borderLeftColor: '#EF4444',
+            }}
+          >
+            <Text className="text-sm font-bold text-[#EF4444]">Overdue highlights</Text>
+            {tasks?.overdue?.map((t: { id: string; name?: string; daysOverdue?: number }) => (
+              <Text key={t.id} className="mt-1 text-xs text-[#EF4444]">
+                • {t.name ?? 'Task'}
+                {t.daysOverdue ? ` (${t.daysOverdue} days ago)` : ''}
+              </Text>
+            ))}
+            <View className="mt-2 flex-row items-center gap-1">
+              <Text className="text-sm font-semibold text-[#1A4D3E]">View overdue tasks</Text>
               <ChevronRight size={16} color="#1A4D3E" />
-            </Pressable>
-          ))
-        ) : (
-          <Text className="mt-2 text-sm text-[#757575]">No farmers in your region yet.</Text>
-        )}
-      </KBCard>
+            </View>
+          </KBCard>
+        </Pressable>
+      ) : null}
+
+      <Pressable
+        onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
+        style={webPressable}
+      >
+        <KBCard style={{ marginBottom: 12 }}>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-bold text-[#333333]">
+              My members ({farmers?.total ?? recentFarmers.length})
+            </Text>
+            <ChevronRight size={16} color="#1A4D3E" />
+          </View>
+          {recentFarmers.length > 0 ? (
+            recentFarmers.map((f) => (
+              <View key={f.farmer_id} className="mt-2 border-t border-[#EEE] pt-2">
+                <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
+                <Text className="text-xs text-[#757575]">
+                  {f.district ?? f.sub_county ?? '—'} · {f.status ?? 'pending'}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text className="mt-2 text-sm text-[#757575]">No members in your region yet.</Text>
+          )}
+        </KBCard>
+      </Pressable>
 
       {recentTasks.length > 0 ? (
         <KBCard style={{ marginBottom: 12 }}>
-          <Pressable
-            onPress={() => goToTasks()}
-            className="flex-row items-center justify-between"
-            style={webPressable}
-          >
-            <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
-            <ChevronRight size={16} color="#1A4D3E" />
-          </Pressable>
-          {recentTasks.slice(0, 5).map((t: {
-            id: string;
-            name?: string;
-            farmer_name?: string;
-            due_date?: string | null;
-          }) => (
+          <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
+          {recentTasks.slice(0, 5).map((t) => (
             <Pressable
               key={t.id}
-              onPress={() =>
-                navigation.navigate('Tasks', {
-                  taskId: t.id,
-                  highlightTaskId: t.id,
-                })
-              }
-              className="mt-2 flex-row items-center justify-between border-t border-[#EEE] pt-2"
+              onPress={() => goToTasks('all')}
+              className="mt-2 border-t border-[#EEE] pt-2"
               style={webPressable}
             >
-              <View className="flex-1 pr-2">
-                <Text className="text-sm font-semibold text-[#333333]">{t.name}</Text>
-                <Text className="text-xs text-[#757575]">
-                  {t.farmer_name ?? 'Task'}
-                  {t.due_date ? ` · Due ${formatCleanDate(t.due_date)}` : ''}
-                </Text>
-              </View>
-              <ChevronRight size={16} color="#1A4D3E" />
+              <Text className="text-sm font-semibold text-[#333333]">{t.name}</Text>
+              <Text className="text-xs text-[#757575]">
+                {t.farmer_name ?? 'Task'}
+                {t.due_date ? ` · Due ${t.due_date}` : ''}
+              </Text>
             </Pressable>
           ))}
         </KBCard>
-      ) : null}
-
-      {taskNotifications.length > 0 ? (
-        <View className="mb-3 rounded-lg border border-[#C8E6C9] bg-[#E8F5E9] p-3">
-          <Text className="mb-2 text-sm font-bold text-[#1A4D3E]">
-            {taskNotifications.length} farmer task update
-            {taskNotifications.length > 1 ? 's' : ''}
-          </Text>
-          {taskNotifications.map((notif) => (
-            <TaskNotificationBanner
-              key={notif.id}
-              notification={notif}
-              onPress={() => {
-                dismissTaskNotification(notif.id);
-                navigateFromNotification(navigation, {
-                  id: notif.id,
-                  type: notif.type,
-                  context_type: notif.context_type ?? 'agent_task',
-                  context_id: notif.context_id,
-                }, { isAgent: true });
-              }}
-              onDismiss={() => dismissTaskNotification(notif.id)}
-            />
-          ))}
-        </View>
       ) : null}
 
       <View className="mb-2 flex-row items-center gap-1.5">
@@ -378,7 +367,9 @@ export function AgentDashboardScreen() {
         <Button
           variant="outline"
           className="h-10"
-          onPress={() => navigation.navigate('Tasks', { openAdd: true })}
+          onPress={() =>
+            navigateNested(navigation, 'Tasks', { filter: 'all', openAdd: true })
+          }
         >
           <Text>+ Add task</Text>
         </Button>
@@ -387,48 +378,12 @@ export function AgentDashboardScreen() {
           className="h-10"
           onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
         >
-          <Text>View farmers</Text>
+          <Text>View members</Text>
         </Button>
         <Button variant="outline" className="h-10" onPress={() => navigateNested(navigation, 'Audit')}>
           <Text>Activity log</Text>
         </Button>
       </View>
-
-      <Pressable
-        className="mt-4 items-center rounded-lg border border-[#EEE] bg-white px-4 py-3"
-        onPress={() => setSupportOpen(true)}
-        style={webPressable}
-      >
-        <Text className="text-sm font-semibold text-[#1F4E78]">Contact Support</Text>
-      </Pressable>
-
-      <ContactSupportModal
-        visible={supportOpen}
-        onClose={() => setSupportOpen(false)}
-        onCreated={(threadId) => {
-          navigation.dispatch(
-            CommonActions.navigate({
-              name: 'MessagesFlow',
-              params: {
-                state: {
-                  routes: [
-                    { name: 'MessagesList' },
-                    {
-                      name: 'MessageDetail',
-                      params: {
-                        threadId,
-                        contextType: 'support_ticket',
-                        supportStatus: 'open',
-                      },
-                    },
-                  ],
-                  index: 1,
-                },
-              },
-            })
-          );
-        }}
-      />
     </ScrollView>
   );
 }

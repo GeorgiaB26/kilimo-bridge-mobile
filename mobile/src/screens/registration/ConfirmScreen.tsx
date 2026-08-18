@@ -7,18 +7,21 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
-import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { RegistrationSuccessModal } from '../../components/registration/RegistrationSuccessModal';
 import { GENDER_OPTIONS } from '../../constants';
 import { useRegistrationStore } from '../../store/registrationStore';
-import { getCountryConfig, generateFarmerId, normalizePhoneForCountry } from '../../constants/regional';
+import { getCountryConfig, generateFarmerId } from '../../constants/regional';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
-import { submitFarmerRegistration } from '../../services/submitFarmerRegistration';
+import { isRefugeeCategory } from '../../constants/refugeeRegistration';
+import {
+  humanitarianAssistanceForSubmit,
+  preferredLanguageForSubmit,
+  specialVulnerabilitiesForSubmit,
+} from '../../components/registration/RefugeeRegistrationFields';
 import { extractApiError, showMessage } from '../../utils/feedback';
-import { validateFarmerName } from '../../../shared/src/validation';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Confirm'>;
@@ -28,6 +31,8 @@ type FarmerRegScreen =
   | 'BasicInfo'
   | 'Location'
   | 'Membership'
+  | 'RefugeeInfo'
+  | 'CorporateInfo'
   | 'Details'
   | 'Projects'
   | 'Photo';
@@ -35,6 +40,12 @@ type FarmerRegScreen =
 const STEP_SCREENS: FarmerRegScreen[] = [
   'Country', 'BasicInfo', 'Location', 'Membership', 'Details', 'Projects', 'Photo',
 ];
+
+function registrationCategoryLabel(category?: string): string {
+  if (category === 'corporate') return 'Corporate / organization';
+  if (category === 'individual') return 'Individual member';
+  return category ?? '—';
+}
 
 function SummaryRow({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
   return (
@@ -46,32 +57,6 @@ function SummaryRow({ label, value, onEdit }: { label: string; value: string; on
       <Text className="ml-2 text-sm font-semibold text-[#1976D2]" onPress={onEdit}>Edit</Text>
     </View>
   );
-}
-
-function parentHasRoute(
-  parent: { getState?: () => { routeNames?: string[] } } | undefined,
-  routeName: string
-): boolean {
-  return Boolean(parent?.getState?.()?.routeNames?.includes(routeName));
-}
-
-function findStackWithRoute(
-  navigation: { getParent: () => unknown },
-  routeName: string
-): { dispatch: (action: unknown) => void; goBack: () => void } | undefined {
-  let parent = navigation.getParent() as
-    | {
-        getParent?: () => unknown;
-        getState?: () => { routeNames?: string[] };
-        dispatch: (action: unknown) => void;
-        goBack: () => void;
-      }
-    | undefined;
-  while (parent) {
-    if (parentHasRoute(parent, routeName)) return parent;
-    parent = parent.getParent?.() as typeof parent;
-  }
-  return undefined;
 }
 
 export function ConfirmScreen({ navigation }: Props) {
@@ -100,112 +85,14 @@ export function ConfirmScreen({ navigation }: Props) {
   const goToFarmersList = () => {
     setSuccess(null);
     resetForm();
-    const farmersStack = findStackWithRoute(navigation, 'FarmerList');
-    if (farmersStack) {
-      farmersStack.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: 'FarmerList' }],
-        })
-      );
-      return;
-    }
-    navigation.getParent()?.goBack();
-  };
-
-  const registerAnother = () => {
-    setSuccess(null);
-    resetForm();
-    const farmersStack = findStackWithRoute(navigation, 'RegisterPicker');
-    if (farmersStack) {
-      farmersStack.dispatch(
-        CommonActions.reset({
-          index: 1,
-          routes: [{ name: 'FarmerList' }, { name: 'RegisterPicker' }],
-        })
-      );
-      return;
-    }
-    // Public registration flow — restart at country.
-    navigation.navigate('Country');
-  };
-
-  const viewProfile = () => {
-    const id = success?.farmerId;
-    if (!id) return;
-    const farmerName = formData.name;
-    setSuccess(null);
-    resetForm();
-    const farmersStack = findStackWithRoute(navigation, 'FarmerProfile');
-    if (farmersStack) {
-      farmersStack.dispatch(
-        CommonActions.reset({
-          index: 1,
-          routes: [
-            { name: 'FarmerList' },
-            { name: 'FarmerProfile', params: { farmerId: id, name: farmerName } },
-          ],
-        })
-      );
-      return;
-    }
     navigation.getParent()?.goBack();
   };
 
   const handleSubmit = async () => {
-    const nameError = validateFarmerName(formData.name);
-    if (nameError) {
-      setSubmitError(nameError);
-      showMessage('Fix name', nameError);
-      navigation.navigate('BasicInfo');
-      return;
-    }
-    if (!formData.gender) {
-      setSubmitError('Gender is required');
-      showMessage('Missing information', 'Gender is required');
-      navigation.navigate('BasicInfo');
-      return;
-    }
-    if (!formData.phone?.trim() || !normalizePhoneForCountry(formData.phone, formData.country)) {
-      const msg = 'A valid phone number is required';
-      setSubmitError(msg);
-      showMessage('Fix phone', msg);
-      navigation.navigate('BasicInfo');
-      return;
-    }
-    if (!formData.idNumber?.trim() || formData.idNumber.trim().length < 5) {
-      const msg = 'ID number is required (5+ chars)';
-      setSubmitError(msg);
-      showMessage('Fix ID number', msg);
-      navigation.navigate('BasicInfo');
-      return;
-    }
-    if (!formData.district || !formData.subCounty) {
-      const msg = 'Location details are incomplete';
-      setSubmitError(msg);
-      showMessage('Fix location', msg);
-      navigation.navigate('Location');
-      return;
-    }
-    if (!formData.membershipGroup || !formData.membershipType) {
-      const msg = 'Membership details are incomplete';
-      setSubmitError(msg);
-      showMessage('Fix membership', msg);
-      navigation.navigate('Membership');
-      return;
-    }
-    if (!formData.occupation?.trim() || !formData.sizeOfLand?.trim()) {
-      const msg = 'Occupation and land size are required';
-      setSubmitError(msg);
-      showMessage('Fix farmer details', msg);
-      navigation.navigate('Details');
-      return;
-    }
     if (!formData.pictureBase64 && !formData.pictureUri) {
       const msg = 'A verification photo is required. Go back to the Photo step and add one.';
       setSubmitError(msg);
       showMessage('Photo required', msg);
-      navigation.navigate('Photo');
       return;
     }
 
@@ -225,7 +112,7 @@ export function ConfirmScreen({ navigation }: Props) {
         farmerId: result.farmerId,
         kbFarmerId: result.kbFarmerId ?? kbFarmerId,
       });
-      showMessage('Farmer registered', `${formData.name} was registered successfully.`);
+      showMessage('Member registered', `${formData.name} was registered successfully.`);
     } catch (err: unknown) {
       const msg = extractApiError(err, 'Please check your details and try again.');
       setSubmitError(msg);
@@ -234,6 +121,30 @@ export function ConfirmScreen({ navigation }: Props) {
       setLoading(false);
     }
   };
+
+  const viewProfile = () => {
+    const id = success?.farmerId;
+    if (!id) return;
+    const farmerName = formData.name;
+    setSuccess(null);
+    resetForm();
+    const parent = navigation.getParent();
+    parent?.goBack();
+    setTimeout(() => {
+      (parent as { navigate?: (name: string, params: unknown) => void })?.navigate?.('FarmerProfile', {
+        farmerId: id,
+        name: farmerName,
+      });
+    }, 100);
+  };
+
+  const isCorporate = formData.registrationCategory === 'corporate';
+  const isRefugee = isRefugeeCategory(formData.membershipCategory);
+  const membershipStep: FarmerRegScreen = 'Membership';
+  const refugeeStep: FarmerRegScreen = 'RefugeeInfo';
+  const detailsStep: FarmerRegScreen = isCorporate ? 'CorporateInfo' : 'Details';
+  const projectsStep: FarmerRegScreen = 'Projects';
+  const landLabel = formData.sizeOfLand ? `${formData.sizeOfLand} ${formData.landUnit ?? 'Ha'}` : '';
 
   return (
     <>
@@ -262,7 +173,7 @@ export function ConfirmScreen({ navigation }: Props) {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text className="font-semibold text-white">Register farmer</Text>
+              <Text className="font-semibold text-white">Register member</Text>
             )}
           </Pressable>
         </View>
@@ -293,20 +204,148 @@ export function ConfirmScreen({ navigation }: Props) {
             {formData.village ? (
               <SummaryRow label={labels[3]} value={formData.village} onEdit={() => navigation.navigate(STEP_SCREENS[2])} />
             ) : null}
-            <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-            <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter ?? ''} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-            <SummaryRow label="Membership Type" value={formData.membershipType ?? 'Active'} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
-            {formData.profession ? (
-              <SummaryRow label="Profession" value={formData.profession} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
+            <SummaryRow label="Membership Group" value={formData.membershipGroup} onEdit={() => navigation.navigate(membershipStep)} />
+            <SummaryRow label="Aggregation Centre" value={formData.aggregationCenter ?? ''} onEdit={() => navigation.navigate(membershipStep)} />
+            <SummaryRow
+              label="Registration category"
+              value={registrationCategoryLabel(formData.registrationCategory)}
+              onEdit={() => navigation.navigate(membershipStep)}
+            />
+            {formData.membershipCategory ? (
+              <SummaryRow
+                label={isCorporate ? 'Organization category' : 'Occupation category'}
+                value={formData.membershipCategory}
+                onEdit={() => navigation.navigate(membershipStep)}
+              />
             ) : null}
+            {isRefugee ? (
+              <>
+                <SummaryRow
+                  label="Refugee document"
+                  value={
+                    formData.refugeeStatusDocumentUrl ||
+                    formData.refugeeStatusDocumentUri ||
+                    formData.refugeeStatusDocumentBase64
+                      ? 'Uploaded'
+                      : 'Missing'
+                  }
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Assistance type"
+                  value={humanitarianAssistanceForSubmit(formData) ?? formData.humanitarianAssistanceType ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Preferred language"
+                  value={preferredLanguageForSubmit(formData) ?? formData.preferredLanguage ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Emergency contact"
+                  value={formData.emergencyContactName ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                <SummaryRow
+                  label="Emergency phone"
+                  value={formData.emergencyContactPhone ?? ''}
+                  onEdit={() => navigation.navigate(refugeeStep)}
+                />
+                {specialVulnerabilitiesForSubmit(formData) ? (
+                  <SummaryRow
+                    label="Vulnerabilities"
+                    value={specialVulnerabilitiesForSubmit(formData)!}
+                    onEdit={() => navigation.navigate(refugeeStep)}
+                  />
+                ) : null}
+              </>
+            ) : null}
+            {isCorporate ? (
+              <>
+                <SummaryRow
+                  label="Organization name"
+                  value={formData.organizationName ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                <SummaryRow
+                  label="Registration number"
+                  value={formData.organizationRegistrationNumber ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                <SummaryRow label="Tax PIN" value={formData.taxPin ?? ''} onEdit={() => navigation.navigate('CorporateInfo')} />
+                <SummaryRow
+                  label="Contact person"
+                  value={formData.contactPersonName ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                <SummaryRow
+                  label="Contact role"
+                  value={formData.contactPersonRole ?? ''}
+                  onEdit={() => navigation.navigate('CorporateInfo')}
+                />
+                {formData.contactPersonEmail ? (
+                  <SummaryRow
+                    label="Contact email"
+                    value={formData.contactPersonEmail}
+                    onEdit={() => navigation.navigate('CorporateInfo')}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <>
+                {formData.ward ? (
+                  <SummaryRow label="Ward" value={formData.ward} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.familySize ? (
+                  <SummaryRow label="Family size" value={formData.familySize} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.numberOfDependants ? (
+                  <SummaryRow
+                    label="Dependants"
+                    value={formData.numberOfDependants}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {formData.profession ? (
+                  <SummaryRow label="Profession" value={formData.profession} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.specialNeeds ? (
+                  <SummaryRow
+                    label="Special needs"
+                    value={formData.specialNeeds === 'yes' ? 'Yes' : 'No'}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {landLabel ? (
+                  <SummaryRow label="Size of land" value={landLabel} onEdit={() => navigation.navigate(detailsStep)} />
+                ) : null}
+                {formData.farmInputRequired ? (
+                  <SummaryRow
+                    label="Farm input required"
+                    value={formData.farmInputRequired}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {formData.projectLocationGps ? (
+                  <SummaryRow
+                    label="Project GPS"
+                    value={formData.projectLocationGps}
+                    onEdit={() => navigation.navigate(detailsStep)}
+                  />
+                ) : null}
+                {!formData.skipProjectEnrolment && formData.projectEnrolmentProjectId ? (
+                  <SummaryRow
+                    label="Project enrolment"
+                    value="Selected"
+                    onEdit={() => navigation.navigate(projectsStep)}
+                  />
+                ) : formData.skipProjectEnrolment ? (
+                  <SummaryRow label="Project enrolment" value="Skipped" onEdit={() => navigation.navigate(projectsStep)} />
+                ) : null}
+              </>
+            )}
             {formData.occupation ? (
-              <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
-            ) : null}
-            {formData.sizeOfLand ? (
-              <SummaryRow label="Land (acres)" value={formData.sizeOfLand} onEdit={() => navigation.navigate(STEP_SCREENS[4])} />
-            ) : null}
-            {formData.project1 ? (
-              <SummaryRow label="Project 1" value={formData.project1} onEdit={() => navigation.navigate(STEP_SCREENS[5])} />
+              <SummaryRow label="Occupation" value={formData.occupation} onEdit={() => navigation.navigate(detailsStep)} />
             ) : null}
             <SummaryRow
               label="Photo"
@@ -326,7 +365,11 @@ export function ConfirmScreen({ navigation }: Props) {
         kbFarmerId={success?.kbFarmerId ?? kbFarmerId}
         offline={success?.offline}
         onViewProfile={viewProfile}
-        onRegisterAnother={registerAnother}
+        onRegisterAnother={() => {
+          setSuccess(null);
+          resetForm();
+          navigation.navigate('Country');
+        }}
         onClose={goToFarmersList}
       />
     </>

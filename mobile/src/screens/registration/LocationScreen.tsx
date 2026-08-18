@@ -90,7 +90,7 @@ export function LocationScreen({ navigation }: Props) {
           label={labels[2]}
           value={formData.parish ?? ''}
           options={level3Options}
-          onSelect={(parish) => updateForm({ parish })}
+          onSelect={(parish) => updateForm({ parish, ward: parish })}
           required
           error={errors.parish}
           placeholder={formData.subCounty ? `Select ${labels[2].toLowerCase()}` : `Select ${labels[1].toLowerCase()} first`}
@@ -100,7 +100,7 @@ export function LocationScreen({ navigation }: Props) {
         <FormField
           label={labels[2]}
           value={formData.parish ?? ''}
-          onChangeText={(parish) => updateForm({ parish })}
+          onChangeText={(parish) => updateForm({ parish, ward: parish })}
           placeholder="Optional"
         />
       )}

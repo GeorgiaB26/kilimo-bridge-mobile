@@ -123,6 +123,29 @@ export async function fetchReferenceData(): Promise<ReferenceData> {
   return data;
 }
 
+export type ProjectHierarchySector = { id: string; name: string; description?: string | null };
+export type ProjectHierarchyProgram = {
+  id: string;
+  name: string;
+  sector_id: string;
+  description?: string | null;
+};
+export type ProjectHierarchyProject = {
+  id: string;
+  name: string;
+  program_id: string;
+  description?: string | null;
+};
+
+export async function fetchProjectHierarchy(): Promise<{
+  sectors: ProjectHierarchySector[];
+  programs: ProjectHierarchyProgram[];
+  projects: ProjectHierarchyProject[];
+}> {
+  const { data } = await api.get('/reference/project-hierarchy');
+  return data;
+}
+
 export async function registerFarmer(farmerData: RegistrationFormData) {
   const { data } = await api.post('/farmers/register', farmerData);
   return data;
@@ -246,6 +269,12 @@ export async function getFarmerAssignedTasks(params?: {
     }
     throw err;
   }
+}
+
+/** Start a field-agent-assigned task (not_started → in_progress). Notifies the agent. */
+export async function startFarmerAgentTask(taskId: string) {
+  const { data } = await api.patch(`/farmer/agent-tasks/${taskId}/start`);
+  return data;
 }
 
 export async function submitFarmerHelpRequest(message: string) {

@@ -1,0 +1,23 @@
+-- Farmer registration form fields (Loveable portal parity)
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS registration_category TEXT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS membership_category VARCHAR(200);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS membership_status VARCHAR(50) DEFAULT 'pending_verification';
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS ward VARCHAR(100);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS family_size INT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS number_of_dependants INT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS land_unit VARCHAR(20) DEFAULT 'Ha';
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS farm_input_required TEXT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS profession VARCHAR(100);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS project_location_gps VARCHAR(100);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS special_needs BOOLEAN DEFAULT FALSE;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS currency VARCHAR(10);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS project_enrolment_sector TEXT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS project_enrolment_sub_sector TEXT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS project_enrolment_programme TEXT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS project_enrolment_project TEXT;
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS organization_name VARCHAR(200);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS organization_registration_number VARCHAR(100);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS tax_pin VARCHAR(50);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS contact_person_name VARCHAR(150);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS contact_person_role VARCHAR(100);
+ALTER TABLE farmers ADD COLUMN IF NOT EXISTS contact_person_email VARCHAR(150);
