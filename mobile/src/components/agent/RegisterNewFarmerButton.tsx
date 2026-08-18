@@ -17,7 +17,9 @@ export function RegisterNewFarmerButton({ onPress, compact }: Props) {
       style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 }}
     >
       <Ionicons name="add" size={20} color="#000" />
-      <Text className="text-sm font-bold text-black">REGISTER NEW MEMBER</Text>
+      <Text className="text-sm font-bold text-black">
+        {compact ? 'NEW MEMBER' : 'REGISTER NEW MEMBER'}
+      </Text>
     </Pressable>
   );
 }

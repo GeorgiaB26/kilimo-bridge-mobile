@@ -27,7 +27,7 @@ export function AgentRegisterTypeScreen({ navigation }: Props) {
     <View className="flex-1 bg-[#F5F5F5] p-4">
       <Text className="mb-2 text-[22px] font-bold text-[#1A4D3E]">Who are you registering?</Text>
       <Text className="mb-6 text-sm text-[#757575]">
-        Choose whether you are adding a farmer to your region or requesting a new field agent account.
+        Choose whether you are adding a member to your region or requesting a new field agent account.
       </Text>
 
       <Pressable

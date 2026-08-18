@@ -75,7 +75,7 @@ export function AgentFarmersStackNavigator() {
         component={AgentFarmerProfileScreen}
         options={({ route }) => ({
           title: route.params.name,
-          headerBackTitle: 'Farmers',
+          headerBackTitle: 'Members',
         })}
       />
     </Stack.Navigator>
