@@ -1,27 +1,41 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ScrollView, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StepIndicator } from '../components/StepIndicator';
 import { COLORS } from '../constants';
 import { CountrySelectionScreen } from '../screens/registration/CountrySelectionScreen';
 import { BasicInfoScreen } from '../screens/registration/BasicInfoScreen';
 import { LocationScreen } from '../screens/registration/LocationScreen';
-import { MembershipScreen } from '../screens/registration/MembershipScreen';
+import { CorporateInfoScreen } from '../screens/registration/CorporateInfoScreen';
+import { RefugeeInfoScreen } from '../screens/registration/RefugeeInfoScreen';
 import { DetailsScreen } from '../screens/registration/DetailsScreen';
+import { MembershipScreen } from '../screens/registration/MembershipScreen';
 import { ProjectsScreen } from '../screens/registration/ProjectsScreen';
 import { PhotoScreen } from '../screens/registration/PhotoScreen';
 import { ConfirmScreen } from '../screens/registration/ConfirmScreen';
-import { RegistrationKeyboardLayout } from './RegistrationKeyboardLayout';
 import type { RegistrationStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RegistrationStackParamList>();
 
-const FARMER_STEP_LABELS = ['Country', 'Basic Info', 'Location', 'Membership', 'Details', 'Projects', 'Photo', 'Confirm'];
+const FARMER_STEP_LABELS = [
+  'Country',
+  'Basic Info',
+  'Location',
+  'Membership',
+  'Details',
+  'Projects',
+  'Photo',
+  'Confirm',
+];
 
 const FARMER_STEP_MAP: Partial<Record<keyof RegistrationStackParamList, number>> = {
   Country: 0,
   BasicInfo: 1,
   Location: 2,
   Membership: 3,
+  CorporateInfo: 4,
+  RefugeeInfo: 4,
   Details: 4,
   Projects: 5,
   Photo: 6,
@@ -34,17 +48,24 @@ function withFarmerLayout<P extends object>(
 ) {
   return function WrappedScreen(props: P) {
     const step = FARMER_STEP_MAP[routeName] ?? 0;
-    const isConfirm = routeName === 'Confirm';
+    const body =
+      routeName === 'Confirm' ? (
+        <Screen {...props} />
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Screen {...props} />
+        </ScrollView>
+      );
 
     return (
-      <RegistrationKeyboardLayout
-        scrollable={!isConfirm}
-        header={
-          <StepIndicator currentStep={step} totalSteps={8} labels={FARMER_STEP_LABELS} />
-        }
-      >
-        <Screen {...props} />
-      </RegistrationKeyboardLayout>
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <StepIndicator currentStep={step} totalSteps={8} labels={FARMER_STEP_LABELS} />
+        {body}
+      </SafeAreaView>
     );
   };
 }
@@ -63,11 +84,13 @@ export function AgentFarmerRegistrationNavigator() {
       <Stack.Screen
         name="Country"
         component={withFarmerLayout(CountrySelectionScreen, 'Country')}
-        options={{ title: 'Register farmer' }}
+        options={{ title: 'Register member' }}
       />
       <Stack.Screen name="BasicInfo" component={withFarmerLayout(BasicInfoScreen, 'BasicInfo')} />
       <Stack.Screen name="Location" component={withFarmerLayout(LocationScreen, 'Location')} />
       <Stack.Screen name="Membership" component={withFarmerLayout(MembershipScreen, 'Membership')} />
+      <Stack.Screen name="RefugeeInfo" component={withFarmerLayout(RefugeeInfoScreen, 'RefugeeInfo')} />
+      <Stack.Screen name="CorporateInfo" component={withFarmerLayout(CorporateInfoScreen, 'CorporateInfo')} />
       <Stack.Screen name="Details" component={withFarmerLayout(DetailsScreen, 'Details')} />
       <Stack.Screen name="Projects" component={withFarmerLayout(ProjectsScreen, 'Projects')} />
       <Stack.Screen name="Photo" component={withFarmerLayout(PhotoScreen, 'Photo')} />
@@ -75,3 +98,9 @@ export function AgentFarmerRegistrationNavigator() {
     </Stack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: COLORS.background },
+  scroll: { flex: 1 },
+  content: { padding: 16, paddingBottom: 32 },
+});

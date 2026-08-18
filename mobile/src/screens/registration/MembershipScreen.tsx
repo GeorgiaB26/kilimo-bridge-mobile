@@ -6,10 +6,16 @@ import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { MEMBERSHIP_TYPES } from '../../constants';
 import { fetchReferenceData, fetchAggregationCentresByLocation } from '../../api/client';
 import { useRegistrationStore } from '../../store/registrationStore';
 import { getCurrencyForCountry } from '../../utils/currencyMap';
+import {
+  MembershipCategoryFields,
+  validateMembershipCategoryFields,
+  membershipCategoryForSubmit,
+} from '../../components/registration/MembershipCategoryFields';
+import { CURRENCY_OPTIONS } from '../../constants/registrationCategories';
+import { REFUGEE_MEMBERSHIP_CATEGORY } from '../../constants/refugeeRegistration';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'Membership'>;
@@ -33,10 +39,13 @@ export function MembershipScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!formData.currency && formData.country) {
-      updateForm({ currency: getCurrencyForCountry(formData.country).code });
+    if (formData.country) {
+      const auto = getCurrencyForCountry(formData.country).code;
+      if (!formData.currency || formData.currency === auto) {
+        updateForm({ currency: auto });
+      }
     }
-  }, [formData.country, formData.currency, updateForm]);
+  }, [formData.country, updateForm]);
 
   useEffect(() => {
     if (!formData.country || !formData.district) {
@@ -60,7 +69,6 @@ export function MembershipScreen({ navigation }: Props) {
           setCentreWarning(
             'No aggregation centres are set up for this location yet. You can leave the centre blank or type a name and continue — admin can link a centre later.'
           );
-          // Keep any manual name the agent already typed; clear only a stale picker id
           updateForm({ aggregationCentreId: '' });
         } else if (!formData.aggregationCenter || !list.some((c) => c.name === formData.aggregationCenter)) {
           updateForm({
@@ -88,20 +96,40 @@ export function MembershipScreen({ navigation }: Props) {
   const validate = () => {
     const e: Record<string, string> = {};
     if (!formData.membershipGroup) e.membershipGroup = 'Membership group is required';
-    if (!formData.membershipType) e.membershipType = 'Membership type is required';
     if (!formData.currency) e.currency = 'Currency preference is required';
-    // Aggregation centre is optional — soft warning only when none match the location
+    const catErrors = validateMembershipCategoryFields(formData);
+    Object.assign(e, catErrors);
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  const handleNext = () => {
+    if (!validate()) return;
+    const membershipCategory = membershipCategoryForSubmit(formData);
+    updateForm({ membershipCategory: membershipCategory ?? formData.membershipCategory });
+    if (formData.registrationCategory === 'corporate') {
+      navigation.navigate('CorporateInfo');
+    } else if (formData.membershipCategory === REFUGEE_MEMBERSHIP_CATEGORY) {
+      navigation.navigate('RefugeeInfo');
+    } else {
+      navigation.navigate('Details');
+    }
+  };
+
   const centreNames = centres.map((c) => c.name);
+  const isCorporate = formData.registrationCategory === 'corporate';
 
   return (
-    <View>
-      <ScreenHeader title="Membership" subtitle="Cooperative and aggregation centre" />
+    <View className="flex-1">
+      <ScreenHeader
+        title="Membership"
+        subtitle={isCorporate ? 'Organization category & cooperative' : 'Category & cooperative'}
+      />
+
+      <MembershipCategoryFields formData={formData} updateForm={updateForm} errors={errors} />
+
       <PickerField
-        label="Membership Group"
+        label="Membership Group / Cooperative"
         value={formData.membershipGroup}
         options={groups}
         onSelect={(membershipGroup) => updateForm({ membershipGroup })}
@@ -146,34 +174,24 @@ export function MembershipScreen({ navigation }: Props) {
           />
         </View>
       )}
+
       <PickerField
-        label="Membership Type"
-        value={formData.membershipType ?? 'Active'}
-        options={MEMBERSHIP_TYPES}
-        onSelect={(membershipType) => updateForm({ membershipType })}
+        label="Currency preference"
+        value={formData.currency ?? ''}
+        options={[...CURRENCY_OPTIONS]}
+        onSelect={(currency) => updateForm({ currency })}
         required
-        error={errors.membershipType}
+        error={errors.currency}
       />
-      <View className="mb-4">
-        <Text className="mb-1 text-sm font-semibold text-[#333333]">Currency preference</Text>
-        <View className="rounded-lg border border-[#E0E0E0] bg-[#E0E0E0] px-3 py-3 opacity-90">
-          <Text className="text-[15px] text-[#757575]">
-            {formData.currency ?? (formData.country ? getCurrencyForCountry(formData.country).code : '—')}
-          </Text>
-        </View>
-        <Text className="mt-1 text-xs text-[#757575]">
-          Currency automatically set based on selected country
-        </Text>
-        {errors.currency ? <Text className="mt-1 text-xs text-[#D32F2F]">{errors.currency}</Text> : null}
-      </View>
+      <Text className="mb-3 text-xs text-[#757575]">
+        Auto-set from country — change here if needed.
+      </Text>
+
       <View className="mt-2 flex-row gap-3">
         <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>
           <Text>Back</Text>
         </Button>
-        <Button
-          className="h-12 flex-1 bg-[#1A4D3E]"
-          onPress={() => validate() && navigation.navigate('Details')}
-        >
+        <Button className="h-12 flex-1 bg-[#1A4D3E]" onPress={handleNext}>
           <Text className="text-white">Next</Text>
         </Button>
       </View>

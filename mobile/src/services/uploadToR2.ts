@@ -5,8 +5,8 @@ export type UploadPurpose =
   | 'farmer_registration'
   | 'task_evidence'
   | 'farmer_profile'
-  | 'support_attachment';
-export type UploadContentType = 'image/jpeg' | 'image/png' | 'image/webp';
+  | 'refugee_document';
+export type UploadContentType = 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
 
 export interface PresignUploadResult {
   uploadUrl: string;
@@ -110,6 +110,27 @@ async function uriToBytes(
   return { bytes, contentType };
 }
 
+async function uriToDocumentBytes(uri: string, contentType: UploadContentType): Promise<Uint8Array> {
+  if (Platform.OS !== 'web' && (uri.startsWith('file:') || uri.startsWith('content:'))) {
+    try {
+      const FileSystem = await import('expo-file-system');
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const { bytes } = base64ToUint8Array(`data:${contentType};base64,${base64}`);
+      return bytes;
+    } catch {
+      // fall through
+    }
+  }
+  const response = await fetch(uri);
+  if (!response.ok) {
+    throw new Error('Could not read the selected document from the device');
+  }
+  const buffer = await response.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
 export async function requestUploadPresign(params: {
   purpose: UploadPurpose;
   contentType: UploadContentType;
@@ -120,13 +141,55 @@ export async function requestUploadPresign(params: {
   return data;
 }
 
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
+
+function guessDocumentContentType(uri: string, mimeType?: string | null): UploadContentType {
+  const mime = (mimeType ?? '').toLowerCase();
+  if (mime === 'application/pdf' || uri.toLowerCase().endsWith('.pdf')) return 'application/pdf';
+  if (mime === 'image/png' || uri.toLowerCase().endsWith('.png')) return 'image/png';
+  return 'image/jpeg';
+}
+
+async function putDocumentBytesToR2(
+  purpose: UploadPurpose,
+  bytes: Uint8Array,
+  contentType: UploadContentType
+): Promise<{ objectKey: string; previewUrl: string; contentType: UploadContentType }> {
+  return putBytesToR2(purpose, bytes, contentType);
+}
+
+export async function uploadRefugeeDocumentToR2(params: {
+  localUri?: string | null;
+  base64?: string | null;
+  mimeType?: string | null;
+}): Promise<{ objectKey: string; previewUrl: string; contentType: UploadContentType }> {
+  if (params.base64?.trim()) {
+    const decoded = base64ToUint8Array(params.base64);
+    const contentType =
+      decoded.contentType === 'application/pdf' ? 'application/pdf' : decoded.contentType;
+    return putDocumentBytesToR2('refugee_document', decoded.bytes, contentType);
+  }
+  if (!params.localUri?.trim()) {
+    throw new Error('Refugee document is required before registration can sync');
+  }
+  const contentType = guessDocumentContentType(params.localUri, params.mimeType);
+  const bytes = await uriToDocumentBytes(params.localUri, contentType);
+  return putDocumentBytesToR2('refugee_document', bytes, contentType);
+}
+
 async function putBytesToR2(
   purpose: UploadPurpose,
   bytes: Uint8Array,
   contentType: UploadContentType,
   farmerTaskId?: string
 ): Promise<{ objectKey: string; previewUrl: string; contentType: UploadContentType }> {
-  assertPhotoBytes(bytes, 'Photo');
+  if (purpose === 'refugee_document') {
+    if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
+      throw new Error('File is too large (max 5MB). Please compress and try again.');
+    }
+  } else {
+    assertPhotoBytes(bytes, 'Photo');
+  }
 
   // Web: R2 CORS is configured for known origins (Lovable + localhost:8081–8083), so a
   // browser PUT to a presigned URL can work. We still relay via Express so uploads don't

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 
@@ -9,77 +9,25 @@ interface Props {
 }
 
 export function RegisterNewFarmerButton({ onPress, compact }: Props) {
-  if (compact) {
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityLabel="Register farmer"
-        style={({ pressed }) => [styles.compactBtn, pressed ? styles.pressed : null]}
-      >
-        <Ionicons name="add" size={16} color="#000" />
-        <Text style={styles.compactLabel} numberOfLines={1}>
-          Register Farmer
-        </Text>
-      </Pressable>
-    );
-  }
-
   return (
     <Pressable
       onPress={onPress}
-      accessibilityLabel="Register new farmer"
-      style={({ pressed }) => [styles.fullBtn, pressed ? styles.pressed : null]}
+      accessibilityLabel="Register new member"
+      className={compact ? 'rounded-lg bg-[#FFD700] px-3 py-2' : 'rounded-lg bg-[#FFD700] px-4 py-3'}
+      style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 }}
     >
       <Ionicons name="add" size={20} color="#000" />
-      <Text style={styles.fullLabel}>Register Farmer</Text>
+      <Text className="text-sm font-bold text-black">
+        {compact ? 'NEW MEMBER' : 'REGISTER NEW MEMBER'}
+      </Text>
     </Pressable>
   );
 }
 
 export function RegisterNewFarmerBanner({ onPress }: Props) {
   return (
-    <View style={styles.banner}>
+    <View className="mb-4 flex-row justify-end">
       <RegisterNewFarmerButton onPress={onPress} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  compactBtn: {
-    height: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    backgroundColor: '#FFD700',
-  },
-  compactLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  fullBtn: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#FFD700',
-  },
-  fullLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  banner: {
-    marginBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-});

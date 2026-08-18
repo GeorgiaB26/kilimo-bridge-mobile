@@ -9,7 +9,11 @@ import { logAudit } from './auditService';
 import { assignAggregationCentre } from './aggregationCentreService';
 import { linkFarmerToUser } from './userService';
 import { PENDING_LOCATION_LABEL } from '../../../shared/src/constants';
-import { enrollFarmerInProgramProjects, getFarmerProjectSummaries } from './farmerProgramService';
+import {
+  enrollFarmerInProgramProjects,
+  enrollFarmerInProjectById,
+  getFarmerProjectSummaries,
+} from './farmerProgramService';
 import { isOwnFarmerProfilePhotoKey, resolvePhotoUrlForDisplay } from './r2StorageService';
 import { validateFarmerPhotoRequired } from '../../../shared/src/farmerPhoto';
 
@@ -175,16 +179,49 @@ export async function createFarmer(
   const membershipType = input.membershipType ?? 'Active';
   const registeredByAgentId = await resolveRegisteredByAgentId(registeredBy);
   const farmerStatus = mapFarmerStatus(membershipType, !!registeredByAgentId);
+  const registrationCategory = input.registrationCategory ?? 'individual';
+  const membershipStatus = 'pending_verification';
+  const ward = (input.ward ?? input.parish)?.trim() || null;
+  const parish = input.parish ?? ward;
+  const familySizeRaw = input.familySize;
+  const familySize =
+    familySizeRaw !== undefined && familySizeRaw !== null && String(familySizeRaw).trim() !== ''
+      ? parseInt(String(familySizeRaw), 10)
+      : null;
+  const dependantsRaw = input.numberOfDependants;
+  const numberOfDependants =
+    dependantsRaw !== undefined && dependantsRaw !== null && String(dependantsRaw).trim() !== ''
+      ? parseInt(String(dependantsRaw), 10)
+      : null;
+  const specialNeeds =
+    input.specialNeeds === true ||
+    input.specialNeeds === 'yes' ||
+    input.specialNeeds === 'Yes' ||
+    input.specialNeeds === 'true';
+  const isRefugee =
+    input.isRefugee === true ||
+    input.membershipCategory?.trim() === 'Refugee' ||
+    input.membershipCategory?.startsWith('Refugee');
 
   await query(
     `INSERT INTO farmers (
       farmer_id, key, name, gender, id_number_encrypted, id_number_hash, bank_account_encrypted,
       membership_group_id, aggregation_center, phone_number, phone_country_prefix,
-      country, district, sub_county, parish, village,
-      membership_type, occupation, size_of_land,
+      country, district, sub_county, parish, village, ward,
+      membership_type, registration_category, membership_category, membership_status,
+      occupation, profession, size_of_land, land_unit, farm_input_required,
+      family_size, number_of_dependants, special_needs, project_location_gps, currency,
+      project_enrolment_sector, project_enrolment_programme, project_enrolment_project,
+      organization_name, organization_registration_number, tax_pin,
+      contact_person_name, contact_person_role, contact_person_email,
+      refugee_status_document_url, humanitarian_assistance_type, preferred_language,
+      emergency_contact_name, emergency_contact_phone, special_vulnerabilities, is_refugee,
       picture_url, status, registered_by_agent_id
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+      $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
+      $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46,
+      $47, $48, $49, $50, $51
     )`,
     [
       farmerId,
@@ -201,16 +238,52 @@ export async function createFarmer(
       country,
       input.district,
       input.subCounty,
-      input.parish ?? null,
+      parish ?? null,
       input.village ?? null,
+      ward,
       membershipType,
+      registrationCategory,
+      input.membershipCategory ?? null,
+      membershipStatus,
       input.occupation ?? null,
+      input.profession ?? null,
       input.sizeOfLand ?? null,
+      input.landUnit ?? 'Ha',
+      input.farmInputRequired ?? null,
+      familySize,
+      numberOfDependants,
+      specialNeeds,
+      input.projectLocationGps ?? null,
+      input.currency ?? null,
+      input.projectEnrolmentSectorId ?? null,
+      input.projectEnrolmentProgramId ?? null,
+      input.projectEnrolmentProjectId ?? null,
+      input.organizationName ?? null,
+      input.organizationRegistrationNumber ?? null,
+      input.taxPin ?? null,
+      input.contactPersonName ?? null,
+      input.contactPersonRole ?? null,
+      input.contactPersonEmail ?? null,
+      input.refugeeStatusDocumentUrl ?? null,
+      input.humanitarianAssistanceType ?? null,
+      input.preferredLanguage ?? null,
+      input.emergencyContactName ?? null,
+      input.emergencyContactPhone ?? null,
+      input.specialVulnerabilities ?? null,
+      isRefugee,
       input.picture ?? null,
       farmerStatus,
       registeredByAgentId,
     ]
   );
+
+  if (
+    registrationCategory === 'individual' &&
+    !input.skipProjectEnrolment &&
+    input.projectEnrolmentProjectId?.trim()
+  ) {
+    await enrollFarmerInProjectById(farmerId, input.projectEnrolmentProjectId.trim());
+  }
 
   await logAudit({
     userId: registeredBy,
@@ -530,10 +603,7 @@ export async function updateFarmerLocation(
   });
 }
 
-export async function updateFarmerPicture(
-  farmerId: string,
-  pictureUrl: string
-): Promise<{ status: string }> {
+export async function updateFarmerPicture(farmerId: string, pictureUrl: string): Promise<void> {
   const photoError = validateFarmerPhotoRequired(pictureUrl);
   if (photoError) throw new Error(photoError);
 
@@ -542,21 +612,15 @@ export async function updateFarmerPicture(
     throw new Error('Invalid profile photo key for this farmer');
   }
 
-  const farmer = await queryOne<{ farmer_id: string; status: string }>(
-    'SELECT farmer_id, status FROM farmers WHERE farmer_id = $1',
+  const exists = await queryOne<{ farmer_id: string }>(
+    'SELECT farmer_id FROM farmers WHERE farmer_id = $1',
     [farmerId]
   );
-  if (!farmer) throw new Error('Farmer not found');
-
-  const previousStatus = farmer.status;
-  // New/changed verification photos need a field agent in-person check.
-  // Keep pending_review so PM queue order is preserved until they advance the farmer.
-  const nextStatus =
-    previousStatus === 'pending_review' ? previousStatus : 'pending_field_verification';
+  if (!exists) throw new Error('Farmer not found');
 
   await query(
-    `UPDATE farmers SET picture_url = $1, status = $2, updated_at = NOW() WHERE farmer_id = $3`,
-    [key, nextStatus, farmerId]
+    `UPDATE farmers SET picture_url = $1, updated_at = NOW() WHERE farmer_id = $2`,
+    [key, farmerId]
   );
 
   await logAudit({
@@ -564,17 +628,9 @@ export async function updateFarmerPicture(
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: {
-      field: 'picture_url',
-      objectKey: key,
-      previous_status: previousStatus,
-      farmer_status: nextStatus,
-      requires_field_verification: nextStatus === 'pending_field_verification',
-    },
+    details: { field: 'picture_url', objectKey: key },
     success: true,
   });
-
-  return { status: nextStatus };
 }
 
 export { PENDING_LOCATION_LABEL };

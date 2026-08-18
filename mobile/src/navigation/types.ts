@@ -26,8 +26,9 @@ export type FarmerTabParamList = {
       | 'completed';
     highlightTaskId?: string;
     taskId?: string;
-    /** When true, open Edit/submit modal after scrolling (e.g. rejected-task notifications). */
+    /** Open submit/resubmit modal after deep-link (e.g. QC failure notification). */
     openSubmitModal?: boolean;
+    fromNotification?: boolean;
   } | undefined;
   Payments: { highlightPaymentId?: string } | undefined;
   Profile: undefined;
@@ -161,6 +162,8 @@ export type RegistrationStackParamList = {
   BasicInfo: undefined;
   Location: undefined;
   Membership: undefined;
+  RefugeeInfo: undefined;
+  CorporateInfo: undefined;
   Details: undefined;
   Projects: undefined;
   Photo: undefined;
