@@ -229,8 +229,14 @@ router.get(
       res.status(403).json({ error: 'Agents only' });
       return;
     }
-    const requests = await listOpenHelpRequestsForAgent(req.user!.userId);
-    res.json({ requests });
+    try {
+      const requests = await listOpenHelpRequestsForAgent(req.user!.userId);
+      res.json({ requests });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Could not load help requests',
+      });
+    }
   })
 );
 

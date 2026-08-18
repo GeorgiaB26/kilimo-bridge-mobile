@@ -485,7 +485,7 @@ export async function listOpenHelpRequestsForAgent(agentUserId: string) {
     SELECT h.id, h.farmer_id, h.message, h.status, h.created_at,
            f.name AS farmer_name, f.phone_number AS farmer_phone
     FROM farmer_help_requests h
-    JOIN farmers f ON f.farmer_id = h.farmer_id
+    JOIN farmers f ON f.farmer_id::text = h.farmer_id
     WHERE h.assigned_agent_user_id = $1 AND h.status = 'open'
     ORDER BY h.created_at DESC
     `,
