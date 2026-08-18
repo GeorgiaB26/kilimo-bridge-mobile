@@ -267,7 +267,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
 const styles = StyleSheet.create({
   card: { maxHeight: '92%', backgroundColor: COLORS.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  content: { padding: 20, paddingBottom: 80 },
+  content: { padding: 20 },
   closeRow: { alignSelf: 'flex-end', marginBottom: 4 },
   closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 16 },

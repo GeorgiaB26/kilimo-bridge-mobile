@@ -50,7 +50,7 @@ export function FarmerHelpModal({
       visible={visible}
       onRequestClose={handleClose}
       backdropPressDisabled={loading}
-      sheetClassName="rounded-t-2xl bg-white px-5 pb-8 pt-5"
+      sheetClassName="rounded-t-2xl bg-white px-5 pt-5"
     >
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-lg font-bold text-[#1A4D3E]">Get in touch with your field agent</Text>

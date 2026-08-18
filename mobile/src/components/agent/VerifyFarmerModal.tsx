@@ -50,7 +50,7 @@ export function VerifyFarmerModal({
       visible={visible}
       onRequestClose={handleClose}
       backdropPressDisabled={loading}
-      sheetClassName="rounded-t-2xl bg-white p-5 pb-8"
+      sheetClassName="rounded-t-2xl bg-white p-5"
     >
       <Text className="mb-1 text-xl font-bold text-[#1A4D3E]">Verify Farmer</Text>
       <Text className="mb-1 text-base font-semibold text-[#333333]">{farmerName}</Text>

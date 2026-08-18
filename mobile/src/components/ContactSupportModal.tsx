@@ -164,7 +164,7 @@ export function ContactSupportModal({
       onRequestClose={handleClose}
       scrollable
       backdropPressDisabled={submitting}
-      sheetClassName="max-h-[92%] rounded-t-2xl bg-white px-5 pb-8 pt-5"
+      sheetClassName="max-h-[92%] rounded-t-2xl bg-white px-5 pt-5"
     >
           <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-lg font-bold text-[#1A4D3E]">Contact Support</Text>

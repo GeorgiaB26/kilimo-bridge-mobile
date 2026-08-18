@@ -11,6 +11,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   modalKeyboardVerticalOffset,
   useScrollFocusedInputIntoView,
@@ -50,6 +51,21 @@ export type KeyboardBottomSheetProps = {
 const webBackdropCursor =
   Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
+function withBottomInset(
+  style: StyleProp<ViewStyle> | undefined,
+  extra: number,
+): StyleProp<ViewStyle> {
+  if (extra <= 0) return style;
+  const flat = StyleSheet.flatten(style);
+  const current =
+    typeof flat?.paddingBottom === 'number'
+      ? flat.paddingBottom
+      : typeof flat?.padding === 'number'
+        ? flat.padding
+        : 0;
+  return [style, { paddingBottom: current + extra }];
+}
+
 export function KeyboardBottomSheet({
   visible,
   onRequestClose,
@@ -68,7 +84,9 @@ export function KeyboardBottomSheet({
   avoidingViewStyle,
   animationType = 'none',
 }: KeyboardBottomSheetProps) {
+  const insets = useSafeAreaInsets();
   const isBottom = variant === 'bottom';
+  const bottomInset = isBottom ? insets.bottom : 0;
   const defaultOverlayClass = isBottom
     ? 'flex-1 justify-end bg-black/40'
     : 'flex-1 justify-center bg-black/45 p-4';
@@ -100,6 +118,9 @@ export function KeyboardBottomSheet({
     ...restScrollViewProps
   } = scrollViewProps ?? {};
 
+  /** Footer already clears the nav bar — don't double-pad the scroller. */
+  const scrollBottomInset = footer ? 0 : bottomInset;
+
   const sheetBody = scrollable ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -110,7 +131,7 @@ export function KeyboardBottomSheet({
       {...restScrollViewProps}
       ref={setScrollRef}
       style={[styles.scrollFill, scrollStyle]}
-      contentContainerStyle={contentContainerStyle}
+      contentContainerStyle={withBottomInset(contentContainerStyle, scrollBottomInset)}
       onScroll={handleScroll}
     >
       {children}
@@ -144,11 +165,15 @@ export function KeyboardBottomSheet({
         ) : null}
         <View
           className={sheetClassName ?? defaultSheetClass}
-          style={sheetStyle}
+          style={withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0)}
         >
           {header}
           {sheetBody}
-          {footer}
+          {footer ? (
+            <View style={bottomInset > 0 ? { paddingBottom: bottomInset } : undefined}>
+              {footer}
+            </View>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Modal>

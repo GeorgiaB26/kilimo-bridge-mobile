@@ -394,7 +394,7 @@ export function AdminTasksScreen() {
         onRequestClose={() => setSelected(null)}
         scrollable
         backdropPressDisabled={acting}
-        sheetClassName="max-h-[85%] rounded-t-2xl bg-white p-5 pb-10"
+        sheetClassName="max-h-[85%] rounded-t-2xl bg-white p-5"
       >
             <Pressable onPress={() => setSelected(null)} className="mb-2 self-end">
               <View className="flex-row items-center gap-1">
