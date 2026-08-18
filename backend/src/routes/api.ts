@@ -41,6 +41,15 @@ function asyncHandler(
   };
 }
 
+function postgresErrorFields(err: unknown): { code?: string; constraint?: string } {
+  if (!err || typeof err !== 'object') return {};
+  const e = err as { code?: unknown; constraint?: unknown };
+  return {
+    code: typeof e.code === 'string' ? e.code : undefined,
+    constraint: typeof e.constraint === 'string' ? e.constraint : undefined,
+  };
+}
+
 router.get('/reference', asyncHandler(async (_req, res) => {
   res.json({
     districts: DISTRICTS,
@@ -324,9 +333,17 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
       kbFarmerId: result.normalized.kbFarmerId,
     });
   } catch (err) {
+    const pg = postgresErrorFields(err);
+    if (pg.code === '23505' && pg.constraint === 'idx_farmers_tax_pin') {
+      res.status(409).json({
+        success: false,
+        error: 'This tax PIN is already registered to another farmer',
+      });
+      return;
+    }
     res.status(500).json({
       success: false,
-      error: err instanceof Error ? err.message : 'Registration failed',
+      error: 'Registration failed. Please try again.',
     });
   }
 }));

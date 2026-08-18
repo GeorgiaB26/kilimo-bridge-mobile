@@ -260,7 +260,7 @@ export async function createFarmer(
       input.projectEnrolmentProjectId ?? null,
       input.organizationName ?? null,
       input.organizationRegistrationNumber ?? null,
-      input.taxPin ?? null,
+      input.taxPin?.trim() || null,
       input.contactPersonName ?? null,
       input.contactPersonRole ?? null,
       input.contactPersonEmail ?? null,
