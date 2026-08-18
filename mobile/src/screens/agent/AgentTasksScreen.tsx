@@ -9,7 +9,6 @@ import {
   TextInput,
   Pressable,
   Platform,
-  Image,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
@@ -48,7 +47,9 @@ import {
   fetchAgentTasksForCache,
 } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { scheduleAgentTaskPhotoWarm } from '../../services/offlineTaskPhotoCache';
 import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
+import { TaskEvidenceImage } from '../../components/TaskEvidenceImage';
 import { OutboxAgentTaskApprovalCard } from '../../components/OutboxAgentTaskApprovalCard';
 import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
 import {
@@ -333,8 +334,9 @@ function TaskSection({
                   <Text className="text-sm text-[#757575]">No notes provided.</Text>
                 )}
                 {photoUrl ? (
-                  <Image
-                    source={{ uri: photoUrl }}
+                  <TaskEvidenceImage
+                    taskId={item.id}
+                    remoteUrl={photoUrl}
                     className="h-40 w-full rounded-xl bg-[#F0F0F0]"
                     resizeMode="cover"
                     accessibilityLabel="Task photo evidence"
@@ -577,6 +579,9 @@ export function AgentTasksScreen() {
         setCacheFetchedAt(
           tasksResult.result.fromCache ? tasksResult.result.fetchedAt : null
         );
+        if (!tasksResult.result.fromCache) {
+          scheduleAgentTaskPhotoWarm(userScope);
+        }
         hasLoadedRef.current = true;
       } else if (!hasLoadedRef.current) {
         setCacheFetchedAt(null);

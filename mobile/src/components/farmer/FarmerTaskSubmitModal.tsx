@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, Image, StyleSheet, TextInput, Pressable, Platform,
+  View, Text, Image, StyleSheet, TextInput, Pressable, Platform, ScrollView,
 } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -37,6 +37,7 @@ interface Props {
 }
 
 export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: Props) {
+  const scrollRef = useRef<ScrollView>(null);
   const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
@@ -172,6 +173,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
       visible={visible}
       onRequestClose={close}
       scrollable
+      scrollViewRef={scrollRef}
       backdropPressDisabled={submitting || picking}
       sheetStyle={styles.card}
       scrollViewProps={{ contentContainerStyle: styles.content }}
@@ -239,6 +241,14 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
                     setNotesError('');
                   }
                 }}
+                onFocus={() => {
+                  requestAnimationFrame(() => {
+                    scrollRef.current?.scrollToEnd({ animated: true });
+                  });
+                  setTimeout(() => {
+                    scrollRef.current?.scrollToEnd({ animated: true });
+                  }, 280);
+                }}
                 placeholder="Add any notes about your work..."
               />
               <View style={styles.charCountRow}>
@@ -267,7 +277,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
 const styles = StyleSheet.create({
   card: { maxHeight: '92%', backgroundColor: COLORS.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { padding: 20, paddingBottom: 80 },
   closeRow: { alignSelf: 'flex-end', marginBottom: 4 },
   closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 16 },

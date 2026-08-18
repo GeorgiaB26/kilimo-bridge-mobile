@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text as RNText,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SquarePen } from 'lucide-react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -72,8 +73,11 @@ function threadDisplayName(item: ThreadRow): string {
   return item.other_user_name || 'Conversation';
 }
 
+const LIST_BOTTOM_EXTRA = 50;
+
 export function MessagesScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const userScope = useReadCacheUserScope();
   const isFarmer = user?.role === 'farmer';
@@ -316,6 +320,7 @@ export function MessagesScreen() {
           sections={sections}
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + LIST_BOTTOM_EXTRA }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>

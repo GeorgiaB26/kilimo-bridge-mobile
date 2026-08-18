@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Pressable, Alert, Platform, TextInput, Image } from 'react-native';
+import { View, Pressable, Alert, Platform, TextInput } from 'react-native';
 import { Bell, X } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { KBCard } from '../ui/KBCard';
 import { KBStatusChip } from '../ui/KBStatusChip';
 import { KeyboardBottomSheet } from '../ui/KeyboardBottomSheet';
+import { TaskEvidenceImage } from '../TaskEvidenceImage';
 import { formatCleanDate } from '../../utils/greeting';
 import {
   isSubmittedForApprovalStatus,
@@ -227,8 +228,9 @@ export function AgentTaskDetailModal({
                 {photoUrl ? (
                   <View>
                     <Text className="mb-2 text-xs font-semibold text-[#757575]">Photo evidence</Text>
-                    <Image
-                      source={{ uri: photoUrl }}
+                    <TaskEvidenceImage
+                      taskId={task.id}
+                      remoteUrl={photoUrl}
                       className="h-52 w-full rounded-xl bg-[#F0F0F0]"
                       resizeMode="cover"
                       accessibilityLabel="Task photo evidence"

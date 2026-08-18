@@ -17,6 +17,7 @@ import {
   fetchFarmerProjectsForCache,
   fetchMessageThreadsForCache,
 } from './readCacheFetchers';
+import { scheduleAgentTaskPhotoWarm } from './offlineTaskPhotoCache';
 
 const IS_DEV =
   typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
@@ -274,6 +275,12 @@ async function warmOnce(userScope: string, role: string): Promise<WarmReadCaches
   if (isAgentRole(normalized)) {
     const warmed = await runWithConcurrency(buildAgentJobs(), userScope, WARM_CONCURRENCY);
     lastWarmAtByScope.set(userScope, Date.now());
+    const tasksWarmed = warmed.some(
+      (row) => row.ok && row.cacheKey === READ_CACHE_KEYS.agentTasks
+    );
+    if (tasksWarmed) {
+      scheduleAgentTaskPhotoWarm(userScope);
+    }
     return { skipped: false, userScope, warmed };
   }
 

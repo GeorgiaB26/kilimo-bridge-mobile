@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Modal,
   View,
@@ -11,10 +11,14 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import {
-  KEYBOARD_AVOIDING_BEHAVIOR,
-  modalKeyboardVerticalOffset,
-} from '../../utils/keyboardAvoiding';
+import { modalKeyboardVerticalOffset } from '../../utils/keyboardAvoiding';
+
+/**
+ * Bottom-sheet KAV: `padding` on both platforms.
+ * Android `height` plus `adjustResize` shrinks the overlay; a flex backdrop then
+ * eats the remaining space instead of lifting the sheet.
+ */
+export const SHEET_KEYBOARD_AVOIDING_BEHAVIOR = 'padding' as const;
 
 export type KeyboardBottomSheetProps = {
   visible: boolean;
@@ -23,6 +27,7 @@ export type KeyboardBottomSheetProps = {
   /** Wrap sheet body in ScrollView with keyboardShouldPersistTaps="handled". */
   scrollable?: boolean;
   scrollViewProps?: ScrollViewProps;
+  scrollViewRef?: React.Ref<ScrollView>;
   /** Bottom-aligned sheet (default) or centered dialog. */
   variant?: 'bottom' | 'center';
   /** Tap dimmed backdrop to dismiss (default true). */
@@ -44,6 +49,7 @@ export function KeyboardBottomSheet({
   children,
   scrollable = false,
   scrollViewProps,
+  scrollViewRef,
   variant = 'bottom',
   dismissOnBackdropPress = true,
   backdropPressDisabled = false,
@@ -61,11 +67,25 @@ export function KeyboardBottomSheet({
     ? 'max-h-[92%] rounded-t-2xl bg-white'
     : 'max-h-[85%] rounded-xl bg-white p-5';
 
+  const innerScrollRef = useRef<ScrollView>(null);
+
+  const setScrollRef = (node: ScrollView | null) => {
+    innerScrollRef.current = node;
+    if (!scrollViewRef) return;
+    if (typeof scrollViewRef === 'function') {
+      scrollViewRef(node);
+    } else {
+      (scrollViewRef as React.MutableRefObject<ScrollView | null>).current = node;
+    }
+  };
+
   const sheetBody = scrollable ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
       {...scrollViewProps}
+      ref={setScrollRef}
     >
       {children}
     </ScrollView>
@@ -84,7 +104,7 @@ export function KeyboardBottomSheet({
       <KeyboardAvoidingView
         style={[styles.avoiding, avoidingViewStyle]}
         className={overlayClassName ?? defaultOverlayClass}
-        behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+        behavior={SHEET_KEYBOARD_AVOIDING_BEHAVIOR}
         keyboardVerticalOffset={modalKeyboardVerticalOffset()}
       >
         {dismissOnBackdropPress ? (
@@ -93,7 +113,7 @@ export function KeyboardBottomSheet({
             accessibilityLabel="Dismiss"
             onPress={onRequestClose}
             disabled={backdropPressDisabled}
-            style={[styles.backdrop, webBackdropCursor]}
+    style={[styles.backdrop, webBackdropCursor]}
           />
         ) : null}
         <View
@@ -112,6 +132,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backdrop: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });

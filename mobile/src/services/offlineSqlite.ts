@@ -52,6 +52,15 @@ const OFFLINE_SCHEMA_SQL = `
     created_at TEXT NOT NULL,
     sync_error TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS task_photo_cache (
+    user_scope TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    remote_url TEXT NOT NULL,
+    local_uri TEXT NOT NULL,
+    accessed_at TEXT NOT NULL,
+    PRIMARY KEY (user_scope, task_id)
+  );
 `;
 
 let sqliteDb: OfflineSqliteDb | null = null;
