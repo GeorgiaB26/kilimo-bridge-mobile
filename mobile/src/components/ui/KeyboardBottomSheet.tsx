@@ -170,7 +170,7 @@ export function KeyboardBottomSheet({
           {header}
           {sheetBody}
           {footer ? (
-            <View style={bottomInset > 0 ? { paddingBottom: bottomInset } : undefined}>
+            <View style={[styles.footerWrap, bottomInset > 0 ? { paddingBottom: bottomInset } : null]}>
               {footer}
             </View>
           ) : null}
@@ -193,5 +193,9 @@ const styles = StyleSheet.create({
   },
   scrollFill: {
     flexShrink: 1,
+  },
+  footerWrap: {
+    width: '100%',
+    alignSelf: 'stretch',
   },
 });
