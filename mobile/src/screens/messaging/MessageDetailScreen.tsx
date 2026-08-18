@@ -6,6 +6,7 @@ import {
   Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Image,
   Text as RNText,
@@ -17,6 +18,10 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
+import {
+  KeyboardAvoidingView as KCAvoidingView,
+  KeyboardStickyView,
+} from 'react-native-keyboard-controller';
 import {
   KEYBOARD_AVOIDING_BEHAVIOR,
   screenKeyboardVerticalOffset,
@@ -104,12 +109,12 @@ export function MessageDetailScreen() {
     }
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
-      keyboardVerticalOffset={screenKeyboardVerticalOffset(90)}
-    >
+  const isWeb = Platform.OS === 'web';
+  const wrapComposer = (node: React.ReactNode) =>
+    isWeb ? node : <KeyboardStickyView>{node}</KeyboardStickyView>;
+
+  const screen = (
+    <>
       <View style={styles.header}>
         <Pressable
           onPress={() => {
@@ -196,10 +201,13 @@ export function MessageDetailScreen() {
       {error && messages.length > 0 ? <Text style={styles.error}>{error}</Text> : null}
 
       {isResolved ? (
+        wrapComposer(
         <View style={[styles.readOnlyBar, { paddingBottom: 12 + Math.max(insets.bottom, 0) }]}>
           <Text style={styles.readOnlyText}>Messaging is closed on resolved tickets.</Text>
         </View>
+        )
       ) : (
+        wrapComposer(
         <View style={[styles.inputRow, { paddingBottom: 10 + Math.max(insets.bottom, 0) }]}>
           <TextInput
             style={styles.input}
@@ -219,8 +227,12 @@ export function MessageDetailScreen() {
             <Text className="font-bold text-white">{sending ? '…' : 'Send'}</Text>
           </Pressable>
         </View>
+        )
       )}
+    </>
+  );
 
+  const supportModal = (
       <ContactSupportModal
         visible={supportOpen}
         onClose={() => setSupportOpen(false)}
@@ -243,7 +255,30 @@ export function MessageDetailScreen() {
           );
         }}
       />
-    </KeyboardAvoidingView>
+  );
+
+  if (isWeb) {
+    return (
+      <>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+          keyboardVerticalOffset={screenKeyboardVerticalOffset(90)}
+        >
+          {screen}
+        </KeyboardAvoidingView>
+        {supportModal}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <KCAvoidingView style={styles.container} behavior="padding" automaticOffset>
+        {screen}
+      </KCAvoidingView>
+      {supportModal}
+    </>
   );
 }
 
