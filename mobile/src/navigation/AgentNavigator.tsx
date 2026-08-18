@@ -62,7 +62,7 @@ function AgentTabNavigator() {
       <Tab.Screen
         name="Farmers"
         component={withAgentTabScene(AgentFarmersStackNavigator)}
-        options={{ title: 'Farmers' }}
+        options={{ title: 'Members' }}
       />
       <Tab.Screen
         name="Tasks"

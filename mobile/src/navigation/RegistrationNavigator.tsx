@@ -13,6 +13,7 @@ import { CountrySelectionScreen } from '../screens/registration/CountrySelection
 import { BasicInfoScreen } from '../screens/registration/BasicInfoScreen';
 import { LocationScreen } from '../screens/registration/LocationScreen';
 import { CorporateInfoScreen } from '../screens/registration/CorporateInfoScreen';
+import { RefugeeInfoScreen } from '../screens/registration/RefugeeInfoScreen';
 import { MembershipScreen } from '../screens/registration/MembershipScreen';
 import { DetailsScreen } from '../screens/registration/DetailsScreen';
 import { ProjectsScreen } from '../screens/registration/ProjectsScreen';
@@ -30,6 +31,7 @@ const FARMER_STEP_MAP: Partial<Record<keyof RegistrationStackParamList, number>>
   Location: 2,
   Membership: 3,
   CorporateInfo: 4,
+  RefugeeInfo: 4,
   Details: 4,
   Projects: 5,
   Photo: 6,
@@ -103,10 +105,11 @@ function RegistrationStack() {
           title: route.params.variant === 'project_manager' ? 'Project manager' : 'Admin',
         })}
       />
-      <Stack.Screen name="Country" component={withFarmerLayout(CountrySelectionScreen, 'Country')} options={{ title: 'Register farmer' }} />
+      <Stack.Screen name="Country" component={withFarmerLayout(CountrySelectionScreen, 'Country')} options={{ title: 'Register member' }} />
       <Stack.Screen name="BasicInfo" component={withFarmerLayout(BasicInfoScreen, 'BasicInfo')} />
       <Stack.Screen name="Location" component={withFarmerLayout(LocationScreen, 'Location')} />
       <Stack.Screen name="Membership" component={withFarmerLayout(MembershipScreen, 'Membership')} />
+      <Stack.Screen name="RefugeeInfo" component={withFarmerLayout(RefugeeInfoScreen, 'RefugeeInfo')} />
       <Stack.Screen name="CorporateInfo" component={withFarmerLayout(CorporateInfoScreen, 'CorporateInfo')} />
       <Stack.Screen name="Details" component={withFarmerLayout(DetailsScreen, 'Details')} />
       <Stack.Screen name="Projects" component={withFarmerLayout(ProjectsScreen, 'Projects')} />

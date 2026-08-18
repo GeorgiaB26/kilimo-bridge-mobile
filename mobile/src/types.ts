@@ -41,6 +41,17 @@ export interface RegistrationFormData {
   projectEnrolmentProgramId?: string;
   projectEnrolmentProjectId?: string;
   skipProjectEnrolment?: boolean;
+  refugeeStatusDocumentUrl?: string;
+  refugeeStatusDocumentUri?: string;
+  refugeeStatusDocumentBase64?: string;
+  humanitarianAssistanceType?: string;
+  humanitarianAssistanceOther?: string;
+  preferredLanguage?: string;
+  preferredLanguageOther?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  specialVulnerabilities?: string[] | string;
+  specialVulnerabilitiesOther?: string;
   pictureBase64?: string;
   project1?: string;
   project2?: string;

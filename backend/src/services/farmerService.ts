@@ -198,6 +198,10 @@ export async function createFarmer(
     input.specialNeeds === 'yes' ||
     input.specialNeeds === 'Yes' ||
     input.specialNeeds === 'true';
+  const isRefugee =
+    input.isRefugee === true ||
+    input.membershipCategory?.trim() === 'Refugee' ||
+    input.membershipCategory?.startsWith('Refugee');
 
   await query(
     `INSERT INTO farmers (
@@ -210,11 +214,14 @@ export async function createFarmer(
       project_enrolment_sector, project_enrolment_programme, project_enrolment_project,
       organization_name, organization_registration_number, tax_pin,
       contact_person_name, contact_person_role, contact_person_email,
+      refugee_status_document_url, humanitarian_assistance_type, preferred_language,
+      emergency_contact_name, emergency_contact_phone, special_vulnerabilities, is_refugee,
       picture_url, status, registered_by_agent_id
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
       $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-      $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43
+      $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46,
+      $47, $48, $49, $50, $51
     )`,
     [
       farmerId,
@@ -257,6 +264,13 @@ export async function createFarmer(
       input.contactPersonName ?? null,
       input.contactPersonRole ?? null,
       input.contactPersonEmail ?? null,
+      input.refugeeStatusDocumentUrl ?? null,
+      input.humanitarianAssistanceType ?? null,
+      input.preferredLanguage ?? null,
+      input.emergencyContactName ?? null,
+      input.emergencyContactPhone ?? null,
+      input.specialVulnerabilities ?? null,
+      isRefugee,
       input.picture ?? null,
       farmerStatus,
       registeredByAgentId,

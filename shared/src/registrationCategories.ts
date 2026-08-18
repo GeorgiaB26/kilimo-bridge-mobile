@@ -11,6 +11,7 @@ export const INDIVIDUAL_MEMBERSHIP_CATEGORIES = [
   'Social worker',
   'Social beneficiary',
   'Government worker (Inspectors, Agronomists, etc.)',
+  'Refugee',
   'Other',
 ] as const;
 

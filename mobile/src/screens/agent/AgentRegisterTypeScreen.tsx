@@ -37,8 +37,8 @@ export function AgentRegisterTypeScreen({ navigation }: Props) {
         <View className="flex-row items-center gap-3">
           <Sprout size={28} color="#1A4D3E" />
           <View className="flex-1">
-            <Text className="text-lg font-bold text-[#1A4D3E]">Farmer</Text>
-            <Text className="mt-1 text-sm text-[#757575]">Register a farmer in your aggregation centre</Text>
+            <Text className="text-lg font-bold text-[#1A4D3E]">Member</Text>
+            <Text className="mt-1 text-sm text-[#757575]">Register a member in your aggregation centre</Text>
           </View>
         </View>
       </Pressable>

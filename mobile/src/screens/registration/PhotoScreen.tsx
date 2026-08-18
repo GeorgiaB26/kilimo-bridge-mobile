@@ -74,7 +74,7 @@ export function PhotoScreen({ navigation }: Props) {
     <View className="flex-1">
       <ScreenHeader
         title="Verification photo"
-        subtitle="Required — take a clear photo of the farmer's face"
+        subtitle="Required — take a clear photo of the member's face"
       />
       <Text className="mb-4 text-sm text-[#757575]">
         This must be a real photo from your camera or gallery. Letter avatars are not accepted.
