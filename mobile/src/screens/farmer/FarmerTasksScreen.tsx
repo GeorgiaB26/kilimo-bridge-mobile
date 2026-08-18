@@ -41,7 +41,6 @@ import {
   categorizeTasks,
   isTaskOverdue,
   pickCategorizedTasks,
-  type TaskCategoryFilter,
 } from '../../utils/taskCategorization';
 import { formatDisplayDate, formatCleanDate } from '../../utils/greeting';
 import {
@@ -464,22 +463,13 @@ export function FarmerTasksScreen() {
   };
 
   const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
-  const displayCategories = useMemo(() => {
-    if (statusFilter === 'rejected') {
-      const rejected = tasks.filter(
-        (t) => normalizeTaskStatus(t.status) === 'rejected'
-      );
-      return {
-        overdue: [],
-        inProgress: [],
-        notStarted: rejected,
-        completed: [],
-      };
-    }
-    return statusFilter
-      ? pickCategorizedTasks(categorized, statusFilter as TaskCategoryFilter)
-      : categorized;
-  }, [categorized, statusFilter, tasks]);
+  const displayCategories = useMemo(
+    () =>
+      statusFilter
+        ? pickCategorizedTasks(categorized, statusFilter)
+        : categorized,
+    [categorized, statusFilter]
+  );
 
   const flatTasks = useMemo(
     () => [
@@ -1408,7 +1398,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
-    paddingBottom: 32,
   },
   dateInput: {
     marginTop: 8,
