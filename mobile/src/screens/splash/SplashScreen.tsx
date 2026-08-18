@@ -14,11 +14,9 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
   }, [onFinish]);
 
   return (
-    <View className="flex-1 items-center justify-center bg-[#1A4D3E] p-6">
-      <View className="mb-3 items-center rounded-xl bg-white p-4">
-        <KilimoLogo size={180} />
-      </View>
-      <Text className="mb-2 text-lg font-bold text-white">Kilimo Bridge Platform</Text>
+    <View className="flex-1 items-center justify-center bg-black p-6">
+      <KilimoLogo size={200} />
+      <Text className="mb-2 mt-6 text-lg font-bold text-white">Kilimo Bridge Platform</Text>
       <Text className="mb-10 text-base text-white/85">Earn · Grow · Get Paid</Text>
       <ActivityIndicator animating color="#D4AF6A" size="large" className="mt-2" />
     </View>

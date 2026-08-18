@@ -14,7 +14,7 @@ export function KilimoLogo({ size = 160, width, height, style }: KilimoLogoProps
   return (
     <View style={styles.wrap}>
       <Image
-        source={require('../../assets/kilimo-logo.png')}
+        source={require('../../assets/kilimo-kb-logo.png')}
         style={[{ width: w, height: h, resizeMode: 'contain' }, style]}
         accessibilityLabel="Kilimo Bridge logo"
       />

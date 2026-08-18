@@ -155,7 +155,9 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-5 pb-10">
       <View className="mb-6 mt-4 items-center">
-        <KilimoLogo size={140} />
+        <View className="items-center rounded-2xl bg-black p-5">
+          <KilimoLogo size={140} />
+        </View>
         <Text className="mt-3 text-lg font-bold text-[#1A4D3E]">Kilimo Bridge</Text>
         <View className="mt-1 flex-row items-center gap-1.5">
           <Globe size={16} color="#757575" />
