@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, Image, StyleSheet, TextInput, Pressable, Platform, ScrollView,
+  View, Text, Image, StyleSheet, TextInput, Pressable, Platform,
 } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -37,7 +37,6 @@ interface Props {
 }
 
 export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: Props) {
-  const scrollRef = useRef<ScrollView>(null);
   const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
@@ -173,7 +172,6 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
       visible={visible}
       onRequestClose={close}
       scrollable
-      scrollViewRef={scrollRef}
       backdropPressDisabled={submitting || picking}
       sheetStyle={styles.card}
       scrollViewProps={{ contentContainerStyle: styles.content }}
@@ -240,14 +238,6 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
                   if (notesError && text.trim().length >= MIN_NOTES_LENGTH) {
                     setNotesError('');
                   }
-                }}
-                onFocus={() => {
-                  requestAnimationFrame(() => {
-                    scrollRef.current?.scrollToEnd({ animated: true });
-                  });
-                  setTimeout(() => {
-                    scrollRef.current?.scrollToEnd({ animated: true });
-                  }, 280);
                 }}
                 placeholder="Add any notes about your work..."
               />

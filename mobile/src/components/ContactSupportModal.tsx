@@ -162,6 +162,7 @@ export function ContactSupportModal({
     <KeyboardBottomSheet
       visible={visible}
       onRequestClose={handleClose}
+      scrollable
       backdropPressDisabled={submitting}
       sheetClassName="max-h-[92%] rounded-t-2xl bg-white px-5 pb-8 pt-5"
     >
@@ -175,7 +176,6 @@ export function ContactSupportModal({
             Send a request to Kilimo Bridge Support. Include photos if they help explain the issue.
           </Text>
 
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Text className="mb-1 text-sm font-semibold text-[#333333]">Subject</Text>
             <TextInput
               className="mb-3 rounded-xl border border-[#E0E0E0] bg-[#F9F9F9] px-3 py-3 text-[15px] text-[#333333]"
@@ -256,7 +256,6 @@ export function ContactSupportModal({
                 <Text className="text-white">Send to Support</Text>
               )}
             </Button>
-          </ScrollView>
     </KeyboardBottomSheet>
   );
 }

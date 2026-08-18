@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   View,
-  ScrollView,
   Pressable,
   Platform,
   TextInput as RNTextInput,
@@ -142,23 +141,52 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
     <KeyboardBottomSheet
       visible={visible}
       onRequestClose={handleClose}
+      scrollable
       backdropPressDisabled={loading}
       avoidingViewStyle={webOverlay}
       sheetClassName="max-h-[90%] rounded-t-2xl bg-white"
-    >
-          <View className="flex-row items-center justify-between border-b border-[#E8E8E8] px-5 py-4">
-            <Text className="text-lg font-bold text-[#333333]">Create task</Text>
-            <Pressable onPress={handleClose} hitSlop={12} disabled={loading}>
-              <X size={24} color="#757575" />
-            </Pressable>
-          </View>
-
-          <ScrollView
-            className="px-5"
-            keyboardShouldPersistTaps="always"
-            contentContainerStyle={styles.scrollContent}
-            nestedScrollEnabled
+      scrollViewProps={{
+        className: 'px-5',
+        keyboardShouldPersistTaps: 'always',
+        contentContainerStyle: styles.scrollContent,
+      }}
+      header={
+        <View className="flex-row items-center justify-between border-b border-[#E8E8E8] px-5 py-4">
+          <Text className="text-lg font-bold text-[#333333]">Create task</Text>
+          <Pressable onPress={handleClose} hitSlop={12} disabled={loading}>
+            <X size={24} color="#757575" />
+          </Pressable>
+        </View>
+      }
+      footer={
+        <View className="flex-row gap-2 border-t border-[#E8E8E8] bg-white px-5 py-4">
+          <Pressable
+            onPress={handleSubmit}
+            disabled={loading}
+            style={({ pressed }) => [
+              styles.submitBtn,
+              loading && styles.submitBtnDisabled,
+              pressed && !loading && styles.submitBtnPressed,
+            ]}
+            accessibilityRole="button"
           >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="font-semibold text-white">Create task</Text>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={handleClose}
+            disabled={loading}
+            style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}
+            accessibilityRole="button"
+          >
+            <Text className="font-semibold text-[#333333]">Cancel</Text>
+          </Pressable>
+        </View>
+      }
+    >
             <Text className="mb-1 mt-3 text-sm font-semibold text-[#333333]">Task name *</Text>
             <TextInput
               value={name}
@@ -280,34 +308,6 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
             {formError ? (
               <Text className="mb-2 text-sm text-[#D32F2F]">{formError}</Text>
             ) : null}
-          </ScrollView>
-
-          <View className="flex-row gap-2 border-t border-[#E8E8E8] bg-white px-5 py-4">
-            <Pressable
-              onPress={handleSubmit}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.submitBtn,
-                loading && styles.submitBtnDisabled,
-                pressed && !loading && styles.submitBtnPressed,
-              ]}
-              accessibilityRole="button"
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text className="font-semibold text-white">Create task</Text>
-              )}
-            </Pressable>
-            <Pressable
-              onPress={handleClose}
-              disabled={loading}
-              style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}
-              accessibilityRole="button"
-            >
-              <Text className="font-semibold text-[#333333]">Cancel</Text>
-            </Pressable>
-          </View>
     </KeyboardBottomSheet>
   );
 }

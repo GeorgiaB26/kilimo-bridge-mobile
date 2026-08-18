@@ -1,17 +1,24 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Modal,
   View,
   Pressable,
   ScrollView,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   StyleSheet,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
   type ScrollViewProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { modalKeyboardVerticalOffset } from '../../utils/keyboardAvoiding';
+import {
+  modalKeyboardVerticalOffset,
+  scrollFocusedInputIntoView,
+  SHEET_SCROLL_INTO_VIEW_DELAY_MS,
+} from '../../utils/keyboardAvoiding';
 
 /**
  * Bottom-sheet KAV: `padding` on both platforms.
@@ -28,6 +35,10 @@ export type KeyboardBottomSheetProps = {
   scrollable?: boolean;
   scrollViewProps?: ScrollViewProps;
   scrollViewRef?: React.Ref<ScrollView>;
+  /** Fixed chrome above the scroll body (title bar). Does not scroll. */
+  header?: React.ReactNode;
+  /** Fixed chrome below the scroll body (actions). Does not scroll. */
+  footer?: React.ReactNode;
   /** Bottom-aligned sheet (default) or centered dialog. */
   variant?: 'bottom' | 'center';
   /** Tap dimmed backdrop to dismiss (default true). */
@@ -50,6 +61,8 @@ export function KeyboardBottomSheet({
   scrollable = false,
   scrollViewProps,
   scrollViewRef,
+  header,
+  footer,
   variant = 'bottom',
   dismissOnBackdropPress = true,
   backdropPressDisabled = false,
@@ -68,6 +81,7 @@ export function KeyboardBottomSheet({
     : 'max-h-[85%] rounded-xl bg-white p-5';
 
   const innerScrollRef = useRef<ScrollView>(null);
+  const contentOffsetYRef = useRef(0);
 
   const setScrollRef = (node: ScrollView | null) => {
     innerScrollRef.current = node;
@@ -79,13 +93,57 @@ export function KeyboardBottomSheet({
     }
   };
 
+  useEffect(() => {
+    if (!visible || !scrollable || Platform.OS === 'web') return;
+
+    const run = () => {
+      requestAnimationFrame(() => {
+        scrollFocusedInputIntoView(innerScrollRef.current, contentOffsetYRef.current);
+      });
+      setTimeout(() => {
+        scrollFocusedInputIntoView(innerScrollRef.current, contentOffsetYRef.current);
+      }, SHEET_SCROLL_INTO_VIEW_DELAY_MS);
+    };
+
+    const subs = [
+      Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+        run,
+      ),
+    ];
+    if (Platform.OS === 'ios') {
+      subs.push(Keyboard.addListener('keyboardDidShow', run));
+    }
+
+    return () => {
+      subs.forEach((s) => s.remove());
+    };
+  }, [visible, scrollable]);
+
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    contentOffsetYRef.current = e.nativeEvent.contentOffset.y;
+    scrollViewProps?.onScroll?.(e);
+  };
+
+  const {
+    onScroll: _ignoredOnScroll,
+    style: scrollStyle,
+    contentContainerStyle,
+    ...restScrollViewProps
+  } = scrollViewProps ?? {};
+
   const sheetBody = scrollable ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
-      {...scrollViewProps}
+      nestedScrollEnabled
+      scrollEventThrottle={16}
+      {...restScrollViewProps}
       ref={setScrollRef}
+      style={[styles.scrollFill, scrollStyle]}
+      contentContainerStyle={contentContainerStyle}
+      onScroll={handleScroll}
     >
       {children}
     </ScrollView>
@@ -113,14 +171,16 @@ export function KeyboardBottomSheet({
             accessibilityLabel="Dismiss"
             onPress={onRequestClose}
             disabled={backdropPressDisabled}
-    style={[styles.backdrop, webBackdropCursor]}
+            style={[styles.backdrop, webBackdropCursor]}
           />
         ) : null}
         <View
           className={sheetClassName ?? defaultSheetClass}
           style={sheetStyle}
         >
+          {header}
           {sheetBody}
+          {footer}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -137,5 +197,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  scrollFill: {
+    flexShrink: 1,
   },
 });
