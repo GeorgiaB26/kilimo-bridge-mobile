@@ -21,6 +21,7 @@ import {
   preferredLanguageForSubmit,
   specialVulnerabilitiesForSubmit,
 } from '../../components/registration/RefugeeRegistrationFields';
+import { submitFarmerRegistration } from '../../services/submitFarmerRegistration';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import type { RegistrationStackParamList } from '../../navigation/types';
 
