@@ -146,7 +146,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       backdropPressDisabled={loading}
       avoidingViewStyle={webOverlay}
       scrollViewProps={{
-        keyboardShouldPersistTaps: 'always',
+        keyboardShouldPersistTaps: 'handled',
         contentContainerStyle: styles.scrollContent,
       }}
       header={

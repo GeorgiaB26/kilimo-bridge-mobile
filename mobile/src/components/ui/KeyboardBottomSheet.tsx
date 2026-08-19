@@ -15,7 +15,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   KeyboardAvoidingView as KCAvoidingView,
-  KeyboardStickyView,
 } from 'react-native-keyboard-controller';
 import { FormKeyboardScroll } from './FormKeyboardScroll';
 import { modalKeyboardVerticalOffset } from '../../utils/keyboardAvoiding';
@@ -129,31 +128,16 @@ export function KeyboardBottomSheet({
   );
 
   const footerNode = footer ? (
-    isWeb ? (
-      <View
-        collapsable={false}
-        style={[
-          styles.footerWrap,
-          { width: windowWidth },
-          bottomInset > 0 ? { paddingBottom: bottomInset } : null,
-        ]}
-      >
-        {footer}
-      </View>
-    ) : (
-      <KeyboardStickyView style={[styles.footerWrap, { width: windowWidth }]}>
-        <View
-          collapsable={false}
-          style={[
-            styles.footerWrap,
-            { width: windowWidth },
-            bottomInset > 0 ? { paddingBottom: bottomInset } : null,
-          ]}
-        >
-          {footer}
-        </View>
-      </KeyboardStickyView>
-    )
+    <View
+      collapsable={false}
+      style={[
+        styles.footerWrap,
+        { width: windowWidth },
+        bottomInset > 0 ? { paddingBottom: bottomInset } : null,
+      ]}
+    >
+      {footer}
+    </View>
   ) : null;
 
   const overlay = (
