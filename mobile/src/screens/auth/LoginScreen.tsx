@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { ComponentType } from 'react';
-import { View, ScrollView, ActivityIndicator, Pressable, Linking } from 'react-native';
+import { View, ActivityIndicator, Pressable, Linking } from 'react-native';
 import { Briefcase, Globe, Headset, Sprout, UserRound } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput } from 'react-native-paper';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { KilimoLogo } from '../../components/KilimoLogo';
+import { FormKeyboardScroll } from '../../components/ui/FormKeyboardScroll';
 import { API_BASE_URL, IS_HOSTED_API, IS_API_MISCONFIGURED } from '../../constants';
 import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devTokenLogin, devQuickLogin, setAuthToken, checkBackendHealth } from '../../api/client';
@@ -153,7 +154,14 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-5 pb-10">
+    <FormKeyboardScroll
+      className="flex-1 bg-[#F5F5F5]"
+      contentContainerClassName="p-5 pb-10"
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      bottomOffset={24}
+    >
       <View className="mb-6 mt-4 items-center">
         <View className="items-center rounded-2xl bg-white p-3">
           <KilimoLogo size={70} />
@@ -263,6 +271,11 @@ export function LoginScreen({ navigation }: Props) {
         <Text className="text-[#757575]">Clear saved login</Text>
       </Button>
       <Text className="mt-2 text-center text-[11px] text-[#757575]">Build {APP_BUILD}</Text>
-    </ScrollView>
+    </FormKeyboardScroll>
   );
 }
+
+const styles = {
+  scroll: { flex: 1, backgroundColor: '#F5F5F5' },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+};

@@ -310,6 +310,7 @@ export function AgentProfileScreen() {
       <KeyboardBottomSheet
         visible={settingsOpen}
         onRequestClose={() => setSettingsOpen(false)}
+        scrollable
         sheetClassName="rounded-t-2xl bg-white p-5"
       >
             <View className="mb-4 flex-row items-center justify-between">

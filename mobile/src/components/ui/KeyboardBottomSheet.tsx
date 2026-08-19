@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import {
   Modal,
   View,
@@ -14,9 +14,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  modalKeyboardVerticalOffset,
-  useScrollFocusedInputIntoView,
-} from '../../utils/keyboardAvoiding';
+  KeyboardAvoidingView as KCAvoidingView,
+  KeyboardStickyView,
+} from 'react-native-keyboard-controller';
+import { FormKeyboardScroll } from './FormKeyboardScroll';
+import { modalKeyboardVerticalOffset } from '../../utils/keyboardAvoiding';
 
 /**
  * Bottom-sheet KAV: `padding` on both platforms.
@@ -48,6 +50,8 @@ export type KeyboardBottomSheetProps = {
   avoidingViewStyle?: StyleProp<ViewStyle>;
   animationType?: 'none' | 'slide' | 'fade';
 };
+
+const isWeb = Platform.OS === 'web';
 
 const webBackdropCursor =
   Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
@@ -93,25 +97,8 @@ export function KeyboardBottomSheet({
     ? 'max-h-[92%] rounded-t-2xl bg-white'
     : 'max-h-[85%] rounded-xl bg-white p-5';
 
-  const innerScrollRef = useRef<ScrollView>(null);
-  const handleScroll = useScrollFocusedInputIntoView(
-    innerScrollRef,
-    visible && scrollable,
-    scrollViewProps?.onScroll,
-  );
-
-  const setScrollRef = (node: ScrollView | null) => {
-    innerScrollRef.current = node;
-    if (!scrollViewRef) return;
-    if (typeof scrollViewRef === 'function') {
-      scrollViewRef(node);
-    } else {
-      (scrollViewRef as React.MutableRefObject<ScrollView | null>).current = node;
-    }
-  };
-
   const {
-    onScroll: _ignoredOnScroll,
+    onScroll: onScrollProp,
     style: scrollStyle,
     contentContainerStyle,
     ...restScrollViewProps
@@ -119,25 +106,91 @@ export function KeyboardBottomSheet({
 
   /** Footer already clears the nav bar — don't double-pad the scroller. */
   const scrollBottomInset = footer ? 0 : bottomInset;
+  const paddedContent = withBottomInset(contentContainerStyle, scrollBottomInset);
 
   const sheetBody = scrollable ? (
-    <ScrollView
+    <FormKeyboardScroll
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
       nestedScrollEnabled
       scrollEventThrottle={16}
+      bottomOffset={footer ? 88 : 24}
       {...restScrollViewProps}
-      ref={setScrollRef}
+      ref={scrollViewRef}
       style={[styles.scrollFill, scrollStyle]}
-      contentContainerStyle={withBottomInset(contentContainerStyle, scrollBottomInset)}
-      onScroll={handleScroll}
+      contentContainerStyle={paddedContent}
+      onScroll={onScrollProp}
     >
       {children}
-    </ScrollView>
+    </FormKeyboardScroll>
   ) : (
     children
   );
+
+  const footerNode = footer ? (
+    isWeb ? (
+      <View
+        collapsable={false}
+        style={[
+          styles.footerWrap,
+          { width: windowWidth },
+          bottomInset > 0 ? { paddingBottom: bottomInset } : null,
+        ]}
+      >
+        {footer}
+      </View>
+    ) : (
+      <KeyboardStickyView style={[styles.footerWrap, { width: windowWidth }]}>
+        <View
+          collapsable={false}
+          style={[
+            styles.footerWrap,
+            { width: windowWidth },
+            bottomInset > 0 ? { paddingBottom: bottomInset } : null,
+          ]}
+        >
+          {footer}
+        </View>
+      </KeyboardStickyView>
+    )
+  ) : null;
+
+  const overlay = (
+    <>
+      {dismissOnBackdropPress ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          onPress={onRequestClose}
+          disabled={backdropPressDisabled}
+          style={[styles.backdrop, webBackdropCursor]}
+        />
+      ) : null}
+      <View
+        style={[
+          isBottom ? styles.sheetOuterBottom : styles.sheetOuterCenter,
+          { width: windowWidth },
+          withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0),
+        ]}
+      >
+        <View
+          className={sheetClassName ?? (footer ? undefined : defaultSheetClass)}
+          style={styles.sheetInner}
+        >
+          {header}
+          {sheetBody}
+        </View>
+        {footerNode}
+      </View>
+    </>
+  );
+
+  const avoidingStyle = [
+    styles.avoiding,
+    isBottom ? styles.overlayBottom : styles.overlayCenter,
+    avoidingViewStyle,
+  ];
 
   return (
     <Modal
@@ -147,53 +200,25 @@ export function KeyboardBottomSheet({
       onRequestClose={onRequestClose}
       statusBarTranslucent
     >
-      <KeyboardAvoidingView
-        style={[
-          styles.avoiding,
-          isBottom ? styles.overlayBottom : styles.overlayCenter,
-          avoidingViewStyle,
-        ]}
-        className={overlayClassName}
-        behavior={SHEET_KEYBOARD_AVOIDING_BEHAVIOR}
-        keyboardVerticalOffset={modalKeyboardVerticalOffset()}
-      >
-        {dismissOnBackdropPress ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss"
-            onPress={onRequestClose}
-            disabled={backdropPressDisabled}
-            style={[styles.backdrop, webBackdropCursor]}
-          />
-        ) : null}
-        <View
-          style={[
-            isBottom ? styles.sheetOuterBottom : styles.sheetOuterCenter,
-            { width: windowWidth },
-            withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0),
-          ]}
+      {isWeb ? (
+        <KeyboardAvoidingView
+          style={avoidingStyle}
+          className={overlayClassName}
+          behavior={SHEET_KEYBOARD_AVOIDING_BEHAVIOR}
+          keyboardVerticalOffset={modalKeyboardVerticalOffset()}
         >
-          <View
-            className={sheetClassName ?? (footer ? undefined : defaultSheetClass)}
-            style={styles.sheetInner}
-          >
-            {header}
-            {sheetBody}
-          </View>
-          {footer ? (
-            <View
-              collapsable={false}
-              style={[
-                styles.footerWrap,
-                { width: windowWidth },
-                bottomInset > 0 ? { paddingBottom: bottomInset } : null,
-              ]}
-            >
-              {footer}
-            </View>
-          ) : null}
-        </View>
-      </KeyboardAvoidingView>
+          {overlay}
+        </KeyboardAvoidingView>
+      ) : (
+        <KCAvoidingView
+          style={avoidingStyle}
+          className={overlayClassName}
+          behavior="padding"
+          automaticOffset
+        >
+          {overlay}
+        </KCAvoidingView>
+      )}
     </Modal>
   );
 }

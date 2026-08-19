@@ -20,6 +20,10 @@ import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import {
+  KeyboardAvoidingView as KCAvoidingView,
+  KeyboardStickyView,
+} from 'react-native-keyboard-controller';
+import {
   KEYBOARD_AVOIDING_BEHAVIOR,
   screenKeyboardVerticalOffset,
 } from '../../utils/keyboardAvoiding';
@@ -128,12 +132,12 @@ export function SupportTicketDetailScreen() {
     ]);
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
-      keyboardVerticalOffset={screenKeyboardVerticalOffset(90)}
-    >
+  const isWeb = Platform.OS === 'web';
+  const wrapComposer = (node: React.ReactNode) =>
+    isWeb ? node : <KeyboardStickyView>{node}</KeyboardStickyView>;
+
+  const screen = (
+    <>
       <View style={styles.header}>
         <Pressable
           onPress={goToInbox}
@@ -215,26 +219,46 @@ export function SupportTicketDetailScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <View style={[styles.inputRow, { paddingBottom: 10 + Math.max(insets.bottom, 0) }]}>
-        <TextInput
-          style={styles.input}
-          placeholder={canReply ? 'Reply to requester…' : 'Replies closed'}
-          placeholderTextColor={COLORS.muted}
-          value={newMessage}
-          onChangeText={setNewMessage}
-          multiline
-          maxLength={4000}
-          editable={canReply && !sending}
-        />
-        <Pressable
-          style={[styles.sendBtn, (sending || !canReply) && styles.disabled]}
-          onPress={handleSend}
-          disabled={sending || !canReply}
-        >
-          <RNText style={styles.sendText}>{sending ? '…' : 'Send'}</RNText>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+      {wrapComposer(
+        <View style={[styles.inputRow, { paddingBottom: 10 + Math.max(insets.bottom, 0) }]}>
+          <TextInput
+            style={styles.input}
+            placeholder={canReply ? 'Reply to requester…' : 'Replies closed'}
+            placeholderTextColor={COLORS.muted}
+            value={newMessage}
+            onChangeText={setNewMessage}
+            multiline
+            maxLength={4000}
+            editable={canReply && !sending}
+          />
+          <Pressable
+            style={[styles.sendBtn, (sending || !canReply) && styles.disabled]}
+            onPress={handleSend}
+            disabled={sending || !canReply}
+          >
+            <RNText style={styles.sendText}>{sending ? '…' : 'Send'}</RNText>
+          </Pressable>
+        </View>
+      )}
+    </>
+  );
+
+  if (isWeb) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+        keyboardVerticalOffset={screenKeyboardVerticalOffset(90)}
+      >
+        {screen}
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return (
+    <KCAvoidingView style={styles.container} behavior="padding" automaticOffset>
+      {screen}
+    </KCAvoidingView>
   );
 }
 

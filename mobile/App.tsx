@@ -2,12 +2,13 @@ import 'react-native-reanimated';
 import './global.css';
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { PortalHost } from '@rn-primitives/portal';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { kilimoTheme } from './src/theme/paperTheme';
 import { CurrencyProvider } from './src/context/CurrencyContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -20,7 +21,7 @@ function OutboxConnectivitySync() {
   return null;
 }
 
-export default function App() {
+function AppTree() {
   return (
     <SafeAreaProvider>
       <CurrencyProvider>
@@ -40,6 +41,17 @@ export default function App() {
         </PaperProvider>
       </CurrencyProvider>
     </SafeAreaProvider>
+  );
+}
+
+export default function App() {
+  if (Platform.OS === 'web') {
+    return <AppTree />;
+  }
+  return (
+    <KeyboardProvider preload={false}>
+      <AppTree />
+    </KeyboardProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal } from 'react-native';
 import { Button, Surface, TextInput } from 'react-native-paper';
+import { FormKeyboardScroll } from './ui/FormKeyboardScroll';
 import { PickerField } from './PickerField';
 import { COLORS } from '../constants';
 import {
@@ -62,7 +63,7 @@ export function FarmerLocationPrompt({ country, visible, onCompleted }: FarmerLo
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <FormKeyboardScroll style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Complete your location</Text>
         <Text style={styles.subtitle}>
           Your cooperative imported your profile. Please confirm where you farm in {country} so we can assign the right aggregation centre.
@@ -111,7 +112,7 @@ export function FarmerLocationPrompt({ country, visible, onCompleted }: FarmerLo
         <Button mode="contained" onPress={handleSave} loading={saving} buttonColor={COLORS.primary} style={styles.btn}>
           Save location
         </Button>
-      </ScrollView>
+      </FormKeyboardScroll>
     </Modal>
   );
 }

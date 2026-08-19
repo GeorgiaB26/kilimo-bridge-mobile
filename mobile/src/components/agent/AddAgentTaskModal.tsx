@@ -146,7 +146,6 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       backdropPressDisabled={loading}
       avoidingViewStyle={webOverlay}
       scrollViewProps={{
-        className: 'px-5',
         keyboardShouldPersistTaps: 'always',
         contentContainerStyle: styles.scrollContent,
       }}
@@ -323,6 +322,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 8,
+    paddingHorizontal: 20,
   },
   footerRow: {
     flexDirection: 'row',
