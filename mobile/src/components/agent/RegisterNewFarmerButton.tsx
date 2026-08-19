@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 
@@ -8,18 +8,32 @@ interface Props {
   compact?: boolean;
 }
 
+const COMPACT_ICON = 22;
+
 export function RegisterNewFarmerButton({ onPress, compact }: Props) {
+  if (compact) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="Register new member"
+        accessibilityHint="Open register new member"
+        style={styles.compactHit}
+      >
+        <Ionicons name="person-add-outline" size={COMPACT_ICON} color="#fff" />
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityLabel="Register new member"
-      className={compact ? 'rounded-lg bg-[#FFD700] px-3 py-2' : 'rounded-lg bg-[#FFD700] px-4 py-3'}
-      style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+      className="rounded-lg bg-[#FFD700] px-4 py-3"
+      style={styles.fullBtn}
     >
       <Ionicons name="add" size={20} color="#000" />
-      <Text className="text-sm font-bold text-black">
-        {compact ? 'NEW MEMBER' : 'REGISTER NEW MEMBER'}
-      </Text>
+      <Text className="text-sm font-bold text-black">REGISTER NEW MEMBER</Text>
     </Pressable>
   );
 }
@@ -31,3 +45,17 @@ export function RegisterNewFarmerBanner({ onPress }: Props) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  compactHit: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullBtn: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+});

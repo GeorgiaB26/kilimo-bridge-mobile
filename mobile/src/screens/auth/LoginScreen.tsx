@@ -190,13 +190,13 @@ export function LoginScreen({ navigation }: Props) {
           label="Phone number"
           value={phone}
           onChangeText={setPhone}
-          placeholder="+254712345678"
           keyboardType="phone-pad"
           mode="outlined"
-          style={{ marginBottom: 16, backgroundColor: '#FFFFFF' }}
+          style={{ marginBottom: 4, backgroundColor: '#FFFFFF' }}
           outlineColor="#E0E0E0"
           activeOutlineColor="#1A4D3E"
         />
+        <Text className="mb-4 text-xs text-[#757575]">Example: +254712345678</Text>
         <Button className="h-12 rounded-xl bg-[#1A4D3E]" disabled={loading} onPress={handleSendOtp}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Send OTP</Text>}
         </Button>

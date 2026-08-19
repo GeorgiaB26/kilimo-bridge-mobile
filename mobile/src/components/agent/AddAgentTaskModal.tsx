@@ -6,6 +6,8 @@ import {
   TextInput as RNTextInput,
   ActivityIndicator,
   StyleSheet,
+  useWindowDimensions,
+  Text as RNText,
 } from 'react-native';
 import { Square, SquareCheck, X } from 'lucide-react-native';
 import { TextInput } from 'react-native-paper';
@@ -36,6 +38,10 @@ interface Props {
   }) => Promise<void>;
 }
 
+const FOOTER_H_PAD = 20;
+const FOOTER_GAP = 8;
+const CANCEL_BTN_WIDTH = 108;
+
 const webOverlay =
   Platform.OS === 'web'
     ? ({
@@ -49,6 +55,11 @@ const webOverlay =
     : undefined;
 
 export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit }: Props) {
+  const { width: windowWidth } = useWindowDimensions();
+  const submitBtnWidth = Math.max(
+    160,
+    windowWidth - FOOTER_H_PAD * 2 - FOOTER_GAP - CANCEL_BTN_WIDTH,
+  );
   const agentName = useAuthStore((s) => s.user?.name) ?? 'You';
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -159,30 +170,37 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
         </View>
       }
       footer={
-        <View style={styles.footerRow}>
+        <View style={[styles.footerRow, { width: windowWidth }]}>
           <Pressable
             onPress={handleSubmit}
             disabled={loading}
             style={({ pressed }) => [
               styles.submitBtn,
+              { width: submitBtnWidth },
               loading && styles.submitBtnDisabled,
               pressed && !loading && styles.submitBtnPressed,
             ]}
             accessibilityRole="button"
+            accessibilityLabel="Create task"
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text className="font-semibold text-white">Create task</Text>
+              <RNText style={styles.submitBtnText}>Create task</RNText>
             )}
           </Pressable>
           <Pressable
             onPress={handleClose}
             disabled={loading}
-            style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}
+            style={({ pressed }) => [
+              styles.cancelBtn,
+              { width: CANCEL_BTN_WIDTH },
+              pressed && styles.cancelBtnPressed,
+            ]}
             accessibilityRole="button"
+            accessibilityLabel="Cancel"
           >
-            <Text className="font-semibold text-[#333333]">Cancel</Text>
+            <RNText style={styles.cancelBtnText}>Cancel</RNText>
           </Pressable>
         </View>
       }
@@ -319,25 +337,31 @@ const styles = StyleSheet.create({
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
-    gap: 8,
+    flexGrow: 0,
+    flexShrink: 0,
+    gap: FOOTER_GAP,
     borderTopWidth: 1,
     borderTopColor: '#E8E8E8',
     backgroundColor: '#fff',
-    paddingHorizontal: 20,
+    paddingHorizontal: FOOTER_H_PAD,
     paddingVertical: 16,
   },
   submitBtn: {
-    flex: 1,
-    minWidth: 120,
     height: 48,
     borderRadius: 8,
     backgroundColor: '#1A4D3E',
     alignItems: 'center',
     justifyContent: 'center',
+    flexGrow: 0,
+    flexShrink: 0,
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
+  },
+  submitBtnText: {
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 16,
   },
   submitBtnDisabled: {
     opacity: 0.65,
@@ -350,16 +374,22 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     height: 48,
-    minWidth: 96,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    flexGrow: 0,
+    flexShrink: 0,
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
+  },
+  cancelBtnText: {
+    fontWeight: '600',
+    color: '#333333',
+    fontSize: 16,
   },
   cancelBtnPressed: {
     backgroundColor: '#F5F5F5',

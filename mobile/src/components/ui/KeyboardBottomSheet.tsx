@@ -87,9 +87,7 @@ export function KeyboardBottomSheet({
   const insets = useSafeAreaInsets();
   const isBottom = variant === 'bottom';
   const bottomInset = isBottom ? insets.bottom : 0;
-  const defaultOverlayClass = isBottom
-    ? 'flex-1 justify-end bg-black/40'
-    : 'flex-1 justify-center bg-black/45 p-4';
+  /** Layout (flex, width, justify) lives in StyleSheet so NativeWind className cannot collapse the sheet. */
   const defaultSheetClass = isBottom
     ? 'max-h-[92%] rounded-t-2xl bg-white'
     : 'max-h-[85%] rounded-xl bg-white p-5';
@@ -149,8 +147,12 @@ export function KeyboardBottomSheet({
       statusBarTranslucent
     >
       <KeyboardAvoidingView
-        style={[styles.avoiding, avoidingViewStyle]}
-        className={overlayClassName ?? defaultOverlayClass}
+        style={[
+          styles.avoiding,
+          isBottom ? styles.overlayBottom : styles.overlayCenter,
+          avoidingViewStyle,
+        ]}
+        className={overlayClassName}
         behavior={SHEET_KEYBOARD_AVOIDING_BEHAVIOR}
         keyboardVerticalOffset={modalKeyboardVerticalOffset()}
       >
@@ -166,7 +168,7 @@ export function KeyboardBottomSheet({
         <View
           className={sheetClassName ?? defaultSheetClass}
           style={[
-            isBottom ? styles.sheetStretch : null,
+            isBottom ? styles.sheetStretch : styles.sheetCentered,
             withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0),
           ]}
         >
@@ -186,6 +188,18 @@ export function KeyboardBottomSheet({
 const styles = StyleSheet.create({
   avoiding: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
+    alignItems: 'stretch',
+  },
+  overlayBottom: {
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  overlayCenter: {
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
   backdrop: {
     position: 'absolute',
@@ -199,10 +213,18 @@ const styles = StyleSheet.create({
   },
   sheetStretch: {
     width: '100%',
+    minWidth: '100%',
     alignSelf: 'stretch',
+    maxHeight: '92%',
+  },
+  sheetCentered: {
+    width: '100%',
+    alignSelf: 'stretch',
+    maxHeight: '85%',
   },
   footerWrap: {
     width: '100%',
+    minWidth: '100%',
     alignSelf: 'stretch',
   },
 });
