@@ -16,7 +16,8 @@ export function FarmerProjectsNavigator() {
       screenOptions={{
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600' },
+        headerTitleStyle: { fontWeight: '600', fontSize: 17, color: '#fff' },
+        headerRightContainerStyle: { paddingRight: 16 },
       }}
     >
       <Stack.Screen
@@ -47,6 +48,7 @@ export function FarmerProjectsNavigator() {
 
 const styles = StyleSheet.create({
   headerRight: {
-    marginRight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

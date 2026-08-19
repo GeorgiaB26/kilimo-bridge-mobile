@@ -50,7 +50,8 @@ function FarmerTabNavigator() {
         headerShown: route.name !== 'Projects',
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600' },
+        headerTitleStyle: { fontWeight: '600', fontSize: 17, color: '#fff' },
+        headerRightContainerStyle: { paddingRight: 16 },
         headerRight: () => <HeaderInboxIcons />,
         sceneStyle: tabSceneStyle,
       })}
@@ -100,6 +101,7 @@ export function FarmerNavigator() {
 
 const styles = StyleSheet.create({
   headerRight: {
-    marginRight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
