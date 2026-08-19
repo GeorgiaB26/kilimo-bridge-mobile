@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  useWindowDimensions,
   type ScrollViewProps,
   type StyleProp,
   type ViewStyle,
@@ -85,9 +86,9 @@ export function KeyboardBottomSheet({
   animationType = 'none',
 }: KeyboardBottomSheetProps) {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const isBottom = variant === 'bottom';
   const bottomInset = isBottom ? insets.bottom : 0;
-  /** Layout (flex, width, justify) lives in StyleSheet so NativeWind className cannot collapse the sheet. */
   const defaultSheetClass = isBottom
     ? 'max-h-[92%] rounded-t-2xl bg-white'
     : 'max-h-[85%] rounded-xl bg-white p-5';
@@ -166,16 +167,28 @@ export function KeyboardBottomSheet({
           />
         ) : null}
         <View
-          className={sheetClassName ?? defaultSheetClass}
           style={[
-            isBottom ? styles.sheetStretch : styles.sheetCentered,
+            isBottom ? styles.sheetOuterBottom : styles.sheetOuterCenter,
+            { width: windowWidth },
             withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0),
           ]}
         >
-          {header}
-          {sheetBody}
+          <View
+            className={sheetClassName ?? (footer ? undefined : defaultSheetClass)}
+            style={styles.sheetInner}
+          >
+            {header}
+            {sheetBody}
+          </View>
           {footer ? (
-            <View style={[styles.footerWrap, bottomInset > 0 ? { paddingBottom: bottomInset } : null]}>
+            <View
+              collapsable={false}
+              style={[
+                styles.footerWrap,
+                { width: windowWidth },
+                bottomInset > 0 ? { paddingBottom: bottomInset } : null,
+              ]}
+            >
               {footer}
             </View>
           ) : null}
@@ -209,22 +222,33 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   scrollFill: {
+    flexGrow: 1,
     flexShrink: 1,
+    minHeight: 0,
   },
-  sheetStretch: {
-    width: '100%',
-    minWidth: '100%',
+  sheetOuterBottom: {
+    maxHeight: '90%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: 'hidden',
     alignSelf: 'stretch',
-    maxHeight: '92%',
   },
-  sheetCentered: {
-    width: '100%',
-    alignSelf: 'stretch',
+  sheetOuterCenter: {
     maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    alignSelf: 'stretch',
+  },
+  sheetInner: {
+    flexShrink: 1,
+    minHeight: 0,
+    width: '100%',
   },
   footerWrap: {
-    width: '100%',
-    minWidth: '100%',
-    alignSelf: 'stretch',
+    flexGrow: 0,
+    flexShrink: 0,
+    backgroundColor: '#FFFFFF',
   },
 });

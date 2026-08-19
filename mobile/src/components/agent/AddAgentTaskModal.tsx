@@ -6,7 +6,6 @@ import {
   TextInput as RNTextInput,
   ActivityIndicator,
   StyleSheet,
-  useWindowDimensions,
   Text as RNText,
 } from 'react-native';
 import { Square, SquareCheck, X } from 'lucide-react-native';
@@ -38,10 +37,6 @@ interface Props {
   }) => Promise<void>;
 }
 
-const FOOTER_H_PAD = 20;
-const FOOTER_GAP = 8;
-const CANCEL_BTN_WIDTH = 108;
-
 const webOverlay =
   Platform.OS === 'web'
     ? ({
@@ -55,11 +50,6 @@ const webOverlay =
     : undefined;
 
 export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit }: Props) {
-  const { width: windowWidth } = useWindowDimensions();
-  const submitBtnWidth = Math.max(
-    160,
-    windowWidth - FOOTER_H_PAD * 2 - FOOTER_GAP - CANCEL_BTN_WIDTH,
-  );
   const agentName = useAuthStore((s) => s.user?.name) ?? 'You';
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -155,7 +145,6 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       scrollable
       backdropPressDisabled={loading}
       avoidingViewStyle={webOverlay}
-      sheetClassName="max-h-[90%] rounded-t-2xl bg-white"
       scrollViewProps={{
         className: 'px-5',
         keyboardShouldPersistTaps: 'always',
@@ -170,38 +159,39 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
         </View>
       }
       footer={
-        <View style={[styles.footerRow, { width: windowWidth }]}>
-          <Pressable
-            onPress={handleSubmit}
-            disabled={loading}
-            style={({ pressed }) => [
-              styles.submitBtn,
-              { width: submitBtnWidth },
-              loading && styles.submitBtnDisabled,
-              pressed && !loading && styles.submitBtnPressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Create task"
+        <View style={styles.footerRow} collapsable={false}>
+          <View
+            collapsable={false}
+            style={[styles.createWrap, loading && styles.createWrapDisabled]}
           >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <RNText style={styles.submitBtnText}>Create task</RNText>
-            )}
-          </Pressable>
-          <Pressable
-            onPress={handleClose}
-            disabled={loading}
-            style={({ pressed }) => [
-              styles.cancelBtn,
-              { width: CANCEL_BTN_WIDTH },
-              pressed && styles.cancelBtnPressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-          >
-            <RNText style={styles.cancelBtnText}>Cancel</RNText>
-          </Pressable>
+            <Pressable
+              onPress={handleSubmit}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Create task"
+              style={({ pressed }) => [
+                styles.createHit,
+                pressed && !loading && styles.createHitPressed,
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <RNText style={styles.createText}>Create task</RNText>
+              )}
+            </Pressable>
+          </View>
+          <View collapsable={false} style={styles.cancelWrap}>
+            <Pressable
+              onPress={handleClose}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              style={({ pressed }) => [styles.cancelHit, pressed && styles.cancelHitPressed]}
+            >
+              <RNText style={styles.cancelText}>Cancel</RNText>
+            </Pressable>
+          </View>
         </View>
       }
     >
@@ -337,61 +327,66 @@ const styles = StyleSheet.create({
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexGrow: 0,
-    flexShrink: 0,
-    gap: FOOTER_GAP,
+    width: '100%',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: '#E8E8E8',
-    backgroundColor: '#fff',
-    paddingHorizontal: FOOTER_H_PAD,
-    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
   },
-  submitBtn: {
+  createWrap: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 160,
     height: 48,
-    borderRadius: 8,
+    marginRight: 8,
     backgroundColor: '#1A4D3E',
+    borderRadius: 8,
+  },
+  createWrapDisabled: {
+    opacity: 0.65,
+  },
+  createHit: {
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    flexGrow: 0,
-    flexShrink: 0,
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
   },
-  submitBtnText: {
+  createHitPressed: {
+    opacity: 0.9,
+  },
+  createText: {
     fontWeight: '600',
     color: '#FFFFFF',
     fontSize: 16,
   },
-  submitBtnDisabled: {
-    opacity: 0.65,
-    ...Platform.select({
-      web: { cursor: 'default' as const },
-    }),
-  },
-  submitBtnPressed: {
-    opacity: 0.9,
-  },
-  cancelBtn: {
+  cancelWrap: {
     height: 48,
+    minWidth: 96,
+    paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+  },
+  cancelHit: {
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    flexGrow: 0,
-    flexShrink: 0,
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
   },
-  cancelBtnText: {
+  cancelHitPressed: {
+    backgroundColor: '#F5F5F5',
+  },
+  cancelText: {
     fontWeight: '600',
     color: '#333333',
     fontSize: 16,
-  },
-  cancelBtnPressed: {
-    backgroundColor: '#F5F5F5',
   },
 });
