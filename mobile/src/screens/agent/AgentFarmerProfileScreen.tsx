@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  ChevronLeft,
   CircleCheck,
   Hourglass,
   Square,
@@ -248,12 +247,6 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     return (
       <View className="flex-1 bg-[#F5F5F5]">
         <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
-          <View className="w-full flex-row items-center justify-between">
-            <Pressable onPress={() => navigation.goBack()} className="flex-row items-center gap-1 py-2">
-              <ChevronLeft size={20} color="#FFFFFF" />
-              <Text className="text-lg text-white">Back</Text>
-            </Pressable>
-          </View>
           <Text className="mt-4 text-2xl font-bold text-white">{routeName}</Text>
         </View>
         <View className="flex-1 items-center justify-center">
@@ -285,13 +278,7 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     <>
       <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="pb-8">
         <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
-          <View className="w-full flex-row items-center justify-between">
-            <Pressable onPress={() => navigation.goBack()} className="flex-row items-center gap-1 py-2">
-              <ChevronLeft size={20} color="#FFFFFF" />
-              <Text className="text-lg text-white">Back</Text>
-            </Pressable>
-          </View>
-          <View className="mt-2 items-center">
+          <View className="items-center">
             <FarmerProfilePhoto
               name={farmer.name || routeName}
               pictureUrl={farmer.picture_url}
