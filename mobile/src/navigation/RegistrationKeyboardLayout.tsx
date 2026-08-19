@@ -37,7 +37,7 @@ const isWeb = Platform.OS === 'web';
 
 /**
  * Shared shell for multi-step registration forms.
- * Native: KeyboardAwareScrollView (or library KAV when Confirm owns its own scroll).
+ * Native: KCAvoidingView (padding) + KeyboardAwareScrollView in layout mode.
  * Web: existing RN KeyboardAvoidingView + ScrollView path.
  */
 export function RegistrationKeyboardLayout({
@@ -52,7 +52,6 @@ export function RegistrationKeyboardLayout({
       style={styles.scroll}
       contentContainerStyle={[styles.content, contentContainerStyle]}
       keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
       nestedScrollEnabled
       bottomOffset={24}
     >
@@ -79,14 +78,10 @@ export function RegistrationKeyboardLayout({
 
   return (
     <SafeAreaView style={styles.safe} edges={tabBarCleared ? [] : ['bottom']}>
-      {header}
-      {scrollable ? (
-        body
-      ) : (
-        <KCAvoidingView style={styles.flex} behavior="padding" automaticOffset>
-          <View style={styles.flex}>{children}</View>
-        </KCAvoidingView>
-      )}
+      <KCAvoidingView style={styles.flex} behavior="padding" automaticOffset>
+        {header}
+        {scrollable ? body : <View style={styles.flex}>{children}</View>}
+      </KCAvoidingView>
     </SafeAreaView>
   );
 }
@@ -95,5 +90,5 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   flex: { flex: 1 },
   scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32 },
+  content: { padding: 16, paddingBottom: 160 },
 });
