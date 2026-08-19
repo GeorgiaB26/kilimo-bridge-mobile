@@ -1,24 +1,14 @@
-import React from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-  type ViewStyle,
-} from 'react-native';
+import React, { useRef } from 'react';
+import { KeyboardAvoidingView, ScrollView, StyleSheet, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  KeyboardAwareScrollView,
-  KeyboardAvoidingView as KCAvoidingView,
-} from 'react-native-keyboard-controller';
 import {
   PADDING_KEYBOARD_AVOIDING_BEHAVIOR,
   screenKeyboardVerticalOffset,
+  useScrollFocusedInputIntoView,
 } from '../utils/keyboardAvoiding';
 import { COLORS } from '../constants';
 
-/** Native stack header under status bar — offset for web KeyboardAvoidingView only. */
+/** Native stack header under status bar — offset for registration KeyboardAvoidingView. */
 const REGISTRATION_HEADER_OFFSET = 64;
 
 type Props = {
@@ -36,12 +26,9 @@ type Props = {
   tabBarCleared?: boolean;
 };
 
-const isWeb = Platform.OS === 'web';
-
 /**
- * Shared shell for multi-step registration forms.
- * Native: KeyboardAwareScrollView (or library KAV when Confirm owns its own scroll).
- * Web: existing RN KeyboardAvoidingView + ScrollView path.
+ * Shared shell for multi-step registration forms: bottom safe area + KAV + optional ScrollView.
+ * Used by public RegistrationNavigator and agent farmer registration.
  */
 export function RegistrationKeyboardLayout({
   children,
@@ -50,13 +37,19 @@ export function RegistrationKeyboardLayout({
   contentContainerStyle,
   tabBarCleared = false,
 }: Props) {
-  const webBody = scrollable ? (
+  const scrollRef = useRef<ScrollView>(null);
+  const onScroll = useScrollFocusedInputIntoView(scrollRef, scrollable);
+
+  const body = scrollable ? (
     <ScrollView
+      ref={scrollRef}
       style={styles.scroll}
       contentContainerStyle={[styles.content, contentContainerStyle]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       nestedScrollEnabled
+      scrollEventThrottle={16}
+      onScroll={onScroll}
     >
       {children}
     </ScrollView>
@@ -64,40 +57,16 @@ export function RegistrationKeyboardLayout({
     children
   );
 
-  if (isWeb) {
-    return (
-      <SafeAreaView style={styles.safe} edges={tabBarCleared ? [] : ['bottom']}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={PADDING_KEYBOARD_AVOIDING_BEHAVIOR}
-          keyboardVerticalOffset={screenKeyboardVerticalOffset(REGISTRATION_HEADER_OFFSET)}
-        >
-          {header}
-          {webBody}
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safe} edges={tabBarCleared ? [] : ['bottom']}>
-      {header}
-      {scrollable ? (
-        <KeyboardAwareScrollView
-          style={styles.scroll}
-          contentContainerStyle={[styles.content, contentContainerStyle]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          nestedScrollEnabled
-          bottomOffset={24}
-        >
-          {children}
-        </KeyboardAwareScrollView>
-      ) : (
-        <KCAvoidingView style={styles.flex} behavior="padding" automaticOffset>
-          <View style={styles.flex}>{children}</View>
-        </KCAvoidingView>
-      )}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={PADDING_KEYBOARD_AVOIDING_BEHAVIOR}
+        keyboardVerticalOffset={screenKeyboardVerticalOffset(REGISTRATION_HEADER_OFFSET)}
+      >
+        {header}
+        {body}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

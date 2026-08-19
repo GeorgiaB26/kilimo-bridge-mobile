@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Modal,
   View,
@@ -13,11 +13,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  KeyboardAvoidingView as KCAvoidingView,
-  KeyboardStickyView,
-} from 'react-native-keyboard-controller';
-import { modalKeyboardVerticalOffset } from '../../utils/keyboardAvoiding';
+  modalKeyboardVerticalOffset,
+  useScrollFocusedInputIntoView,
+} from '../../utils/keyboardAvoiding';
 
+/**
+ * Bottom-sheet KAV: `padding` on both platforms.
+ * Android `height` plus `adjustResize` shrinks the overlay; a flex backdrop then
+ * eats the remaining space instead of lifting the sheet.
+ */
 export const SHEET_KEYBOARD_AVOIDING_BEHAVIOR = 'padding' as const;
 
 export type KeyboardBottomSheetProps = {
@@ -43,8 +47,6 @@ export type KeyboardBottomSheetProps = {
   avoidingViewStyle?: StyleProp<ViewStyle>;
   animationType?: 'none' | 'slide' | 'fade';
 };
-
-const isWeb = Platform.OS === 'web';
 
 const webBackdropCursor =
   Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
@@ -92,8 +94,25 @@ export function KeyboardBottomSheet({
     ? 'max-h-[92%] rounded-t-2xl bg-white'
     : 'max-h-[85%] rounded-xl bg-white p-5';
 
+  const innerScrollRef = useRef<ScrollView>(null);
+  const handleScroll = useScrollFocusedInputIntoView(
+    innerScrollRef,
+    visible && scrollable,
+    scrollViewProps?.onScroll,
+  );
+
+  const setScrollRef = (node: ScrollView | null) => {
+    innerScrollRef.current = node;
+    if (!scrollViewRef) return;
+    if (typeof scrollViewRef === 'function') {
+      scrollViewRef(node);
+    } else {
+      (scrollViewRef as React.MutableRefObject<ScrollView | null>).current = node;
+    }
+  };
+
   const {
-    onScroll: onScrollProp,
+    onScroll: _ignoredOnScroll,
     style: scrollStyle,
     contentContainerStyle,
     ...restScrollViewProps
@@ -110,54 +129,15 @@ export function KeyboardBottomSheet({
       nestedScrollEnabled
       scrollEventThrottle={16}
       {...restScrollViewProps}
-      ref={scrollViewRef}
+      ref={setScrollRef}
       style={[styles.scrollFill, scrollStyle]}
       contentContainerStyle={withBottomInset(contentContainerStyle, scrollBottomInset)}
-      onScroll={onScrollProp}
+      onScroll={handleScroll}
     >
       {children}
     </ScrollView>
   ) : (
     children
-  );
-
-  const footerNode = footer ? (
-    isWeb ? (
-      <View style={[styles.footerWrap, bottomInset > 0 ? { paddingBottom: bottomInset } : null]}>
-        {footer}
-      </View>
-    ) : (
-      <KeyboardStickyView style={styles.footerWrap}>
-        <View style={[styles.footerWrap, bottomInset > 0 ? { paddingBottom: bottomInset } : null]}>
-          {footer}
-        </View>
-      </KeyboardStickyView>
-    )
-  ) : null;
-
-  const overlay = (
-    <>
-      {dismissOnBackdropPress ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss"
-          onPress={onRequestClose}
-          disabled={backdropPressDisabled}
-          style={[styles.backdrop, webBackdropCursor]}
-        />
-      ) : null}
-      <View
-        className={sheetClassName ?? defaultSheetClass}
-        style={[
-          isBottom ? styles.sheetStretch : null,
-          withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0),
-        ]}
-      >
-        {header}
-        {sheetBody}
-        {footerNode}
-      </View>
-    </>
   );
 
   return (
@@ -168,25 +148,37 @@ export function KeyboardBottomSheet({
       onRequestClose={onRequestClose}
       statusBarTranslucent
     >
-      {isWeb ? (
-        <KeyboardAvoidingView
-          style={[styles.avoiding, avoidingViewStyle]}
-          className={overlayClassName ?? defaultOverlayClass}
-          behavior={SHEET_KEYBOARD_AVOIDING_BEHAVIOR}
-          keyboardVerticalOffset={modalKeyboardVerticalOffset()}
+      <KeyboardAvoidingView
+        style={[styles.avoiding, avoidingViewStyle]}
+        className={overlayClassName ?? defaultOverlayClass}
+        behavior={SHEET_KEYBOARD_AVOIDING_BEHAVIOR}
+        keyboardVerticalOffset={modalKeyboardVerticalOffset()}
+      >
+        {dismissOnBackdropPress ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+            onPress={onRequestClose}
+            disabled={backdropPressDisabled}
+            style={[styles.backdrop, webBackdropCursor]}
+          />
+        ) : null}
+        <View
+          className={sheetClassName ?? defaultSheetClass}
+          style={[
+            isBottom ? styles.sheetStretch : null,
+            withBottomInset(sheetStyle, !scrollable && !footer ? bottomInset : 0),
+          ]}
         >
-          {overlay}
-        </KeyboardAvoidingView>
-      ) : (
-        <KCAvoidingView
-          style={[styles.avoiding, avoidingViewStyle]}
-          className={overlayClassName ?? defaultOverlayClass}
-          behavior="padding"
-          automaticOffset
-        >
-          {overlay}
-        </KCAvoidingView>
-      )}
+          {header}
+          {sheetBody}
+          {footer ? (
+            <View style={[styles.footerWrap, bottomInset > 0 ? { paddingBottom: bottomInset } : null]}>
+              {footer}
+            </View>
+          ) : null}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
