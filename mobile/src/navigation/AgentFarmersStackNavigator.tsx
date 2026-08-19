@@ -30,7 +30,8 @@ export function AgentFarmersStackNavigator() {
       screenOptions={{
         headerStyle: { backgroundColor: COLORS.primary },
         headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600', color: '#fff' },
+        headerTitleStyle: { fontWeight: '600', fontSize: 17, color: '#fff' },
+        headerRightContainerStyle: { paddingRight: 16 },
       }}
     >
       <Stack.Screen
@@ -81,6 +82,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginRight: 16,
   },
 });
