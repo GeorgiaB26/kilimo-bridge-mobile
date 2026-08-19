@@ -343,12 +343,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
     backgroundColor: '#1A4D3E',
     borderRadius: 8,
+    overflow: 'hidden',
   },
   createWrapDisabled: {
     opacity: 0.65,
   },
   createHit: {
-    height: 48,
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
@@ -362,6 +363,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
     fontSize: 16,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   cancelWrap: {
     height: 48,
@@ -371,10 +375,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E0E0E0',
     backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   cancelHit: {
-    height: 48,
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
@@ -388,5 +394,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333333',
     fontSize: 16,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
 });
