@@ -180,17 +180,15 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
               )}
             </Pressable>
           </View>
-          <View collapsable={false} style={styles.cancelWrap}>
-            <Pressable
-              onPress={handleClose}
-              disabled={loading}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              style={({ pressed }) => [styles.cancelHit, pressed && styles.cancelHitPressed]}
-            >
-              <RNText style={styles.cancelText}>Cancel</RNText>
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={handleClose}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
+            style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}
+          >
+            <RNText style={styles.cancelText}>Cancel</RNText>
+          </Pressable>
         </View>
       }
     >
@@ -343,15 +341,18 @@ const styles = StyleSheet.create({
     marginRight: 8,
     backgroundColor: '#1A4D3E',
     borderRadius: 8,
-    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   createWrapDisabled: {
     opacity: 0.65,
   },
   createHit: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+    padding: 0,
     justifyContent: 'center',
+    alignItems: 'center',
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
@@ -363,39 +364,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
     fontSize: 16,
+    lineHeight: 20,
     textAlign: 'center',
     includeFontPadding: false,
-    textAlignVertical: 'center',
   },
-  cancelWrap: {
+  cancelBtn: {
     height: 48,
-    minWidth: 96,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelHit: {
-    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
   },
-  cancelHitPressed: {
+  cancelBtnPressed: {
     backgroundColor: '#F5F5F5',
   },
   cancelText: {
     fontWeight: '600',
     color: '#333333',
     fontSize: 16,
+    lineHeight: 20,
     textAlign: 'center',
     includeFontPadding: false,
-    textAlignVertical: 'center',
   },
 });
