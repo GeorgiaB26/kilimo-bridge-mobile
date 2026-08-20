@@ -216,6 +216,19 @@ export async function createPresignedReadUrl(objectKey: string): Promise<string>
   return getSignedUrl(client, command, { expiresIn: READ_URL_EXPIRES_SECONDS });
 }
 
+/** HTTPS URL as stored, or a short-lived signed URL for an R2 object key. */
+export async function resolveAttachmentPreviewUrl(stored?: string | null): Promise<string | null> {
+  const value = stored?.trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (!isR2Configured() || !isR2ObjectKey(value)) return null;
+  try {
+    return await createPresignedReadUrl(value);
+  } catch {
+    return null;
+  }
+}
+
 /** Server-side upload (used by web clients to avoid R2 bucket CORS on browser PUT). */
 export async function uploadObjectDirect(params: {
   purpose: UploadPurpose;

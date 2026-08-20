@@ -585,6 +585,7 @@ export async function getThreadMessages(threadId: string) {
       sender_name?: string;
       is_mine?: boolean;
       attachment_url?: string | null;
+      attachment_preview_url?: string | null;
     }>;
     otherUser: { id: string; name: string } | null;
     title?: string | null;
@@ -593,8 +594,15 @@ export async function getThreadMessages(threadId: string) {
   };
 }
 
-export async function sendThreadMessage(threadId: string, content: string) {
-  const { data } = await api.post(`/messages/threads/${threadId}/messages`, { content });
+export async function sendThreadMessage(
+  threadId: string,
+  content: string,
+  attachmentUrl?: string | null
+) {
+  const { data } = await api.post(`/messages/threads/${threadId}/messages`, {
+    content,
+    attachment_url: attachmentUrl || undefined,
+  });
   return data;
 }
 

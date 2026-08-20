@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
 import { getProjectManagerUserForAgent } from './agentDashboardService';
+import { isR2ObjectKey, resolveAttachmentPreviewUrl } from './r2StorageService';
 
 export interface MessageThreadSummary {
   id: string;
@@ -22,6 +23,7 @@ export interface ThreadMessage {
   sender_id: string;
   content: string;
   attachment_url?: string | null;
+  attachment_preview_url?: string | null;
   created_at: string;
   sender_name?: string;
   is_mine?: boolean;
@@ -325,11 +327,17 @@ export async function getThreadMessages(
     [threadId]
   );
 
-  return {
-    messages: messages.map((m) => ({
+  const withPreviews: ThreadMessage[] = [];
+  for (const m of messages) {
+    withPreviews.push({
       ...m,
       is_mine: String(m.sender_id) === String(userId),
-    })),
+      attachment_preview_url: await resolveAttachmentPreviewUrl(m.attachment_url),
+    });
+  }
+
+  return {
+    messages: withPreviews,
     otherUser: other ? { id: other.user_id, name: other.name } : null,
     title: threadMeta?.title ?? null,
     context_type: threadMeta?.context_type ?? null,
@@ -357,6 +365,14 @@ export async function markThreadRead(threadId: string, userId: string): Promise<
   );
 }
 
+function assertMessageAttachment(url?: string | null): string | null {
+  const value = url?.trim() || null;
+  if (!value) return null;
+  if (value.startsWith('https://') && value.length < 2048) return value;
+  if (isR2ObjectKey(value)) return value;
+  throw new Error('Invalid attachment');
+}
+
 export async function sendThreadMessage(
   threadId: string,
   senderId: string,
@@ -364,7 +380,7 @@ export async function sendThreadMessage(
   attachmentUrl?: string | null
 ): Promise<ThreadMessage> {
   const trimmed = content.trim();
-  const attachment = attachmentUrl?.trim() || null;
+  const attachment = assertMessageAttachment(attachmentUrl);
   if (!trimmed && !attachment) throw new Error('Message cannot be empty');
   if (trimmed.length > 2000) throw new Error('Message must be 2000 characters or less');
 
@@ -464,7 +480,11 @@ export async function sendThreadMessage(
     [messageId]
   );
 
-  return { ...row!, is_mine: true };
+  return {
+    ...row!,
+    is_mine: true,
+    attachment_preview_url: await resolveAttachmentPreviewUrl(row?.attachment_url),
+  };
 }
 
 /**

@@ -2,7 +2,6 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   FlatList,
-  TextInput,
   Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -31,9 +30,14 @@ import {
   type SupportTicketMessage,
   type SupportTicketSummary,
 } from '../../api/client';
+import { uploadPhotoToR2 } from '../../services/uploadToR2';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { formatMessageTime } from '../../constants/notifications';
 import type { SupportMessagesStackParamList } from '../../navigation/types';
+import {
+  MessageComposer,
+  type PendingComposerPhoto,
+} from '../../components/messaging/MessageComposer';
 
 type Route = RouteProp<SupportMessagesStackParamList, 'SupportTicketDetail'>;
 type Nav = NativeStackNavigationProp<SupportMessagesStackParamList, 'SupportTicketDetail'>;
@@ -50,6 +54,7 @@ export function SupportTicketDetailScreen() {
   const [messages, setMessages] = useState<SupportTicketMessage[]>([]);
   const [canReply, setCanReply] = useState(true);
   const [newMessage, setNewMessage] = useState('');
+  const [pendingPhoto, setPendingPhoto] = useState<PendingComposerPhoto | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -88,11 +93,22 @@ export function SupportTicketDetailScreen() {
 
   const handleSend = async () => {
     const text = newMessage.trim();
-    if (!text || sending || !canReply) return;
+    if ((!text && !pendingPhoto) || sending || !canReply) return;
     setSending(true);
     try {
-      await replySupportTicket(threadId, { content: text });
+      let attachmentKeys: string[] | undefined;
+      if (pendingPhoto) {
+        const uploaded = await uploadPhotoToR2({
+          purpose: 'support_attachment',
+          localUri: pendingPhoto.uri,
+          mimeType: pendingPhoto.mimeType,
+          base64: pendingPhoto.base64,
+        });
+        attachmentKeys = [uploaded.objectKey];
+      }
+      await replySupportTicket(threadId, { content: text, attachmentKeys });
       setNewMessage('');
+      setPendingPhoto(null);
       await load();
     } catch (err) {
       setError(extractApiError(err, 'Could not send reply'));
@@ -182,22 +198,29 @@ export function SupportTicketDetailScreen() {
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
             const mine = item.is_mine;
+            const hidePlaceholderText =
+              !!item.attachment_preview_url &&
+              (!item.content.trim() || item.content.trim() === 'Photo attachment');
             return (
               <View style={[styles.bubble, mine ? styles.sent : styles.received]}>
                 {!mine && item.sender_name ? (
                   <Text style={styles.senderName}>{item.sender_name}</Text>
                 ) : null}
-                {mine ? (
-                  <RNText style={[styles.bubbleText, styles.sentText]}>{item.content}</RNText>
-                ) : (
-                  <Text style={styles.bubbleText}>{item.content}</Text>
-                )}
+                {!hidePlaceholderText && item.content.trim() ? (
+                  mine ? (
+                    <RNText style={[styles.bubbleText, styles.sentText]}>{item.content}</RNText>
+                  ) : (
+                    <Text style={styles.bubbleText}>{item.content}</Text>
+                  )
+                ) : null}
                 {item.attachment_preview_url ? (
                   <Image
                     source={{ uri: item.attachment_preview_url }}
                     style={styles.attachment}
                     resizeMode="cover"
                   />
+                ) : item.attachment_url ? (
+                  <Text style={[styles.bubbleText, mine && styles.sentText]}>📷 Photo attached</Text>
                 ) : null}
                 {mine ? (
                   <RNText style={[styles.time, styles.sentTime]}>
@@ -214,25 +237,19 @@ export function SupportTicketDetailScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <View style={[styles.inputRow, { paddingBottom: 10 + Math.max(insets.bottom, 0) }]}>
-        <TextInput
-          style={styles.input}
-          placeholder={canReply ? 'Reply to requester…' : 'Replies closed'}
-          placeholderTextColor={COLORS.muted}
-          value={newMessage}
-          onChangeText={setNewMessage}
-          multiline
-          maxLength={4000}
-          editable={canReply && !sending}
-        />
-        <Pressable
-          style={[styles.sendBtn, (sending || !canReply) && styles.disabled]}
-          onPress={handleSend}
-          disabled={sending || !canReply}
-        >
-          <RNText style={styles.sendText}>{sending ? '…' : 'Send'}</RNText>
-        </Pressable>
-      </View>
+      <MessageComposer
+        placeholder={canReply ? 'Reply to requester…' : 'Replies closed'}
+        maxLength={4000}
+        sending={sending}
+        disabled={!canReply}
+        sendColor="#1F4E78"
+        bottomInset={insets.bottom}
+        value={newMessage}
+        onChangeText={setNewMessage}
+        pendingPhoto={pendingPhoto}
+        onPendingPhotoChange={setPendingPhoto}
+        onSend={() => void handleSend()}
+      />
     </>
   );
 
@@ -319,33 +336,5 @@ const styles = StyleSheet.create({
   time: { fontSize: 11, color: COLORS.muted, marginTop: 4 },
   sentTime: { color: 'rgba(255,255,255,0.75)' },
   error: { color: '#c0392b', paddingHorizontal: 12, fontSize: 13 },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: 10,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 120,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    fontSize: 15,
-    backgroundColor: '#fafafa',
-  },
-  sendBtn: {
-    backgroundColor: '#1F4E78',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  sendText: { color: '#fff', fontWeight: '700' },
   disabled: { opacity: 0.6 },
 });

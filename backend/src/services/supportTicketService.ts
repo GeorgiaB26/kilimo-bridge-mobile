@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
 import { logAudit } from './auditService';
-import { isR2ObjectKey, createPresignedReadUrl, isR2Configured } from './r2StorageService';
+import { isR2ObjectKey, resolveAttachmentPreviewUrl } from './r2StorageService';
 import {
   SUPPORT_DESK_PHONE,
   SUPPORT_TICKET_CONTEXT,
@@ -425,17 +425,9 @@ export async function getSupportTicketMessages(
 
   const withPreviews: SupportTicketMessage[] = [];
   for (const m of messages) {
-    let attachment_preview_url: string | null = null;
-    if (m.attachment_url && isR2Configured() && isR2ObjectKey(m.attachment_url)) {
-      try {
-        attachment_preview_url = await createPresignedReadUrl(m.attachment_url);
-      } catch {
-        attachment_preview_url = null;
-      }
-    }
     withPreviews.push({
       ...m,
-      attachment_preview_url,
+      attachment_preview_url: await resolveAttachmentPreviewUrl(m.attachment_url),
       is_mine: String(m.sender_id) === String(userId),
     });
   }
@@ -498,7 +490,11 @@ export async function replyToSupportTicket(params: {
     `,
     [messageId]
   );
-  return { ...row!, is_mine: true };
+  return {
+    ...row!,
+    is_mine: true,
+    attachment_preview_url: await resolveAttachmentPreviewUrl(row?.attachment_url),
+  };
 }
 
 export async function resolveSupportTicket(params: {

@@ -2,7 +2,6 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   FlatList,
-  TextInput,
   Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -24,11 +23,16 @@ import {
   screenKeyboardVerticalOffset,
 } from '../../utils/keyboardAvoiding';
 import { getThreadMessages, sendThreadMessage } from '../../api/client';
+import { uploadPhotoToR2 } from '../../services/uploadToR2';
 import { useInboxCountsStore } from '../../store/inboxCountsStore';
 import { extractApiError } from '../../utils/feedback';
 import { formatMessageTime } from '../../constants/notifications';
 import type { MessagesStackParamList } from '../../navigation/types';
 import { ContactSupportModal } from '../../components/ContactSupportModal';
+import {
+  MessageComposer,
+  type PendingComposerPhoto,
+} from '../../components/messaging/MessageComposer';
 import { SUPPORT_TICKET_CONTEXT } from '../../../shared/src/supportDesk';
 
 type MessageRow = {
@@ -38,6 +42,7 @@ type MessageRow = {
   sender_name?: string;
   is_mine?: boolean;
   attachment_url?: string | null;
+  attachment_preview_url?: string | null;
 };
 
 type Route = RouteProp<MessagesStackParamList, 'MessageDetail'>;
@@ -57,6 +62,7 @@ export function MessageDetailScreen() {
   const [contextType, setContextType] = useState<string | null>(paramContext ?? null);
   const [supportStatus, setSupportStatus] = useState<string | null>(paramStatus ?? null);
   const [newMessage, setNewMessage] = useState('');
+  const [pendingPhoto, setPendingPhoto] = useState<PendingComposerPhoto | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +101,22 @@ export function MessageDetailScreen() {
 
   const handleSend = async () => {
     const text = newMessage.trim();
-    if (!text || sending || isResolved) return;
+    if ((!text && !pendingPhoto) || sending || isResolved) return;
     setSending(true);
     try {
-      await sendThreadMessage(threadId, text);
+      let attachmentUrl: string | undefined;
+      if (pendingPhoto) {
+        const uploaded = await uploadPhotoToR2({
+          purpose: 'support_attachment',
+          localUri: pendingPhoto.uri,
+          mimeType: pendingPhoto.mimeType,
+          base64: pendingPhoto.base64,
+        });
+        attachmentUrl = uploaded.objectKey;
+      }
+      await sendThreadMessage(threadId, text, attachmentUrl);
       setNewMessage('');
+      setPendingPhoto(null);
       await load();
     } catch (err) {
       setError(extractApiError(err, 'Could not send message'));
@@ -174,16 +191,20 @@ export function MessageDetailScreen() {
           }
           renderItem={({ item }) => {
             const mine = item.is_mine;
-            const attachment = item.attachment_url?.trim();
-            const attachmentIsUrl =
-              !!attachment &&
-              (attachment.startsWith('http://') || attachment.startsWith('https://'));
+            const preview =
+              item.attachment_preview_url?.trim() ||
+              (item.attachment_url?.startsWith('http') ? item.attachment_url.trim() : '');
+            const hasStoredAttachment = !!item.attachment_url?.trim();
+            const hidePlaceholderText =
+              !!preview && (!item.content.trim() || item.content.trim() === 'Photo attachment');
             return (
               <View style={[styles.bubble, mine ? styles.sent : styles.received]}>
-                <Text style={[styles.bubbleText, mine && styles.sentText]}>{item.content}</Text>
-                {attachmentIsUrl ? (
-                  <Image source={{ uri: attachment }} style={styles.attachment} resizeMode="cover" />
-                ) : attachment ? (
+                {!hidePlaceholderText && item.content.trim() ? (
+                  <Text style={[styles.bubbleText, mine && styles.sentText]}>{item.content}</Text>
+                ) : null}
+                {preview ? (
+                  <Image source={{ uri: preview }} style={styles.attachment} resizeMode="cover" />
+                ) : hasStoredAttachment ? (
                   <Text style={[styles.attachmentHint, mine && styles.sentText]}>📷 Photo attached</Text>
                 ) : null}
                 <Text style={[styles.time, mine && styles.sentTime]}>
@@ -202,25 +223,19 @@ export function MessageDetailScreen() {
           <Text style={styles.readOnlyText}>Messaging is closed on resolved tickets.</Text>
         </View>
       ) : (
-        <View style={[styles.inputRow, { paddingBottom: 10 + Math.max(insets.bottom, 0) }]}>
-          <TextInput
-            style={styles.input}
-            placeholder="Type a message..."
-            placeholderTextColor={COLORS.muted}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            multiline
-            maxLength={2000}
-            editable={!sending}
-          />
-          <Pressable
-            style={[styles.sendBtn, sending && styles.sendDisabled]}
-            onPress={handleSend}
-            disabled={sending}
-          >
-            <Text className="font-bold text-white">{sending ? '…' : 'Send'}</Text>
-          </Pressable>
-        </View>
+        <MessageComposer
+          placeholder="Type a message..."
+          maxLength={2000}
+          sending={sending}
+          disabled={false}
+          sendColor={COLORS.primary}
+          bottomInset={insets.bottom}
+          value={newMessage}
+          onChangeText={setNewMessage}
+          pendingPhoto={pendingPhoto}
+          onPendingPhotoChange={setPendingPhoto}
+          onSend={() => void handleSend()}
+        />
       )}
     </>
   );
@@ -350,35 +365,6 @@ const styles = StyleSheet.create({
   time: { fontSize: 11, color: COLORS.muted, marginTop: 4 },
   sentTime: { color: 'rgba(255,255,255,0.75)' },
   error: { color: '#c0392b', paddingHorizontal: 12, fontSize: 13 },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: 10,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    fontSize: 15,
-    backgroundColor: '#fafafa',
-  },
-  sendBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  sendDisabled: { opacity: 0.6 },
-  sendText: { color: '#fff', fontWeight: '700' },
   readOnlyBar: {
     padding: 12,
     backgroundColor: '#fff',
