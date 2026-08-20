@@ -112,11 +112,13 @@ router.post(
   '/threads/:threadId/messages',
   authenticate,
   asyncHandler(async (req, res) => {
-    const { content, attachment_url } = req.body as {
+    const { content, attachment_url, attachmentUrl } = req.body as {
       content?: string;
       attachment_url?: string;
+      attachmentUrl?: string;
     };
-    if (!content?.trim() && !attachment_url?.trim()) {
+    const attachment = attachment_url ?? attachmentUrl;
+    if (!content?.trim() && !attachment?.trim()) {
       res.status(400).json({ error: 'content is required' });
       return;
     }
@@ -125,7 +127,7 @@ router.post(
         req.params.threadId,
         req.user!.userId,
         content ?? '',
-        attachment_url
+        attachment
       );
       res.status(201).json({ message });
     } catch (err) {

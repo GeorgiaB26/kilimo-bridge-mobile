@@ -65,17 +65,18 @@ router.get(
 router.post(
   '/tickets',
   asyncHandler(async (req, res) => {
-    const { subject, description, attachmentKeys } = req.body as {
+    const { subject, description, attachmentKeys, attachment_keys } = req.body as {
       subject?: string;
       description?: string;
       attachmentKeys?: string[];
+      attachment_keys?: string[];
     };
     try {
       const result = await createSupportTicket({
         ...userOpts(req),
         subject: subject ?? '',
         description: description ?? '',
-        attachmentKeys,
+        attachmentKeys: attachmentKeys ?? attachment_keys,
       });
       res.status(201).json(result);
     } catch (err) {
@@ -100,16 +101,17 @@ router.get(
 router.post(
   '/tickets/:threadId/messages',
   asyncHandler(async (req, res) => {
-    const { content, attachmentKeys } = req.body as {
+    const { content, attachmentKeys, attachment_keys } = req.body as {
       content?: string;
       attachmentKeys?: string[];
+      attachment_keys?: string[];
     };
     try {
       const message = await replyToSupportTicket({
         threadId: req.params.threadId,
         ...userOpts(req),
         content: content ?? '',
-        attachmentKeys,
+        attachmentKeys: attachmentKeys ?? attachment_keys,
       });
       res.status(201).json({ message });
     } catch (err) {

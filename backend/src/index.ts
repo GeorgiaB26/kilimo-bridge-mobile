@@ -53,7 +53,7 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
-    api_build: 'v2.11.24-due-date-normalize-fix',
+    api_build: 'v2.11.25-support-attachment-keys',
     field_agent_features: {
       messaging_restricted: true,
       notification_settings_legacy_sync: true,

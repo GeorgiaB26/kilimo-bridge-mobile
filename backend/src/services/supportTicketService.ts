@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
 import { logAudit } from './auditService';
-import { isR2ObjectKey, resolveAttachmentPreviewUrl } from './r2StorageService';
+import { extractR2ObjectKey, resolveAttachmentPreviewUrl } from './r2StorageService';
 import {
   SUPPORT_DESK_PHONE,
   SUPPORT_TICKET_CONTEXT,
@@ -93,15 +93,18 @@ function canCreateTickets(role: string): boolean {
   return role === 'farmer' || isAgentRole(role);
 }
 
-function assertAttachmentKeys(keys: string[] | undefined): string[] {
-  if (!keys?.length) return [];
-  const cleaned = keys.map((k) => k.trim()).filter(Boolean);
-  if (cleaned.length > 5) throw new Error('Maximum 5 photo attachments per message');
-  for (const key of cleaned) {
-    if (!isR2ObjectKey(key)) {
+function assertAttachmentKeys(keys: unknown): string[] {
+  const list = Array.isArray(keys) ? keys : typeof keys === 'string' ? [keys] : [];
+  const cleaned: string[] = [];
+  for (const raw of list) {
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    const key = extractR2ObjectKey(raw);
+    if (!key) {
       throw new Error('Invalid support attachment key');
     }
+    cleaned.push(key);
   }
+  if (cleaned.length > 5) throw new Error('Maximum 5 photo attachments per message');
   return cleaned;
 }
 

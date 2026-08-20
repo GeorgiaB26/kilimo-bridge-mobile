@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
 import { getProjectManagerUserForAgent } from './agentDashboardService';
-import { isR2ObjectKey, resolveAttachmentPreviewUrl } from './r2StorageService';
+import { extractR2ObjectKey, isR2ObjectKey, resolveAttachmentPreviewUrl } from './r2StorageService';
 
 export interface MessageThreadSummary {
   id: string;
@@ -368,6 +368,8 @@ export async function markThreadRead(threadId: string, userId: string): Promise<
 function assertMessageAttachment(url?: string | null): string | null {
   const value = url?.trim() || null;
   if (!value) return null;
+  const key = extractR2ObjectKey(value);
+  if (key) return key;
   if (value.startsWith('https://') && value.length < 2048) return value;
   if (isR2ObjectKey(value)) return value;
   throw new Error('Invalid attachment');

@@ -123,27 +123,46 @@ export function isOwnFarmerProfilePhotoKey(objectKey: string, farmerId: string):
   return objectKey.startsWith(prefix) && isR2ObjectKey(objectKey);
 }
 
+const R2_KEY_IN_PATH = /(?:^|\/)((?:farmers|tasks|support)\/[A-Za-z0-9/_\-.]+)/;
+
 /** True if value looks like an R2 object key we store in Postgres. */
 export function isR2ObjectKey(value?: string | null): boolean {
   if (!value?.trim()) return false;
   const v = value.trim();
-  return /^(farmers|tasks|support)\//.test(v) && !v.includes('://');
+  return (
+    /^(farmers|tasks|support)\//.test(v) &&
+    !v.includes('://') &&
+    !v.includes('?') &&
+    !v.includes('#')
+  );
 }
 
 /**
  * Extract object key from a stored picture_url / photo_evidence_url value.
- * Accepts raw keys or full R2 endpoint URLs for this bucket.
+ * Accepts raw keys, keys with a leading slash, or full R2 / presigned HTTPS URLs.
  */
 export function extractR2ObjectKey(stored?: string | null): string | null {
   if (!stored?.trim()) return null;
   const value = stored.trim();
-  if (isR2ObjectKey(value)) return value;
+  const withoutQuery = value.split(/[?#]/)[0].replace(/^\/+/, '');
+  if (isR2ObjectKey(withoutQuery)) return withoutQuery;
+
+  const fromLoose = withoutQuery.match(R2_KEY_IN_PATH)?.[1];
+  if (fromLoose && isR2ObjectKey(fromLoose)) return fromLoose;
+
+  try {
+    const path = decodeURIComponent(new URL(value).pathname);
+    const fromUrl = path.match(R2_KEY_IN_PATH)?.[1];
+    if (fromUrl && isR2ObjectKey(fromUrl)) return fromUrl;
+  } catch {
+    // not a URL
+  }
 
   try {
     const endpoint = getEndpoint();
     const bucket = getBucket();
     if (value.startsWith(`${endpoint}/`)) {
-      const rest = value.slice(endpoint.length + 1);
+      const rest = value.slice(endpoint.length + 1).split(/[?#]/)[0];
       const prefix = `${bucket}/`;
       if (rest.startsWith(prefix)) {
         const key = rest.slice(prefix.length);
