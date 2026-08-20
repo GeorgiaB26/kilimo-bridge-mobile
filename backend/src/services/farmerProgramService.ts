@@ -50,8 +50,27 @@ const FARMER_PROJECTS_SQL = `
     (SELECT COUNT(*)::int FROM farmer_tasks ft
       WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1) AS task_count,
     (SELECT COUNT(*)::int FROM farmer_tasks ft
+      JOIN tasks t ON t.id = ft.task_id
       WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1
-        AND ft.status IN ('approved', 'completed')) AS completed_task_count,
+        AND (
+          ft.status IN ('approved', 'completed')
+            OR EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.farmer_id = ft.farmer_id
+                AND lower(p.payment_status::text) IN ('transferred', 'paid')
+                AND (
+                  p.description = 'Task:' || ft.id
+                  OR ABS(COALESCE(p.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
+                )
+            )
+            OR EXISTS (
+              SELECT 1 FROM bank_transactions bt
+              WHERE bt.farmer_id = ft.farmer_id
+                AND bt.status = 'completed'
+                AND ABS(COALESCE(bt.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
+            )
+        )
+    ) AS completed_task_count,
     (SELECT COALESCE(SUM(t.payment_value_kes), 0)::float FROM farmer_tasks ft
       JOIN tasks t ON t.id = ft.task_id
       WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1) AS payment_total,

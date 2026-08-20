@@ -309,6 +309,19 @@ export async function createTask(data: {
     data.payment_value_kes ?? 0, data.due_date ?? null, data.assigned_agronomist_id ?? null,
   ]);
   await refreshProjectTaskCounts(data.program_project_id);
+
+  const existingFarmers = await query<{ farmer_id: string }>(
+    'SELECT farmer_id FROM program_project_farmers WHERE program_project_id = $1',
+    [data.program_project_id]
+  );
+  if (existingFarmers.length > 0) {
+    await assignFarmersToProject(
+      data.program_project_id,
+      existingFarmers.map((f) => f.farmer_id),
+      [id]
+    );
+  }
+
   return queryOne('SELECT * FROM tasks WHERE id = $1', [id]);
 }
 
@@ -420,6 +433,7 @@ export async function assignFarmersToProject(
   }
 
   let assigned = 0;
+  const newFarmerTaskIds: string[] = [];
   for (const farmerId of farmerIds) {
     await query(`
       INSERT INTO program_project_farmers (id, program_project_id, farmer_id)
@@ -427,15 +441,85 @@ export async function assignFarmersToProject(
       ON CONFLICT (program_project_id, farmer_id) DO NOTHING
     `, [uuidv4(), programProjectId, farmerId]);
     for (const t of taskRows) {
-      await query(`
+      const inserted = await queryOne<{ id: string }>(`
         INSERT INTO farmer_tasks (id, task_id, farmer_id, program_project_id, assigned_by_user_id)
         VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (task_id, farmer_id) DO NOTHING
+        RETURNING id
       `, [uuidv4(), t.id, farmerId, programProjectId, assignedByUserId ?? null]);
+      if (inserted?.id) newFarmerTaskIds.push(inserted.id);
     }
     assigned++;
   }
+  await notifyFarmersOfNewTaskAssignments(newFarmerTaskIds);
   return { assigned, farmer_ids: farmerIds, task_ids: taskRows.map((t) => t.id) };
+}
+
+async function notifyFarmersOfNewTaskAssignments(farmerTaskIds: string[]): Promise<void> {
+  if (farmerTaskIds.length === 0) return;
+
+  const placeholders = farmerTaskIds.map((_, i) => `$${i + 1}`).join(',');
+  const rows = await query<{
+    id: string;
+    farmer_id: string;
+    name: string;
+    program_project_name: string;
+    due_date: string | null;
+  }>(
+    `
+    SELECT ft.id, ft.farmer_id, t.name, pp.name AS program_project_name, t.due_date::text AS due_date
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    JOIN program_projects pp ON pp.id = ft.program_project_id
+    WHERE ft.id IN (${placeholders})
+    `,
+    farmerTaskIds
+  );
+
+  const { createNotification } = await import('./notificationService');
+
+  for (const row of rows) {
+    const farmerUser = await queryOne<{ user_id: string }>(
+      'SELECT user_id::text AS user_id FROM users WHERE farmer_id = $1 LIMIT 1',
+      [row.farmer_id]
+    );
+    const due = row.due_date ? ` Due ${row.due_date}.` : '';
+    try {
+      if (farmerUser?.user_id) {
+        await createNotification({
+          userId: farmerUser.user_id,
+          title: 'New Task Assigned',
+          message: `You have been assigned "${row.name}" on ${row.program_project_name}.${due}`,
+          type: 'task_assigned',
+          contextType: 'farmer_task',
+          contextId: row.id,
+          actionUrl: `/tasks/${row.id}`,
+          priority: 'high',
+        });
+      }
+      const farmerName =
+        (
+          await queryOne<{ name: string | null }>(
+            'SELECT name FROM farmers WHERE farmer_id = $1',
+            [row.farmer_id]
+          )
+        )?.name?.trim() || 'A farmer';
+      for (const agentUserId of await resolveAgentUserIdsForFarmer(row.farmer_id)) {
+        await createNotification({
+          userId: agentUserId,
+          title: 'New Task Assigned',
+          message: `${farmerName} was assigned "${row.name}" on ${row.program_project_name}.`,
+          type: 'task_assigned',
+          contextType: 'farmer_task',
+          contextId: row.id,
+          actionUrl: `/tasks/${row.id}`,
+          priority: 'normal',
+        });
+      }
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 const FARMER_TASK_DETAIL_SQL = `
@@ -614,7 +698,28 @@ export async function listFarmerProgramProjects(farmerId: string) {
     SELECT pp.id, pp.name, pp.status, pp.start_date, pp.end_date, pp.budget_kes, pp.program_id,
       p.name AS program_name,
       (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1) AS assigned_task_count,
-      (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1 AND ft.status IN ('approved','completed')) AS completed_task_count
+      (SELECT COUNT(*)::int FROM farmer_tasks ft
+        JOIN tasks t ON t.id = ft.task_id
+        WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1
+          AND (
+            ft.status IN ('approved','completed')
+            OR EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.farmer_id = ft.farmer_id
+                AND lower(p.payment_status::text) IN ('transferred', 'paid')
+                AND (
+                  p.description = 'Task:' || ft.id
+                  OR ABS(COALESCE(p.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
+                )
+            )
+            OR EXISTS (
+              SELECT 1 FROM bank_transactions bt
+              WHERE bt.farmer_id = ft.farmer_id
+                AND bt.status = 'completed'
+                AND ABS(COALESCE(bt.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
+            )
+          )
+      ) AS completed_task_count
     FROM program_project_farmers pf
     JOIN program_projects pp ON pp.id = pf.program_project_id
     JOIN programs p ON p.id = pp.program_id
@@ -826,7 +931,9 @@ export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
     id?: string;
     farmer_id?: string;
     name?: string;
+    payment_value_kes?: number;
   } | null;
+  await createPendingPaymentForApprovedTask(updated);
   await notifyFarmerOfHierarchyTaskReview(updated, 'approved');
   return updated;
 }
@@ -886,6 +993,186 @@ async function notifyFarmerOfHierarchyTaskReview(
   } catch {
     // best-effort
   }
+}
+
+async function createPendingPaymentForApprovedTask(
+  task: { id?: string; farmer_id?: string; name?: string; payment_value_kes?: number } | null
+): Promise<void> {
+  if (!task?.id || !task.farmer_id) return;
+  const amount = Math.round(Number(task.payment_value_kes ?? 0));
+  if (amount <= 0) return;
+
+  const description = `Task:${task.id}`;
+  const existing = await queryOne<{ id: string }>(
+    'SELECT id FROM payments WHERE description = $1',
+    [description]
+  );
+  if (existing) return;
+
+  await query(
+    `INSERT INTO payments (id, farmer_id, description, amount, payment_status, payment_method)
+     VALUES ($1, $2, $3, $4, 'pending', 'M-Pesa')`,
+    [uuidv4(), task.farmer_id, description, amount]
+  );
+}
+
+/**
+ * Mark a pending payment transferred, notify farmer + field agents, and complete the linked task.
+ * No-ops if the payment was already transferred.
+ */
+export async function settleTransferredPayment(
+  paymentId: string,
+  reference: string
+): Promise<boolean> {
+  const row = await queryOne<{
+    id: string;
+    farmer_id: string;
+    amount: number;
+    description: string | null;
+  }>(
+    `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
+     WHERE id = $2 AND lower(payment_status::text) NOT IN ('transferred', 'paid')
+     RETURNING id, farmer_id, amount, description`,
+    [reference, paymentId]
+  );
+  if (!row) return false;
+  await fulfillPaymentSideEffects({
+    paymentId: row.id,
+    farmerId: row.farmer_id,
+    amount: Number(row.amount ?? 0),
+    description: row.description,
+    reference,
+  });
+  return true;
+}
+
+/**
+ * After a payment is marked transferred: notify farmer + field agents, and mark the
+ * linked program task completed so project cards show 1/1 instead of 0/1.
+ */
+export async function fulfillPaymentSideEffects(input: {
+  paymentId: string;
+  farmerId: string;
+  amount: number;
+  description?: string | null;
+  reference?: string | null;
+}): Promise<void> {
+  const linked = await completeFarmerTasksForTransferredPayment(input);
+  const farmerUser = await queryOne<{ user_id: string }>(
+    'SELECT user_id::text AS user_id FROM users WHERE farmer_id = $1 LIMIT 1',
+    [input.farmerId]
+  );
+  const farmerName =
+    (
+      await queryOne<{ name: string | null }>(
+        'SELECT name FROM farmers WHERE farmer_id = $1',
+        [input.farmerId]
+      )
+    )?.name?.trim() || 'A farmer';
+  const taskLabel = linked.taskName ?? input.description ?? 'your task';
+  const amountLabel = Math.round(input.amount).toLocaleString();
+  const { createNotification } = await import('./notificationService');
+
+  try {
+    if (farmerUser?.user_id) {
+      await createNotification({
+        userId: farmerUser.user_id,
+        title: 'Payment Processed',
+        message: `KES ${amountLabel} for "${taskLabel}" has been processed.${
+          input.reference ? ` Ref ${input.reference}.` : ''
+        }`,
+        type: 'payment_processed',
+        contextType: linked.farmerTaskId ? 'farmer_task' : 'payment',
+        contextId: linked.farmerTaskId ?? input.paymentId,
+        actionUrl: linked.farmerTaskId ? `/tasks/${linked.farmerTaskId}` : '/payments',
+        priority: 'high',
+      });
+    }
+    for (const agentUserId of await resolveAgentUserIdsForFarmer(input.farmerId)) {
+      await createNotification({
+        userId: agentUserId,
+        title: 'Payment Processed',
+        message: `${farmerName} received KES ${amountLabel} for "${taskLabel}".`,
+        type: 'payment_processed',
+        contextType: linked.farmerTaskId ? 'farmer_task' : 'payment',
+        contextId: linked.farmerTaskId ?? input.paymentId,
+        priority: 'high',
+      });
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+async function completeFarmerTasksForTransferredPayment(input: {
+  paymentId: string;
+  farmerId: string;
+  amount: number;
+  description?: string | null;
+}): Promise<{ farmerTaskId?: string; taskName?: string }> {
+  const description = input.description ?? '';
+  const taskPrefix = description.match(/^Task:(.+)$/);
+  const qcPrefix = description.match(/^QC:(.+)$/);
+
+  let farmerTaskId: string | null = null;
+
+  if (taskPrefix?.[1]) {
+    farmerTaskId = taskPrefix[1];
+  } else if (qcPrefix?.[1]) {
+    const inventory = await queryOne<{ task_id: string | null }>(
+      'SELECT task_id FROM centre_inventory WHERE id = $1',
+      [qcPrefix[1]]
+    );
+    if (inventory?.task_id) {
+      const row = await queryOne<{ id: string }>(
+        `SELECT id FROM farmer_tasks WHERE farmer_id = $1 AND task_id = $2 LIMIT 1`,
+        [input.farmerId, inventory.task_id]
+      );
+      farmerTaskId = row?.id ?? null;
+    }
+  }
+
+  if (!farmerTaskId) {
+    const matched = await queryOne<{ id: string }>(
+      `
+      SELECT ft.id
+      FROM farmer_tasks ft
+      JOIN tasks t ON t.id = ft.task_id
+      WHERE ft.farmer_id = $1
+        AND ft.status::text IN ('approved', 'submitted', 'in-progress', 'not-started')
+        AND ABS(COALESCE(t.payment_value_kes, 0) - $2) < 1
+      ORDER BY CASE ft.status::text
+        WHEN 'approved' THEN 0
+        WHEN 'submitted' THEN 1
+        ELSE 2
+      END, ft.approved_date DESC NULLS LAST
+      LIMIT 1
+      `,
+      [input.farmerId, input.amount]
+    );
+    farmerTaskId = matched?.id ?? null;
+  }
+
+  if (!farmerTaskId) return {};
+
+  const updated = await queryOne<{ id: string; name: string; program_project_id: string }>(
+    `
+    UPDATE farmer_tasks ft
+    SET status = 'completed', updated_at = NOW()
+    FROM tasks t
+    WHERE ft.id = $1 AND ft.task_id = t.id AND ft.status::text <> 'completed'
+    RETURNING ft.id, t.name, ft.program_project_id
+    `,
+    [farmerTaskId]
+  );
+  if (updated?.program_project_id) {
+    await refreshProjectTaskCounts(updated.program_project_id);
+  }
+  const named = updated ?? (await getFarmerTask(farmerTaskId));
+  return {
+    farmerTaskId,
+    taskName: (named as { name?: string } | null)?.name,
+  };
 }
 
 export async function getHierarchyDashboardStats() {

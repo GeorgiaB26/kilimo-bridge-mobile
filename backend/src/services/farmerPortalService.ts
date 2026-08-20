@@ -403,11 +403,8 @@ export async function claimPayment(farmerId: string, paymentId: string, initiate
   }
 
   const ref = `MPX${Date.now()}`;
-  await query(
-    `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
-     WHERE id = $2`,
-    [ref, paymentId]
-  );
+  const { settleTransferredPayment } = await import('./hierarchyService');
+  await settleTransferredPayment(paymentId, ref);
 
   await logAudit({
     userId: farmerId,
