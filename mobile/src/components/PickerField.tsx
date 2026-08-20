@@ -26,6 +26,9 @@ interface PickerFieldProps {
   placeholder?: string;
   /** Show a search box in the options modal (default: when there are 8+ options). */
   searchable?: boolean;
+  /** If set, the field stays tappable with an empty list; search can add a name that is not in options. */
+  onCreate?: (value: string) => void;
+  createLabel?: string;
 }
 
 export function PickerField({
@@ -37,6 +40,8 @@ export function PickerField({
   error,
   placeholder = 'Select...',
   searchable,
+  onCreate,
+  createLabel,
 }: PickerFieldProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -50,7 +55,8 @@ export function PickerField({
     [options]
   );
 
-  const showSearch = searchable ?? normalized.length >= 8;
+  const canOpen = normalized.length > 0 || !!onCreate;
+  const showSearch = searchable ?? (normalized.length >= 8 || !!onCreate);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -74,6 +80,21 @@ export function PickerField({
     close();
   };
 
+  const queryTrimmed = query.trim();
+  const exactMatch = useMemo(() => {
+    const q = queryTrimmed.toLowerCase();
+    if (!q) return false;
+    return normalized.some(
+      (opt) => opt.label.toLowerCase() === q || opt.value.toLowerCase() === q
+    );
+  }, [normalized, queryTrimmed]);
+
+  const handleCreate = () => {
+    if (!onCreate || !queryTrimmed || exactMatch) return;
+    onCreate(queryTrimmed);
+    close();
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>
@@ -85,14 +106,14 @@ export function PickerField({
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${selectedLabel || placeholder}`}
         onPress={() => {
-          if (normalized.length === 0) return;
+          if (!canOpen) return;
           setOpen(true);
         }}
         style={[
           styles.field,
           error ? styles.fieldError : null,
-          normalized.length === 0 ? styles.fieldDisabled : null,
-          Platform.OS === 'web' ? ({ cursor: normalized.length ? 'pointer' : 'default' } as object) : null,
+          !canOpen ? styles.fieldDisabled : null,
+          Platform.OS === 'web' ? ({ cursor: canOpen ? 'pointer' : 'default' } as object) : null,
         ]}
       >
         <Text
@@ -140,7 +161,25 @@ export function PickerField({
               style={styles.list}
               contentContainerStyle={styles.listContent}
               ListEmptyComponent={
-                <Text style={styles.empty}>No matches. Try a different search.</Text>
+                onCreate ? (
+                  <Text style={styles.empty}>
+                    {queryTrimmed
+                      ? 'No matches. Add this name below.'
+                      : 'No verified options yet. Type a name to add it.'}
+                  </Text>
+                ) : (
+                  <Text style={styles.empty}>No matches. Try a different search.</Text>
+                )
+              }
+              ListFooterComponent={
+                onCreate && queryTrimmed && !exactMatch ? (
+                  <Pressable onPress={handleCreate} style={styles.createOption}>
+                    <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+                    <Text style={styles.createOptionText} numberOfLines={2}>
+                      {createLabel ?? `Add “${queryTrimmed}”`}
+                    </Text>
+                  </Pressable>
+                ) : null
               }
               renderItem={({ item }) => {
                 const selected = item.value === value;
@@ -293,5 +332,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: COLORS.muted,
     fontSize: 14,
+  },
+  createOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#EEEEEE',
+    backgroundColor: '#E8F5F0',
+  },
+  createOptionText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
 });

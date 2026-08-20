@@ -294,9 +294,6 @@ export function ConfirmScreen({ navigation }: Props) {
               </>
             ) : (
               <>
-                {formData.ward ? (
-                  <SummaryRow label="Ward" value={formData.ward} onEdit={() => navigation.navigate(detailsStep)} />
-                ) : null}
                 {formData.familySize ? (
                   <SummaryRow label="Family size" value={formData.familySize} onEdit={() => navigation.navigate(detailsStep)} />
                 ) : null}

@@ -146,6 +146,23 @@ export async function fetchProjectHierarchy(): Promise<{
   return data;
 }
 
+export async function fetchVerifiedVillages(params: {
+  country: string;
+  level1: string;
+  level2: string;
+  level3?: string;
+}): Promise<string[]> {
+  const { data } = await api.get<{ villages?: string[] }>('/reference/custom-locations', {
+    params: {
+      country: params.country,
+      level1: params.level1,
+      level2: params.level2,
+      ...(params.level3?.trim() ? { level3: params.level3.trim() } : {}),
+    },
+  });
+  return Array.isArray(data?.villages) ? data.villages : [];
+}
+
 export async function registerFarmer(farmerData: FarmerRegistrationPayload) {
   const { data } = await api.post('/farmers/register', farmerData);
   return data;
