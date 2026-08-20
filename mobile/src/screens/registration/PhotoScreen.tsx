@@ -76,63 +76,111 @@ export function PhotoScreen({ navigation }: Props) {
         title="Verification photo"
         subtitle="Required — take a clear photo of the member's face"
       />
-      <Text className="mb-4 text-sm text-[#757575]">
+      <Text style={styles.hint}>
         This must be a real photo from your camera or gallery. Letter avatars are not accepted.
       </Text>
-      <View className="my-4 items-center">
+      <View style={styles.previewWrap}>
         {hasPhoto && formData.pictureUri ? (
-          <Image source={{ uri: formData.pictureUri }} className="h-40 w-40 rounded-full" />
+          <Image source={{ uri: formData.pictureUri }} style={styles.preview} />
         ) : (
-          <View className="h-40 w-40 items-center justify-center rounded-full border-2 border-dashed border-[#D4AF6A] bg-[#1A4D3E]">
+          <View style={styles.placeholder}>
             <Ionicons name="camera-outline" size={48} color="#D4AF6A" />
-            <Text className="mt-2 text-center text-xs font-semibold text-[#D4AF6A]">Photo required</Text>
+            <Text style={styles.placeholderLabel}>Photo required</Text>
           </View>
         )}
       </View>
       <Pressable
         onPress={() => pickImage(true)}
         disabled={loading}
+        accessibilityRole="button"
+        accessibilityLabel={hasPhoto ? 'Retake photo' : 'Take photo'}
         style={({ pressed }) => [styles.primaryBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
       >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Take photo</Text>}
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.primaryBtnText}>{hasPhoto ? 'Retake photo' : 'Take photo'}</Text>
+        )}
       </Pressable>
       <Pressable
         onPress={() => pickImage(false)}
         disabled={loading}
-        style={({ pressed }) => [styles.outlineBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
-        className="mt-2"
+        accessibilityRole="button"
+        accessibilityLabel="Choose from gallery"
+        style={({ pressed }) => [
+          styles.outlineBtn,
+          styles.btnSpaced,
+          loading && styles.btnDisabled,
+          pressed && styles.btnPressed,
+        ]}
       >
-        {loading ? <ActivityIndicator color="#1A4D3E" /> : <Text className="font-semibold text-[#333333]">Choose from gallery</Text>}
+        {loading ? (
+          <ActivityIndicator color="#1A4D3E" />
+        ) : (
+          <Text style={styles.outlineBtnText}>Choose from gallery</Text>
+        )}
       </Pressable>
-      {formData.pictureUri ? (
-        <Pressable
-          onPress={() => updateForm({ pictureUri: undefined, pictureBase64: undefined })}
-          style={({ pressed }) => [styles.outlineBtn, pressed && styles.btnPressed]}
-          className="mt-2"
-        >
-          <Text className="font-semibold text-[#333333]">Retake</Text>
-        </Pressable>
-      ) : null}
-      {error ? <Text className="mb-2 mt-2 text-sm text-[#D32F2F]">{error}</Text> : null}
-      <View className="mt-2 flex-row gap-3">
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={({ pressed }) => [styles.outlineBtn, styles.halfBtn, pressed && styles.btnPressed]}
-        >
-          <Text className="font-semibold text-[#333333]">Back</Text>
-        </Pressable>
-        <Pressable
-          onPress={handleNext}
-          style={({ pressed }) => [styles.primaryBtn, styles.halfBtn, pressed && styles.btnPressed]}
-        >
-          <Text className="font-semibold text-white">Next</Text>
-        </Pressable>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <View style={styles.navRow} collapsable={false}>
+        <View style={[styles.navSlot, styles.navSlotFirst]} collapsable={false}>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            style={({ pressed }) => [styles.outlineBtn, styles.navHit, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.outlineBtnText}>Back</Text>
+          </Pressable>
+        </View>
+        <View style={styles.navSlot} collapsable={false}>
+          <Pressable
+            onPress={handleNext}
+            accessibilityRole="button"
+            accessibilityLabel="Next"
+            style={({ pressed }) => [styles.primaryBtn, styles.navHit, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.primaryBtnText}>Next</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  hint: {
+    marginBottom: 16,
+    fontSize: 14,
+    color: '#757575',
+  },
+  previewWrap: {
+    marginVertical: 16,
+    alignItems: 'center',
+  },
+  preview: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#E8E8E8',
+  },
+  placeholder: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#D4AF6A',
+    backgroundColor: '#1A4D3E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderLabel: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D4AF6A',
+  },
   primaryBtn: {
     height: 48,
     borderRadius: 8,
@@ -146,12 +194,48 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
-  halfBtn: {
-    flex: 1,
+  btnSpaced: {
+    marginTop: 8,
+  },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  navSlot: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 120,
+    height: 48,
+  },
+  navSlotFirst: {
+    marginRight: 8,
+  },
+  navHit: {
+    width: '100%',
+    height: '100%',
+  },
+  primaryBtnText: {
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  outlineBtnText: {
+    fontWeight: '600',
+    color: '#333333',
+    fontSize: 16,
+  },
+  error: {
+    marginTop: 8,
+    marginBottom: 4,
+    fontSize: 14,
+    color: '#D32F2F',
   },
   btnDisabled: {
     opacity: 0.65,
