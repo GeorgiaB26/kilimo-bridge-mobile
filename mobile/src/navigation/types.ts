@@ -38,8 +38,8 @@ export type FarmerRootStackParamList = {
   MainTabs: NavigatorScreenParams<FarmerTabParamList> | undefined;
   MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
   NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
-  /** Full task detail — opened from QC / task notifications. */
-  TaskDetail: { taskId: string; fromNotification?: boolean };
+  /** Full task detail — opened from notifications, dashboard, and task lists. */
+  TaskDetail: { taskId: string; fromNotification?: boolean; openSubmitModal?: boolean };
 };
 
 export type AdminTabParamList = {

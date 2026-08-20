@@ -4,30 +4,22 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
-  Image,
-  Alert,
   Pressable,
   ScrollView,
   TextInput,
   Platform,
-  type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { Text } from '@/components/ui/text';
-import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
-import { Button } from 'react-native-paper';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { COLORS } from '../../constants';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
-import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
-import { FarmerTaskQcFailureCard } from '../../components/farmer/FarmerTaskQcFailureCard';
 import { OutboxTaskRecallCard } from '../../components/OutboxTaskRecallCard';
 import { OutboxTaskStartCard } from '../../components/OutboxTaskStartCard';
 import {
@@ -42,21 +34,12 @@ import {
   isTaskOverdue,
   pickCategorizedTasks,
 } from '../../utils/taskCategorization';
-import { formatDisplayDate, formatCleanDate } from '../../utils/greeting';
-import {
-  DISPLAY_DATE_FORMAT,
-  maskDdMmYyyyInput,
-  parseAgentTaskDueDateInput,
-  todayDisplayDate,
-  todayIsoDate,
-} from '../../utils/agentTaskDate';
-import { useCurrency } from '../../context/CurrencyContext';
+import { formatCleanDate } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
 import {
   dismissTaskRecallOutbox,
   listPendingTaskRecalls,
   pushPendingTaskRecall,
-  recallFarmerTaskWithOutbox,
   syncAllPendingTaskRecalls,
   type PendingTaskRecallView,
 } from '../../services/submitTaskRecallOutbox';
@@ -64,13 +47,12 @@ import {
   dismissTaskStartOutbox,
   listPendingTaskStarts,
   pushPendingTaskStart,
-  startFarmerTaskWithOutbox,
   syncAllPendingTaskStarts,
   type PendingTaskStartView,
 } from '../../services/submitTaskStartOutbox';
 import { TaskNotificationBanner } from '../../components/notifications/TaskNotificationBanner';
 import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanners';
-import { navigateFromFarmerNotification } from '../../utils/farmerNotificationNavigation';
+import { navigateFromFarmerNotification, openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { fetchFarmerAssignedTasksForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
@@ -110,45 +92,12 @@ type ExtendedTaskRow = FarmerTaskRow & {
   farmer_started_at?: string | null;
 };
 
-function evidencePhotoUri(item: ExtendedTaskRow): string | null {
-  const url = (item.photo_evidence_url ?? item.photo_url)?.trim();
-  if (!url) return null;
-  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('file:')) return url;
-  return null;
-}
-
-function shouldShowSubmissionEvidence(status: string): boolean {
-  const s = normalizeTaskStatus(status);
-  return (
-    s === 'submitted' ||
-    s === 'submitted-for-approval' ||
-    s === 'approved' ||
-    s === 'completed' ||
-    s === 'rejected'
-  );
-}
-
 function isAgentAssignment(task: ExtendedTaskRow): boolean {
   return task.source === 'agent_assignment';
 }
 
 function normalizeTaskStatus(status: string): string {
   return status.replace(/_/g, '-');
-}
-
-function canStartTask(status: string): boolean {
-  return normalizeTaskStatus(status) === 'not-started';
-}
-
-/** Edit (evidence) for in-progress / rejected; recall+edit for submitted. */
-function canEditTask(status: string): boolean {
-  const s = normalizeTaskStatus(status);
-  return s === 'in-progress' || s === 'rejected' || isSubmittedForApproval(s);
-}
-
-function isSubmittedForApproval(status: string): boolean {
-  const s = normalizeTaskStatus(status);
-  return s === 'submitted-for-approval' || s === 'submitted';
 }
 
 function displayStatus(status: string): string {
@@ -221,41 +170,24 @@ export function FarmerTasksScreen() {
   const statusFilter = route.params?.statusFilter;
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
   const openSubmitModalParam = route.params?.openSubmitModal === true;
-  const { formatAmount } = useCurrency();
   const userScope = useReadCacheUserScope();
   const [tasks, setTasks] = useState<ExtendedTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
-  const [submitTask, setSubmitTask] = useState<ExtendedTaskRow | null>(null);
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [startTask, setStartTask] = useState<ExtendedTaskRow | null>(null);
-  const [startDateInput, setStartDateInput] = useState(todayDisplayDate());
   const [pendingRecalls, setPendingRecalls] = useState<PendingTaskRecallView[]>([]);
   const [pendingStarts, setPendingStarts] = useState<PendingTaskStartView[]>([]);
   const [pushingRecallId, setPushingRecallId] = useState<string | null>(null);
   const [pushingStartId, setPushingStartId] = useState<string | null>(null);
-  const [recallingId, setRecallingId] = useState<string | null>(null);
-  const [startingId, setStartingId] = useState<string | null>(null);
   const [refreshInSec, setRefreshInSec] = useState(REFRESH_INTERVAL_SEC);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<TaskSortMode>('due_asc');
   const [showFiltersPanel, setShowFiltersPanel] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [deepLinkHighlightId, setDeepLinkHighlightId] = useState<string | null>(null);
   const countdownSecRef = useRef(REFRESH_INTERVAL_SEC);
   const hasLoadedRef = useRef(false);
-  const scrollRef = useRef<ScrollView>(null);
-  const cardListOffsetRef = useRef(0);
-  const cardOffsetsRef = useRef<Record<string, number>>({});
-  const pendingScrollTaskIdRef = useRef<string | null>(null);
-  const pendingOpenEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDeepLinkRef = useRef<{
-    taskId: string;
-    openEdit: boolean;
-  } | null>(null);
 
   const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
     useTaskNotificationBanners();
@@ -340,126 +272,6 @@ export function FarmerTasksScreen() {
     setRefreshing(true);
     resetCountdown();
     void softRefresh();
-  };
-
-  const handleRecall = async (item: ExtendedTaskRow) => {
-    setRecallingId(item.id);
-    try {
-      const result = await recallFarmerTaskWithOutbox({
-        taskId: item.id,
-        taskName: item.name,
-        source: item.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
-        expectedStatus: item.status || 'submitted-for-approval',
-      });
-      await loadPendingRecalls();
-      if (result.mode === 'online') {
-        showMessage(
-          'Submission recalled',
-          'Your photo and notes are still saved. Edit and resubmit when ready.'
-        );
-        await load();
-        setSubmitTask({ ...item, status: 'in-progress' });
-        return;
-      }
-      if (result.mode === 'offline') {
-        showMessage(
-          'Recall saved offline',
-          'We will push your recall when you are back online. Open Your Tasks to push manually.'
-        );
-        return;
-      }
-      showMessage('Needs your review', result.error);
-    } catch (err: unknown) {
-      showMessage('Error', extractApiError(err, 'Could not recall task'));
-    } finally {
-      setRecallingId(null);
-    }
-  };
-
-  const confirmAndRecall = (item: ExtendedTaskRow) => {
-    const title = 'Withdraw submission?';
-    const message =
-      'This will withdraw your submission from review so you can edit it — continue?';
-
-    // RN Alert confirm buttons are unreliable on web; use window.confirm there.
-    if (Platform.OS === 'web') {
-      const confirmed =
-        typeof window !== 'undefined' &&
-        typeof window.confirm === 'function' &&
-        window.confirm(`${title}\n\n${message}`);
-      if (confirmed) {
-        void handleRecall(item);
-      }
-      return;
-    }
-
-    Alert.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Continue',
-        style: 'destructive',
-        onPress: () => void handleRecall(item),
-      },
-    ]);
-  };
-
-  const handleEdit = (item: ExtendedTaskRow) => {
-    if (!canEditTask(item.status)) return;
-    if (isSubmittedForApproval(item.status)) {
-      confirmAndRecall(item);
-      return;
-    }
-    setSubmitTask(item);
-  };
-
-  const openStartModal = (item: ExtendedTaskRow) => {
-    setStartDateInput(todayDisplayDate());
-    setStartTask(item);
-  };
-
-  const handleConfirmStart = async () => {
-    if (!startTask) return;
-    const isoDate = parseAgentTaskDueDateInput(startDateInput);
-    if (!isoDate) {
-      showMessage('Invalid date', `Enter start date as ${DISPLAY_DATE_FORMAT}.`);
-      return;
-    }
-    const today = todayIsoDate();
-    if (isoDate > today) {
-      showMessage('Invalid date', 'Start date cannot be in the future.');
-      return;
-    }
-
-    setStartingId(startTask.id);
-    try {
-      const result = await startFarmerTaskWithOutbox({
-        taskId: startTask.id,
-        taskName: startTask.name,
-        source: startTask.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
-        startDate: isoDate,
-        expectedStatus: startTask.status || 'not-started',
-      });
-      await loadPendingStarts();
-      if (result.mode === 'online') {
-        showMessage('Task started', `Start date set to ${formatCleanDate(isoDate)}.`);
-        setStartTask(null);
-        await load();
-        return;
-      }
-      if (result.mode === 'offline') {
-        showMessage(
-          'Start saved offline',
-          'We will push your start when you are back online. Open Your Tasks to push manually.'
-        );
-        setStartTask(null);
-        return;
-      }
-      showMessage('Needs your review', result.error);
-    } catch (err: unknown) {
-      showMessage('Error', extractApiError(err, 'Could not start task'));
-    } finally {
-      setStartingId(null);
-    }
   };
 
   const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
@@ -552,16 +364,12 @@ export function FarmerTasksScreen() {
   ]);
 
   const toggleStatusFilter = (key: StatusFilterKey) => {
-    setExpandedTaskId(null);
-    setDeepLinkHighlightId(null);
     navigation.setParams({
       statusFilter: statusFilter === key ? undefined : key,
     });
   };
 
   const setStatusFilterFromMenu = (key: StatusFilterKey | 'all') => {
-    setExpandedTaskId(null);
-    setDeepLinkHighlightId(null);
     setStatusMenuOpen(false);
     navigation.setParams({
       statusFilter: key === 'all' ? undefined : key,
@@ -581,150 +389,21 @@ export function FarmerTasksScreen() {
   const activeFilterCount =
     (statusFilter ? 1 : 0) + (sortMode !== 'due_asc' ? 1 : 0);
 
-  const scrollToTaskCard = useCallback((taskId: string) => {
-    const y = cardOffsetsRef.current[taskId];
-    if (y == null || !scrollRef.current) return false;
-    scrollRef.current.scrollTo({ y: Math.max(0, y - 16), animated: true });
-    return true;
-  }, []);
-
-  const scheduleScrollToTask = useCallback(
-    (taskId: string) => {
-      pendingScrollTaskIdRef.current = taskId;
-      const attempt = () => {
-        if (pendingScrollTaskIdRef.current !== taskId) return;
-        if (scrollToTaskCard(taskId)) {
-          pendingScrollTaskIdRef.current = null;
-        }
-      };
-      requestAnimationFrame(attempt);
-      setTimeout(attempt, 120);
-      setTimeout(attempt, 350);
-      setTimeout(attempt, 700);
-    },
-    [scrollToTaskCard]
-  );
-
-  // Capture deep-link intent as soon as route params arrive (even while loading).
+  // Deep-link: open the same task module used by notifications.
   useEffect(() => {
     if (!scrollTargetId) return;
-    pendingDeepLinkRef.current = {
-      taskId: scrollTargetId,
-      openEdit:
-        openSubmitModalParam ||
-        statusFilter === 'rejected',
-    };
-  }, [scrollTargetId, openSubmitModalParam, statusFilter]);
-
-  // Apply deep-link once tasks are ready: expand + scroll; open Edit modal only when requested
-  // (e.g. rejected). New assignments expand details so the farmer can read before Start.
-  useEffect(() => {
-    const pending = pendingDeepLinkRef.current;
-    if (!pending || loading || tasks.length === 0) return;
-
-    const task = tasks.find((t) => t.id === pending.taskId);
-    if (!task) return;
-
-    pendingDeepLinkRef.current = null;
-    setExpandedTaskId(task.id);
-    setDeepLinkHighlightId(task.id);
-    scheduleScrollToTask(task.id);
-
-    const shouldOpenAction =
-      pending.openEdit ||
-      normalizeTaskStatus(task.status) === 'rejected';
-
+    openFarmerTaskModule(navigation, scrollTargetId, {
+      openSubmitModal: openSubmitModalParam || statusFilter === 'rejected',
+    });
     navigation.setParams({
       taskId: undefined,
       highlightTaskId: undefined,
       openSubmitModal: undefined,
     });
+  }, [scrollTargetId, openSubmitModalParam, statusFilter, navigation]);
 
-    if (!shouldOpenAction) return;
-
-    if (pendingOpenEditTimerRef.current) {
-      clearTimeout(pendingOpenEditTimerRef.current);
-    }
-    // Scroll first, then open the action modal. Keep timer on a ref so route-param
-    // updates do not cancel it via effect cleanup.
-    pendingOpenEditTimerRef.current = setTimeout(() => {
-      pendingOpenEditTimerRef.current = null;
-      if (canStartTask(task.status)) {
-        setStartDateInput(todayDisplayDate());
-        setStartTask(task);
-        return;
-      }
-      // Rejected / in-progress: open evidence submit modal (same as Edit).
-      // Skip submitted-for-approval — that path needs an explicit recall confirm.
-      if (canEditTask(task.status) && !isSubmittedForApproval(task.status)) {
-        setSubmitTask(task);
-      }
-    }, 500);
-  }, [loading, tasks, navigation, scheduleScrollToTask]);
-
-  const onCardListLayout = useCallback((e: LayoutChangeEvent) => {
-    cardListOffsetRef.current = e.nativeEvent.layout.y;
-  }, []);
-
-  const onTaskCardLayout = useCallback(
-    (taskId: string, e: LayoutChangeEvent) => {
-      const y = cardListOffsetRef.current + e.nativeEvent.layout.y;
-      cardOffsetsRef.current[taskId] = y;
-      if (pendingScrollTaskIdRef.current === taskId) {
-        if (scrollToTaskCard(taskId)) {
-          pendingScrollTaskIdRef.current = null;
-        }
-      }
-    },
-    [scrollToTaskCard]
-  );
-
-  const toggleExpanded = (taskId: string) => {
-    setDeepLinkHighlightId(null);
-    setExpandedTaskId((prev) => (prev === taskId ? null : taskId));
-  };
-
-  const renderActionButton = (item: ExtendedTaskRow) => {
-    if (canStartTask(item.status)) {
-      return (
-        <View
-          // Prevent the parent card's onPress from firing when tapping the action.
-          onStartShouldSetResponder={() => true}
-        >
-          <Button
-            mode="contained"
-            buttonColor={COLORS.primary}
-            textColor="#FFFFFF"
-            loading={startingId === item.id}
-            disabled={startingId === item.id}
-            onPress={() => openStartModal(item)}
-            style={styles.openBtn}
-          >
-            Start Task
-          </Button>
-        </View>
-      );
-    }
-    if (canEditTask(item.status)) {
-      return (
-        <View onStartShouldSetResponder={() => true}>
-          <Button
-            mode="contained"
-            buttonColor={COLORS.primary}
-            textColor="#FFFFFF"
-            loading={recallingId === item.id}
-            disabled={recallingId === item.id}
-            onPress={() => handleEdit(item)}
-            style={styles.openBtn}
-          >
-            Edit
-          </Button>
-        </View>
-      );
-    }
-    return (
-      <Text className="mt-3 text-sm text-muted-foreground">Task locked — no further edits</Text>
-    );
+  const openTask = (item: ExtendedTaskRow) => {
+    openFarmerTaskModule(navigation, item.id);
   };
 
   const renderTask = (item: ExtendedTaskRow) => {
@@ -733,151 +412,41 @@ export function FarmerTasksScreen() {
       ? formatCleanDate(item.farmer_started_at)
       : '—';
     const endDate = item.due_date ? formatCleanDate(item.due_date) : '—';
-    const deadline = item.due_date ? formatCleanDate(item.due_date) : 'No deadline set';
-    const assignedWhen = formatDisplayDate(item.assigned_at);
-    const assigner =
-      item.assigned_by_name?.trim() ||
-      (isAgentAssignment(item) ? 'Your field agent' : 'Program team');
-    const highlighted = deepLinkHighlightId === item.id;
-    const expanded = expandedTaskId === item.id;
-    const statusNorm = normalizeTaskStatus(item.status);
     const project = projectLabel(item);
-    const showEvidence = shouldShowSubmissionEvidence(item.status);
-    const photoUri = evidencePhotoUri(item);
-    const submissionNotes = item.notes?.trim() || '';
 
     return (
-      <View key={item.id} onLayout={(e) => onTaskCardLayout(item.id, e)}>
+      <View key={item.id}>
         <KBCard
           elevated={false}
-          onPress={() => toggleExpanded(item.id)}
-          style={
-            highlighted
-              ? { ...styles.card, borderWidth: 2, borderColor: COLORS.primary }
-              : styles.card
-          }
+          onPress={() => openTask(item)}
+          style={styles.card}
         >
-        <View style={styles.cardHeader}>
-          <View style={styles.cardTitleBlock}>
-            <View style={styles.taskTitleRow}>
-              <Text style={styles.taskName} numberOfLines={2}>
-                {item.name}
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleBlock}>
+              <View style={styles.taskTitleRow}>
+                <Text style={styles.taskName} numberOfLines={2}>
+                  {item.name}
+                </Text>
+                <KBStatusChip
+                  label={displayStatus(item.status)}
+                  variant={statusVariant(item.status)}
+                />
+              </View>
+              <Text style={styles.taskProjectMuted} numberOfLines={1}>
+                {project}
               </Text>
-              <KBStatusChip
-                label={displayStatus(item.status)}
-                variant={statusVariant(item.status)}
-              />
             </View>
-            <Text style={styles.taskProjectMuted} numberOfLines={1}>
-              {project}
+          </View>
+
+          <View style={styles.collapsedMeta}>
+            <Text style={styles.collapsedMetaText}>
+              Start {startDate}
+              {' · '}
+              End <Text style={overdue ? styles.dateOverdue : undefined}>{endDate}</Text>
             </Text>
+            <Text style={styles.expandHint}>Tap to open</Text>
           </View>
-          {expanded ? (
-            <ChevronUp size={18} color="#757575" />
-          ) : (
-            <ChevronDown size={18} color="#757575" />
-          )}
-        </View>
-
-        <View style={styles.collapsedMeta}>
-          <Text style={styles.collapsedMetaText}>
-            Start {startDate}
-            {' · '}
-            End <Text style={overdue ? styles.dateOverdue : undefined}>{endDate}</Text>
-          </Text>
-          <Text style={styles.expandHint}>{expanded ? 'Tap to collapse' : 'Tap for details'}</Text>
-        </View>
-
-        {expanded ? (
-          <View style={styles.expandedBody}>
-            <View style={styles.metaGrid}>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Project</Text>
-                <Text className="text-sm text-foreground">{project}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Start date</Text>
-                <Text className="text-sm text-foreground">{startDate}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">End date</Text>
-                <Text
-                  className="text-sm"
-                  style={{ color: overdue ? COLORS.alert : COLORS.text }}
-                >
-                  {endDate}
-                  {overdue ? ' · Overdue' : ''}
-                </Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Assigned</Text>
-                <Text className="text-sm text-foreground">{assignedWhen}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">By</Text>
-                <Text className="text-sm text-foreground">{assigner}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Deadline</Text>
-                <Text
-                  className="text-sm"
-                  style={{ color: overdue ? COLORS.alert : COLORS.text }}
-                >
-                  {deadline}
-                  {overdue ? ' · Overdue' : ''}
-                </Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Text className="text-xs font-semibold text-muted-foreground">Payment</Text>
-                <Text className="text-sm font-semibold" style={{ color: COLORS.accent }}>
-                  {isAgentAssignment(item) ? '—' : formatAmount(item.payment_value_kes ?? 0)}
-                </Text>
-              </View>
-            </View>
-
-            {item.description ? (
-              <Text className="mt-3 text-sm leading-5 text-foreground">{item.description}</Text>
-            ) : null}
-
-            {isAgentAssignment(item) ? (
-              <Text className="mt-2 text-sm text-muted-foreground">Field agent assignment</Text>
-            ) : null}
-
-            {showEvidence ? (
-              <View style={styles.evidenceBlock}>
-                <Text className="mb-2 text-sm font-semibold text-foreground">Your submission</Text>
-                {submissionNotes ? (
-                  <Text className="text-sm leading-5 text-foreground">{submissionNotes}</Text>
-                ) : (
-                  <Text className="text-sm text-muted-foreground">No notes provided.</Text>
-                )}
-                {photoUri ? (
-                  <Image
-                    source={{ uri: photoUri }}
-                    style={styles.evidenceImage}
-                    resizeMode="cover"
-                    accessibilityLabel={`Evidence photo for ${item.name}`}
-                  />
-                ) : (
-                  <Text className="mt-2 text-sm font-semibold text-destructive">Photo required</Text>
-                )}
-              </View>
-            ) : null}
-
-            {statusNorm === 'rejected' && item.rejection_reason ? (
-              <FarmerTaskQcFailureCard reason={item.rejection_reason} />
-            ) : null}
-
-            {isSubmittedForApproval(item.status) ? (
-              <Text className="mt-2 text-sm italic text-blue-600">
-                Awaiting approval — we check status every 30 seconds
-              </Text>
-            ) : null}
-
-            {renderActionButton(item)}
-          </View>
-        ) : null}
-      </KBCard>
+        </KBCard>
       </View>
     );
   };
@@ -896,7 +465,6 @@ export function FarmerTasksScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
-        ref={scrollRef}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
@@ -1198,71 +766,11 @@ export function FarmerTasksScreen() {
             </KBCard>
           ) : null
         ) : (
-          <View style={styles.cardList} onLayout={onCardListLayout}>
+          <View style={styles.cardList}>
             {visibleTasks.map((item) => renderTask(item))}
           </View>
         )}
       </ScrollView>
-
-      <KeyboardBottomSheet
-        visible={!!startTask}
-        onRequestClose={() => setStartTask(null)}
-        backdropPressDisabled={!!startingId}
-        overlayClassName="flex-1 justify-end bg-black/45"
-        sheetStyle={styles.startModalCard}
-      >
-        <Text className="text-lg font-bold text-foreground">Start Task</Text>
-        <Text className="mt-1 text-sm text-muted-foreground">{startTask?.name}</Text>
-        <Text className="mt-4 text-xs font-semibold text-muted-foreground">
-          When did you start? ({DISPLAY_DATE_FORMAT})
-        </Text>
-        <TextInput
-          value={startDateInput}
-          onChangeText={(text) => setStartDateInput(maskDdMmYyyyInput(text))}
-          placeholder={DISPLAY_DATE_FORMAT}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="numbers-and-punctuation"
-          style={styles.dateInput}
-        />
-        <Button
-          mode="contained"
-          buttonColor={COLORS.primary}
-          loading={!!startingId}
-          disabled={!!startingId}
-          onPress={() => void handleConfirmStart()}
-          style={styles.openBtn}
-        >
-          Confirm start
-        </Button>
-        <Button mode="text" onPress={() => setStartTask(null)} disabled={!!startingId}>
-          Cancel
-        </Button>
-      </KeyboardBottomSheet>
-
-      <FarmerTaskSubmitModal
-        task={
-          submitTask
-            ? {
-                id: submitTask.id,
-                name: submitTask.name,
-                description: submitTask.description,
-                payment_value_kes: submitTask.payment_value_kes,
-                source: submitTask.source ?? 'hierarchy',
-                initialNotes: submitTask.notes ?? null,
-                initialPhotoUri: evidencePhotoUri(submitTask),
-                initialPhotoKey: submitTask.photo_evidence_key ?? null,
-                rejectionReason: submitTask.rejection_reason ?? null,
-              }
-            : null
-        }
-        visible={!!submitTask}
-        onClose={() => setSubmitTask(null)}
-        onSubmitted={async () => {
-          setSubmitTask(null);
-          await load();
-        }}
-      />
     </View>
   );
 }
@@ -1359,55 +867,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A4D3E',
   },
-  expandedBody: {
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E0E0E0',
-  },
-  metaGrid: {
-    gap: 10,
-  },
-  metaItem: {
-    gap: 2,
-  },
-  evidenceBlock: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E0E0E0',
-  },
-  evidenceImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    backgroundColor: '#F0F0F0',
-    marginTop: 10,
-  },
-  openBtn: {
-    marginTop: 12,
-  },
   notifBlock: {
     marginTop: 12,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E8E8E8',
-  },
-  startModalCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-  },
-  dateInput: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1A1A1A',
-    backgroundColor: '#FAFAFA',
   },
 });

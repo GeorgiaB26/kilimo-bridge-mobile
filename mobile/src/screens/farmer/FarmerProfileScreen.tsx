@@ -30,6 +30,7 @@ import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
 import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
+import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
 import { useCurrency } from '../../context/CurrencyContext';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
@@ -526,12 +527,7 @@ export function FarmerProfileScreen() {
           assignedTasks.slice(0, 5).map((task, index) => (
             <Pressable
               key={task.id}
-              onPress={() =>
-                navigation.navigate('Tasks', {
-                  taskId: task.id,
-                  highlightTaskId: task.id,
-                })
-              }
+              onPress={() => openFarmerTaskModule(navigation, task.id)}
               className="p-4"
               style={
                 index < assignedTasks.slice(0, 5).length - 1

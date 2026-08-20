@@ -6,22 +6,36 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  TextInput,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { COLORS } from '../../constants';
 import { getFarmerAssignedTasks, getFarmerHierarchyTask, getFarmerPortalTask } from '../../api/client';
-import { extractApiError } from '../../utils/feedback';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import { formatCleanDate, formatDisplayDate } from '../../utils/greeting';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
+import { isTaskOverdue } from '../../utils/taskCategorization';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { FarmerTaskQcFailureCard } from '../../components/farmer/FarmerTaskQcFailureCard';
 import { FarmerTaskSubmitModal } from '../../components/farmer/FarmerTaskSubmitModal';
 import { useCurrency } from '../../context/CurrencyContext';
 import type { FarmerRootStackParamList } from '../../navigation/types';
+import {
+  DISPLAY_DATE_FORMAT,
+  maskDdMmYyyyInput,
+  parseAgentTaskDueDateInput,
+  todayDisplayDate,
+  todayIsoDate,
+} from '../../utils/agentTaskDate';
+import { startFarmerTaskWithOutbox } from '../../services/submitTaskStartOutbox';
+import { recallFarmerTaskWithOutbox } from '../../services/submitTaskRecallOutbox';
 
 type DetailRoute = RouteProp<FarmerRootStackParamList, 'TaskDetail'>;
 type DetailNav = NativeStackNavigationProp<FarmerRootStackParamList, 'TaskDetail'>;
@@ -40,6 +54,9 @@ type TaskDetail = {
   rejection_reason?: string | null;
   photo_evidence_url?: string | null;
   photo_url?: string | null;
+  photo_evidence_key?: string | null;
+  notes?: string | null;
+  farmer_started_at?: string | null;
   source?: 'hierarchy' | 'agent_assignment';
 };
 
@@ -47,8 +64,29 @@ function normalizeStatus(status: string): string {
   return status.replace(/_/g, '-');
 }
 
-function canResubmit(status: string): boolean {
-  return ['not-started', 'in-progress', 'rejected'].includes(normalizeStatus(status));
+function isSubmittedForApproval(status: string): boolean {
+  const s = normalizeStatus(status);
+  return s === 'submitted-for-approval' || s === 'submitted';
+}
+
+function canStartTask(status: string): boolean {
+  return normalizeStatus(status) === 'not-started';
+}
+
+function canEditTask(status: string): boolean {
+  const s = normalizeStatus(status);
+  return s === 'in-progress' || s === 'rejected' || isSubmittedForApproval(s);
+}
+
+function shouldShowSubmissionEvidence(status: string): boolean {
+  const s = normalizeStatus(status);
+  return (
+    s === 'submitted-for-approval' ||
+    s === 'submitted' ||
+    s === 'rejected' ||
+    s === 'approved' ||
+    s === 'completed'
+  );
 }
 
 function evidenceUri(task: TaskDetail): string | null {
@@ -89,6 +127,11 @@ function mapDetailFromApi(
     photo_evidence_url:
       (detail.photo_evidence_url as string | null | undefined) ?? fromList?.photo_evidence_url,
     photo_url: (detail.photo_url as string | null | undefined) ?? fromList?.photo_url,
+    photo_evidence_key:
+      (detail.photo_evidence_key as string | null | undefined) ?? fromList?.photo_evidence_key,
+    notes: (detail.notes as string | null | undefined) ?? fromList?.notes,
+    farmer_started_at:
+      (detail.farmer_started_at as string | null | undefined) ?? fromList?.farmer_started_at,
     source: fromList?.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
   };
 }
@@ -110,13 +153,17 @@ async function fetchTaskDetailFromApi(taskRef: string, fromList?: TaskDetail): P
 export function FarmerTaskDetailScreen() {
   const route = useRoute<DetailRoute>();
   const navigation = useNavigation<DetailNav>();
-  const { taskId, fromNotification } = route.params;
+  const { taskId, fromNotification, openSubmitModal } = route.params;
   const { formatAmount } = useCurrency();
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
+  const [startDateInput, setStartDateInput] = useState(todayDisplayDate());
+  const [starting, setStarting] = useState(false);
+  const [recalling, setRecalling] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -167,6 +214,122 @@ export function FarmerTaskDetailScreen() {
     else navigation.navigate('MainTabs', { screen: 'Tasks' });
   };
 
+  useEffect(() => {
+    if (!task || !openSubmitModal) return;
+    if (canEditTask(task.status) && !isSubmittedForApproval(task.status)) {
+      setSubmitOpen(true);
+    }
+    navigation.setParams({ openSubmitModal: undefined });
+  }, [task, openSubmitModal, navigation]);
+
+  const openStart = () => {
+    setStartDateInput(todayDisplayDate());
+    setStartOpen(true);
+  };
+
+  const handleConfirmStart = async () => {
+    if (!task) return;
+    const isoDate = parseAgentTaskDueDateInput(startDateInput);
+    if (!isoDate) {
+      showMessage('Invalid date', `Enter start date as ${DISPLAY_DATE_FORMAT}.`);
+      return;
+    }
+    if (isoDate > todayIsoDate()) {
+      showMessage('Invalid date', 'Start date cannot be in the future.');
+      return;
+    }
+    setStarting(true);
+    try {
+      const result = await startFarmerTaskWithOutbox({
+        taskId: task.id,
+        taskName: task.name,
+        source: task.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
+        startDate: isoDate,
+        expectedStatus: task.status || 'not-started',
+      });
+      if (result.mode === 'online') {
+        showMessage('Task started', `Start date set to ${formatCleanDate(isoDate)}.`);
+        setStartOpen(false);
+        await load();
+        return;
+      }
+      if (result.mode === 'offline') {
+        showMessage(
+          'Start saved offline',
+          'We will push your start when you are back online. Open Your Tasks to push manually.'
+        );
+        setStartOpen(false);
+        return;
+      }
+      showMessage('Needs your review', result.error);
+    } catch (err: unknown) {
+      showMessage('Error', extractApiError(err, 'Could not start task'));
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleRecall = async () => {
+    if (!task) return;
+    setRecalling(true);
+    try {
+      const result = await recallFarmerTaskWithOutbox({
+        taskId: task.id,
+        taskName: task.name,
+        source: task.source === 'agent_assignment' ? 'agent_assignment' : 'hierarchy',
+        expectedStatus: task.status || 'submitted-for-approval',
+      });
+      if (result.mode === 'online') {
+        showMessage(
+          'Submission recalled',
+          'Your photo and notes are still saved. Edit and resubmit when ready.'
+        );
+        await load();
+        setSubmitOpen(true);
+        return;
+      }
+      if (result.mode === 'offline') {
+        showMessage(
+          'Recall saved offline',
+          'We will push your recall when you are back online. Open Your Tasks to push manually.'
+        );
+        return;
+      }
+      showMessage('Needs your review', result.error);
+    } catch (err: unknown) {
+      showMessage('Error', extractApiError(err, 'Could not recall task'));
+    } finally {
+      setRecalling(false);
+    }
+  };
+
+  const confirmAndRecall = () => {
+    const title = 'Withdraw submission?';
+    const message =
+      'This will withdraw your submission from review so you can edit it — continue?';
+    if (Platform.OS === 'web') {
+      const confirmed =
+        typeof window !== 'undefined' &&
+        typeof window.confirm === 'function' &&
+        window.confirm(`${title}\n\n${message}`);
+      if (confirmed) void handleRecall();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Continue', style: 'destructive', onPress: () => void handleRecall() },
+    ]);
+  };
+
+  const handleEdit = () => {
+    if (!task || !canEditTask(task.status)) return;
+    if (isSubmittedForApproval(task.status)) {
+      confirmAndRecall();
+      return;
+    }
+    setSubmitOpen(true);
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -190,7 +353,13 @@ export function FarmerTaskDetailScreen() {
   const statusNorm = normalizeStatus(task.status);
   const isQcFailed = statusNorm === 'rejected';
   const photoUrl = evidenceUri(task);
-  const showAction = isQcFailed && canResubmit(task.status);
+  const overdue = isTaskOverdue(task.due_date, task.status);
+  const startDate = task.farmer_started_at
+    ? formatCleanDate(task.farmer_started_at)
+    : '—';
+  const endDate = task.due_date ? formatCleanDate(task.due_date) : '—';
+  const showEvidence = shouldShowSubmissionEvidence(task.status);
+  const submissionNotes = task.notes?.trim() || '';
 
   return (
     <View style={styles.root}>
@@ -228,9 +397,20 @@ export function FarmerTaskDetailScreen() {
 
         <View style={styles.block}>
           <Text style={styles.label}>Due date</Text>
-          <Text style={styles.value}>
+          <Text style={[styles.value, overdue ? styles.overdue : undefined]}>
             {task.due_date ? formatCleanDate(task.due_date) : 'No deadline set'}
+            {overdue ? ' · Overdue' : ''}
           </Text>
+        </View>
+
+        <View style={styles.block}>
+          <Text style={styles.label}>Start date</Text>
+          <Text style={styles.value}>{startDate}</Text>
+        </View>
+
+        <View style={styles.block}>
+          <Text style={styles.label}>End date</Text>
+          <Text style={[styles.value, overdue ? styles.overdue : undefined]}>{endDate}</Text>
         </View>
 
         <View style={styles.block}>
@@ -257,23 +437,56 @@ export function FarmerTaskDetailScreen() {
           </View>
         ) : null}
 
-        {photoUrl ? (
+        {showEvidence ? (
+          <View style={styles.block}>
+            <Text style={styles.label}>Your submission</Text>
+            {submissionNotes ? (
+              <Text style={styles.body}>{submissionNotes}</Text>
+            ) : (
+              <Text style={styles.muted}>No notes provided.</Text>
+            )}
+            {photoUrl ? (
+              <Image source={{ uri: photoUrl }} style={styles.evidenceImage} resizeMode="cover" />
+            ) : (
+              <Text style={styles.required}>Photo required</Text>
+            )}
+          </View>
+        ) : photoUrl ? (
           <View style={styles.block}>
             <Text style={styles.label}>Submitted evidence</Text>
             <Image source={{ uri: photoUrl }} style={styles.evidenceImage} resizeMode="cover" />
           </View>
         ) : null}
 
-        {showAction ? (
+        {isSubmittedForApproval(task.status) ? (
+          <Text className="mt-4 text-sm italic text-blue-600">
+            Awaiting approval — we check status every 30 seconds
+          </Text>
+        ) : null}
+
+        {canStartTask(task.status) ? (
           <Button
             mode="contained"
             buttonColor={COLORS.primary}
-            onPress={() => setSubmitOpen(true)}
+            onPress={openStart}
             style={styles.actionBtn}
           >
-            Review & take action
+            Start Task
           </Button>
-        ) : null}
+        ) : canEditTask(task.status) && task.source !== 'agent_assignment' ? (
+          <Button
+            mode="contained"
+            buttonColor={COLORS.primary}
+            loading={recalling}
+            disabled={recalling}
+            onPress={handleEdit}
+            style={styles.actionBtn}
+          >
+            {statusNorm === 'rejected' ? 'Resubmit' : 'Edit'}
+          </Button>
+        ) : task.source === 'agent_assignment' ? null : (
+          <Text className="mt-4 text-sm text-muted-foreground">Task locked — no further edits</Text>
+        )}
 
         {task.source === 'agent_assignment' ? (
           <Text className="mt-4 text-sm text-muted-foreground">
@@ -283,14 +496,64 @@ export function FarmerTaskDetailScreen() {
       </ScrollView>
 
       <FarmerTaskSubmitModal
-        task={submitOpen && task.source !== 'agent_assignment' ? task : null}
-        visible={submitOpen}
+        task={
+          submitOpen && task.source !== 'agent_assignment'
+            ? {
+                id: task.id,
+                name: task.name,
+                description: task.description ?? undefined,
+                payment_value_kes: task.payment_value_kes,
+                source: task.source ?? 'hierarchy',
+                initialNotes: task.notes ?? null,
+                initialPhotoUri: photoUrl,
+                initialPhotoKey: task.photo_evidence_key ?? null,
+                rejectionReason: task.rejection_reason ?? null,
+              }
+            : null
+        }
+        visible={submitOpen && task.source !== 'agent_assignment'}
         onClose={() => setSubmitOpen(false)}
         onSubmitted={async () => {
           setSubmitOpen(false);
           await load();
         }}
       />
+
+      <KeyboardBottomSheet
+        visible={startOpen}
+        onRequestClose={() => setStartOpen(false)}
+        backdropPressDisabled={starting}
+        overlayClassName="flex-1 justify-end bg-black/45"
+        sheetStyle={styles.startModalCard}
+      >
+        <Text className="text-lg font-bold text-foreground">Start Task</Text>
+        <Text className="mt-1 text-sm text-muted-foreground">{task.name}</Text>
+        <Text className="mt-4 text-xs font-semibold text-muted-foreground">
+          When did you start? ({DISPLAY_DATE_FORMAT})
+        </Text>
+        <TextInput
+          value={startDateInput}
+          onChangeText={(text) => setStartDateInput(maskDdMmYyyyInput(text))}
+          placeholder={DISPLAY_DATE_FORMAT}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="numbers-and-punctuation"
+          style={styles.dateInput}
+        />
+        <Button
+          mode="contained"
+          buttonColor={COLORS.primary}
+          loading={starting}
+          disabled={starting}
+          onPress={() => void handleConfirmStart()}
+          style={styles.actionBtn}
+        >
+          Confirm start
+        </Button>
+        <Button mode="text" onPress={() => setStartOpen(false)} disabled={starting}>
+          Cancel
+        </Button>
+      </KeyboardBottomSheet>
     </View>
   );
 }
@@ -349,6 +612,19 @@ const styles = StyleSheet.create({
   pay: {
     color: COLORS.accent,
   },
+  overdue: {
+    color: COLORS.alert,
+  },
+  muted: {
+    fontSize: 14,
+    color: '#757575',
+  },
+  required: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.alert,
+  },
   evidenceImage: {
     width: '100%',
     height: 200,
@@ -358,5 +634,22 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     marginTop: 24,
+  },
+  startModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+  },
+  dateInput: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#1A1A1A',
+    backgroundColor: '#FAFAFA',
   },
 });

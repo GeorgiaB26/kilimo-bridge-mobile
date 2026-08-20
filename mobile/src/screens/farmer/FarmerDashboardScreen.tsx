@@ -27,6 +27,7 @@ import {
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<FarmerTabParamList, 'Dashboard'>,
@@ -186,17 +187,17 @@ export function FarmerDashboardScreen() {
       | 'not_started'
       | 'submitted_for_approval'
       | 'rejected'
-      | 'completed',
-    taskId?: string
+      | 'completed'
   ) => {
-    if (!statusFilter && !taskId) {
+    if (!statusFilter) {
       navigation.navigate('Tasks');
       return;
     }
-    navigation.navigate('Tasks', {
-      ...(statusFilter ? { statusFilter } : {}),
-      ...(taskId ? { taskId, highlightTaskId: taskId } : {}),
-    });
+    navigation.navigate('Tasks', { statusFilter });
+  };
+
+  const openTask = (taskId: string) => {
+    openFarmerTaskModule(navigation, taskId);
   };
 
   return (
@@ -238,7 +239,7 @@ export function FarmerDashboardScreen() {
         <FarmerDashboardRecentTasks
           tasks={data?.recentTasks}
           onTasksPress={() => goToTasks()}
-          onTaskPress={(taskId) => goToTasks(undefined, taskId)}
+          onTaskPress={(taskId) => openTask(taskId)}
         />
 
         <FarmerDashboardRecentProjects

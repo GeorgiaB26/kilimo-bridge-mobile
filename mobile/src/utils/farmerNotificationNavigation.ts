@@ -138,18 +138,29 @@ function navigateMainTab(
   );
 }
 
+/** Open the farmer task detail screen (same module as notification taps). */
+export function openFarmerTaskModule(
+  navigation: NavigationProp<ParamListBase>,
+  taskId: string,
+  opts?: { fromNotification?: boolean; openSubmitModal?: boolean }
+): boolean {
+  return navigateToRoute(navigation, 'TaskDetail', {
+    taskId,
+    fromNotification: opts?.fromNotification === true,
+    openSubmitModal: opts?.openSubmitModal === true,
+  });
+}
+
 function navigateToFarmerTask(
   root: NavigationProp<ParamListBase>,
   notification: FarmerNotification,
   contextIdValue: string | undefined
 ): void {
   if (contextIdValue) {
-    root.dispatch(
-      CommonActions.navigate({
-        name: 'TaskDetail',
-        params: { taskId: contextIdValue, fromNotification: true },
-      })
-    );
+    openFarmerTaskModule(root, contextIdValue, {
+      fromNotification: true,
+      openSubmitModal: isTaskQcOrRejectedNotification(notification),
+    });
     return;
   }
 

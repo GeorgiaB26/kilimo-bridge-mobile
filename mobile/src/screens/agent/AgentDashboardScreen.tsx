@@ -135,8 +135,11 @@ export function AgentDashboardScreen() {
     setRefreshing(false);
   };
 
-  const goToTasks = (filter: TaskFilter | 'all') => {
-    navigateNested(navigation, 'Tasks', { filter });
+  const goToTasks = (filter: TaskFilter | 'all', taskId?: string) => {
+    navigateNested(navigation, 'Tasks', {
+      filter,
+      ...(taskId ? { taskId, highlightTaskId: taskId } : {}),
+    });
   };
 
   if (loading) {
@@ -288,7 +291,7 @@ export function AgentDashboardScreen() {
           {recentTasks.slice(0, 5).map((t) => (
             <Pressable
               key={t.id}
-              onPress={() => goToTasks('all')}
+              onPress={() => goToTasks('all', t.id)}
               className="mt-2 border-t border-[#EEE] pt-2"
               style={webPressable}
             >

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
@@ -33,6 +33,7 @@ import {
 } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { OfflineCachedDataBanner } from '../OfflineCachedDataBanner';
+import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
 
 export interface FarmerTaskRow {
   id: string;
@@ -77,6 +78,7 @@ function evidencePhotoUri(item: FarmerTaskRow): string | null {
 }
 
 export function FarmerProjectTasksSection({ programProjectId, compact }: Props) {
+  const navigation = useNavigation();
   const userScope = useReadCacheUserScope();
   const [tasks, setTasks] = useState<FarmerTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -341,7 +343,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
           <KBCard
             key={item.id}
             elevated={false}
-            onPress={openable ? () => setSubmitTask(item) : undefined}
+            onPress={() => openFarmerTaskModule(navigation, item.id)}
           >
             <View style={styles.row}>
               <View style={styles.nameCol}>
@@ -448,7 +450,11 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
               <Button
                 mode="contained"
                 buttonColor={isRejected ? COLORS.warning : COLORS.primary}
-                onPress={() => setSubmitTask(item)}
+                onPress={() =>
+                  openFarmerTaskModule(navigation, item.id, {
+                    openSubmitModal: isRejected || statusKey === 'in-progress',
+                  })
+                }
                 style={styles.openBtn}
               >
                 {isRejected ? 'Resubmit' : 'Open'}
