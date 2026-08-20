@@ -10,7 +10,7 @@ import {
   getAgentByUserId,
   isFarmerVisibleToAgent,
 } from '../services/agentService';
-import { verifyFarmerByFieldAgent, getFarmerById } from '../services/farmerService';
+import { verifyFarmerByFieldAgent, getFarmerById, reviewFarmerPicture } from '../services/farmerService';
 import { getAgentAuditLogs } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
 import {
@@ -164,6 +164,29 @@ router.patch(
       res.json({ success: true, status: result.status });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Verification failed' });
+    }
+  })
+);
+
+/** Approve or reject a farmer-submitted profile photo. */
+router.patch(
+  '/farmers/:farmerId/photo-review',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    const region = req.user!.region ?? '';
+    const district = req.user!.district;
+    const visible = await isFarmerVisibleToAgent(req.params.farmerId, region, district);
+    if (!visible) {
+      res.status(403).json({ error: 'Farmer is outside your assigned region' });
+      return;
+    }
+    const raw = String(req.body?.decision ?? req.body?.status ?? '').toLowerCase();
+    const decision = raw === 'rejected' || raw === 'reject' ? 'rejected' : 'approved';
+    try {
+      const result = await reviewFarmerPicture(req.params.farmerId, req.user!.userId, decision);
+      res.json({ success: true, status: result.status });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not review photo' });
     }
   })
 );

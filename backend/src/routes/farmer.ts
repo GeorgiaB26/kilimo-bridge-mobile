@@ -9,7 +9,7 @@ import {
   listAllFarmerAssignedTasks,
 } from '../services/farmerPortalService';
 import { getUserNotifications } from '../services/notificationService';
-import { updateFarmerLocation, updateFarmerPicture } from '../services/farmerService';
+import { updateFarmerLocation, submitFarmerPictureForApproval } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
 import { createFarmerHelpRequest, getFarmerMyCentre } from '../services/farmerHelpRequestService';
 import hierarchyFarmerRoutes from './hierarchyFarmer';
@@ -189,12 +189,12 @@ router.patch(
       return;
     }
     try {
-      await updateFarmerPicture(req.user.farmerId, picture_url);
+      await submitFarmerPictureForApproval(req.user.farmerId, picture_url);
       logFarmerDataAccess(req, 'profile', req.user.farmerId);
       const data = await getFarmerDashboard(req.user.farmerId);
       res.json(data);
     } catch (err) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not update photo' });
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not submit photo' });
     }
   })
 );

@@ -109,6 +109,8 @@ export function FarmerProfileScreen() {
     aggregation_center: string | null;
     kb_farmer_id: string | null;
     picture_url: string | null;
+    pending_picture_url?: string | null;
+    photoUpdatePending?: boolean;
     status: string;
     registered_agent_name?: string | null;
     registered_agent_phone?: string | null;
@@ -191,27 +193,38 @@ export function FarmerProfileScreen() {
     setPendingBase64(null);
   };
 
-  /** Verification photos must be taken with the camera (not chosen from gallery). */
-  const takeVerificationPhoto = async () => {
+  const pickProfilePhoto = async (useCamera: boolean) => {
     if (picking || savingPhoto) return;
     setPicking(true);
     try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      const permission = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         showMessage(
-          'Camera permission needed',
-          'Allow camera access so you can take your verification photo.'
+          'Permission needed',
+          useCamera
+            ? 'Allow camera access so you can take your profile photo.'
+            : 'Allow gallery access so you can choose a profile photo.'
         );
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        base64: true,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      });
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+            base64: true,
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+            base64: true,
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          });
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
@@ -224,11 +237,11 @@ export function FarmerProfileScreen() {
       }
     } catch (err: unknown) {
       showMessage(
-        'Could not open camera',
+        useCamera ? 'Could not open camera' : 'Could not open gallery',
         extractApiError(
           err,
           Platform.OS === 'web'
-            ? 'Use a device with a camera, or allow camera access in the browser, then try again.'
+            ? 'Allow camera or gallery access in the browser, then try again.'
             : 'Please try again.'
         )
       );
@@ -251,11 +264,11 @@ export function FarmerProfileScreen() {
       setContacts(data.contacts ?? null);
       discardPendingPhoto();
       showMessage(
-        'Photo submitted',
-        'Your verification photo is saved. A field agent will confirm it matches you in person before your profile is fully verified.'
+        'Sent for approval',
+        'Your field agent has been notified. Your current photo stays until they approve the new one.'
       );
     } catch (err: unknown) {
-      showMessage('Could not save photo', extractApiError(err, 'Please try again.'));
+      showMessage('Could not send photo', extractApiError(err, 'Please try again.'));
     } finally {
       setSavingPhoto(false);
     }
@@ -292,18 +305,14 @@ export function FarmerProfileScreen() {
     }
   };
 
+  const photoAwaitingApproval = Boolean(farmer?.pending_picture_url || farmer?.photoUpdatePending);
+
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
       {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
       {error && !farmer ? <FarmerOfflineBanner message={error} /> : null}
       <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">
-        <Pressable
-          onPress={() => void takeVerificationPhoto()}
-          disabled={picking || savingPhoto}
-          accessibilityRole="button"
-          accessibilityLabel="Take verification photo"
-          style={styles.photoPressable}
-        >
+        <View style={styles.photoPressable}>
           {pendingUri ? (
             <View className="mb-1 items-center">
               <Image
@@ -316,78 +325,96 @@ export function FarmerProfileScreen() {
                   borderColor: '#D4AF6A',
                 }}
               />
-              <Text className="mt-2 text-center text-xs text-white/80">Preview — not saved yet</Text>
+              <Text className="mt-2 text-center text-xs text-white/80">Preview — not sent yet</Text>
             </View>
           ) : (
             <ProfileAvatar name={displayName} pictureUrl={farmer?.picture_url} size="hero" />
           )}
-        </Pressable>
+        </View>
         {!pendingUri ? (
           <View className="mb-1 mt-2 w-full items-center gap-2">
-            <Text className="text-center text-xs text-white/80">
-              Use the camera to take a clear photo of your face. A field agent will verify it in person.
-            </Text>
-            <Pressable
-              onPress={() => void takeVerificationPhoto()}
-              disabled={picking || savingPhoto}
-              style={({ pressed }) => [
-                styles.takePhotoBtn,
-                (picking || savingPhoto) && styles.takePhotoBtnDisabled,
-                pressed && styles.takePhotoBtnPressed,
-              ]}
-            >
-              {picking ? (
-                <ActivityIndicator color="#1A4D3E" />
-              ) : (
-                <>
-                  <Ionicons name="camera" size={18} color="#1A4D3E" />
-                  <Text className="font-semibold text-[#1A4D3E]">
-                    {farmer?.picture_url ? 'Retake verification photo' : 'Take verification photo'}
-                  </Text>
-                </>
-              )}
-            </Pressable>
+            {photoAwaitingApproval ? (
+              <View style={styles.pendingBanner}>
+                <Text className="text-center text-xs font-semibold text-[#1A4D3E]">
+                  New photo waiting for your field agent to approve. Your current photo stays until then.
+                </Text>
+              </View>
+            ) : (
+              <Text className="text-center text-xs text-white/80">
+                Take or choose a clear photo of your face. Your field agent must approve it before it replaces your current photo.
+              </Text>
+            )}
+            <View style={styles.pickRow}>
+              <View style={styles.pickSlot}>
+                <Pressable
+                  onPress={() => void pickProfilePhoto(true)}
+                  disabled={picking || savingPhoto}
+                  style={({ pressed }) => [
+                    styles.takePhotoBtn,
+                    (picking || savingPhoto) && styles.takePhotoBtnDisabled,
+                    pressed && styles.takePhotoBtnPressed,
+                  ]}
+                >
+                  {picking ? (
+                    <ActivityIndicator color="#1A4D3E" />
+                  ) : (
+                    <>
+                      <Ionicons name="camera" size={18} color="#1A4D3E" />
+                      <Text className="font-semibold text-[#1A4D3E]">Camera</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+              <View style={styles.pickSlot}>
+                <Pressable
+                  onPress={() => void pickProfilePhoto(false)}
+                  disabled={picking || savingPhoto}
+                  style={({ pressed }) => [
+                    styles.takePhotoBtn,
+                    (picking || savingPhoto) && styles.takePhotoBtnDisabled,
+                    pressed && styles.takePhotoBtnPressed,
+                  ]}
+                >
+                  <Ionicons name="images" size={18} color="#1A4D3E" />
+                  <Text className="font-semibold text-[#1A4D3E]">Gallery</Text>
+                </Pressable>
+              </View>
+            </View>
           </View>
         ) : null}
         {pendingUri ? (
-          <View className="mb-3 mt-3 w-full flex-row gap-2">
-            <Button
-              variant="outline"
-              className="h-11 min-w-0 flex-1 border-white/50 bg-white px-2"
-              onPress={discardPendingPhoto}
-              disabled={savingPhoto}
-            >
-              <Text className="text-sm font-semibold text-[#1A4D3E]" numberOfLines={1}>
-                Cancel
-              </Text>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-11 min-w-0 flex-1 border-white/50 bg-white px-2"
-              onPress={() => void takeVerificationPhoto()}
-              disabled={savingPhoto || picking}
-            >
-              <Text className="text-sm font-semibold text-[#1A4D3E]" numberOfLines={1}>
-                Retake
-              </Text>
-            </Button>
-            <Button
-              className="h-11 min-w-0 flex-1 bg-[#D4AF6A] px-2"
-              onPress={() => void handleSavePhoto()}
-              disabled={savingPhoto || picking}
-            >
-              {savingPhoto ? (
-                <ActivityIndicator color="#1A4D3E" />
-              ) : (
-                <Text
-                  className="text-sm font-semibold text-[#1A4D3E]"
-                  numberOfLines={1}
-                  style={styles.singleLineLabel}
-                >
-                  Submit photo
-                </Text>
-              )}
-            </Button>
+          <View style={styles.actionRow}>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={discardPendingPhoto}
+                disabled={savingPhoto}
+                style={[styles.outlineAction, savingPhoto && styles.takePhotoBtnDisabled]}
+              >
+                <Text style={styles.outlineActionText}>Cancel</Text>
+              </Pressable>
+            </View>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={() => void pickProfilePhoto(true)}
+                disabled={savingPhoto || picking}
+                style={[styles.outlineAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
+              >
+                <Text style={styles.outlineActionText}>Retake</Text>
+              </Pressable>
+            </View>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={() => void handleSavePhoto()}
+                disabled={savingPhoto || picking}
+                style={[styles.submitAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
+              >
+                {savingPhoto ? (
+                  <ActivityIndicator color="#1A4D3E" />
+                ) : (
+                  <Text style={styles.submitActionText}>Send</Text>
+                )}
+              </Pressable>
+            </View>
           </View>
         ) : null}
         <View className="mb-3 mt-3 w-full items-center rounded-xl bg-white/10 p-3.5">
@@ -625,10 +652,8 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
   takePhotoBtn: {
-    marginTop: 4,
-    minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    width: '100%',
+    height: '100%',
     borderRadius: 8,
     backgroundColor: '#D4AF6A',
     flexDirection: 'row',
@@ -643,11 +668,70 @@ const styles = StyleSheet.create({
   takePhotoBtnPressed: {
     opacity: 0.9,
   },
-  singleLineLabel: {
-    flexShrink: 0,
-    ...Platform.select({
-      web: { whiteSpace: 'nowrap' as const },
-      default: {},
-    }),
+  pendingBanner: {
+    width: '100%',
+    marginTop: 4,
+    marginBottom: 4,
+    borderRadius: 8,
+    backgroundColor: '#D4AF6A',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 8,
+  },
+  pickSlot: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 120,
+    height: 44,
+    marginHorizontal: 4,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  actionSlot: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 88,
+    height: 44,
+    marginHorizontal: 4,
+  },
+  outlineAction: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outlineActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A4D3E',
+  },
+  submitAction: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#D4AF6A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitActionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1A4D3E',
   },
 });

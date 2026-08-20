@@ -848,6 +848,7 @@ export async function getAgentDashboardSummary(
   const farmersCount = farmers.length;
   const pendingReview = farmers.filter((f) => f.status === 'pending_review').length;
   const pendingFieldVerification = farmers.filter((f) => f.status === 'pending_field_verification').length;
+  const pendingPhotos = farmers.filter((f) => Boolean(f.pending_picture_url)).length;
   const verified = farmers.filter((f) => f.status === 'verified').length;
   const inactive = farmers.filter((f) => f.status === 'inactive').length;
   const rejected = farmers.filter((f) => f.status === 'rejected').length;
@@ -913,6 +914,7 @@ export async function getAgentDashboardSummary(
       pending_review: pendingReview,
       pending_field_verification: pendingFieldVerification,
       pending_verification: pendingReview + pendingFieldVerification,
+      pending_photo_updates: pendingPhotos,
       verified,
       inactive,
       rejected,
@@ -936,6 +938,14 @@ export async function getAgentDashboardSummary(
       sub_county: f.sub_county,
       status: f.status,
     })),
+    pending_photo_updates: farmers
+      .filter((f) => Boolean(f.pending_picture_url))
+      .slice(0, 8)
+      .map((f) => ({
+        farmer_id: f.farmer_id,
+        name: f.name,
+        phone_number: f.phone_number,
+      })),
     project_manager: pm
       ? { name: pm.name, phone: pm.phone_number }
       : null,

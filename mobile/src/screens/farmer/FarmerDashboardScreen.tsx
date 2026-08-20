@@ -50,6 +50,8 @@ type DashboardData = {
     status?: string;
     profileLocationPending?: boolean;
     picture_url?: string | null;
+    pending_picture_url?: string | null;
+    photoUpdatePending?: boolean;
   };
   pendingAmount: number;
   totalEarnings: number;

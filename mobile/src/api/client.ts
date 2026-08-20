@@ -1025,6 +1025,14 @@ export async function verifyFarmerField(
   return data;
 }
 
+export async function reviewFarmerProfilePhoto(
+  farmerId: string,
+  decision: 'approved' | 'rejected'
+) {
+  const { data } = await api.patch(`/agents/farmers/${farmerId}/photo-review`, { decision });
+  return data as { success: boolean; status: 'approved' | 'rejected' };
+}
+
 export async function getPendingDeliveries(centreId?: string) {
   const path = centreId
     ? `/aggregation/centre/${centreId}/pending-deliveries`

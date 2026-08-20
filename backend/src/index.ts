@@ -15,7 +15,7 @@ import { ensureFarmerTaskAssignerColumn } from './services/hierarchyService';
 import messagesRoutes from './routes/messages';
 import supportRoutes from './routes/support';
 import notificationsRoutes from './routes/notifications';
-import { backfillLegacyIdNumberHashes } from './services/farmerService';
+import { backfillLegacyIdNumberHashes, ensurePendingPictureColumn } from './services/farmerService';
 import { validateProductionEnv } from './validateEnv';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
@@ -97,6 +97,7 @@ async function runSchemaEnsures(): Promise<void> {
   await ensureMessagingTables();
   await ensureSupportTicketTables();
   await ensureFarmerTaskAssignerColumn();
+  await ensurePendingPictureColumn();
 }
 
 async function runSeedAndCounts(): Promise<number> {

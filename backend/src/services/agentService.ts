@@ -93,9 +93,19 @@ export async function getAgentsInRegion(region: string) {
 
 export async function getFarmersInRegion(region: string, district?: string) {
   if (district) {
-    return query(
+    return query<{
+      farmer_id: string;
+      key: string;
+      name: string;
+      phone_number: string;
+      district: string;
+      sub_county: string;
+      status: string;
+      pending_picture_url: string | null;
+      membership_group_name: string;
+    }>(
       `SELECT f.farmer_id, f.key, f.name, f.phone_number, f.district, f.sub_county, f.status,
-              mg.name as membership_group_name
+              f.pending_picture_url, mg.name as membership_group_name
        FROM farmers f
        JOIN membership_groups mg ON f.membership_group_id = mg.id
        WHERE f.district = $1
@@ -103,9 +113,19 @@ export async function getFarmersInRegion(region: string, district?: string) {
       [district]
     );
   }
-  return query(
+  return query<{
+      farmer_id: string;
+      key: string;
+      name: string;
+      phone_number: string;
+      district: string;
+      sub_county: string;
+      status: string;
+      pending_picture_url: string | null;
+      membership_group_name: string;
+    }>(
     `SELECT f.farmer_id, f.key, f.name, f.phone_number, f.district, f.sub_county, f.status,
-            mg.name as membership_group_name
+            f.pending_picture_url, mg.name as membership_group_name
      FROM farmers f
      JOIN membership_groups mg ON f.membership_group_id = mg.id
      WHERE f.district IN (SELECT DISTINCT district FROM agents WHERE region = $1)

@@ -277,6 +277,7 @@ export function navigateFromFarmerNotification(
   if (
     type.includes('verification') ||
     type.includes('registration') ||
+    type.includes('photo') ||
     type === 'help_request_resolved'
   ) {
     navigateMainTab(root, 'Profile');
@@ -368,6 +369,19 @@ export function navigateFromNotification(
     type === 'help_request_resolved'
   ) {
     navigateMainTab(root, 'Profile');
+    return;
+  }
+
+  if (type === 'farmer_photo_update' || contextType === 'farmer') {
+    const id = contextId(notification);
+    if (id) {
+      navigateMainTab(root, 'Farmers', {
+        screen: 'FarmerProfile',
+        params: { farmerId: id, name: notification.title || 'Farmer' },
+      });
+      return;
+    }
+    navigateMainTab(root, 'Farmers', { screen: 'FarmerList' });
     return;
   }
 

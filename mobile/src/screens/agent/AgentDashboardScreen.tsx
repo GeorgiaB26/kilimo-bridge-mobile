@@ -206,6 +206,31 @@ export function AgentDashboardScreen() {
         />
       </View>
 
+      {(data?.pending_photo_updates?.length ?? 0) > 0 ? (
+        <KBCard style={{ marginBottom: 12 }}>
+          <Text className="text-sm font-bold text-[#333333]">Profile photos to approve</Text>
+          <Text className="mt-1 text-xs text-[#757575]">
+            A farmer updated their picture. Open the profile, check the photo, then tap Approved.
+          </Text>
+          {data!.pending_photo_updates!.map((f) => (
+            <Pressable
+              key={f.farmer_id}
+              onPress={() =>
+                navigateNested(navigation, 'Farmers', {
+                  screen: 'FarmerProfile',
+                  params: { farmerId: f.farmer_id, name: f.name },
+                })
+              }
+              className="mt-2 border-t border-[#EEE] pt-2"
+              style={webPressable}
+            >
+              <Text className="text-sm font-semibold text-[#333333]">{f.name}</Text>
+              <Text className="text-xs font-semibold text-[#1A4D3E]">Review photo →</Text>
+            </Pressable>
+          ))}
+        </KBCard>
+      ) : null}
+
       <SectionHeading Icon={Calendar}>Task snapshots</SectionHeading>
       <View className="mb-2 flex-row gap-2">
         <MetricCard

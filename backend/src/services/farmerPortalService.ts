@@ -177,10 +177,14 @@ export async function getFarmerDashboard(farmerId: string) {
     district: string;
     sub_county: string;
     picture_url?: string | null;
+    pending_picture_url?: string | null;
   };
 
   const picture_url = await resolvePhotoUrlForDisplay(
     typeof farmerRecord.picture_url === 'string' ? farmerRecord.picture_url : null
+  );
+  const pending_picture_url = await resolvePhotoUrlForDisplay(
+    typeof farmerRecord.pending_picture_url === 'string' ? farmerRecord.pending_picture_url : null
   );
 
   const allAssignedTasks = await listAllFarmerAssignedTasks(farmerId);
@@ -195,6 +199,8 @@ export async function getFarmerDashboard(farmerId: string) {
     farmer: {
       ...farmerRecord,
       picture_url,
+      pending_picture_url,
+      photoUpdatePending: Boolean(farmerRecord.pending_picture_url),
       profileLocationPending: isLocationPending(farmer as { district: string; sub_county: string }),
       aggregation_center:
         farmerRecord.aggregation_center ??

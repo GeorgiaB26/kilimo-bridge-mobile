@@ -36,6 +36,7 @@ type FarmerRow = {
   phone_number: string;
   district: string;
   status: string;
+  pending_picture_url?: string | null;
 };
 
 export function AgentFarmersScreen() {
@@ -153,6 +154,9 @@ export function AgentFarmersScreen() {
     if (statusFilter === 'pending_verification') {
       return f.status === 'pending_field_verification' || f.status === 'pending_review';
     }
+    if (statusFilter === 'pending_photo') {
+      return Boolean(f.pending_picture_url);
+    }
     return f.status === statusFilter;
   });
 
@@ -269,6 +273,9 @@ export function AgentFarmersScreen() {
           <View className="mt-2">
             <FarmerStatusChip status={item.status} />
           </View>
+          {item.pending_picture_url ? (
+            <Text className="mt-2 text-xs font-bold text-[#B45309]">New photo waiting for approval</Text>
+          ) : null}
           <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view profile →</Text>
         </Pressable>
       )}

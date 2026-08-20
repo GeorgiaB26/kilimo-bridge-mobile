@@ -332,8 +332,11 @@ export async function getFarmerById(farmerId: string) {
   const picture_url = await resolvePhotoUrlForDisplay(
     typeof farmer.picture_url === 'string' ? farmer.picture_url : null
   );
+  const pending_picture_url = await resolvePhotoUrlForDisplay(
+    typeof farmer.pending_picture_url === 'string' ? farmer.pending_picture_url : null
+  );
 
-  return { ...farmer, picture_url, projects };
+  return { ...farmer, picture_url, pending_picture_url, projects };
 }
 
 /** Audit + PM review queue entry after agent registers a farmer. */
@@ -603,7 +606,59 @@ export async function updateFarmerLocation(
   });
 }
 
-export async function updateFarmerPicture(farmerId: string, pictureUrl: string): Promise<void> {
+export async function ensurePendingPictureColumn(): Promise<void> {
+  await query(`ALTER TABLE farmers ADD COLUMN IF NOT EXISTS pending_picture_url TEXT`);
+}
+
+async function resolveFarmerAppUserId(farmerId: string): Promise<string | null> {
+  const byFarmerId = await queryOne<{ user_id: string }>(
+    `SELECT user_id::text AS user_id FROM users WHERE farmer_id::text = $1::text LIMIT 1`,
+    [farmerId]
+  );
+  if (byFarmerId?.user_id) return byFarmerId.user_id;
+
+  const byPhone = await queryOne<{ user_id: string }>(
+    `SELECT u.user_id::text AS user_id
+     FROM users u
+     JOIN farmers f ON f.phone_number = u.phone_number
+     WHERE f.farmer_id::text = $1::text
+       AND u.role::text = 'farmer'
+     LIMIT 1`,
+    [farmerId]
+  );
+  return byPhone?.user_id ?? null;
+}
+
+async function notifyFarmerPhotoDecision(
+  farmerId: string,
+  decision: 'approved' | 'rejected'
+): Promise<void> {
+  const farmerUserId = await resolveFarmerAppUserId(farmerId);
+  if (!farmerUserId) {
+    throw new Error('Farmer app account not found — they would not receive a notification');
+  }
+  const { createNotification } = await import('./notificationService');
+  await createNotification({
+    userId: farmerUserId,
+    title:
+      decision === 'approved' ? 'Profile image has been approved' : 'Profile image is rejected',
+    message:
+      decision === 'approved'
+        ? 'Your field agent approved your new profile image. It is now on your profile.'
+        : 'Your field agent rejected your new profile image. Your current photo is unchanged. You can submit another one.',
+    type: decision === 'approved' ? 'farmer_photo_approved' : 'farmer_photo_rejected',
+    contextType: 'farmer',
+    contextId: farmerId,
+    actionUrl: '/profile',
+  });
+}
+
+/** Farmer submits a new photo; it stays pending until the field agent approves. */
+export async function submitFarmerPictureForApproval(
+  farmerId: string,
+  pictureUrl: string
+): Promise<void> {
+  await ensurePendingPictureColumn();
   const photoError = validateFarmerPhotoRequired(pictureUrl);
   if (photoError) throw new Error(photoError);
 
@@ -612,25 +667,89 @@ export async function updateFarmerPicture(farmerId: string, pictureUrl: string):
     throw new Error('Invalid profile photo key for this farmer');
   }
 
-  const exists = await queryOne<{ farmer_id: string }>(
-    'SELECT farmer_id FROM farmers WHERE farmer_id = $1',
+  const farmer = await queryOne<{ farmer_id: string; name: string }>(
+    'SELECT farmer_id, name FROM farmers WHERE farmer_id = $1',
     [farmerId]
   );
-  if (!exists) throw new Error('Farmer not found');
+  if (!farmer) throw new Error('Farmer not found');
 
   await query(
-    `UPDATE farmers SET picture_url = $1, updated_at = NOW() WHERE farmer_id = $2`,
+    `UPDATE farmers SET pending_picture_url = $1, updated_at = NOW() WHERE farmer_id = $2`,
     [key, farmerId]
   );
 
+  const { getFarmerSupportContacts } = await import('./farmerHelpRequestService');
+  const contacts = await getFarmerSupportContacts(farmerId);
+  const agentUserId = contacts.fieldAgent?.userId?.trim();
+  if (agentUserId) {
+    const { createNotification } = await import('./notificationService');
+    await createNotification({
+      userId: agentUserId,
+      title: 'Profile photo update',
+      message: `${farmer.name} submitted a new profile photo. Open their profile to review and approve it.`,
+      type: 'farmer_photo_update',
+      contextType: 'farmer',
+      contextId: farmerId,
+      actionUrl: `/farmers/${farmerId}`,
+      priority: 'high',
+    });
+  }
+
   await logAudit({
-    action: 'farmer.update',
+    action: 'farmer.photo_submitted',
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: { field: 'picture_url', objectKey: key },
+    details: { field: 'pending_picture_url', objectKey: key, notifiedAgent: Boolean(agentUserId) },
     success: true,
   });
+}
+
+export async function reviewFarmerPicture(
+  farmerId: string,
+  agentUserId: string,
+  decision: 'approved' | 'rejected'
+): Promise<{ status: 'approved' | 'rejected' }> {
+  await ensurePendingPictureColumn();
+  const farmer = await queryOne<{ name: string; pending_picture_url: string | null }>(
+    'SELECT name, pending_picture_url FROM farmers WHERE farmer_id = $1',
+    [farmerId]
+  );
+  if (!farmer) throw new Error('Farmer not found');
+  if (!farmer.pending_picture_url?.trim()) {
+    throw new Error('No photo update is waiting for approval');
+  }
+  if (!(await resolveFarmerAppUserId(farmerId))) {
+    throw new Error('Farmer app account not found — they would not receive a notification');
+  }
+
+  if (decision === 'approved') {
+    await query(
+      `UPDATE farmers
+       SET picture_url = pending_picture_url, pending_picture_url = NULL, updated_at = NOW()
+       WHERE farmer_id = $1`,
+      [farmerId]
+    );
+  } else {
+    await query(
+      `UPDATE farmers SET pending_picture_url = NULL, updated_at = NOW() WHERE farmer_id = $1`,
+      [farmerId]
+    );
+  }
+
+  await notifyFarmerPhotoDecision(farmerId, decision);
+
+  await logAudit({
+    userId: agentUserId,
+    action: decision === 'approved' ? 'farmer.photo_approved' : 'farmer.photo_rejected',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: { farmer_name: farmer.name, decision },
+    success: true,
+  });
+
+  return { status: decision };
 }
 
 export { PENDING_LOCATION_LABEL };

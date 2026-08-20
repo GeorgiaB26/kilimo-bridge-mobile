@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Alert, Image, Pressable, StyleSheet, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { getAgentFarmerById, getAdminFarmerTasks } from '../../api/client';
+import { getAgentFarmerById, getAdminFarmerTasks, reviewFarmerProfilePhoto } from '../../api/client';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { VerifyFarmerModal } from '../../components/agent/VerifyFarmerModal';
 import { FarmerProfilePhoto } from '../../components/FarmerProfilePhoto';
@@ -51,6 +51,7 @@ type FarmerDetail = {
   centre_location_level_1?: string;
   centre_location_level_2?: string;
   picture_url?: string | null;
+  pending_picture_url?: string | null;
   status: string;
   key?: string;
   created_at?: string;
@@ -92,6 +93,7 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     []
   );
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [reviewingPhoto, setReviewingPhoto] = useState(false);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -173,6 +175,25 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   ]
     .filter(Boolean)
     .join(', ');
+
+  const handlePhotoReview = async (decision: 'approved' | 'rejected') => {
+    if (!farmer || reviewingPhoto) return;
+    setReviewingPhoto(true);
+    try {
+      await reviewFarmerProfilePhoto(farmerId, decision);
+      Alert.alert(
+        decision === 'approved' ? 'Photo approved' : 'Photo not approved',
+        decision === 'approved'
+          ? `${farmer.name}'s profile photo has been updated.`
+          : `${farmer.name}'s current photo is unchanged. They can submit another photo.`
+      );
+      await load();
+    } catch (err: unknown) {
+      Alert.alert('Could not review photo', extractApiError(err, 'Please try again.'));
+    } finally {
+      setReviewingPhoto(false);
+    }
+  };
 
   const handleVerifySubmit = async (
     verificationStatus: 'verified' | 'rejected',
@@ -300,6 +321,43 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
         </View>
 
         <View className="p-4">
+          {farmer.pending_picture_url ? (
+            <View className="mb-3 rounded-lg border border-[#FBBF24] bg-[#FFF8E1] p-3.5">
+              <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
+                New profile photo
+              </Text>
+              <Text className="mb-3 text-sm text-[#333333]">
+                {farmer.name} submitted this photo. Approve it to replace their current profile picture.
+              </Text>
+              <View style={styles.pendingPhotoWrap}>
+                <Image source={{ uri: farmer.pending_picture_url }} style={styles.pendingPhoto} />
+              </View>
+              <View style={styles.reviewRow}>
+                <View style={styles.reviewSlot}>
+                  <Pressable
+                    onPress={() => void handlePhotoReview('rejected')}
+                    disabled={reviewingPhoto}
+                    style={[styles.rejectBtn, reviewingPhoto && styles.reviewDisabled]}
+                  >
+                    <Text style={styles.rejectBtnText}>Reject</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.reviewSlot}>
+                  <Pressable
+                    onPress={() => void handlePhotoReview('approved')}
+                    disabled={reviewingPhoto}
+                    style={[styles.approveBtn, reviewingPhoto && styles.reviewDisabled]}
+                  >
+                    {reviewingPhoto ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.approveBtnText}>Approved</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ) : null}
           {pendingVerifications.length > 0 ? (
             <View className="mb-3">
               <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
@@ -439,3 +497,62 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  pendingPhotoWrap: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  pendingPhoto: {
+    width: 160,
+    height: 160,
+    borderRadius: 12,
+    backgroundColor: '#E8E8E8',
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reviewSlot: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 120,
+    height: 48,
+    marginHorizontal: 4,
+  },
+  rejectBtn: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  rejectBtnText: {
+    fontWeight: '700',
+    color: '#D32F2F',
+    fontSize: 15,
+  },
+  approveBtn: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#1A4D3E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  approveBtnText: {
+    fontWeight: '700',
+    color: '#fff',
+    fontSize: 15,
+  },
+  reviewDisabled: {
+    opacity: 0.65,
+  },
+});
+

@@ -27,6 +27,8 @@ type FarmerProfile = {
   region?: string;
   status?: string;
   picture_url?: string | null;
+  pending_picture_url?: string | null;
+  photoUpdatePending?: boolean;
 };
 
 type PaymentSummary = {
@@ -123,6 +125,11 @@ export function FarmerDashboardProfileCard({
           </Text>
         </Pressable>
       </View>
+      {farmer?.pending_picture_url || farmer?.photoUpdatePending ? (
+        <Text className="text-white" style={styles.pendingPhotoNote}>
+          New photo sent — waiting for your field agent to approve it.
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -421,6 +428,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
     width: '100%',
+  },
+  pendingPhotoNote: {
+    marginTop: 12,
+    fontSize: 12,
+    textAlign: 'center',
+    color: '#D4AF6A',
+    fontWeight: '600',
   },
   editButton: {
     flex: 1,
