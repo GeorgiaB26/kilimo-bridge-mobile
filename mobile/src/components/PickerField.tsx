@@ -10,6 +10,7 @@ import {
   FlatList,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 
@@ -39,6 +40,10 @@ export function PickerField({
 }: PickerFieldProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const insets = useSafeAreaInsets();
+  /** Keep the last option above Android 3-button nav / iOS home indicator. */
+  const navFallback = Platform.OS === 'android' ? 48 : 16;
+  const sheetBottomPad = Math.max(insets.bottom, navFallback) + 8;
 
   const normalized = useMemo<Option[]>(
     () => options.map((o) => (typeof o === 'string' ? { label: o || 'None', value: o } : o)),
@@ -101,10 +106,10 @@ export function PickerField({
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Modal visible={open} transparent animationType="none" onRequestClose={close}>
+      <Modal visible={open} transparent animationType="none" onRequestClose={close} statusBarTranslucent>
         <View style={styles.modalRoot}>
           <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Dismiss" />
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: sheetBottomPad }]}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{label}</Text>
               <Pressable onPress={close} hitSlop={12} accessibilityRole="button">
@@ -133,6 +138,7 @@ export function PickerField({
               keyExtractor={(item, index) => `${item.value}-${index}`}
               keyboardShouldPersistTaps="handled"
               style={styles.list}
+              contentContainerStyle={styles.listContent}
               ListEmptyComponent={
                 <Text style={styles.empty}>No matches. Try a different search.</Text>
               }
@@ -221,7 +227,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -257,6 +262,9 @@ const styles = StyleSheet.create({
   },
   list: {
     flexGrow: 0,
+  },
+  listContent: {
+    paddingBottom: 8,
   },
   option: {
     flexDirection: 'row',
