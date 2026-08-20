@@ -18,7 +18,8 @@ export type UploadPurpose =
   | 'farmer_registration'
   | 'task_evidence'
   | 'farmer_profile'
-  | 'refugee_document';
+  | 'refugee_document'
+  | 'support_attachment';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -110,6 +111,9 @@ export function buildObjectKey(
   if (purpose === 'refugee_document') {
     return `farmers/refugee-docs/${id}.${ext}`;
   }
+  if (purpose === 'support_attachment') {
+    return `support/${id}.${ext}`;
+  }
   return `farmers/registration/${id}.${ext}`;
 }
 
@@ -123,7 +127,7 @@ export function isOwnFarmerProfilePhotoKey(objectKey: string, farmerId: string):
 export function isR2ObjectKey(value?: string | null): boolean {
   if (!value?.trim()) return false;
   const v = value.trim();
-  return /^(farmers|tasks)\//.test(v) && !v.includes('://');
+  return /^(farmers|tasks|support)\//.test(v) && !v.includes('://');
 }
 
 /**

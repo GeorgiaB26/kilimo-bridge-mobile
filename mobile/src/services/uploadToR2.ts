@@ -5,7 +5,8 @@ export type UploadPurpose =
   | 'farmer_registration'
   | 'task_evidence'
   | 'farmer_profile'
-  | 'refugee_document';
+  | 'refugee_document'
+  | 'support_attachment';
 export type UploadContentType = 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
 
 export interface PresignUploadResult {

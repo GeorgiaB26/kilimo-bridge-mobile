@@ -23,6 +23,7 @@ const UPLOAD_PURPOSES: UploadPurpose[] = [
   'task_evidence',
   'farmer_profile',
   'refugee_document',
+  'support_attachment',
 ];
 
 function asyncHandler(
@@ -46,7 +47,8 @@ function deny(req: Request, res: Response, permission: string): void {
   res.status(403).json({ error: 'Insufficient permissions' });
 }
 
-function permissionForPurpose(purpose: UploadPurpose): Permission {
+function permissionForPurpose(purpose: UploadPurpose): Permission | null {
+  if (purpose === 'support_attachment') return null;
   if (purpose === 'farmer_registration' || purpose === 'refugee_document') return 'farmers.write';
   if (purpose === 'farmer_profile') return 'farmers.read.own';
   return 'tasks.submit';
@@ -111,8 +113,8 @@ router.post(
     }
 
     const permission = permissionForPurpose(parsed.purpose);
-    if (!req.user || !hasPermission(req.user.role, permission)) {
-      deny(req, res, permission);
+    if (!req.user || (permission && !hasPermission(req.user.role, permission))) {
+      deny(req, res, permission ?? 'authenticated');
       return;
     }
 
@@ -170,8 +172,8 @@ router.post(
     if (!parsed) return;
 
     const permission = permissionForPurpose(parsed.purpose);
-    if (!req.user || !hasPermission(req.user.role, permission)) {
-      deny(req, res, permission);
+    if (!req.user || (permission && !hasPermission(req.user.role, permission))) {
+      deny(req, res, permission ?? 'authenticated');
       return;
     }
 
