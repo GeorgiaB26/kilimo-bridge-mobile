@@ -9,7 +9,7 @@ import {
 import { getFarmerSupportContacts } from './farmerHelpRequestService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { countTaskCategories, compareDueDates } from '../utils/taskCategorization';
-import { listFarmerTasks } from './hierarchyService';
+import { fulfillTransferredPaymentsForFarmer, listFarmerTasks } from './hierarchyService';
 import { listAgentTasksAssignedToFarmer } from './agentDashboardService';
 
 export type FarmerPortalTaskRow = {
@@ -97,6 +97,7 @@ export async function listAllFarmerAssignedTasks(
   farmerId: string,
   filters?: { status?: string; program_project_id?: string; outstanding?: boolean }
 ): Promise<FarmerPortalTaskRow[]> {
+  await fulfillTransferredPaymentsForFarmer(farmerId);
   const hierarchyRows = (await listFarmerTasks(farmerId, filters)) as Record<string, unknown>[];
   const hierarchyTasks = hierarchyRows.map(mapHierarchyTaskToFarmerRow);
 
@@ -239,6 +240,7 @@ export async function getFarmerProjects(farmerId: string) {
 }
 
 export async function getFarmerPayments(farmerId: string) {
+  await fulfillTransferredPaymentsForFarmer(farmerId);
   const [rows, expectedItems] = await Promise.all([
     query<Record<string, unknown>>(
       `SELECT * FROM payments WHERE farmer_id = $1 ORDER BY created_at DESC`,

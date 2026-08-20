@@ -16,6 +16,7 @@ import {
 } from './farmerProgramService';
 import { isOwnFarmerProfilePhotoKey, resolvePhotoUrlForDisplay } from './r2StorageService';
 import { validateFarmerPhotoRequired } from '../../../shared/src/farmerPhoto';
+import { resolveFarmerAppUserId } from './farmerAppUser';
 
 /** Postgres farmer_status enum — agent field registrations await PM review. */
 function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean): string {
@@ -608,25 +609,6 @@ export async function updateFarmerLocation(
 
 export async function ensurePendingPictureColumn(): Promise<void> {
   await query(`ALTER TABLE farmers ADD COLUMN IF NOT EXISTS pending_picture_url TEXT`);
-}
-
-async function resolveFarmerAppUserId(farmerId: string): Promise<string | null> {
-  const byFarmerId = await queryOne<{ user_id: string }>(
-    `SELECT user_id::text AS user_id FROM users WHERE farmer_id::text = $1::text LIMIT 1`,
-    [farmerId]
-  );
-  if (byFarmerId?.user_id) return byFarmerId.user_id;
-
-  const byPhone = await queryOne<{ user_id: string }>(
-    `SELECT u.user_id::text AS user_id
-     FROM users u
-     JOIN farmers f ON f.phone_number = u.phone_number
-     WHERE f.farmer_id::text = $1::text
-       AND u.role::text = 'farmer'
-     LIMIT 1`,
-    [farmerId]
-  );
-  return byPhone?.user_id ?? null;
 }
 
 async function notifyFarmerPhotoDecision(

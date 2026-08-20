@@ -120,7 +120,14 @@ export async function linkFarmerToUser(farmerId: string, phone: string, name: st
     'SELECT user_id FROM users WHERE phone_number = $1',
     [phone]
   );
-  if (existing) return;
+  if (existing) {
+    await query(
+      `UPDATE users SET farmer_id = $1
+       WHERE user_id = $2 AND farmer_id IS NULL`,
+      [farmerId, existing.user_id]
+    );
+    return;
+  }
   await createUser({ phoneNumber: phone, name, role: 'farmer', farmerId });
 }
 

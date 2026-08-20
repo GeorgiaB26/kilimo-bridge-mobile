@@ -327,12 +327,15 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
 
       {tasks.map((item) => {
         const pending = pendingByTask.get(item.id);
-        const isApproved = item.status === 'approved' || item.status === 'completed';
-        const isSubmitted = item.status === 'submitted-for-approval';
-        const isRejected = item.status === 'rejected';
+        const statusKey = normalizeTaskStatus(item.status);
+        const isCompleted = statusKey === 'completed';
+        const isApproved = statusKey === 'approved';
+        const isPaidOrApproved = isApproved || isCompleted;
+        const isSubmitted = statusKey === 'submitted-for-approval';
+        const isRejected = statusKey === 'rejected';
         const openable = canOpenTask(item.status, !!pending);
         const evidenceUri =
-          isSubmitted || isApproved || isRejected ? evidencePhotoUri(item) : null;
+          isSubmitted || isPaidOrApproved || isRejected ? evidencePhotoUri(item) : null;
 
         return (
           <KBCard
@@ -351,10 +354,12 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
                     <Ionicons name="cloud-offline-outline" size={16} color={COLORS.warning} />
                     <Text style={styles.offlineBadgeText}>Saved offline</Text>
                   </View>
-                ) : isApproved ? (
+                ) : isPaidOrApproved ? (
                   <View style={styles.approvedBadge}>
                     <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-                    <Text style={styles.approvedText}>Approved</Text>
+                    <Text style={styles.approvedText}>
+                      {isCompleted ? 'Completed' : 'Approved'}
+                    </Text>
                   </View>
                 ) : (
                   <KBStatusChip
@@ -397,7 +402,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
               </View>
             ) : null}
 
-            {!pending && (isSubmitted || isApproved || isRejected) ? (
+            {!pending && (isSubmitted || isPaidOrApproved || isRejected) ? (
               <View style={styles.evidenceWrap}>
                 <Text style={styles.evidenceLabel}>Your submission</Text>
                 {item.notes?.trim() ? (
@@ -450,8 +455,12 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
               </Button>
             ) : null}
 
-            {!pending && isApproved ? (
-              <Text style={styles.locked}>Task locked — no further edits</Text>
+            {!pending && isPaidOrApproved ? (
+              <Text style={styles.locked}>
+                {isCompleted
+                  ? 'Payment transferred — task complete'
+                  : 'Task locked — no further edits'}
+              </Text>
             ) : null}
           </KBCard>
         );

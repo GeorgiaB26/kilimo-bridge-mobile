@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
+import { resolveFarmerAppUserId } from './farmerAppUser';
 
 /** Adds assigner tracking on farmer_tasks for farmer portal "assigned by" display. */
 export async function ensureFarmerTaskAssignerColumn(): Promise<void> {
@@ -479,15 +480,12 @@ async function notifyFarmersOfNewTaskAssignments(farmerTaskIds: string[]): Promi
   const { createNotification } = await import('./notificationService');
 
   for (const row of rows) {
-    const farmerUser = await queryOne<{ user_id: string }>(
-      'SELECT user_id::text AS user_id FROM users WHERE farmer_id = $1 LIMIT 1',
-      [row.farmer_id]
-    );
+    const farmerUserId = await resolveFarmerAppUserId(row.farmer_id);
     const due = row.due_date ? ` Due ${row.due_date}.` : '';
     try {
-      if (farmerUser?.user_id) {
+      if (farmerUserId) {
         await createNotification({
-          userId: farmerUser.user_id,
+          userId: farmerUserId,
           title: 'New Task Assigned',
           message: `You have been assigned "${row.name}" on ${row.program_project_name}.${due}`,
           type: 'task_assigned',
@@ -960,11 +958,8 @@ async function notifyFarmerOfHierarchyTaskReview(
 ): Promise<void> {
   if (!task?.id || !task.farmer_id) return;
 
-  const farmerUser = await queryOne<{ user_id: string }>(
-    'SELECT user_id::text AS user_id FROM users WHERE farmer_id = $1 LIMIT 1',
-    [task.farmer_id]
-  );
-  if (!farmerUser?.user_id) return;
+  const farmerUserId = await resolveFarmerAppUserId(task.farmer_id);
+  if (!farmerUserId) return;
 
   const taskName = task.name ?? 'your task';
   const title =
@@ -981,7 +976,7 @@ async function notifyFarmerOfHierarchyTaskReview(
   try {
     const { createNotification } = await import('./notificationService');
     await createNotification({
-      userId: farmerUser.user_id,
+      userId: farmerUserId,
       title,
       message,
       type: outcome === 'approved' ? 'task_approved' : 'task_qc_failed',
@@ -1018,7 +1013,8 @@ async function createPendingPaymentForApprovedTask(
 
 /**
  * Mark a pending payment transferred, notify farmer + field agents, and complete the linked task.
- * No-ops if the payment was already transferred.
+ * If the payment is already transferred, still run notify/complete so a prior sim/webhook
+ * path cannot leave the farmer without a notification or the task stuck on Approved.
  */
 export async function settleTransferredPayment(
   paymentId: string,
@@ -1029,26 +1025,45 @@ export async function settleTransferredPayment(
     farmer_id: string;
     amount: number;
     description: string | null;
+    mpesa_reference: string | null;
   }>(
     `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
      WHERE id = $2 AND lower(payment_status::text) NOT IN ('transferred', 'paid')
-     RETURNING id, farmer_id, amount, description`,
+     RETURNING id, farmer_id, amount, description, mpesa_reference`,
     [reference, paymentId]
   );
-  if (!row) return false;
-  await fulfillPaymentSideEffects({
-    paymentId: row.id,
-    farmerId: row.farmer_id,
-    amount: Number(row.amount ?? 0),
-    description: row.description,
-    reference,
-  });
+  const payment =
+    row ??
+    (await queryOne<{
+      id: string;
+      farmer_id: string;
+      amount: number;
+      description: string | null;
+      mpesa_reference: string | null;
+    }>(
+      `SELECT id, farmer_id, amount, description, mpesa_reference
+       FROM payments
+       WHERE id = $1 AND lower(payment_status::text) IN ('transferred', 'paid')`,
+      [paymentId]
+    ));
+  if (!payment) return false;
+  try {
+    await fulfillPaymentSideEffects({
+      paymentId: payment.id,
+      farmerId: payment.farmer_id,
+      amount: Number(payment.amount ?? 0),
+      description: payment.description,
+      reference: reference || payment.mpesa_reference,
+    });
+  } catch (err) {
+    console.error('[settleTransferredPayment] side effects failed', paymentId, err);
+  }
   return true;
 }
 
 /**
  * After a payment is marked transferred: notify farmer + field agents, and mark the
- * linked program task completed so project cards show 1/1 instead of 0/1.
+ * linked program task completed so the farmer sees Complete instead of Approved.
  */
 export async function fulfillPaymentSideEffects(input: {
   paymentId: string;
@@ -1056,51 +1071,124 @@ export async function fulfillPaymentSideEffects(input: {
   amount: number;
   description?: string | null;
   reference?: string | null;
+  /** When false, only complete a task linked in the payment description (no amount guess). */
+  allowAmountFallback?: boolean;
 }): Promise<void> {
-  const linked = await completeFarmerTasksForTransferredPayment(input);
-  const farmerUser = await queryOne<{ user_id: string }>(
-    'SELECT user_id::text AS user_id FROM users WHERE farmer_id = $1 LIMIT 1',
-    [input.farmerId]
-  );
+  let linked: { farmerTaskId?: string; taskName?: string } = {};
+  try {
+    linked = await completeFarmerTasksForTransferredPayment(input);
+  } catch (err) {
+    console.error('[fulfillPaymentSideEffects] complete task failed', input.paymentId, err);
+  }
+  const farmerUserId = await resolveFarmerAppUserId(input.farmerId);
   const farmerName =
     (
       await queryOne<{ name: string | null }>(
-        'SELECT name FROM farmers WHERE farmer_id = $1',
+        'SELECT name FROM farmers WHERE farmer_id::text = $1::text',
         [input.farmerId]
       )
     )?.name?.trim() || 'A farmer';
   const taskLabel = linked.taskName ?? input.description ?? 'your task';
   const amountLabel = Math.round(input.amount).toLocaleString();
   const { createNotification } = await import('./notificationService');
+  const contextId = linked.farmerTaskId ?? input.paymentId;
 
   try {
-    if (farmerUser?.user_id) {
-      await createNotification({
-        userId: farmerUser.user_id,
-        title: 'Payment Processed',
-        message: `KES ${amountLabel} for "${taskLabel}" has been processed.${
-          input.reference ? ` Ref ${input.reference}.` : ''
-        }`,
-        type: 'payment_processed',
-        contextType: linked.farmerTaskId ? 'farmer_task' : 'payment',
-        contextId: linked.farmerTaskId ?? input.paymentId,
-        actionUrl: linked.farmerTaskId ? `/tasks/${linked.farmerTaskId}` : '/payments',
-        priority: 'high',
-      });
+    if (farmerUserId) {
+      const alreadyNotified = await queryOne<{ id: string }>(
+        `SELECT id FROM notifications
+         WHERE user_id::text = $1::text
+           AND type = 'payment_processed'
+           AND (
+             context_id::text = $2::text
+             OR context_id::text = $3::text
+           )
+         LIMIT 1`,
+        [farmerUserId, input.paymentId, contextId]
+      );
+      if (!alreadyNotified) {
+        await createNotification({
+          userId: farmerUserId,
+          title: 'Payment Processed',
+          message: `KES ${amountLabel} for "${taskLabel}" has been processed.${
+            input.reference ? ` Ref ${input.reference}.` : ''
+          }`,
+          type: 'payment_processed',
+          contextType: linked.farmerTaskId ? 'farmer_task' : 'payment',
+          contextId,
+          actionUrl: linked.farmerTaskId ? `/tasks/${linked.farmerTaskId}` : '/payments',
+          priority: 'high',
+        });
+      }
+    } else {
+      console.error(
+        '[fulfillPaymentSideEffects] farmer app user not found',
+        input.farmerId,
+        input.paymentId
+      );
     }
     for (const agentUserId of await resolveAgentUserIdsForFarmer(input.farmerId)) {
+      const agentAlready = await queryOne<{ id: string }>(
+        `SELECT id FROM notifications
+         WHERE user_id::text = $1::text
+           AND type = 'payment_processed'
+           AND (
+             context_id::text = $2::text
+             OR context_id::text = $3::text
+           )
+         LIMIT 1`,
+        [agentUserId, input.paymentId, contextId]
+      );
+      if (agentAlready) continue;
       await createNotification({
         userId: agentUserId,
         title: 'Payment Processed',
         message: `${farmerName} received KES ${amountLabel} for "${taskLabel}".`,
         type: 'payment_processed',
         contextType: linked.farmerTaskId ? 'farmer_task' : 'payment',
-        contextId: linked.farmerTaskId ?? input.paymentId,
+        contextId,
         priority: 'high',
       });
     }
-  } catch {
-    // best-effort
+  } catch (err) {
+    console.error('[fulfillPaymentSideEffects] notify failed', input.paymentId, err);
+  }
+}
+
+/** Repair transferred payments that never completed the task or notified the farmer. */
+export async function fulfillTransferredPaymentsForFarmer(farmerId: string): Promise<void> {
+  const rows = await query<{
+    id: string;
+    farmer_id: string;
+    amount: number;
+    description: string | null;
+    mpesa_reference: string | null;
+  }>(
+    `SELECT id, farmer_id, amount, description, mpesa_reference
+     FROM payments
+     WHERE farmer_id::text = $1::text
+       AND lower(payment_status::text) IN ('transferred', 'paid')
+       AND (
+         description ILIKE 'Task:%'
+         OR description ILIKE 'QC:%'
+       )
+     ORDER BY paid_at DESC NULLS LAST, created_at DESC
+     LIMIT 50`,
+    [farmerId]
+  );
+  for (const row of rows) {
+    try {
+      await fulfillPaymentSideEffects({
+        paymentId: row.id,
+        farmerId: row.farmer_id,
+        amount: Number(row.amount ?? 0),
+        description: row.description,
+        reference: row.mpesa_reference,
+        allowAmountFallback: false,
+      });
+    } catch (err) {
+      console.error('[fulfillTransferredPaymentsForFarmer]', row.id, err);
+    }
   }
 }
 
@@ -1109,39 +1197,56 @@ async function completeFarmerTasksForTransferredPayment(input: {
   farmerId: string;
   amount: number;
   description?: string | null;
+  allowAmountFallback?: boolean;
 }): Promise<{ farmerTaskId?: string; taskName?: string }> {
   const description = input.description ?? '';
-  const taskPrefix = description.match(/^Task:(.+)$/);
-  const qcPrefix = description.match(/^QC:(.+)$/);
+  const taskRef =
+    /Task:([0-9a-fA-F-]{8,}|\S+)/.exec(description)?.[1] ??
+    /^Task:(.+)$/.exec(description)?.[1] ??
+    null;
+  const qcRef =
+    /QC:([0-9a-fA-F-]{8,}|\S+)/.exec(description)?.[1] ??
+    /^QC:(.+)$/.exec(description)?.[1] ??
+    null;
 
   let farmerTaskId: string | null = null;
 
-  if (taskPrefix?.[1]) {
-    farmerTaskId = taskPrefix[1];
-  } else if (qcPrefix?.[1]) {
+  if (taskRef) {
+    const row = await queryOne<{ id: string }>(
+      `SELECT ft.id
+       FROM farmer_tasks ft
+       WHERE ft.farmer_id::text = $1::text
+         AND (ft.id::text = $2::text OR ft.task_id::text = $2::text)
+       LIMIT 1`,
+      [input.farmerId, taskRef]
+    );
+    farmerTaskId = row?.id ?? taskRef;
+  } else if (qcRef) {
     const inventory = await queryOne<{ task_id: string | null }>(
-      'SELECT task_id FROM centre_inventory WHERE id = $1',
-      [qcPrefix[1]]
+      'SELECT task_id FROM centre_inventory WHERE id::text = $1::text',
+      [qcRef]
     );
     if (inventory?.task_id) {
       const row = await queryOne<{ id: string }>(
-        `SELECT id FROM farmer_tasks WHERE farmer_id = $1 AND task_id = $2 LIMIT 1`,
+        `SELECT id FROM farmer_tasks
+         WHERE farmer_id::text = $1::text AND task_id::text = $2::text
+         LIMIT 1`,
         [input.farmerId, inventory.task_id]
       );
       farmerTaskId = row?.id ?? null;
     }
   }
 
-  if (!farmerTaskId) {
+  if (!farmerTaskId && input.allowAmountFallback !== false) {
     const matched = await queryOne<{ id: string }>(
       `
       SELECT ft.id
       FROM farmer_tasks ft
       JOIN tasks t ON t.id = ft.task_id
-      WHERE ft.farmer_id = $1
-        AND ft.status::text IN ('approved', 'submitted', 'in-progress', 'not-started')
+      WHERE ft.farmer_id::text = $1::text
+        AND lower(ft.status::text) IN ('approved', 'submitted', 'in-progress', 'not-started')
         AND ABS(COALESCE(t.payment_value_kes, 0) - $2) < 1
-      ORDER BY CASE ft.status::text
+      ORDER BY CASE lower(ft.status::text)
         WHEN 'approved' THEN 0
         WHEN 'submitted' THEN 1
         ELSE 2
@@ -1160,17 +1265,20 @@ async function completeFarmerTasksForTransferredPayment(input: {
     UPDATE farmer_tasks ft
     SET status = 'completed', updated_at = NOW()
     FROM tasks t
-    WHERE ft.id = $1 AND ft.task_id = t.id AND ft.status::text <> 'completed'
+    WHERE ft.task_id = t.id
+      AND lower(ft.status::text) <> 'completed'
+      AND ft.farmer_id::text = $2::text
+      AND (ft.id::text = $1::text OR ft.task_id::text = $1::text)
     RETURNING ft.id, t.name, ft.program_project_id
     `,
-    [farmerTaskId]
+    [farmerTaskId, input.farmerId]
   );
   if (updated?.program_project_id) {
     await refreshProjectTaskCounts(updated.program_project_id);
   }
   const named = updated ?? (await getFarmerTask(farmerTaskId));
   return {
-    farmerTaskId,
+    farmerTaskId: updated?.id ?? farmerTaskId,
     taskName: (named as { name?: string } | null)?.name,
   };
 }
