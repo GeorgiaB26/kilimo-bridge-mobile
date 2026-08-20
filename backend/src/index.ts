@@ -11,6 +11,7 @@ import { ensureAgentTasksTable } from './services/agentDashboardService';
 import { ensureTaskActivityLogTable } from './services/taskActivityService';
 import { ensureMessagingTables } from './services/messagingService';
 import { ensureSupportTicketTables } from './services/supportTicketService';
+import { ensureCustomLocationsTable } from './services/customLocationService';
 import { ensureFarmerTaskAssignerColumn } from './services/hierarchyService';
 import messagesRoutes from './routes/messages';
 import supportRoutes from './routes/support';
@@ -96,6 +97,7 @@ async function runSchemaEnsures(): Promise<void> {
   await ensureTaskActivityLogTable();
   await ensureMessagingTables();
   await ensureSupportTicketTables();
+  await ensureCustomLocationsTable();
   await ensureFarmerTaskAssignerColumn();
   await ensurePendingPictureColumn();
 }
