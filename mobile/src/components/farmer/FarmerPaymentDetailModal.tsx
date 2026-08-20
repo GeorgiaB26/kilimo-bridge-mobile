@@ -6,6 +6,8 @@ import { formatCleanDate } from '../../utils/greeting';
 export type FarmerPaymentRow = {
   id: string;
   project_name: string;
+  /** Program task this payout is for. */
+  task_name?: string;
   amount: number;
   payment_status: string;
   payment_method: string;
@@ -43,11 +45,14 @@ export function FarmerPaymentDetailModal({ payment, onClose, formatAmount }: Pro
         </Pressable>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            {payment.is_expected ? 'Expected task' : 'Project / task'}
-          </Text>
+          <Text style={styles.sectionTitle}>Project</Text>
           <Text style={styles.value}>{payment.project_name}</Text>
-          {payment.description && payment.description !== payment.project_name ? (
+          {payment.task_name && payment.task_name !== payment.project_name ? (
+            <>
+              <Text style={styles.label}>Task</Text>
+              <Text style={styles.value}>{payment.task_name}</Text>
+            </>
+          ) : payment.description && payment.description !== payment.project_name ? (
             <Text style={styles.subValue}>{payment.description}</Text>
           ) : null}
 

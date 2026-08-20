@@ -114,6 +114,7 @@ export function FarmerPaymentsScreen() {
       list = list.filter(
         (p) =>
           (p.project_name ?? '').toLowerCase().includes(q) ||
+          (p.task_name ?? '').toLowerCase().includes(q) ||
           (p.description ?? '').toLowerCase().includes(q)
       );
     }
@@ -280,11 +281,13 @@ export function FarmerPaymentsScreen() {
                     />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-base font-semibold text-[#333333]">{item.project_name}</Text>
+                    <Text className="text-base font-semibold text-[#333333]">
+                      {item.project_name}
+                    </Text>
+                    {item.task_name && item.task_name !== item.project_name ? (
+                      <Text className="mt-0.5 text-sm text-[#333333]">{item.task_name}</Text>
+                    ) : null}
                     <Text className="mt-0.5 text-xs text-[#757575]">
-                      {item.description && item.description !== item.project_name
-                        ? `${item.description} · `
-                        : ''}
                       {isExpected ? 'Due ' : ''}
                       {formatDisplayDate(item.created_at)}
                     </Text>

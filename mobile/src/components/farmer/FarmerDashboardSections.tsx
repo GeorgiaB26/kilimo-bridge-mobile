@@ -61,6 +61,7 @@ type RecentTaskRow = {
 type PaymentRow = {
   id: string;
   project_name?: string;
+  task_name?: string;
   amount: number;
   payment_status: string;
   created_at?: string;
@@ -321,7 +322,10 @@ export function FarmerDashboardRecentPayments({
             </Text>
             <Text style={styles.recentAmount}>{formatAmount(p.amount)}</Text>
           </View>
-          <Text style={styles.recentMeta}>{p.payment_status}</Text>
+          <Text style={styles.recentMeta}>
+            {p.task_name && p.task_name !== p.project_name ? `${p.task_name} · ` : ''}
+            {p.payment_status}
+          </Text>
         </Pressable>
       ))}
     </>

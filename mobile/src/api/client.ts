@@ -518,6 +518,7 @@ export async function getFarmerPayments() {
     payments: Array<{
       id: string;
       project_name: string;
+      task_name?: string;
       amount: number;
       payment_status: string;
       payment_method: string;

@@ -36,6 +36,7 @@ type DashboardNav = CompositeNavigationProp<
 type PaymentRow = {
   id: string;
   project_name?: string;
+  task_name?: string;
   amount: number;
   payment_status: string;
   created_at?: string;
