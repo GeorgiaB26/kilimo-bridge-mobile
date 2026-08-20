@@ -169,7 +169,9 @@ export function NotificationsScreen() {
                   <config.Icon size={22} color={config.color} />
                 </View>
                 <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle}>{item.title || config.title}</Text>
+                  <Text className="text-[#333333]" style={styles.cardTitle}>
+                    {item.title || config.title}
+                  </Text>
                   <Text style={styles.cardMessage} numberOfLines={2}>{item.message}</Text>
                   <Text style={styles.cardTime}>{formatTimeAgo(item.created_at)}</Text>
                   {(item.type === 'task_qc_failed' ||
@@ -245,7 +247,7 @@ const styles = StyleSheet.create({
   unreadCard: { borderColor: '#4472C4', backgroundColor: '#f8fbff' },
   icon: { marginRight: 10, alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1 },
-  cardTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4 },
+  cardTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4, color: COLORS.text },
   cardMessage: { fontSize: 13, color: '#444', lineHeight: 18 },
   cardTime: { fontSize: 12, color: COLORS.muted, marginTop: 6 },
   tapHint: {
