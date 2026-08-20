@@ -130,20 +130,20 @@ export function PhotoScreen({ navigation }: Props) {
 
       <View style={styles.footer}>
         <Pressable
-          onPress={handleNext}
-          accessibilityRole="button"
-          accessibilityLabel="Next"
-          style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed]}
-        >
-          <Text style={styles.primaryBtnText}>Next</Text>
-        </Pressable>
-        <Pressable
           onPress={() => navigation.goBack()}
           accessibilityRole="button"
           accessibilityLabel="Back"
-          style={({ pressed }) => [styles.outlineBtn, styles.btnSpaced, pressed && styles.btnPressed]}
+          style={({ pressed }) => [styles.navBtn, styles.outlineBtn, pressed && styles.btnPressed]}
         >
           <Text style={styles.outlineBtnText}>Back</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleNext}
+          accessibilityRole="button"
+          accessibilityLabel="Next"
+          style={({ pressed }) => [styles.navBtn, styles.primaryBtn, pressed && styles.btnPressed]}
+        >
+          <Text style={styles.primaryBtnText}>Next</Text>
         </Pressable>
       </View>
     </View>
@@ -195,12 +195,29 @@ const styles = StyleSheet.create({
     color: '#D4AF6A',
   },
   footer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
+    width: '100%',
+    gap: 12,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#E0E0E0',
     backgroundColor: '#F5F5F5',
+  },
+  navBtn: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
   primaryBtn: {
     height: 48,
@@ -224,11 +241,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   primaryBtnText: {
+    width: '100%',
+    textAlign: 'center',
     fontWeight: '600',
     color: '#FFFFFF',
     fontSize: 16,
   },
   outlineBtnText: {
+    width: '100%',
+    textAlign: 'center',
     fontWeight: '600',
     color: '#333333',
     fontSize: 16,
