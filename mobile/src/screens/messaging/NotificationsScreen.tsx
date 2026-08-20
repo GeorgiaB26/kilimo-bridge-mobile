@@ -177,6 +177,12 @@ export function NotificationsScreen() {
                     item.title?.toLowerCase().includes('qc')) && (
                     <Text style={styles.tapHint}>Tap to view task details →</Text>
                   )}
+                  {(item.context_type === 'support_ticket' ||
+                    item.type?.includes('support') ||
+                    item.title?.toLowerCase().includes('support ticket') ||
+                    item.title?.toLowerCase().includes('support replied')) && (
+                    <Text style={styles.tapHint}>Tap to open support thread →</Text>
+                  )}
                 </View>
                 {!item.is_read ? (
                   <Pressable
