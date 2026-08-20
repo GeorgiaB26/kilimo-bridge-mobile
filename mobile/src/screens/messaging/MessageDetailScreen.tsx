@@ -24,6 +24,7 @@ import {
   screenKeyboardVerticalOffset,
 } from '../../utils/keyboardAvoiding';
 import { getThreadMessages, sendThreadMessage } from '../../api/client';
+import { useInboxCountsStore } from '../../store/inboxCountsStore';
 import { extractApiError } from '../../utils/feedback';
 import { formatMessageTime } from '../../constants/notifications';
 import type { MessagesStackParamList } from '../../navigation/types';
@@ -76,6 +77,7 @@ export function MessageDetailScreen() {
       if (data.context_type !== undefined) setContextType(data.context_type);
       if (data.support_status !== undefined) setSupportStatus(data.support_status);
       setError(null);
+      void useInboxCountsStore.getState().refresh();
     } catch (err) {
       setError(extractApiError(err, 'Could not load messages'));
     } finally {

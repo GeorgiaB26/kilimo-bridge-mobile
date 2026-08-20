@@ -92,6 +92,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     await clearAllSessionData();
     const { setAuthToken } = await import('../api/client');
     setAuthToken(null);
+    const { useInboxCountsStore } = await import('./inboxCountsStore');
+    useInboxCountsStore.getState().reset();
     set({ token: null, user: null, isAuthenticated: false, isLoading: false });
   },
 
@@ -125,6 +127,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         await clearAllSessionData();
         const { setAuthToken } = await import('../api/client');
         setAuthToken(null);
+        const { useInboxCountsStore } = await import('./inboxCountsStore');
+        useInboxCountsStore.getState().reset();
         set({ token: null, user: null, isAuthenticated: false, isLoading: false });
         return;
       }

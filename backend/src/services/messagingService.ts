@@ -244,19 +244,19 @@ export async function listThreadsForUser(
         (
           SELECT COUNT(*)::int
           FROM message_thread_messages m
-          WHERE m.thread_id = t.id
+          WHERE m.thread_id::text = t.id::text
             AND m.sender_id::text <> $1::text
             AND NOT EXISTS (
               SELECT 1 FROM message_read_receipts r
-              WHERE r.message_id = m.id AND r.user_id::text = $1::text
+              WHERE r.message_id::text = m.id::text AND r.user_id::text = $1::text
             )
         ),
         0
       ) AS unread_count
     FROM message_threads t
-    JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id::text = $1::text
+    JOIN message_thread_participants mp ON mp.thread_id::text = t.id::text AND mp.user_id::text = $1::text
     JOIN message_thread_participants op
-      ON op.thread_id = t.id AND op.user_id::text <> $1::text
+      ON op.thread_id::text = t.id::text AND op.user_id::text <> $1::text
     JOIN users ou ON ou.user_id::text = op.user_id::text
     LEFT JOIN message_support_tickets st ON st.thread_id = t.id
     LEFT JOIN LATERAL (
@@ -344,27 +344,17 @@ export async function markThreadRead(threadId: string, userId: string): Promise<
   );
   if (!participant) throw new Error('Thread not found');
 
-  const unread = await query<{ id: string }>(
+  await query(
     `
-    SELECT m.id
+    INSERT INTO message_read_receipts (message_id, user_id)
+    SELECT m.id, $2::text
     FROM message_thread_messages m
     WHERE m.thread_id::text = $1::text
       AND m.sender_id::text <> $2::text
-      AND NOT EXISTS (
-        SELECT 1 FROM message_read_receipts r
-        WHERE r.message_id = m.id AND r.user_id::text = $2::text
-      )
+    ON CONFLICT (message_id, user_id) DO NOTHING
     `,
     [threadId, userId]
   );
-
-  for (const row of unread) {
-    await query(
-      `INSERT INTO message_read_receipts (message_id, user_id) VALUES ($1, $2)
-       ON CONFLICT (message_id, user_id) DO NOTHING`,
-      [row.id, userId]
-    );
-  }
 }
 
 export async function sendThreadMessage(
@@ -590,12 +580,23 @@ export async function getUnreadMessageCount(userId: string): Promise<number> {
     `
     SELECT COUNT(*)::int AS count
     FROM message_thread_messages m
-    JOIN message_thread_participants p
-      ON p.thread_id::text = m.thread_id::text AND p.user_id::text = $1::text
-    WHERE m.sender_id::text <> $1::text
+    WHERE EXISTS (
+          SELECT 1
+          FROM message_thread_participants p
+          WHERE p.thread_id::text = m.thread_id::text
+            AND p.user_id::text = $1::text
+        )
+      AND EXISTS (
+          SELECT 1
+          FROM message_thread_participants op
+          JOIN users ou ON ou.user_id::text = op.user_id::text
+          WHERE op.thread_id::text = m.thread_id::text
+            AND op.user_id::text <> $1::text
+        )
+      AND m.sender_id::text <> $1::text
       AND NOT EXISTS (
         SELECT 1 FROM message_read_receipts r
-        WHERE r.message_id = m.id AND r.user_id::text = $1::text
+        WHERE r.message_id::text = m.id::text AND r.user_id::text = $1::text
       )
     `,
     [userId]

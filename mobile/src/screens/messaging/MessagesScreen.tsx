@@ -36,6 +36,7 @@ import {
 import { fetchMessageThreadsForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { SUPPORT_TICKET_CONTEXT } from '../../../shared/src/supportDesk';
+import { useInboxCountsStore } from '../../store/inboxCountsStore';
 
 type ThreadRow = MessageThreadRow;
 
@@ -99,6 +100,7 @@ export function MessagesScreen() {
           setThreads(data.threads ?? []);
           setCacheFetchedAt(null);
           setError(null);
+          void useInboxCountsStore.getState().refresh();
         } catch (err) {
           const cached = await getReadCache<ThreadsPayload>(
             READ_CACHE_KEYS.messageThreads,
@@ -121,6 +123,9 @@ export function MessagesScreen() {
         setThreads(result.data.threads ?? []);
         setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
         setError(null);
+        if (!result.fromCache) {
+          void useInboxCountsStore.getState().refresh();
+        }
       }
     } catch (err) {
       setCacheFetchedAt(null);
