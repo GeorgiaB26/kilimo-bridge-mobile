@@ -98,7 +98,7 @@ function assertAttachmentKeys(keys: string[] | undefined): string[] {
   const cleaned = keys.map((k) => k.trim()).filter(Boolean);
   if (cleaned.length > 5) throw new Error('Maximum 5 photo attachments per message');
   for (const key of cleaned) {
-    if (!isR2ObjectKey(key) || !key.startsWith('support/')) {
+    if (!isR2ObjectKey(key)) {
       throw new Error('Invalid support attachment key');
     }
   }

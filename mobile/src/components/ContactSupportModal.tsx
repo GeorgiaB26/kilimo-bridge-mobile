@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { createSupportTicket } from '../api/client';
-import { uploadPhotoToR2 } from '../services/uploadToR2';
+import { uploadSupportPhotoToR2 } from '../services/uploadToR2';
 import { extractApiError, showMessage } from '../utils/feedback';
 
 const MAX_PHOTOS = 5;
@@ -132,8 +132,7 @@ export function ContactSupportModal({
     try {
       const attachmentKeys: string[] = [];
       for (const photo of photos) {
-        const uploaded = await uploadPhotoToR2({
-          purpose: 'support_attachment',
+        const uploaded = await uploadSupportPhotoToR2({
           localUri: photo.uri,
           mimeType: photo.mimeType,
           base64: photo.base64,

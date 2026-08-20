@@ -265,6 +265,33 @@ export async function uploadPhotoToR2(params: {
   return putBytesToR2(params.purpose, bytes, contentType, params.farmerTaskId);
 }
 
+function isUnsupportedUploadPurposeError(err: unknown): boolean {
+  const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
+  const message = typeof data?.error === 'string' ? data.error : '';
+  return message.startsWith('purpose must be one of');
+}
+
+/**
+ * Support photos: prefer `support_attachment`. Older APIs (production main) reject
+ * that purpose, so fall back to a purpose the signed-in role is already allowed to use.
+ */
+export async function uploadSupportPhotoToR2(params: {
+  localUri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+}): Promise<{ objectKey: string; previewUrl: string; contentType: UploadContentType }> {
+  try {
+    return await uploadPhotoToR2({ ...params, purpose: 'support_attachment' });
+  } catch (err) {
+    if (!isUnsupportedUploadPurposeError(err)) throw err;
+    const { useAuthStore } = await import('../store/authStore');
+    const user = useAuthStore.getState().user;
+    const fallbackPurpose: UploadPurpose =
+      user?.role === 'farmer' || Boolean(user?.farmerId) ? 'farmer_profile' : 'farmer_registration';
+    return uploadPhotoToR2({ ...params, purpose: fallbackPurpose });
+  }
+}
+
 export async function uploadBase64PhotoToR2(params: {
   purpose: UploadPurpose;
   base64: string;

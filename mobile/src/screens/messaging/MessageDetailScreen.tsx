@@ -23,7 +23,7 @@ import {
   screenKeyboardVerticalOffset,
 } from '../../utils/keyboardAvoiding';
 import { getThreadMessages, sendThreadMessage } from '../../api/client';
-import { uploadPhotoToR2 } from '../../services/uploadToR2';
+import { uploadSupportPhotoToR2 } from '../../services/uploadToR2';
 import { useInboxCountsStore } from '../../store/inboxCountsStore';
 import { extractApiError } from '../../utils/feedback';
 import { formatMessageTime } from '../../constants/notifications';
@@ -106,8 +106,7 @@ export function MessageDetailScreen() {
     try {
       let attachmentUrl: string | undefined;
       if (pendingPhoto) {
-        const uploaded = await uploadPhotoToR2({
-          purpose: 'support_attachment',
+        const uploaded = await uploadSupportPhotoToR2({
           localUri: pendingPhoto.uri,
           mimeType: pendingPhoto.mimeType,
           base64: pendingPhoto.base64,

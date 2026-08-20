@@ -30,7 +30,7 @@ import {
   type SupportTicketMessage,
   type SupportTicketSummary,
 } from '../../api/client';
-import { uploadPhotoToR2 } from '../../services/uploadToR2';
+import { uploadSupportPhotoToR2 } from '../../services/uploadToR2';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { formatMessageTime } from '../../constants/notifications';
 import type { SupportMessagesStackParamList } from '../../navigation/types';
@@ -98,8 +98,7 @@ export function SupportTicketDetailScreen() {
     try {
       let attachmentKeys: string[] | undefined;
       if (pendingPhoto) {
-        const uploaded = await uploadPhotoToR2({
-          purpose: 'support_attachment',
+        const uploaded = await uploadSupportPhotoToR2({
           localUri: pendingPhoto.uri,
           mimeType: pendingPhoto.mimeType,
           base64: pendingPhoto.base64,
