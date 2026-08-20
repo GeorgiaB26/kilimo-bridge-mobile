@@ -2,6 +2,11 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
 import { getAllFarmers, getFarmerCount, getFarmerById, advanceFarmerForFieldVerification } from '../services/farmerService';
+import {
+  listAdminCustomLocations,
+  reviewCustomLocation,
+  type CustomLocationStatus,
+} from '../services/customLocationService';
 import { isFarmerVisibleToAgent } from '../services/agentService';
 import { logAudit } from '../services/auditService';
 import {
@@ -11,6 +16,7 @@ import {
   isRegionScopedRole,
   canCreateUserRole,
   normalizeRole,
+  isAdminRole,
 } from '../../../shared/src/roles';
 import type { UserRole } from '../../../shared/src/roles';
 
@@ -220,6 +226,61 @@ router.patch(
       res.json({ success: true, status: result.status });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Approval failed' });
+    }
+  })
+);
+
+router.get(
+  '/custom-locations',
+  asyncHandler(async (req, res) => {
+    if (!isAdminRole(req.user!.role)) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+    const statusRaw = typeof req.query.status === 'string' ? req.query.status : 'pending';
+    const status =
+      statusRaw === 'pending' || statusRaw === 'verified' || statusRaw === 'rejected'
+        ? (statusRaw as CustomLocationStatus)
+        : 'pending';
+    try {
+      const locations = await listAdminCustomLocations({
+        status,
+        role: req.user!.role,
+        district: req.user!.district,
+      });
+      res.json({ locations });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not list villages' });
+    }
+  })
+);
+
+router.patch(
+  '/custom-locations/:id',
+  asyncHandler(async (req, res) => {
+    if (!isAdminRole(req.user!.role)) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+    const status = req.body?.status as string | undefined;
+    if (status !== 'verified' && status !== 'rejected') {
+      res.status(400).json({ error: 'status must be verified or rejected' });
+      return;
+    }
+    try {
+      const location = await reviewCustomLocation({
+        id: req.params.id,
+        status,
+        rejectionReason: typeof req.body?.rejection_reason === 'string' ? req.body.rejection_reason : null,
+        reviewerUserId: req.user!.userId,
+        reviewerRole: req.user!.role,
+        reviewerDistrict: req.user!.district,
+      });
+      res.json({ location });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not review village';
+      const code = message.includes('outside') || message.includes('Insufficient') ? 403 : 400;
+      res.status(code).json({ error: message });
     }
   })
 );

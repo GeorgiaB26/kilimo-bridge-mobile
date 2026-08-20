@@ -27,6 +27,7 @@ import {
   listPrograms,
   listProgramProjects,
 } from '../services/hierarchyService';
+import { listVerifiedVillages } from '../services/customLocationService';
 
 const router = Router();
 const upload = multer({
@@ -72,6 +73,22 @@ router.get('/reference', asyncHandler(async (_req, res) => {
     })),
   });
 }));
+
+router.get(
+  '/reference/custom-locations',
+  asyncHandler(async (req, res) => {
+    const country = typeof req.query.country === 'string' ? req.query.country : '';
+    const level1 = typeof req.query.level1 === 'string' ? req.query.level1 : '';
+    const level2 = typeof req.query.level2 === 'string' ? req.query.level2 : '';
+    const level3 = typeof req.query.level3 === 'string' ? req.query.level3 : undefined;
+    if (!country.trim() || !level1.trim() || !level2.trim()) {
+      res.status(400).json({ error: 'country, level1, and level2 are required' });
+      return;
+    }
+    const villages = await listVerifiedVillages({ country, level1, level2, level3 });
+    res.json({ villages });
+  })
+);
 
 router.get(
   '/reference/project-hierarchy',

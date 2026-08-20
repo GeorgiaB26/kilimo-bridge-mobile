@@ -160,12 +160,16 @@ router.patch(
       return;
     }
     try {
-      await updateFarmerLocation(req.user.farmerId, {
-        district: district.trim(),
-        subCounty: subCounty.trim(),
-        parish: parish?.trim(),
-        village: village?.trim(),
-      });
+      await updateFarmerLocation(
+        req.user.farmerId,
+        {
+          district: district.trim(),
+          subCounty: subCounty.trim(),
+          parish: parish?.trim(),
+          village: village?.trim(),
+        },
+        req.user.userId
+      );
       logFarmerDataAccess(req, 'profile', req.user.farmerId);
       const data = await getFarmerDashboard(req.user.farmerId);
       res.json(data);

@@ -17,6 +17,7 @@ import {
 import { isOwnFarmerProfilePhotoKey, resolvePhotoUrlForDisplay } from './r2StorageService';
 import { validateFarmerPhotoRequired } from '../../../shared/src/farmerPhoto';
 import { resolveFarmerAppUserId } from './farmerAppUser';
+import { upsertVillageFromRegistration } from './customLocationService';
 
 /** Postgres farmer_status enum — agent field registrations await PM review. */
 function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean): string {
@@ -296,6 +297,19 @@ export async function createFarmer(
     success: true,
   });
 
+  try {
+    await upsertVillageFromRegistration({
+      country,
+      level1: input.district,
+      level2: input.subCounty,
+      level3: parish,
+      village: input.village,
+      createdByUserId: registeredBy ?? null,
+    });
+  } catch (err) {
+    console.error('[custom_locations] upsert after register failed:', err);
+  }
+
   return farmerId;
 }
 
@@ -559,7 +573,8 @@ export function isLocationPending(farmer: { district?: string; sub_county?: stri
 
 export async function updateFarmerLocation(
   farmerId: string,
-  input: { district: string; subCounty: string; parish?: string; village?: string }
+  input: { district: string; subCounty: string; parish?: string; village?: string },
+  createdByUserId?: string
 ): Promise<void> {
   const farmer = await queryOne<{
     country: string;
@@ -605,6 +620,19 @@ export async function updateFarmerLocation(
     details: { district: l1, subCounty: l2, parish, village },
     success: true,
   });
+
+  try {
+    await upsertVillageFromRegistration({
+      country,
+      level1: l1,
+      level2: l2,
+      level3: parish,
+      village,
+      createdByUserId: createdByUserId ?? null,
+    });
+  } catch (err) {
+    console.error('[custom_locations] upsert after location update failed:', err);
+  }
 }
 
 export async function ensurePendingPictureColumn(): Promise<void> {
