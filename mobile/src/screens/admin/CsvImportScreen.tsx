@@ -5,7 +5,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { APP_BUILD } from '../../constants/build';
 import { confirmCsvImport, getImportProgress, getImportComplete } from '../../api/client';
 import { showMessage } from '../../utils/feedback';
 import type { ImportStackParamList } from '../../navigation/types';
@@ -150,7 +149,6 @@ export function CsvImportScreen({ navigation, route }: Props) {
           ) : null}
         </>
       )}
-      <Text className="mt-6 text-center text-[11px] text-[#757575]">Screen build {APP_BUILD}</Text>
     </ScrollView>
   );
 }

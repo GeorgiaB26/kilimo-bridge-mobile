@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { APP_BUILD } from '../../constants/build';
 import { getFarmerMyCentre, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
@@ -603,7 +602,6 @@ export function FarmerProfileScreen() {
       <Button variant="outline" className="mt-2 border-[#D32F2F]" onPress={logout}>
         <Text className="text-[#D32F2F]">Sign Out</Text>
       </Button>
-      <Text className="mt-4 text-center text-xs text-[#757575]">Kilimo Bridge {APP_BUILD}</Text>
 
       <FarmerHelpModal
         visible={helpOpen}

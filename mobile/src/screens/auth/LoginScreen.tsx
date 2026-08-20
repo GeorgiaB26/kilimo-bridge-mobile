@@ -10,7 +10,6 @@ import { Text } from '@/components/ui/text';
 import { KilimoLogo } from '../../components/KilimoLogo';
 import { FormKeyboardScroll } from '../../components/ui/FormKeyboardScroll';
 import { API_BASE_URL, IS_HOSTED_API, IS_API_MISCONFIGURED } from '../../constants';
-import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devTokenLogin, devQuickLogin, setAuthToken, checkBackendHealth } from '../../api/client';
 import { TestUserSwitcher } from '../../components/auth/TestUserSwitcher';
 import { SHOW_TEST_USER_SWITCHER, TEST_SWITCHER_USERS, type TestSwitcherRole } from '../../constants/testUsers';
@@ -270,7 +269,6 @@ export function LoginScreen({ navigation }: Props) {
       >
         <Text className="text-[#757575]">Clear saved login</Text>
       </Button>
-      <Text className="mt-2 text-center text-[11px] text-[#757575]">Build {APP_BUILD}</Text>
     </FormKeyboardScroll>
   );
 }

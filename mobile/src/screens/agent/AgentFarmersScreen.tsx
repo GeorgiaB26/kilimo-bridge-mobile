@@ -23,7 +23,6 @@ import {
 } from '../../services/submitFarmerVerificationOutbox';
 import { KBCard } from '../../components/ui/KBCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
-import { APP_BUILD } from '../../constants/build';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
@@ -180,7 +179,6 @@ export function AgentFarmersScreen() {
           <Text className="text-[22px] font-bold text-[#1A4D3E]">
             Members in {user?.district ?? 'your region'}
           </Text>
-          <Text className="mb-1 text-[11px] font-semibold text-[#757575]">App release {APP_BUILD}</Text>
           <Text className="mb-3 text-sm text-[#757575]">
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
