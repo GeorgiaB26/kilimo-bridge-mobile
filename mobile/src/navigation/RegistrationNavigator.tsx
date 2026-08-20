@@ -47,7 +47,7 @@ function withFarmerLayout<P extends object>(
 
     return (
       <RegistrationKeyboardLayout
-        scrollable={!isConfirm}
+        scrollable={!isConfirm && routeName !== 'Photo'}
         header={
           <StepIndicator currentStep={step} totalSteps={8} labels={FARMER_STEP_LABELS} />
         }

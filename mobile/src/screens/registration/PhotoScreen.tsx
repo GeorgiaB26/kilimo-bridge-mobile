@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Image, ActivityIndicator, Pressable, Platform, StyleSheet } from 'react-native';
+import { View, Image, ActivityIndicator, Pressable, Platform, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -71,83 +71,96 @@ export function PhotoScreen({ navigation }: Props) {
   const hasPhoto = !!formData.pictureBase64;
 
   return (
-    <View>
-      <ScreenHeader
-        title="Verification photo"
-        subtitle="Required — take a clear photo of the member's face"
-      />
-      <Text style={styles.hint}>
-        This must be a real photo from your camera or gallery. Letter avatars are not accepted.
-      </Text>
-      <View style={styles.previewWrap}>
-        {hasPhoto && formData.pictureUri ? (
-          <Image source={{ uri: formData.pictureUri }} style={styles.preview} />
-        ) : (
-          <View style={styles.placeholder}>
-            <Ionicons name="camera-outline" size={48} color="#D4AF6A" />
-            <Text style={styles.placeholderLabel}>Photo required</Text>
-          </View>
-        )}
-      </View>
-      <Pressable
-        onPress={() => pickImage(true)}
-        disabled={loading}
-        accessibilityRole="button"
-        accessibilityLabel={hasPhoto ? 'Retake photo' : 'Take photo'}
-        style={({ pressed }) => [styles.primaryBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.primaryBtnText}>{hasPhoto ? 'Retake photo' : 'Take photo'}</Text>
-        )}
-      </Pressable>
-      <Pressable
-        onPress={() => pickImage(false)}
-        disabled={loading}
-        accessibilityRole="button"
-        accessibilityLabel="Choose from gallery"
-        style={({ pressed }) => [
-          styles.outlineBtn,
-          styles.btnSpaced,
-          loading && styles.btnDisabled,
-          pressed && styles.btnPressed,
-        ]}
-      >
-        {loading ? (
-          <ActivityIndicator color="#1A4D3E" />
-        ) : (
-          <Text style={styles.outlineBtnText}>Choose from gallery</Text>
-        )}
-      </Pressable>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.navRow} collapsable={false}>
-        <View style={[styles.navSlot, styles.navSlotFirst]} collapsable={false}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            style={({ pressed }) => [styles.outlineBtn, styles.navHit, pressed && styles.btnPressed]}
-          >
-            <Text style={styles.outlineBtnText}>Back</Text>
-          </Pressable>
+        <ScreenHeader
+          title="Verification photo"
+          subtitle="Required — take a clear photo of the member's face"
+        />
+        <Text style={styles.hint}>
+          This must be a real photo from your camera or gallery. Letter avatars are not accepted.
+        </Text>
+        <View style={styles.previewWrap}>
+          {hasPhoto && formData.pictureUri ? (
+            <Image source={{ uri: formData.pictureUri }} style={styles.preview} />
+          ) : (
+            <View style={styles.placeholder}>
+              <Ionicons name="camera-outline" size={48} color="#D4AF6A" />
+              <Text style={styles.placeholderLabel}>Photo required</Text>
+            </View>
+          )}
         </View>
-        <View style={styles.navSlot} collapsable={false}>
-          <Pressable
-            onPress={handleNext}
-            accessibilityRole="button"
-            accessibilityLabel="Next"
-            style={({ pressed }) => [styles.primaryBtn, styles.navHit, pressed && styles.btnPressed]}
-          >
-            <Text style={styles.primaryBtnText}>Next</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={() => pickImage(true)}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel={hasPhoto ? 'Retake photo' : 'Take photo'}
+          style={({ pressed }) => [styles.primaryBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryBtnText}>{hasPhoto ? 'Retake photo' : 'Take photo'}</Text>
+          )}
+        </Pressable>
+        <Pressable
+          onPress={() => pickImage(false)}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel="Choose from gallery"
+          style={({ pressed }) => [
+            styles.outlineBtn,
+            styles.btnSpaced,
+            loading && styles.btnDisabled,
+            pressed && styles.btnPressed,
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator color="#1A4D3E" />
+          ) : (
+            <Text style={styles.outlineBtnText}>Choose from gallery</Text>
+          )}
+        </Pressable>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <Pressable
+          onPress={handleNext}
+          accessibilityRole="button"
+          accessibilityLabel="Next"
+          style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed]}
+        >
+          <Text style={styles.primaryBtnText}>Next</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          style={({ pressed }) => [styles.outlineBtn, styles.btnSpaced, pressed && styles.btnPressed]}
+        >
+          <Text style={styles.outlineBtnText}>Back</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 24,
+  },
   hint: {
     marginBottom: 16,
     fontSize: 14,
@@ -181,6 +194,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#D4AF6A',
   },
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E0E0E0',
+    backgroundColor: '#F5F5F5',
+  },
   primaryBtn: {
     height: 48,
     borderRadius: 8,
@@ -201,25 +222,6 @@ const styles = StyleSheet.create({
   },
   btnSpaced: {
     marginTop: 8,
-  },
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  navSlot: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    minWidth: 120,
-    height: 48,
-  },
-  navSlotFirst: {
-    marginRight: 8,
-  },
-  navHit: {
-    width: '100%',
-    height: '100%',
   },
   primaryBtnText: {
     fontWeight: '600',

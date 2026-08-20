@@ -58,7 +58,14 @@ export function RegistrationKeyboardLayout({
       {children}
     </FormKeyboardScroll>
   ) : (
-    children
+    <View style={styles.flex}>{children}</View>
+  );
+
+  const frame = (
+    <>
+      {header}
+      {body}
+    </>
   );
 
   if (isWeb) {
@@ -69,8 +76,7 @@ export function RegistrationKeyboardLayout({
           behavior={PADDING_KEYBOARD_AVOIDING_BEHAVIOR}
           keyboardVerticalOffset={screenKeyboardVerticalOffset(REGISTRATION_HEADER_OFFSET)}
         >
-          {header}
-          {body}
+          {frame}
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
@@ -79,8 +85,7 @@ export function RegistrationKeyboardLayout({
   return (
     <SafeAreaView style={styles.safe} edges={tabBarCleared ? [] : ['bottom']}>
       <KCAvoidingView style={styles.flex} behavior="padding" automaticOffset>
-        {header}
-        {scrollable ? body : <View style={styles.flex}>{children}</View>}
+        {frame}
       </KCAvoidingView>
     </SafeAreaView>
   );
