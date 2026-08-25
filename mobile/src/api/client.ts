@@ -46,6 +46,7 @@ export interface ReferenceData {
   districts: string[];
   subCounties: Record<string, string[]>;
   membershipGroups: string[];
+  membershipGroupOptions?: Array<{ id: string; name: string }>;
   projects: string[];
   membershipTypes: string[];
 }
@@ -215,19 +216,50 @@ export async function getImportErrorsCsv(sessionId: string): Promise<string> {
   return res.text();
 }
 
-export async function getFarmers(limit = 50, offset = 0, country?: string, q?: string) {
+export type FarmerListQuery = {
+  country?: string;
+  q?: string;
+  membership_group_id?: string;
+  program_project_id?: string;
+};
+
+function farmerListParams(limit: number, offset: number, filters?: FarmerListQuery) {
   const params: Record<string, string | number> = { limit, offset };
-  if (country) params.country = country;
-  if (q?.trim()) params.q = q.trim();
-  const { data } = await api.get('/admin/farmers', { params });
+  if (filters?.country) params.country = filters.country;
+  if (filters?.q?.trim()) params.q = filters.q.trim();
+  if (filters?.membership_group_id) params.membership_group_id = filters.membership_group_id;
+  if (filters?.program_project_id) params.program_project_id = filters.program_project_id;
+  return params;
+}
+
+export async function getFarmers(
+  limit = 50,
+  offset = 0,
+  countryOrFilters?: string | FarmerListQuery,
+  q?: string
+) {
+  const filters: FarmerListQuery =
+    typeof countryOrFilters === 'object' && countryOrFilters
+      ? countryOrFilters
+      : { country: typeof countryOrFilters === 'string' ? countryOrFilters : undefined, q };
+  const { data } = await api.get('/admin/farmers', {
+    params: farmerListParams(limit, offset, filters),
+  });
   return data;
 }
 
-export async function searchFarmers(query: string, limit = 200) {
-  const { data } = await api.get('/admin/farmers', {
-    params: { limit, offset: 0, q: query.trim() },
-  });
-  return data;
+export async function searchFarmers(query: string, limit = 200, extra?: Omit<FarmerListQuery, 'q'>) {
+  return getFarmers(limit, 0, { ...extra, q: query });
+}
+
+export async function getAgentFarmers<T = Record<string, unknown>>(filters?: FarmerListQuery) {
+  const params: Record<string, string> = {};
+  if (filters?.country) params.country = filters.country;
+  if (filters?.q?.trim()) params.q = filters.q.trim();
+  if (filters?.membership_group_id) params.membership_group_id = filters.membership_group_id;
+  if (filters?.program_project_id) params.program_project_id = filters.program_project_id;
+  const { data } = await api.get('/agents/farmers', { params });
+  return data as { farmers?: T[]; total?: number };
 }
 
 export async function getFarmerById(farmerId: string) {

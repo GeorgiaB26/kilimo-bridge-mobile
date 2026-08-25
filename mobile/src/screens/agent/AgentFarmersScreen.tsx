@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { View, FlatList, RefreshControl, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -6,7 +6,12 @@ import type { RouteProp } from '@react-navigation/native';
 import { Sprout } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { api } from '../../api/client';
+import {
+  fetchProjectHierarchy,
+  fetchReferenceData,
+  getAgentFarmers,
+  type FarmerListQuery,
+} from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import {
   listPendingRegistrationOutbox,
@@ -22,12 +27,15 @@ import {
   type PendingFarmerVerificationView,
 } from '../../services/submitFarmerVerificationOutbox';
 import { KBCard } from '../../components/ui/KBCard';
+import { KBSearchBar } from '../../components/KBSearchBar';
+import { FarmerListFilterFields } from '../../components/FarmerListFilterFields';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
-import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { getReadCache, loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { filterFarmersOffline } from '../../utils/farmerListOfflineFilter';
 
 type FarmerRow = {
   farmer_id: string;
@@ -36,7 +44,11 @@ type FarmerRow = {
   district: string;
   status: string;
   pending_picture_url?: string | null;
+  membership_group_name?: string;
+  country?: string;
 };
+
+type FarmersPayload = { farmers?: FarmerRow[]; total?: number };
 
 export function AgentFarmersScreen() {
   const user = useAuthStore((s) => s.user);
@@ -49,56 +61,140 @@ export function AgentFarmersScreen() {
   const [pendingVerifications, setPendingVerifications] = useState<PendingFarmerVerificationView[]>(
     []
   );
-  const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [membershipGroupId, setMembershipGroupId] = useState('');
+  const [programProjectId, setProgramProjectId] = useState('');
+  const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+
+  const activeSearch = searchQuery.trim();
+  const listQuery = useMemo<FarmerListQuery>(
+    () => ({
+      q: activeSearch || undefined,
+      membership_group_id: membershipGroupId || undefined,
+      program_project_id: programProjectId || undefined,
+    }),
+    [activeSearch, membershipGroupId, programProjectId]
+  );
+  const hasLiveFilters = Boolean(
+    listQuery.q || listQuery.membership_group_id || listQuery.program_project_id
+  );
+  const filterSig = `${activeSearch}\0${membershipGroupId}\0${programProjectId}`;
+  const lastFetchedSig = useRef<string | null>(null);
 
   const loadPending = useCallback(async () => listPendingRegistrationOutbox(), []);
   const loadPendingVerifications = useCallback(async () => listPendingFarmerVerifications(), []);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetchReferenceData().catch(() => null),
+      fetchProjectHierarchy().catch(() => null),
+    ]).then(([ref, hierarchy]) => {
+      if (cancelled) return;
+      setGroups(ref?.membershipGroupOptions ?? []);
+      setProjects((hierarchy?.projects ?? []).map((p) => ({ id: p.id, name: p.name })));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadOutbox = useCallback(async () => {
+    const pendingRegs = await loadPending();
+    setPending(pendingRegs);
+    setPendingVerifications(await loadPendingVerifications());
+    if (pendingRegs.length > 0) {
+      await syncAllPendingRegistrations();
+      setPending(await loadPending());
+    }
+    await syncAllPendingFarmerVerifications();
+    setPendingVerifications(await loadPendingVerifications());
+  }, [loadPending, loadPendingVerifications]);
+
+  const loadFarmers = useCallback(async () => {
     try {
-      const pendingRegs = await loadPending();
-      setPending(pendingRegs);
-      setPendingVerifications(await loadPendingVerifications());
-
-      if (pendingRegs.length > 0) {
-        await syncAllPendingRegistrations();
-        setPending(await loadPending());
+      if (!hasLiveFilters) {
+        const result = await loadWithReadCache<FarmersPayload>({
+          cacheKey: READ_CACHE_KEYS.agentFarmers,
+          userScope,
+          fetchLive: () => getAgentFarmers<FarmerRow>(),
+        });
+        setFarmers(result.data.farmers ?? []);
+        setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+        return;
       }
-      await syncAllPendingFarmerVerifications();
-      setPendingVerifications(await loadPendingVerifications());
-
-      const result = await loadWithReadCache<{ farmers?: FarmerRow[] }>({
-        cacheKey: READ_CACHE_KEYS.agentFarmers,
-        userScope,
-        fetchLive: async () => {
-          const farmersRes = await api.get('/agents/farmers');
-          return farmersRes.data;
-        },
-      });
-      setFarmers(result.data.farmers ?? []);
-      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      try {
+        const data = await getAgentFarmers<FarmerRow>(listQuery);
+        setFarmers(data.farmers ?? []);
+        setCacheFetchedAt(null);
+      } catch {
+        const cached = await getReadCache<FarmersPayload>(READ_CACHE_KEYS.agentFarmers, userScope);
+        if (!cached) throw new Error('offline');
+        setFarmers(
+          filterFarmersOffline(cached.payload.farmers ?? [], {
+            q: activeSearch,
+            membershipGroupName: groups.find((g) => g.id === membershipGroupId)?.name,
+          })
+        );
+        setCacheFetchedAt(cached.fetchedAt);
+      }
     } catch {
       setFarmers([]);
       setCacheFetchedAt(null);
-      setPending(await loadPending());
-      setPendingVerifications(await loadPendingVerifications());
-    } finally {
-      setLoading(false);
     }
-  }, [loadPending, loadPendingVerifications, userScope]);
+  }, [hasLiveFilters, listQuery, userScope, groups, membershipGroupId, activeSearch]);
+
+  const loadFarmersRef = useRef(loadFarmers);
+  loadFarmersRef.current = loadFarmers;
+  const filterSigRef = useRef(filterSig);
+  filterSigRef.current = filterSig;
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      let cancelled = false;
+      void (async () => {
+        try {
+          await loadOutbox();
+        } catch {
+          setPending(await loadPending());
+          setPendingVerifications(await loadPendingVerifications());
+        }
+        if (cancelled) return;
+        await loadFarmersRef.current();
+        lastFetchedSig.current = filterSigRef.current;
+        setReady(true);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [loadOutbox, loadPending, loadPendingVerifications])
   );
+
+  useEffect(() => {
+    if (!ready) return;
+    if (lastFetchedSig.current === filterSig) return;
+    const timer = setTimeout(() => {
+      lastFetchedSig.current = filterSig;
+      void loadFarmers();
+    }, activeSearch ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [ready, filterSig, loadFarmers, activeSearch]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    try {
+      await loadOutbox();
+    } catch {
+      setPending(await loadPending());
+      setPendingVerifications(await loadPendingVerifications());
+    }
+    await loadFarmers();
+    lastFetchedSig.current = filterSig;
     setRefreshing(false);
   };
 
@@ -108,7 +204,8 @@ export function AgentFarmersScreen() {
       const result = await pushPendingRegistration(id);
       if (result.success) {
         Alert.alert('Synced', `${name} registered. Awaiting PM approval.`);
-        await load();
+        await loadOutbox();
+        await loadFarmers();
       } else {
         Alert.alert('Push failed', result.error ?? 'Could not sync registration');
         setPending(await loadPending());
@@ -127,7 +224,8 @@ export function AgentFarmersScreen() {
           'Synced',
           `${item.farmerName} ${item.verificationStatus === 'verified' ? 'verified' : 'rejected'}.`
         );
-        await load();
+        await loadOutbox();
+        await loadFarmers();
       } else if (result.needsReview) {
         Alert.alert('Needs your review', result.error ?? 'Conflict detected');
         setPendingVerifications(await loadPendingVerifications());
@@ -140,7 +238,7 @@ export function AgentFarmersScreen() {
     }
   };
 
-  if (loading) {
+  if (!ready) {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#1A4D3E" />
@@ -173,6 +271,7 @@ export function AgentFarmersScreen() {
       className="flex-1 p-4"
       data={filteredFarmers}
       keyExtractor={(item) => item.farmer_id}
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       ListHeaderComponent={
         <View>
@@ -182,6 +281,20 @@ export function AgentFarmersScreen() {
           <Text className="mb-3 text-sm text-[#757575]">
             Aggregation centre: {user?.aggregationCenter ?? '—'}
           </Text>
+
+          <KBSearchBar
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search name, phone, district..."
+          />
+          <FarmerListFilterFields
+            groups={groups}
+            projects={projects}
+            membershipGroupId={membershipGroupId}
+            programProjectId={programProjectId}
+            onChangeGroup={setMembershipGroupId}
+            onChangeProject={setProgramProjectId}
+          />
 
           {filterLabel ? (
             <View className="mb-3 rounded-lg border border-[#1A4D3E] bg-[#E8F5E9] px-3 py-2">
@@ -279,8 +392,8 @@ export function AgentFarmersScreen() {
       )}
       ListEmptyComponent={
         <Text className="text-[#757575]">
-          {filterLabel
-            ? `No members match the “${filterLabel}” filter.`
+          {filterLabel || hasLiveFilters
+            ? 'No members match the current filters.'
             : 'No members in your region yet. Use REGISTER NEW MEMBER in the header.'}
         </Text>
       }
