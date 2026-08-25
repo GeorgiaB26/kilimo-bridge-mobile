@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
-import { getAllFarmers, getFarmerCount, getFarmerById, advanceFarmerForFieldVerification } from '../services/farmerService';
+import { getFarmerById, advanceFarmerForFieldVerification, listFarmers, countFarmers, farmerListScopeForViewer, parseFarmerListFilters } from '../services/farmerService';
 import {
   listAdminCustomLocations,
   reviewCustomLocation,
@@ -147,32 +147,37 @@ router.get(
   '/farmers',
   requirePermission('farmers.read'),
   asyncHandler(async (req, res) => {
-    const limit = parseInt(req.query.limit as string) || 100;
-    const offset = parseInt(req.query.offset as string) || 0;
-    const country = (req.query.country as string) || undefined;
-    const q = (req.query.q as string) || undefined;
-    let farmers = await getAllFarmers(limit, offset, country, q);
-
-    if (isRegionScopedRole(req.user!.role)) {
-      const scope = req.user!.region ?? req.user!.district;
-      if (scope) {
-        farmers = (farmers as { district: string; region?: string }[]).filter(
-          (f) => f.district === scope || f.region === scope
-        );
-      }
-    }
+    const limit = parseInt(req.query.limit as string, 10) || 100;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+    const filters = parseFarmerListFilters(req.query);
+    const scope = farmerListScopeForViewer({
+      role: req.user!.role,
+      district: req.user!.district,
+      region: req.user!.region,
+    });
+    const [farmers, total] = await Promise.all([
+      listFarmers({ scope, filters, limit, offset }),
+      countFarmers({ scope, filters }),
+    ]);
 
     void logAudit({
       userId: req.user?.userId,
       userRole: req.user?.role,
       action: 'farmer.read',
       category: 'farmer_data',
-      details: { count: (farmers as unknown[]).length, country, search: q },
+      details: {
+        count: farmers.length,
+        total,
+        country: filters.country,
+        search: filters.q,
+        membership_group_id: filters.membershipGroupId,
+        program_project_id: filters.programProjectId,
+      },
       ipAddress: req.ip,
       success: true,
     });
 
-    res.json({ farmers, total: (farmers as unknown[]).length });
+    res.json({ farmers, total });
   })
 );
 

@@ -4,13 +4,20 @@ import {
   registerAgent,
   verifyAgent,
   getAgentsInRegion,
-  getFarmersInRegion,
   createPaymentVerification,
   approvePaymentVerification,
   getAgentByUserId,
   isFarmerVisibleToAgent,
 } from '../services/agentService';
-import { verifyFarmerByFieldAgent, getFarmerById, reviewFarmerPicture } from '../services/farmerService';
+import {
+  verifyFarmerByFieldAgent,
+  getFarmerById,
+  reviewFarmerPicture,
+  listFarmers,
+  countFarmers,
+  farmerListScopeForViewer,
+  parseFarmerListFilters,
+} from '../services/farmerService';
 import { getAgentAuditLogs } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
 import {
@@ -84,26 +91,39 @@ router.get(
   })
 );
 
-/** Farmers in agent's region only */
+/** Farmers in agent's region only. Optional country / cooperative / project / q filters AND with that scope. */
 router.get(
   '/farmers',
   requirePermission('farmers.read'),
   asyncHandler(async (req, res) => {
-    if (isAgentRole(req.user!.role)) {
-      const region = req.user!.region ?? '';
-      const district = req.user!.district;
-      const farmers = await getFarmersInRegion(region, district);
-      res.json({ farmers });
-      return;
+    const filters = parseFarmerListFilters(req.query);
+    const limitRaw = parseInt(req.query.limit as string, 10);
+    const offsetRaw = parseInt(req.query.offset as string, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
+
+    let scope = farmerListScopeForViewer({
+      role: req.user!.role,
+      district: req.user!.district,
+      region: req.user!.region,
+    });
+    if (!isAgentRole(req.user!.role)) {
+      const region = req.query.region as string;
+      const district = req.query.district as string | undefined;
+      if (!region && !district) {
+        res.status(400).json({ error: 'region required' });
+        return;
+      }
+      scope = district?.trim()
+        ? { kind: 'district', district: district.trim() }
+        : { kind: 'agent_region', region: region.trim() };
     }
-    const region = req.query.region as string;
-    const district = req.query.district as string | undefined;
-    if (!region) {
-      res.status(400).json({ error: 'region required' });
-      return;
-    }
-    const farmers = await getFarmersInRegion(region, district);
-    res.json({ farmers });
+
+    const [farmers, total] = await Promise.all([
+      listFarmers({ scope, filters, limit, offset, columns: 'agent' }),
+      countFarmers({ scope, filters }),
+    ]);
+    res.json({ farmers, total });
   })
 );
 

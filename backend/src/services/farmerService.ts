@@ -18,6 +18,13 @@ import { isOwnFarmerProfilePhotoKey, resolvePhotoUrlForDisplay } from './r2Stora
 import { validateFarmerPhotoRequired } from '../../../shared/src/farmerPhoto';
 import { resolveFarmerAppUserId } from './farmerAppUser';
 import { upsertVillageFromRegistration } from './customLocationService';
+import {
+  buildFarmerListWhere,
+  farmerListScopeForViewer,
+  parseFarmerListFilters,
+  type FarmerListFilters,
+  type FarmerListScope,
+} from './farmerListQuery';
 
 /** Postgres farmer_status enum — agent field registrations await PM review. */
 function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean): string {
@@ -25,8 +32,14 @@ function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean):
   return 'verified';
 }
 
+export async function getMembershipGroups(): Promise<Array<{ id: string; name: string }>> {
+  return query<{ id: string; name: string }>(
+    'SELECT id, name FROM membership_groups ORDER BY name'
+  );
+}
+
 export async function getMembershipGroupNames(): Promise<string[]> {
-  const rows = await query<{ name: string }>('SELECT name FROM membership_groups ORDER BY name');
+  const rows = await getMembershipGroups();
   return rows.map((r) => r.name);
 }
 
@@ -454,107 +467,71 @@ export async function verifyFarmerByFieldAgent(
   return { status: newStatus };
 }
 
-function farmerSearchClause(search?: string, startParam = 1): { sql: string; params: string[] } {
-  const term = search?.trim();
-  if (!term) return { sql: '', params: [] };
+const FARMER_LIST_FROM = `FROM farmers f
+       JOIN membership_groups mg ON f.membership_group_id = mg.id`;
 
-  const pattern = `%${term}%`;
-  const phoneDigits = term.replace(/\D/g, '');
-  const clauses: string[] = [];
-  const params: string[] = [];
-  let idx = startParam;
+const AGENT_FARMER_COLUMNS = `f.farmer_id, f.key, f.name, f.phone_number, f.district, f.sub_county, f.status,
+              f.pending_picture_url, mg.name as membership_group_name`;
 
-  const addClause = (sql: string, value: string) => {
-    clauses.push(sql.replace('?', `$${idx}`));
-    params.push(value);
-    idx++;
-  };
-
-  addClause('f.name ILIKE ?', pattern);
-  addClause('f.district ILIKE ?', pattern);
-  addClause('mg.name ILIKE ?', pattern);
-
-  if (phoneDigits.length >= 3) {
-    addClause('f.phone_number LIKE ?', `%${phoneDigits}%`);
+export async function listFarmers(opts: {
+  scope: FarmerListScope;
+  filters?: FarmerListFilters;
+  limit?: number;
+  offset?: number;
+  columns?: 'full' | 'agent';
+}): Promise<Record<string, unknown>[]> {
+  const { sql: whereSql, params } = buildFarmerListWhere(opts.scope, opts.filters ?? {});
+  const select =
+    opts.columns === 'agent' ? AGENT_FARMER_COLUMNS : 'f.*, mg.name as membership_group_name';
+  const limit = opts.limit != null && opts.limit > 0 ? Math.min(opts.limit, 500) : undefined;
+  const offset = opts.offset != null && opts.offset > 0 ? opts.offset : 0;
+  const paging: unknown[] = [];
+  let pagingSql = '';
+  if (limit != null) {
+    pagingSql = ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    paging.push(limit, offset);
   }
-
-  for (const part of term.split(/\s+/).filter((p) => p.length >= 2)) {
-    if (part.toLowerCase() === term.toLowerCase()) continue;
-    addClause('f.name ILIKE ?', `%${part}%`);
-  }
-
-  return {
-    sql: ` AND (${clauses.join(' OR ')})`,
-    params,
-  };
-}
-
-/** When searching, ignore country filter so names are found across all countries */
-function resolveCountryFilter(country?: string, search?: string): string | undefined {
-  if (search?.trim()) return undefined;
-  return country;
-}
-
-export async function getAllFarmers(limit = 100, offset = 0, country?: string, search?: string) {
-  const effectiveCountry = resolveCountryFilter(country, search);
-  const { sql: searchSql, params: searchParams } = farmerSearchClause(search, effectiveCountry ? 2 : 1);
-
-  if (effectiveCountry) {
-    const limitIdx = searchParams.length + 2;
-    const offsetIdx = searchParams.length + 3;
-    return query(
-      `SELECT f.*, mg.name as membership_group_name
-       FROM farmers f
-       JOIN membership_groups mg ON f.membership_group_id = mg.id
-       WHERE f.country = $1${searchSql}
-       ORDER BY LOWER(f.name)
-       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      [effectiveCountry, ...searchParams, limit, offset]
-    );
-  }
-
-  const whereSearch = searchSql ? `WHERE 1=1${searchSql}` : '';
-  const limitIdx = searchParams.length + 1;
-  const offsetIdx = searchParams.length + 2;
   return query(
-    `SELECT f.*, mg.name as membership_group_name
-     FROM farmers f
-     JOIN membership_groups mg ON f.membership_group_id = mg.id
-     ${whereSearch}
+    `SELECT ${select}
+     ${FARMER_LIST_FROM}
+     ${whereSql}
      ORDER BY LOWER(f.name)
-     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-    [...searchParams, limit, offset]
+     ${pagingSql}`,
+    [...params, ...paging]
   );
 }
 
-export async function getFarmerCount(country?: string, search?: string): Promise<number> {
-  const effectiveCountry = resolveCountryFilter(country, search);
-  const { sql: searchSql, params: searchParams } = farmerSearchClause(search, effectiveCountry ? 2 : 1);
-
-  if (effectiveCountry) {
-    const row = await queryOne<{ count: number }>(
-      `SELECT COUNT(*)::int AS count
-       FROM farmers f
-       JOIN membership_groups mg ON f.membership_group_id = mg.id
-       WHERE f.country = $1${searchSql}`,
-      [effectiveCountry, ...searchParams]
-    );
-    return row?.count ?? 0;
-  }
-
-  if (searchSql) {
-    const row = await queryOne<{ count: number }>(
-      `SELECT COUNT(*)::int AS count
-       FROM farmers f
-       JOIN membership_groups mg ON f.membership_group_id = mg.id
-       WHERE 1=1${searchSql}`,
-      searchParams
-    );
-    return row?.count ?? 0;
-  }
-
-  const row = await queryOne<{ count: number }>('SELECT COUNT(*)::int AS count FROM farmers');
+export async function countFarmers(opts: {
+  scope: FarmerListScope;
+  filters?: FarmerListFilters;
+}): Promise<number> {
+  const { sql: whereSql, params } = buildFarmerListWhere(opts.scope, opts.filters ?? {});
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(*)::int AS count
+     ${FARMER_LIST_FROM}
+     ${whereSql}`,
+    params
+  );
   return row?.count ?? 0;
+}
+
+export { farmerListScopeForViewer, parseFarmerListFilters };
+
+/** Unscoped paginated list — prefer listFarmers with a viewer scope for product routes. */
+export async function getAllFarmers(limit = 100, offset = 0, country?: string, search?: string) {
+  return listFarmers({
+    scope: { kind: 'unrestricted' },
+    filters: { country, q: search },
+    limit,
+    offset,
+  });
+}
+
+export async function getFarmerCount(country?: string, search?: string): Promise<number> {
+  return countFarmers({
+    scope: { kind: 'unrestricted' },
+    filters: { country, q: search },
+  });
 }
 
 export async function getFarmerCountByCountry(): Promise<Record<string, number>> {

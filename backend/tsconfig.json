@@ -12,5 +12,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*", "../shared/src/**/*"],
-  "exclude": ["src/test-import.ts"]
+  "exclude": ["src/test-import.ts", "src/**/*.test.ts"]
 }

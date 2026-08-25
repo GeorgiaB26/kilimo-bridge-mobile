@@ -6,9 +6,10 @@ import { hashIdNumber } from '../services/encryptionService';
 import {
   createFarmer,
   generateFarmerKey,
+  getMembershipGroupNames,
+  getMembershipGroups,
   getAllFarmers,
   getFarmerCount,
-  getMembershipGroupNames,
   getExistingIdentifiers,
   recordFarmerRegistrationFollowUp,
   advanceFarmerForFieldVerification,
@@ -52,10 +53,12 @@ function postgresErrorFields(err: unknown): { code?: string; constraint?: string
 }
 
 router.get('/reference', asyncHandler(async (_req, res) => {
+  const membershipGroupOptions = await getMembershipGroups();
   res.json({
     districts: DISTRICTS,
     subCounties: SUB_COUNTIES,
-    membershipGroups: await getMembershipGroupNames(),
+    membershipGroups: membershipGroupOptions.map((g) => g.name),
+    membershipGroupOptions,
     projects: PROJECTS,
     membershipTypes: MEMBERSHIP_TYPES,
     countries: COUNTRY_LIST.map((c) => ({
