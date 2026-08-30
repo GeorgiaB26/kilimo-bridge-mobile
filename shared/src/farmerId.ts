@@ -89,3 +89,44 @@ export function validatePhoneForCountry(phone: string, countryName: string): boo
 export function normalizePhoneKenya(phone: string): string | null {
   return normalizePhoneForCountry(phone, 'Kenya');
 }
+
+const COUNTRY_CODES_BY_PREFIX = (Object.entries(INTL_PREFIX) as Array<[CountryCode, string]>).sort(
+  (a, b) => b[1].length - a[1].length
+);
+
+/**
+ * Login / OTP: accept any configured country.
+ * Explicit +256 / 256… wins over Kenya; bare 0-prefix stays Kenya (legacy).
+ */
+export function normalizePhoneAnyCountry(phone: string): string | null {
+  let cleaned = String(phone ?? '').trim();
+  if (!cleaned) return null;
+  cleaned = cleaned.replace(/^=+/, '').replace(/^['"]+|['"]+$/g, '');
+  cleaned = cleaned.replace(/[\s().\-]/g, '');
+
+  if (cleaned.startsWith('+')) {
+    for (const [code, prefix] of COUNTRY_CODES_BY_PREFIX) {
+      if (cleaned.startsWith(prefix)) {
+        return normalizePhoneForCountry(cleaned, code);
+      }
+    }
+  }
+
+  if (/^[0-9]+$/.test(cleaned)) {
+    for (const [code, prefix] of COUNTRY_CODES_BY_PREFIX) {
+      const callingCode = prefix.slice(1);
+      if (
+        cleaned.startsWith(callingCode) &&
+        cleaned.length === callingCode.length + LOCAL_LEN[code]
+      ) {
+        return normalizePhoneForCountry(cleaned, code);
+      }
+    }
+  }
+
+  for (const code of Object.keys(REGIONAL_CONFIG) as CountryCode[]) {
+    const normalized = normalizePhoneForCountry(cleaned, code);
+    if (normalized) return normalized;
+  }
+  return null;
+}

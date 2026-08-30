@@ -54,7 +54,7 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
-    api_build: 'v2.11.25-support-attachment-keys',
+    api_build: 'v2.11.26-otp-any-country-phone',
     field_agent_features: {
       messaging_restricted: true,
       notification_settings_legacy_sync: true,
