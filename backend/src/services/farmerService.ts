@@ -117,6 +117,7 @@ export {
 
 /**
  * Create farmer profile, login account, and project enrollments from CSV import.
+ * Login is created inside createFarmer (same as app registration).
  */
 export async function importFarmerFromCsv(
   input: FarmerInput & { key: string; phone: string; kbFarmerId?: string; locationPath?: string },
@@ -124,7 +125,6 @@ export async function importFarmerFromCsv(
 ): Promise<{ farmerId: string; projectsEnrolled: number }> {
   await ensureMembershipGroup(input.membershipGroup);
   const farmerId = await createFarmer(input, registeredBy);
-  await linkFarmerToUser(farmerId, input.phone, input.name);
   const projectsEnrolled = await enrollFarmerInProjects(farmerId, [input.project1, input.project2, input.project3]);
 
   await logAudit({
@@ -291,6 +291,17 @@ export async function createFarmer(
       registeredByAgentId,
     ]
   );
+
+  // New farmers can log in immediately via OTP (users.status defaults to active), matching CSV import.
+  try {
+    await linkFarmerToUser(farmerId, input.phone, input.name, {
+      district: input.district,
+      aggregationCenter,
+    });
+  } catch (err) {
+    await query('DELETE FROM farmers WHERE farmer_id = $1', [farmerId]).catch(() => undefined);
+    throw err instanceof Error ? err : new Error('Could not create farmer login');
+  }
 
   if (
     registrationCategory === 'individual' &&

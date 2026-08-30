@@ -115,20 +115,60 @@ export async function getAdminStats() {
   };
 }
 
-export async function linkFarmerToUser(farmerId: string, phone: string, name: string): Promise<void> {
-  const existing = await queryOne<{ user_id: string }>(
-    'SELECT user_id FROM users WHERE phone_number = $1',
+export async function linkFarmerToUser(
+  farmerId: string,
+  phone: string,
+  name: string,
+  profile?: {
+    district?: string | null;
+    region?: string | null;
+    aggregationCenter?: string | null;
+  }
+): Promise<void> {
+  const existing = await queryOne<{ user_id: string; role: string; farmer_id: string | null }>(
+    'SELECT user_id, role::text AS role, farmer_id FROM users WHERE phone_number = $1',
     [phone]
   );
   if (existing) {
+    if (existing.role !== 'farmer') {
+      throw new Error(`Phone number is already registered as a ${existing.role} account`);
+    }
+    if (existing.farmer_id && existing.farmer_id !== farmerId) {
+      throw new Error('Phone number is already registered to another farmer');
+    }
     await query(
-      `UPDATE users SET farmer_id = $1
-       WHERE user_id = $2 AND farmer_id IS NULL`,
-      [farmerId, existing.user_id]
+      `UPDATE users SET
+         farmer_id = $1,
+         name = $2,
+         district = COALESCE($3, district),
+         region = COALESCE($4, region),
+         aggregation_center = COALESCE($5, aggregation_center)
+       WHERE user_id = $6`,
+      [
+        farmerId,
+        name,
+        profile?.district ?? null,
+        profile?.region ?? null,
+        profile?.aggregationCenter ?? null,
+        existing.user_id,
+      ]
     );
     return;
   }
-  await createUser({ phoneNumber: phone, name, role: 'farmer', farmerId });
+  try {
+    await createUser({
+      phoneNumber: phone,
+      name,
+      role: 'farmer',
+      farmerId,
+      district: profile?.district ?? undefined,
+      region: profile?.region ?? undefined,
+      aggregationCenter: profile?.aggregationCenter ?? undefined,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown error';
+    throw new Error(`Could not create farmer login (${message})`);
+  }
 }
 
 export async function getUserByPhone(phone: string) {
