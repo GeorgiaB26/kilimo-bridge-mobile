@@ -407,7 +407,7 @@ export async function recordFarmerRegistrationFollowUp(
 export async function advanceFarmerForFieldVerification(
   farmerId: string,
   reviewedByUserId: string
-): Promise<{ status: string }> {
+): Promise<{ status: string; notifiedAgentCount: number }> {
   const farmer = await queryOne<{ status: string; name: string }>(
     'SELECT status, name FROM farmers WHERE farmer_id = $1',
     [farmerId]
@@ -420,16 +420,57 @@ export async function advanceFarmerForFieldVerification(
     `UPDATE farmers SET status = 'pending_field_verification', updated_at = NOW() WHERE farmer_id = $1`,
     [farmerId]
   );
+
+  const notifiedAgentCount = await notifyAgentsOfFieldVerificationAssignment(
+    farmerId,
+    farmer.name
+  );
+
   await logAudit({
     userId: reviewedByUserId,
     action: 'farmer.pm_approved_for_field',
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: { farmer_name: farmer.name, farmer_status: 'pending_field_verification' },
+    details: {
+      farmer_name: farmer.name,
+      farmer_status: 'pending_field_verification',
+      notified_agent_count: notifiedAgentCount,
+    },
     success: true,
   });
-  return { status: 'pending_field_verification' };
+  return { status: 'pending_field_verification', notifiedAgentCount };
+}
+
+/** In-app notify field agents that a member is ready for in-person verification. */
+async function notifyAgentsOfFieldVerificationAssignment(
+  farmerId: string,
+  farmerName: string
+): Promise<number> {
+  try {
+    const { resolveAgentUserIdsForFarmer } = await import('./hierarchyService');
+    const { createNotification } = await import('./notificationService');
+    const agentUserIds = await resolveAgentUserIdsForFarmer(farmerId);
+    if (agentUserIds.length === 0) return 0;
+
+    const name = farmerName.trim() || 'A member';
+    for (const agentUserId of agentUserIds) {
+      await createNotification({
+        userId: agentUserId,
+        title: 'Member needs field verification',
+        message: `${name} was approved by a project manager. Open their profile to complete the field visit.`,
+        type: 'field_verification_assigned',
+        contextType: 'farmer',
+        contextId: farmerId,
+        actionUrl: `/farmers/${farmerId}`,
+        priority: 'high',
+      });
+    }
+    return agentUserIds.length;
+  } catch (err) {
+    console.error('[notifications] field verification assignment failed:', err);
+    return 0;
+  }
 }
 
 export async function verifyFarmerByFieldAgent(

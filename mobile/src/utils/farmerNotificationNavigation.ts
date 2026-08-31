@@ -387,6 +387,34 @@ export function navigateFromNotification(
     return;
   }
 
+  const farmerId =
+    contextType === 'farmer' ||
+    type === 'farmer_photo_update' ||
+    type === 'field_verification_assigned' ||
+    type === 'farmer_registered' ||
+    type === 'registration_approved' ||
+    (type.includes('farmer') && !type.includes('help'))
+      ? contextId(notification)
+      : undefined;
+
+  if (farmerId) {
+    navigateMainTab(root, 'Farmers', {
+      screen: 'FarmerProfile',
+      params: { farmerId, name: notification.title || 'Member' },
+    });
+    return;
+  }
+
+  if (
+    type === 'farmer_photo_update' ||
+    contextType === 'farmer' ||
+    type === 'field_verification_assigned' ||
+    type.includes('farmer')
+  ) {
+    navigateMainTab(root, 'Farmers', { screen: 'FarmerList' });
+    return;
+  }
+
   if (
     type.includes('payment') ||
     contextType === 'payment' ||
@@ -396,24 +424,6 @@ export function navigateFromNotification(
     type === 'help_request_resolved'
   ) {
     navigateMainTab(root, 'Profile');
-    return;
-  }
-
-  if (type === 'farmer_photo_update' || contextType === 'farmer') {
-    const id = contextId(notification);
-    if (id) {
-      navigateMainTab(root, 'Farmers', {
-        screen: 'FarmerProfile',
-        params: { farmerId: id, name: notification.title || 'Farmer' },
-      });
-      return;
-    }
-    navigateMainTab(root, 'Farmers', { screen: 'FarmerList' });
-    return;
-  }
-
-  if (type.includes('farmer')) {
-    navigateMainTab(root, 'Farmers', { screen: 'FarmerList' });
     return;
   }
 

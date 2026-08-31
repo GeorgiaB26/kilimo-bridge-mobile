@@ -228,7 +228,11 @@ router.patch(
   asyncHandler(async (req, res) => {
     try {
       const result = await advanceFarmerForFieldVerification(req.params.farmerId, req.user!.userId);
-      res.json({ success: true, status: result.status });
+      res.json({
+        success: true,
+        status: result.status,
+        notifiedAgentCount: result.notifiedAgentCount,
+      });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Approval failed' });
     }

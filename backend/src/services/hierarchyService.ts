@@ -572,8 +572,8 @@ export async function getFarmerTaskForFarmer(
   return mapFarmerTaskRow(row as FarmerTaskDetailRow);
 }
 
-/** User ids of field agents who should review this farmer's hierarchy tasks. */
-async function resolveAgentUserIdsForFarmer(farmerId: string): Promise<string[]> {
+/** User ids of field agents who should review this farmer (registered agent + district agents). */
+export async function resolveAgentUserIdsForFarmer(farmerId: string): Promise<string[]> {
   const farmer = await queryOne<{
     district: string | null;
     registered_by_agent_id: string | null;

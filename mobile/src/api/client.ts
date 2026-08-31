@@ -267,6 +267,12 @@ export async function getFarmerById(farmerId: string) {
   return data;
 }
 
+/** Project manager / admin: approve pending_review → pending_field_verification (notifies field agents). */
+export async function approveFarmerForFieldVerification(farmerId: string) {
+  const { data } = await api.patch(`/admin/farmers/${farmerId}/approve-field-verification`);
+  return data as { success: boolean; status: string; notifiedAgentCount?: number };
+}
+
 /** Field agent farmer profile — uses agent-scoped endpoint (avoids region/district scope mismatch). */
 export async function getAgentFarmerById(farmerId: string) {
   const { data } = await api.get(`/agents/farmers/${farmerId}`);
