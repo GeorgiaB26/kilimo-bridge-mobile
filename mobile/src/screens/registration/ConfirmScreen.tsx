@@ -50,12 +50,14 @@ function registrationCategoryLabel(category?: string): string {
 
 function SummaryRow({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
   return (
-    <View className="flex-row items-center justify-between border-b border-[#E0E0E0] py-2.5">
-      <View className="flex-1">
-        <Text className="mb-0.5 text-xs text-[#757575]">{label}</Text>
-        <Text className="text-base font-medium text-[#333333]">{value || '—'}</Text>
+    <View style={styles.summaryRow}>
+      <View style={styles.summaryRowText}>
+        <Text style={styles.summaryLabel}>{label}</Text>
+        <Text style={styles.summaryValue}>{value || '—'}</Text>
       </View>
-      <Text className="ml-2 text-sm font-semibold text-[#1976D2]" onPress={onEdit}>Edit</Text>
+      <Text style={styles.editLink} onPress={onEdit}>
+        Edit
+      </Text>
     </View>
   );
 }
@@ -149,48 +151,20 @@ export function ConfirmScreen({ navigation }: Props) {
 
   return (
     <>
-      <View className="flex-1 px-4 pb-4">
-        <ScreenHeader title="Confirm" subtitle="Review your information" />
-
-        <View className="mb-4 flex-row gap-3">
-          <Pressable
-            onPress={() => navigation.goBack()}
-            disabled={loading}
-            style={({ pressed }) => [styles.outlineBtn, pressed && styles.btnPressed]}
-            accessibilityRole="button"
-          >
-            <Text className="font-semibold text-[#333333]">Back</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleSubmit}
-            disabled={loading}
-            style={({ pressed }) => [
-              styles.submitBtn,
-              loading && styles.submitBtnDisabled,
-              pressed && !loading && styles.btnPressed,
-            ]}
-            accessibilityRole="button"
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="font-semibold text-white">Register member</Text>
-            )}
-          </Pressable>
-        </View>
-
-        {submitError ? <Text className="mb-3 text-sm text-[#D32F2F]">{submitError}</Text> : null}
-
+      <View style={styles.root}>
         <ScrollView
-          className="flex-1"
+          style={styles.scroll}
           keyboardShouldPersistTaps="always"
           contentContainerStyle={styles.scrollContent}
         >
-          <View className="mb-4 items-center rounded-[10px] bg-[#1A4D3E] p-4">
-            <Text className="mb-1 text-[13px] text-white/85">Your Kilimo Bridge ID</Text>
-            <Text className="text-[22px] font-bold tracking-wide text-[#D4AF6A]">{kbFarmerId}</Text>
+          <ScreenHeader title="Confirm" subtitle="Review your information" />
+
+          <View style={styles.idBanner}>
+            <Text style={styles.idBannerLabel}>Your Kilimo Bridge ID</Text>
+            <Text style={styles.idBannerValue}>{kbFarmerId}</Text>
           </View>
-          <View className="mb-4 rounded-lg bg-[#F9F9F9] p-4">
+
+          <View style={styles.summaryCard}>
             <SummaryRow label="Country" value={formData.country} onEdit={() => navigation.navigate(STEP_SCREENS[0])} />
             <SummaryRow label="Currency" value={`${currencyInfo.code}`} onEdit={() => navigation.navigate(STEP_SCREENS[3])} />
             <SummaryRow label="Name" value={formData.name} onEdit={() => navigation.navigate(STEP_SCREENS[1])} />
@@ -351,7 +325,39 @@ export function ConfirmScreen({ navigation }: Props) {
               onEdit={() => navigation.navigate(STEP_SCREENS[6])}
             />
           </View>
+
+          {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
         </ScrollView>
+
+        <View style={styles.footer}>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            style={({ pressed }) => [styles.navBtn, styles.outlineBtn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.outlineBtnText}>Back</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleSubmit}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Register member"
+            style={({ pressed }) => [
+              styles.navBtn,
+              styles.submitBtn,
+              loading && styles.submitBtnDisabled,
+              pressed && !loading && styles.btnPressed,
+            ]}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitBtnText}>Register member</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       <RegistrationSuccessModal
@@ -375,19 +381,102 @@ export function ConfirmScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
   scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 0,
     paddingBottom: 24,
   },
-  submitBtn: {
+  idBanner: {
+    marginBottom: 16,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: '#1A4D3E',
+    padding: 16,
+  },
+  idBannerLabel: {
+    marginBottom: 4,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  idBannerValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: '#D4AF6A',
+  },
+  summaryCard: {
+    marginBottom: 16,
+    borderRadius: 8,
+    backgroundColor: '#F9F9F9',
+    padding: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E0E0E0',
+    paddingVertical: 10,
+  },
+  summaryRowText: {
     flex: 1,
+  },
+  summaryLabel: {
+    marginBottom: 2,
+    fontSize: 12,
+    color: '#757575',
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333333',
+  },
+  editLink: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1976D2',
+  },
+  error: {
+    marginBottom: 8,
+    fontSize: 14,
+    color: '#D32F2F',
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
+    width: '100%',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E0E0E0',
+    backgroundColor: '#F5F5F5',
+  },
+  navBtn: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
     height: 48,
     borderRadius: 8,
-    backgroundColor: '#1A4D3E',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 8,
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
+  },
+  submitBtn: {
+    backgroundColor: '#1A4D3E',
   },
   submitBtnDisabled: {
     opacity: 0.65,
@@ -395,18 +484,24 @@ const styles = StyleSheet.create({
       web: { cursor: 'default' as const },
     }),
   },
+  submitBtnText: {
+    width: '100%',
+    textAlign: 'center',
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
   outlineBtn: {
-    height: 48,
-    minWidth: 96,
-    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    ...Platform.select({
-      web: { cursor: 'pointer' as const },
-    }),
+    backgroundColor: '#FFFFFF',
+  },
+  outlineBtnText: {
+    width: '100%',
+    textAlign: 'center',
+    fontWeight: '600',
+    color: '#333333',
+    fontSize: 16,
   },
   btnPressed: {
     opacity: 0.9,
