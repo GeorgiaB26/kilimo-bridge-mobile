@@ -17,8 +17,13 @@ import { Button } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
 import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { COLORS } from '../../constants';
-import { getFarmerAssignedTasks, getFarmerHierarchyTask, getFarmerPortalTask } from '../../api/client';
+import { getFarmerHierarchyTask, getFarmerPortalTask } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { useConnectivityOnline } from '../../hooks/useConnectivityOnline';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerAssignedTasksForCache } from '../../services/readCacheFetchers';
 import { formatCleanDate, formatDisplayDate } from '../../utils/greeting';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import { isTaskOverdue } from '../../utils/taskCategorization';
@@ -155,10 +160,13 @@ export function FarmerTaskDetailScreen() {
   const navigation = useNavigation<DetailNav>();
   const { taskId, fromNotification, openSubmitModal } = route.params;
   const { formatAmount } = useCurrency();
+  const userScope = useReadCacheUserScope();
+  const online = useConnectivityOnline();
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [startDateInput, setStartDateInput] = useState(todayDisplayDate());
@@ -168,14 +176,25 @@ export function FarmerTaskDetailScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      let loaded: TaskDetail | null = null;
-      const listRes = await getFarmerAssignedTasks();
-      const fromList = (listRes.tasks ?? []).find((row: TaskDetail) =>
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerAssignedTasks,
+        userScope,
+        fetchLive: fetchFarmerAssignedTasksForCache,
+      });
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+
+      const fromList = (result.data.tasks ?? []).find((row: TaskDetail) =>
         taskRefMatches(row, taskId)
       ) as TaskDetail | undefined;
 
-      if (fromList?.source !== 'agent_assignment') {
-        loaded = await fetchTaskDetailFromApi(taskId, fromList);
+      let loaded: TaskDetail | null = null;
+
+      if (fromList?.source !== 'agent_assignment' && online !== false) {
+        try {
+          loaded = await fetchTaskDetailFromApi(taskId, fromList);
+        } catch (err: unknown) {
+          if (!fromList) throw err;
+        }
       }
 
       if (!loaded && fromList) {
@@ -191,11 +210,12 @@ export function FarmerTaskDetailScreen() {
       setTask(loaded);
     } catch (err: unknown) {
       setTask(null);
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Failed to load task details'));
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [taskId, userScope, online]);
 
   useEffect(() => {
     setLoading(true);
@@ -364,6 +384,7 @@ export function FarmerTaskDetailScreen() {
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.content}>
+        {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         <Pressable onPress={goBack} style={styles.backRow}>
           <Text className="text-sm font-semibold text-[#4472C4]">← Back</Text>
         </Pressable>

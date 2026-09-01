@@ -21,6 +21,7 @@ export const READ_CACHE_KEYS = {
   agentTasks: 'agent:tasks',
   farmerPayments: 'farmer:payments',
   messageThreads: 'messages:threads',
+  appNotifications: 'notifications:app',
   adminDashboard: 'admin:dashboard',
   adminFarmers: 'admin:farmers',
   adminFarmerDetail: (farmerId: string) => `admin:farmer:${farmerId}`,

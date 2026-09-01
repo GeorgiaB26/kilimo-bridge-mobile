@@ -14,6 +14,7 @@ import {
   getFarmerPayments,
   getFarmerProjectTasks,
   getMessageThreads,
+  getAppNotifications,
 } from '../api/client';
 
 export async function fetchFarmerDashboardForCache() {
@@ -70,4 +71,8 @@ export async function fetchAgentTasksForCache() {
 export async function fetchMessageThreadsForCache() {
   const data = await getMessageThreads();
   return { threads: data.threads ?? [] };
+}
+
+export async function fetchAppNotificationsForCache() {
+  return getAppNotifications(false);
 }

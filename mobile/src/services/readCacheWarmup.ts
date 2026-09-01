@@ -16,6 +16,7 @@ import {
   fetchFarmerProjectTasksForCache,
   fetchFarmerProjectsForCache,
   fetchMessageThreadsForCache,
+  fetchAppNotificationsForCache,
 } from './readCacheFetchers';
 import { scheduleAgentTaskPhotoWarm } from './offlineTaskPhotoCache';
 
@@ -223,6 +224,10 @@ async function prepareFarmerWarm(
       cacheKey: READ_CACHE_KEYS.messageThreads,
       fetchLive: fetchMessageThreadsForCache,
     },
+    {
+      cacheKey: READ_CACHE_KEYS.appNotifications,
+      fetchLive: fetchAppNotificationsForCache,
+    },
   ];
 
   if (projectResult.ok && projectPayload) {
@@ -258,6 +263,10 @@ function buildAgentJobs(): WarmJob[] {
     {
       cacheKey: READ_CACHE_KEYS.messageThreads,
       fetchLive: fetchMessageThreadsForCache,
+    },
+    {
+      cacheKey: READ_CACHE_KEYS.appNotifications,
+      fetchLive: fetchAppNotificationsForCache,
     },
   ];
 }

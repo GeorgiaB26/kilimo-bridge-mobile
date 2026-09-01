@@ -13,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import {
-  getAppNotifications,
   markAllNotificationsRead,
   markNotificationRead,
 } from '../../api/client';
@@ -24,6 +23,10 @@ import { useAuthStore } from '../../store/authStore';
 import { useUnreadInboxCounts } from '../../hooks/useUnreadInboxCounts';
 import { isSupportDeskUser } from '../../../shared/src/supportDesk';
 import type { NotificationsStackParamList } from '../../navigation/types';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchAppNotificationsForCache } from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type NotificationRow = {
   id: string;
@@ -36,6 +39,8 @@ type NotificationRow = {
   context_id?: string | null;
   action_url?: string | null;
 };
+
+type NotificationsPayload = { notifications?: NotificationRow[] };
 
 type Nav = NativeStackNavigationProp<NotificationsStackParamList, 'NotificationsList'>;
 
@@ -50,23 +55,34 @@ export function NotificationsScreen() {
     phoneNumber: user?.phoneNumber,
   });
   const { refresh: refreshUnreadCounts } = useUnreadInboxCounts();
+  const userScope = useReadCacheUserScope();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await getAppNotifications(filter === 'unread');
-      setNotifications(data.notifications ?? []);
+      const result = await loadWithReadCache<NotificationsPayload>({
+        cacheKey: READ_CACHE_KEYS.appNotifications,
+        userScope,
+        fetchLive: fetchAppNotificationsForCache,
+      });
+      const all = result.data.notifications ?? [];
+      const filtered = filter === 'unread' ? all.filter((n) => !n.is_read) : all;
+      setNotifications(filtered);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setError(null);
     } catch (err) {
+      setNotifications([]);
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Could not load notifications'));
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -147,6 +163,8 @@ export function NotificationsScreen() {
           </Pressable>
         </View>
       </View>
+
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
 
       {loading && notifications.length === 0 ? (
         <ActivityIndicator style={styles.loader} color={COLORS.primary} />
