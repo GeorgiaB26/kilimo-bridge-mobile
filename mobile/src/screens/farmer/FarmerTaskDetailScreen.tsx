@@ -17,7 +17,7 @@ import { Button } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
 import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { COLORS } from '../../constants';
-import { getFarmerHierarchyTask, getFarmerPortalTask } from '../../api/client';
+import { getFarmerHierarchyTask, getFarmerPortalTask, getFarmerAgentAssignedTask } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { useConnectivityOnline } from '../../hooks/useConnectivityOnline';
@@ -142,6 +142,17 @@ function mapDetailFromApi(
 }
 
 async function fetchTaskDetailFromApi(taskRef: string, fromList?: TaskDetail): Promise<TaskDetail | null> {
+  if (fromList?.source === 'agent_assignment') {
+    try {
+      const detail = await getFarmerAgentAssignedTask(taskRef);
+      return mapDetailFromApi(detail as Record<string, unknown>, fromList, taskRef);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== 403 && status !== 404) throw err;
+      return fromList ? { ...fromList } : null;
+    }
+  }
+
   const loaders = [getFarmerHierarchyTask, getFarmerPortalTask];
   for (const load of loaders) {
     try {
@@ -189,7 +200,7 @@ export function FarmerTaskDetailScreen() {
 
       let loaded: TaskDetail | null = null;
 
-      if (fromList?.source !== 'agent_assignment' && online !== false) {
+      if (online !== false) {
         try {
           loaded = await fetchTaskDetailFromApi(taskId, fromList);
         } catch (err: unknown) {
@@ -494,7 +505,7 @@ export function FarmerTaskDetailScreen() {
           >
             Start Task
           </Button>
-        ) : canEditTask(task.status) && task.source !== 'agent_assignment' ? (
+        ) : canEditTask(task.status) ? (
           <Button
             mode="contained"
             buttonColor={COLORS.primary}
@@ -505,20 +516,14 @@ export function FarmerTaskDetailScreen() {
           >
             {statusNorm === 'rejected' ? 'Resubmit' : 'Edit'}
           </Button>
-        ) : task.source === 'agent_assignment' ? null : (
+        ) : (
           <Text className="mt-4 text-sm text-muted-foreground">Task locked — no further edits</Text>
         )}
-
-        {task.source === 'agent_assignment' ? (
-          <Text className="mt-4 text-sm text-muted-foreground">
-            This is a field agent reminder — photo evidence is managed through program tasks.
-          </Text>
-        ) : null}
       </ScrollView>
 
       <FarmerTaskSubmitModal
         task={
-          submitOpen && task.source !== 'agent_assignment'
+          submitOpen
             ? {
                 id: task.id,
                 name: task.name,
@@ -532,7 +537,7 @@ export function FarmerTaskDetailScreen() {
               }
             : null
         }
-        visible={submitOpen && task.source !== 'agent_assignment'}
+        visible={submitOpen}
         onClose={() => setSubmitOpen(false)}
         onSubmitted={async () => {
           setSubmitOpen(false);
