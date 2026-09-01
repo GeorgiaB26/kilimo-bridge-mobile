@@ -13,7 +13,9 @@ export type OutboxActionType =
   | 'task_start'
   | 'farmer_verification'
   | 'centre_qc'
-  | 'project_assign';
+  | 'project_assign'
+  | 'agent_task_create'
+  | 'agent_task_status_update';
 
 /**
  * Lifecycle:

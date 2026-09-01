@@ -12,6 +12,7 @@ import {
   approveFarmerTask,
   approveInventoryQuality,
   assignFarmersToProgramProject,
+  createAgentPersonalTask,
   getAdminFarmerTask,
   getAgentFarmerById,
   getAgentPersonalTask,
@@ -28,6 +29,7 @@ import {
   startFarmerHierarchyTask,
   submitFarmerTaskCompletion,
   submitAgentAssignedTask,
+  updateAgentPersonalTask,
   verifyFarmerField,
 } from '../api/client';
 import type { RegistrationFormData } from '../types';
@@ -73,6 +75,21 @@ export interface AgentTaskApprovalOutboxPayload {
   decision: 'approve' | 'reject';
   notes: string;
   rejectionReason: string;
+  expected: { status: string };
+}
+
+export interface AgentTaskCreateOutboxPayload {
+  name: string;
+  description?: string;
+  due_date: string;
+  priority: string;
+  assigned_farmers: string[];
+}
+
+export interface AgentTaskStatusUpdateOutboxPayload {
+  agentTaskId: string;
+  taskName: string;
+  status: string;
   expected: { status: string };
 }
 
@@ -252,6 +269,62 @@ function asAgentTaskApprovalPayload(
     notes: typeof payload.notes === 'string' ? payload.notes : '',
     rejectionReason:
       typeof payload.rejectionReason === 'string' ? payload.rejectionReason.trim() : '',
+    expected: { status: expectedStatus },
+  };
+}
+
+function asAgentTaskCreatePayload(
+  payload: Record<string, unknown>
+): AgentTaskCreateOutboxPayload {
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  const dueDate = typeof payload.due_date === 'string' ? payload.due_date.trim() : '';
+  if (!name) {
+    throw new Error('Invalid agent_task_create payload: name is required');
+  }
+  if (!dueDate) {
+    throw new Error('Invalid agent_task_create payload: due_date is required');
+  }
+  const assigned = Array.isArray(payload.assigned_farmers)
+    ? payload.assigned_farmers.filter((id): id is string => typeof id === 'string')
+    : [];
+  return {
+    name,
+    description:
+      typeof payload.description === 'string' && payload.description.trim()
+        ? payload.description.trim()
+        : undefined,
+    due_date: dueDate,
+    priority: typeof payload.priority === 'string' ? payload.priority : 'medium',
+    assigned_farmers: assigned,
+  };
+}
+
+function asAgentTaskStatusUpdatePayload(
+  payload: Record<string, unknown>
+): AgentTaskStatusUpdateOutboxPayload {
+  const agentTaskId =
+    typeof payload.agentTaskId === 'string' ? payload.agentTaskId.trim() : '';
+  const status = typeof payload.status === 'string' ? payload.status.trim() : '';
+  const expectedRaw = payload.expected;
+  const expectedStatus =
+    expectedRaw &&
+    typeof expectedRaw === 'object' &&
+    typeof (expectedRaw as { status?: unknown }).status === 'string'
+      ? (expectedRaw as { status: string }).status.trim()
+      : '';
+  if (!agentTaskId) {
+    throw new Error('Invalid agent_task_status_update payload: agentTaskId is required');
+  }
+  if (!status) {
+    throw new Error('Invalid agent_task_status_update payload: status is required');
+  }
+  if (!expectedStatus) {
+    throw new Error('Invalid agent_task_status_update payload: expected.status is required');
+  }
+  return {
+    agentTaskId,
+    taskName: typeof payload.taskName === 'string' ? payload.taskName : 'Task',
+    status,
     expected: { status: expectedStatus },
   };
 }
@@ -593,6 +666,47 @@ async function handleAgentTaskApproval(item: OutboxItem): Promise<OutboxHandlerR
   return rejectAgentPersonalTask(payload.agentTaskId, payload.rejectionReason);
 }
 
+async function handleAgentTaskCreate(item: OutboxItem): Promise<OutboxHandlerResult> {
+  const payload = asAgentTaskCreatePayload(item.payload);
+  return createAgentPersonalTask({
+    name: payload.name,
+    description: payload.description,
+    due_date: payload.due_date,
+    priority: payload.priority,
+    assigned_farmers: payload.assigned_farmers.length > 0 ? payload.assigned_farmers : undefined,
+  });
+}
+
+async function handleAgentTaskStatusUpdate(item: OutboxItem): Promise<OutboxHandlerResult> {
+  const payload = asAgentTaskStatusUpdatePayload(item.payload);
+  let current: { status?: string; name?: string } | null = null;
+  try {
+    const data = await getAgentPersonalTask(payload.agentTaskId);
+    current = (data?.task as { status?: string; name?: string } | undefined) ?? null;
+  } catch (err: unknown) {
+    const msg = extractApiError(err, '');
+    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('404')) {
+      throw new OutboxNeedsReviewError(
+        `Task "${payload.taskName}" no longer exists on the server. Dismiss this queued status change.`
+      );
+    }
+    throw err;
+  }
+  if (!current) {
+    throw new OutboxNeedsReviewError(
+      `Task "${payload.taskName}" no longer exists on the server. Dismiss this queued status change.`
+    );
+  }
+
+  assertExpected(
+    { status: normalizePinnedTaskStatus(current.status ?? '') },
+    { status: normalizePinnedTaskStatus(payload.expected.status) },
+    { label: `Agent task "${payload.taskName || current.name || payload.agentTaskId}"` }
+  );
+
+  return updateAgentPersonalTask(payload.agentTaskId, { status: payload.status });
+}
+
 async function handleTaskRecall(item: OutboxItem): Promise<OutboxHandlerResult> {
   const payload = asTaskRecallPayload(item.payload);
   let currentStatus: string | undefined;
@@ -799,6 +913,8 @@ export function ensureOutboxHandlersRegistered(): void {
   registerOutboxHandler('task_submission', handleTaskSubmission);
   registerOutboxHandler('task_approval', handleTaskApproval);
   registerOutboxHandler('agent_task_approval', handleAgentTaskApproval);
+  registerOutboxHandler('agent_task_create', handleAgentTaskCreate);
+  registerOutboxHandler('agent_task_status_update', handleAgentTaskStatusUpdate);
   registerOutboxHandler('task_recall', handleTaskRecall);
   registerOutboxHandler('task_start', handleTaskStart);
   registerOutboxHandler('farmer_verification', handleFarmerVerification);

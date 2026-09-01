@@ -25,11 +25,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import {
-  createAgentPersonalTask,
   getAgentHelpRequests,
   resolveAgentHelpRequest,
   setAgentTaskReminder,
-  updateAgentPersonalTask,
 } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { isTaskOverdue, categorizeTasks, countOverlappingStatusKpis, isTaskCompletedStatus } from '../../utils/taskCategorization';
@@ -51,6 +49,7 @@ import { scheduleAgentTaskPhotoWarm } from '../../services/offlineTaskPhotoCache
 import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
 import { TaskEvidenceImage } from '../../components/TaskEvidenceImage';
 import { OutboxAgentTaskApprovalCard } from '../../components/OutboxAgentTaskApprovalCard';
+import { OutboxAgentPersonalTaskCard } from '../../components/OutboxAgentPersonalTaskCard';
 import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
 import {
   TaskStatusKpiRow,
@@ -73,6 +72,15 @@ import {
   syncAllPendingTaskApprovals,
   type PendingTaskApprovalView,
 } from '../../services/submitTaskApprovalOutbox';
+import {
+  createAgentPersonalTaskWithOutbox,
+  dismissAgentPersonalTaskOutbox,
+  listPendingAgentPersonalTasks,
+  pushPendingAgentPersonalTask,
+  syncAllPendingAgentPersonalTasks,
+  updateAgentPersonalTaskStatusWithOutbox,
+  type PendingAgentPersonalTaskView,
+} from '../../services/submitAgentPersonalTaskOutbox';
 
 type UnifiedTask = {
   id: string;
@@ -417,6 +425,9 @@ export function AgentTasksScreen() {
   const [pendingFarmerApprovals, setPendingFarmerApprovals] = useState<PendingTaskApprovalView[]>(
     []
   );
+  const [pendingPersonalTasks, setPendingPersonalTasks] = useState<PendingAgentPersonalTaskView[]>(
+    []
+  );
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [deepLinkHighlightId, setDeepLinkHighlightId] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
@@ -521,12 +532,14 @@ export function AgentTasksScreen() {
 
   const loadPending = useCallback(async () => {
     try {
-      const [agentPending, farmerPending] = await Promise.all([
+      const [agentPending, farmerPending, personalPending] = await Promise.all([
         listPendingAgentTaskApprovals(),
         listPendingTaskApprovals(),
+        listPendingAgentPersonalTasks(),
       ]);
       setPendingAgentApprovals(agentPending);
       setPendingFarmerApprovals(farmerPending);
+      setPendingPersonalTasks(personalPending);
     } catch {
       /* keep existing pending lists */
     }
@@ -616,6 +629,7 @@ export function AgentTasksScreen() {
         await Promise.all([
           syncAllPendingAgentTaskApprovals(),
           syncAllPendingTaskApprovals(),
+          syncAllPendingAgentPersonalTasks(),
         ]);
         if (cancelled) return;
         await Promise.all([load(), loadPending()]);
@@ -683,6 +697,7 @@ export function AgentTasksScreen() {
     await Promise.all([
       syncAllPendingAgentTaskApprovals(),
       syncAllPendingTaskApprovals(),
+      syncAllPendingAgentPersonalTasks(),
     ]);
     await Promise.all([load(), loadPending()]);
     setRefreshing(false);
@@ -995,17 +1010,60 @@ export function AgentTasksScreen() {
     }
   };
 
+  const handlePushPersonalTask = async (item: PendingAgentPersonalTaskView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingAgentPersonalTask(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        const label = item.kind === 'create' ? item.name : item.taskName;
+        Alert.alert('Synced', `${label} updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error || 'Conflict detected');
+      } else {
+        Alert.alert('Sync failed', result.error || 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
+    }
+  };
+
   const handleUpdatePersonalStatus = async (taskId: string, status: string) => {
+    const task = findTask(taskId) ?? (selectedTask?.id === taskId ? selectedTask : undefined);
+    if (!task) {
+      throw new Error('Task not found');
+    }
     setUpdatingTask(true);
     try {
-      const result = await updateAgentPersonalTask(taskId, { status });
-      const updated = result?.task as Record<string, unknown> | undefined;
-      if (updated) {
-        const mapped = mapPersonalTask(updated);
-        setPersonalTasks((prev) => prev.map((t) => (t.id === taskId ? mapped : t)));
-        setSelectedTask(toTaskDetail(mapped));
+      const result = await updateAgentPersonalTaskStatusWithOutbox({
+        agentTaskId: taskId,
+        taskName: task.name,
+        status,
+        expectedStatus: task.status || 'not_started',
+      });
+      if (result.mode === 'online') {
+        if (result.task) {
+          const mapped = mapPersonalTask(result.task);
+          setPersonalTasks((prev) => prev.map((t) => (t.id === taskId ? mapped : t)));
+          setSelectedTask(toTaskDetail(mapped));
+        }
+        await load();
+        Alert.alert('Updated', 'Task status saved.');
+        return;
       }
-      await load();
+      if (result.mode === 'offline') {
+        const patch = (t: UnifiedTask): UnifiedTask =>
+          t.id === taskId ? { ...t, status } : t;
+        setPersonalTasks((prev) => prev.map(patch));
+        if (selectedTask?.id === taskId) {
+          setSelectedTask((prev) => (prev ? { ...prev, status } : prev));
+        }
+        await loadPending();
+        Alert.alert('Saved offline', 'Status will sync when you are back online.');
+        return;
+      }
+      Alert.alert('Needs your review', result.error);
     } finally {
       setUpdatingTask(false);
     }
@@ -1020,21 +1078,31 @@ export function AgentTasksScreen() {
   }) => {
     setCreating(true);
     try {
-      const result = await createAgentPersonalTask(data);
-      const created = result?.task as Record<string, unknown> | undefined;
-      if (created?.id) {
-        const mapped = mapPersonalTask(created);
-        setPersonalTasks((prev) => {
-          if (prev.some((t) => t.id === mapped.id)) return prev;
-          return [...prev, mapped];
-        });
+      const result = await createAgentPersonalTaskWithOutbox(data);
+      if (result.mode === 'online') {
+        const created = result.task;
+        if (created?.id) {
+          const mapped = mapPersonalTask(created);
+          setPersonalTasks((prev) => {
+            if (prev.some((t) => t.id === mapped.id)) return prev;
+            return [...prev, mapped];
+          });
+        }
+        resetFilters();
+        setSearch('');
+        navigation.setParams({ filter: undefined });
+        await load();
+        setAddModalOpen(false);
+        showMessage('Task created', 'Your task is now in the Tasks list.');
+        return;
       }
-      resetFilters();
-      setSearch('');
-      navigation.setParams({ filter: undefined });
-      await load();
-      setAddModalOpen(false);
-      showMessage('Task created', 'Your task is now in the Tasks list.');
+      if (result.mode === 'offline') {
+        setAddModalOpen(false);
+        await loadPending();
+        showMessage('Saved offline', 'Task will sync when you are back online.');
+        return;
+      }
+      showMessage('Needs your review', result.error);
     } catch (err: unknown) {
       const msg = extractApiError(err, 'Could not create task');
       showMessage('Could not create task', msg);
@@ -1263,11 +1331,23 @@ export function AgentTasksScreen() {
           </View>
         ) : null}
 
-        {pendingAgentApprovals.length + pendingFarmerApprovals.length > 0 ? (
+        {pendingAgentApprovals.length +
+        pendingFarmerApprovals.length +
+        pendingPersonalTasks.length >
+        0 ? (
           <View className="mb-5">
             <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
               Queued decisions
             </Text>
+            {pendingPersonalTasks.map((item) => (
+              <OutboxAgentPersonalTaskCard
+                key={item.id}
+                item={item}
+                pushing={pushingId === item.id}
+                onPush={() => handlePushPersonalTask(item)}
+                onDismiss={() => dismissAgentPersonalTaskOutbox(item.id).then(loadPending)}
+              />
+            ))}
             {pendingAgentApprovals.map((item) => (
               <OutboxAgentTaskApprovalCard
                 key={item.id}

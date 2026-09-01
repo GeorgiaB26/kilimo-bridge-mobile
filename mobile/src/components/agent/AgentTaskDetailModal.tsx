@@ -95,7 +95,6 @@ export function AgentTaskDetailModal({
     setActing(true);
     try {
       await onUpdateStatus(task.id, status);
-      Alert.alert('Updated', 'Task status saved.');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not update task'));
     } finally {
