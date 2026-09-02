@@ -1,7 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { COLORS } from '../constants';
 import { AgentDashboardScreen } from '../screens/agent/AgentDashboardScreen';
 import { AgentTasksScreen } from '../screens/agent/AgentTasksScreen';
 import { AgentFarmersStackNavigator } from './AgentFarmersStackNavigator';
@@ -10,15 +9,16 @@ import { AgentProfileScreen } from '../screens/agent/AgentProfileScreen';
 import { AgentCentresScreen } from '../screens/agent/AgentCentresScreen';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
-import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import { AgentTabScene } from './AgentTabScene';
 import { FloatingTabBar, AGENT_TAB_ICONS, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import type { AgentRootStackParamList, AgentTabParamList } from './types';
+import {
+  agentRootStackHeaderScreenOptions,
+  agentTabHeaderScreenOptions,
+} from './agentHeaderOptions';
 
 const Tab = createBottomTabNavigator<AgentTabParamList>();
 const RootStack = createNativeStackNavigator<AgentRootStackParamList>();
-
-const HEADER_TITLE = 'Field Agent';
 
 function withAgentTabScene<P extends object>(Component: React.ComponentType<P>) {
   return function Wrapped(props: P) {
@@ -37,13 +37,9 @@ function AgentTabNavigator() {
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} icons={AGENT_TAB_ICONS} />}
       screenOptions={({ route }) => ({
-        headerShown: route.name === 'Farmers' ? false : true,
-        headerStyle: { backgroundColor: COLORS.primary },
-        headerTintColor: '#fff',
-        headerTitle: HEADER_TITLE,
-        headerTitleStyle: { fontWeight: '600', fontSize: 17, color: '#fff' },
-        headerRightContainerStyle: { paddingRight: 16 },
-        headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
+        // Members tab renders its own matching header via AgentFarmersStackNavigator.
+        headerShown: route.name !== 'Farmers',
+        ...agentTabHeaderScreenOptions,
         sceneStyle: tabSceneStyle,
       })}
     >
@@ -88,9 +84,7 @@ export function AgentNavigator() {
         options={{
           headerShown: true,
           title: 'Centres in my district',
-          headerStyle: { backgroundColor: COLORS.primary },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: '600' },
+          ...agentRootStackHeaderScreenOptions,
         }}
       />
     </RootStack.Navigator>

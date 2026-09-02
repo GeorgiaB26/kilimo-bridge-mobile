@@ -8,6 +8,8 @@ type Props = {
   messagesRoute?: string;
   notificationsRoute?: string;
   iconColor?: string;
+  /** Tighter icon sizing for the compact farmer nav header. */
+  compact?: boolean;
   /** Optional settings gear (same size/spacing as messages & notifications). */
   onSettingsPress?: () => void;
   /** Override default navigate-to-MessagesFlow (e.g. Support switches to Messages tab). */
@@ -28,12 +30,16 @@ function UnreadBadge({ count }: { count: number }) {
   );
 }
 
-const ICON_SIZE = 22;
+const ICON_SIZE_DEFAULT = 22;
+const ICON_SIZE_COMPACT = 20;
+const HIT_PADDING_DEFAULT = 6;
+const HIT_PADDING_COMPACT = 4;
 
 export function MessagesNotificationsHeaderIcons({
   messagesRoute = 'MessagesFlow',
   notificationsRoute = 'NotificationsFlow',
   iconColor = '#fff',
+  compact = false,
   onSettingsPress,
   onMessagesPress,
   messageCountOverride,
@@ -42,6 +48,8 @@ export function MessagesNotificationsHeaderIcons({
   const { messageCount, notificationCount } = useUnreadInboxCounts();
   const displayMessageCount =
     typeof messageCountOverride === 'number' ? messageCountOverride : messageCount;
+  const iconSize = compact ? ICON_SIZE_COMPACT : ICON_SIZE_DEFAULT;
+  const hitPadding = compact ? HIT_PADDING_COMPACT : HIT_PADDING_DEFAULT;
 
   const openFlow = (route: string) => {
     let nav = navigation as NavigationProp<ParamListBase> | undefined;
@@ -64,30 +72,30 @@ export function MessagesNotificationsHeaderIcons({
           }
           openFlow(messagesRoute);
         }}
-        style={styles.hit}
+        style={[styles.hit, { padding: hitPadding }]}
         accessibilityLabel="Messages"
         accessibilityHint="Open messages"
       >
-        <Ionicons name="chatbubbles-outline" size={ICON_SIZE} color={iconColor} />
+        <Ionicons name="chatbubbles-outline" size={iconSize} color={iconColor} />
         {displayMessageCount > 0 ? <UnreadBadge count={displayMessageCount} /> : null}
       </Pressable>
       <Pressable
         onPress={() => openFlow(notificationsRoute)}
-        style={styles.hit}
+        style={[styles.hit, { padding: hitPadding }]}
         accessibilityLabel="Notifications"
         accessibilityHint="Open notifications"
       >
-        <Ionicons name="notifications-outline" size={ICON_SIZE} color={iconColor} />
+        <Ionicons name="notifications-outline" size={iconSize} color={iconColor} />
         {notificationCount > 0 ? <UnreadBadge count={notificationCount} /> : null}
       </Pressable>
       {onSettingsPress ? (
         <Pressable
           onPress={onSettingsPress}
-          style={styles.hit}
+          style={[styles.hit, { padding: hitPadding }]}
           accessibilityLabel="Settings"
           accessibilityHint="Open profile settings"
         >
-          <Ionicons name="settings-outline" size={ICON_SIZE} color={iconColor} />
+          <Ionicons name="settings-outline" size={iconSize} color={iconColor} />
         </Pressable>
       ) : null}
     </View>
@@ -100,10 +108,9 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   hit: {
-    padding: 6,
     position: 'relative',
   },
   badge: {

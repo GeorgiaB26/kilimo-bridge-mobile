@@ -1,8 +1,6 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { COLORS } from '../constants';
 import { FarmerDashboardScreen } from '../screens/farmer/FarmerDashboardScreen';
 import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
@@ -12,8 +10,8 @@ import { FarmerTaskDetailScreen } from '../screens/farmer/FarmerTaskDetailScreen
 import { FloatingTabBar, FARMER_TAB_ICONS, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
-import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import type { FarmerRootStackParamList, FarmerTabParamList } from './types';
+import { farmerTabHeaderScreenOptions } from './farmerHeaderOptions';
 
 import { FarmerCurrencySync } from '../components/FarmerCurrencySync';
 import { FarmerTabScene } from './FarmerTabScene';
@@ -31,14 +29,6 @@ function withFarmerTabScene<P extends object>(Component: React.ComponentType<P>)
 }
 const RootStack = createNativeStackNavigator<FarmerRootStackParamList>();
 
-function HeaderInboxIcons() {
-  return (
-    <View style={styles.headerRight}>
-      <MessagesNotificationsHeaderIcons iconColor="#fff" />
-    </View>
-  );
-}
-
 function FarmerTabNavigator() {
   const tabSceneStyle = useFloatingTabBarSceneStyle();
 
@@ -46,13 +36,9 @@ function FarmerTabNavigator() {
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} icons={FARMER_TAB_ICONS} />}
       screenOptions={({ route }) => ({
-        // Projects uses its own stack headers (list + detail) — same green bar size.
+        // Projects renders its own matching header via FarmerProjectsNavigator stack.
         headerShown: route.name !== 'Projects',
-        headerStyle: { backgroundColor: COLORS.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600', fontSize: 17, color: '#fff' },
-        headerRightContainerStyle: { paddingRight: 16 },
-        headerRight: () => <HeaderInboxIcons />,
+        ...farmerTabHeaderScreenOptions,
         sceneStyle: tabSceneStyle,
       })}
     >
@@ -98,10 +84,3 @@ export function FarmerNavigator() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-});

@@ -1,16 +1,13 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { COLORS } from '../constants';
 import { AgentFarmersScreen } from '../screens/agent/AgentFarmersScreen';
 import { AgentFarmerProfileScreen } from '../screens/agent/AgentFarmerProfileScreen';
 import { AgentRegisterTypeScreen } from '../screens/agent/AgentRegisterTypeScreen';
 import { FieldAgentRegistrationScreen } from '../screens/registration/FieldAgentRegistrationScreen';
 import { AgentFarmerRegistrationNavigator } from './AgentFarmerRegistrationNavigator';
 import { RegistrationKeyboardLayout } from './RegistrationKeyboardLayout';
-import { RegisterNewFarmerButton } from '../components/agent/RegisterNewFarmerButton';
-import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import type { AgentFarmersStackParamList } from './types';
+import { agentFarmersStackHeaderScreenOptions } from './agentHeaderOptions';
 
 const Stack = createNativeStackNavigator<AgentFarmersStackParamList>();
 
@@ -26,29 +23,11 @@ function withAgentFormLayout<P extends object>(Screen: React.ComponentType<P>) {
 
 export function AgentFarmersStackNavigator() {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: COLORS.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600', fontSize: 17, color: '#fff' },
-        headerRightContainerStyle: { paddingRight: 16 },
-      }}
-    >
+    <Stack.Navigator screenOptions={agentFarmersStackHeaderScreenOptions}>
       <Stack.Screen
         name="FarmerList"
         component={AgentFarmersScreen}
-        options={({ navigation }) => ({
-          title: 'Field Agent',
-          headerRight: () => (
-            <View style={styles.headerRight}>
-              <MessagesNotificationsHeaderIcons iconColor="#fff" />
-              <RegisterNewFarmerButton
-                compact
-                onPress={() => navigation.navigate('RegisterPicker')}
-              />
-            </View>
-          ),
-        })}
+        options={{ title: 'Field Agent' }}
       />
       <Stack.Screen
         name="RegisterPicker"
@@ -70,17 +49,8 @@ export function AgentFarmersStackNavigator() {
         component={AgentFarmerProfileScreen}
         options={({ route }) => ({
           title: route.params.name,
-          headerBackTitle: 'Members',
         })}
       />
     </Stack.Navigator>
   );
 }
-
-const styles = StyleSheet.create({
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-});
