@@ -7,7 +7,7 @@ import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FarmerTaskDetailScreen } from '../screens/farmer/FarmerTaskDetailScreen';
-import { FloatingTabBar, FARMER_TAB_ICONS, useFloatingTabBarSceneStyle } from './FloatingTabBar';
+import { FloatingTabBar, FARMER_TAB_ICONS, floatingTabBarNavigatorScreenOptions, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import type { FarmerRootStackParamList, FarmerTabParamList } from './types';
@@ -39,6 +39,7 @@ function FarmerTabNavigator() {
         // Projects renders its own matching header via FarmerProjectsNavigator stack.
         headerShown: route.name !== 'Projects',
         ...farmerTabHeaderScreenOptions,
+        ...floatingTabBarNavigatorScreenOptions,
         sceneStyle: tabSceneStyle,
       })}
     >

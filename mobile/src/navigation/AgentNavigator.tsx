@@ -10,7 +10,7 @@ import { AgentCentresScreen } from '../screens/agent/AgentCentresScreen';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import { AgentTabScene } from './AgentTabScene';
-import { FloatingTabBar, AGENT_TAB_ICONS, useFloatingTabBarSceneStyle } from './FloatingTabBar';
+import { FloatingTabBar, AGENT_TAB_ICONS, floatingTabBarNavigatorScreenOptions, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import type { AgentRootStackParamList, AgentTabParamList } from './types';
 import {
   agentRootStackHeaderScreenOptions,
@@ -40,6 +40,7 @@ function AgentTabNavigator() {
         // Members tab renders its own matching header via AgentFarmersStackNavigator.
         headerShown: route.name !== 'Farmers',
         ...agentTabHeaderScreenOptions,
+        ...floatingTabBarNavigatorScreenOptions,
         sceneStyle: tabSceneStyle,
       })}
     >

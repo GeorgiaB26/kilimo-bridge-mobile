@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useContext, useLayoutEffect, useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BottomTabBarHeightCallbackContext } from '@react-navigation/bottom-tabs';
 import { COLORS } from '../constants';
 
 export type FloatingTabIconMap = Record<string, keyof typeof Ionicons.glyphMap>;
@@ -39,6 +40,40 @@ const SCENE_CLEARANCE_GAP = 12;
 const PILL_RADIUS = 999;
 const ICON_HIT = 28;
 const ICON_SIZE = 18;
+const PILL_BORDER_COLOR = 'rgba(0, 0, 0, 0.2)';
+
+function TabBarIcon({
+  focused,
+  iconName,
+  color,
+}: {
+  focused: boolean;
+  iconName: keyof typeof Ionicons.glyphMap;
+  color: string;
+}) {
+  const radius = ICON_HIT / 2;
+
+  return (
+    <View style={styles.iconSlot} collapsable={false}>
+      {focused ? (
+        <Svg
+          width={ICON_HIT}
+          height={ICON_HIT}
+          style={styles.activeCircle}
+          pointerEvents="none"
+        >
+          <Circle cx={radius} cy={radius} r={radius} fill={COLORS.primary} />
+        </Svg>
+      ) : null}
+      <Ionicons
+        name={iconName}
+        size={ICON_SIZE}
+        color={focused ? '#fff' : color}
+        style={styles.iconGlyph}
+      />
+    </View>
+  );
+}
 
 /**
  * Vertical space consumed by the absolute FloatingTabBar (safe-area + margin + pill).
@@ -49,13 +84,28 @@ export function floatingTabBarClearance(bottomInset: number): number {
   return bottomPad + PILL_MIN_HEIGHT + SCENE_CLEARANCE_GAP;
 }
 
-/** Hook for Tab.Navigator `sceneStyle` — replaces the old fixed `paddingBottom: 88`. */
+/** Use on Tab.Navigator screenOptions so only the pill is painted — no grey tab bar strip. */
+export const floatingTabBarNavigatorScreenOptions = {
+  tabBarStyle: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+    borderTopColor: 'transparent',
+    elevation: 0,
+    shadowOpacity: 0,
+    height: 0,
+  },
+};
+
+/**
+ * Tab scenes extend edge-to-edge behind the floating pill.
+ * Apply `floatingTabBarClearance()` to scroll content padding instead.
+ */
 export function useFloatingTabBarSceneStyle(): ViewStyle {
-  const insets = useSafeAreaInsets();
-  return useMemo(
-    () => ({ paddingBottom: floatingTabBarClearance(insets.bottom) }),
-    [insets.bottom]
-  );
+  return useMemo(() => ({}), []);
 }
 
 type Props = BottomTabBarProps & {
@@ -65,20 +115,16 @@ type Props = BottomTabBarProps & {
 export function FloatingTabBar({ state, descriptors, navigation, icons = FARMER_TAB_ICONS }: Props) {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 8) + BOTTOM_MARGIN;
+  const onTabBarHeightChange = useContext(BottomTabBarHeightCallbackContext);
+
+  useLayoutEffect(() => {
+    onTabBarHeightChange?.(0);
+  }, [onTabBarHeightChange]);
 
   return (
     <View pointerEvents="box-none" style={[styles.wrapper, { paddingBottom: bottomPad }]}>
       <View style={styles.pillShadow}>
         <View style={styles.pillClip}>
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 55 : 80}
-            tint="light"
-            experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-            style={StyleSheet.absoluteFill}
-          />
-          {/* Frosted wash so labels stay readable on busy backgrounds */}
-          <View style={styles.frostWash} pointerEvents="none" />
-
           <View style={styles.row}>
             {state.routes.map((route, index) => {
               const focused = state.index === index;
@@ -121,9 +167,7 @@ export function FloatingTabBar({ state, descriptors, navigation, icons = FARMER_
                   onLongPress={onLongPress}
                   style={styles.tab}
                 >
-                  <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-                    <Ionicons name={iconName} size={ICON_SIZE} color={focused ? '#fff' : color} />
-                  </View>
+                  <TabBarIcon focused={focused} iconName={iconName} color={color} />
                   <Text
                     numberOfLines={1}
                     style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}
@@ -172,13 +216,9 @@ const styles = StyleSheet.create({
   pillClip: {
     borderRadius: PILL_RADIUS,
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.55)',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.72)' : 'transparent',
-  },
-  frostWash: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(255,255,255,0.35)',
+    borderWidth: 1.5,
+    borderColor: PILL_BORDER_COLOR,
+    backgroundColor: '#FFFFFF',
   },
   row: {
     flexDirection: 'row',
@@ -193,16 +233,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
+    overflow: 'visible',
   },
-  iconWrap: {
+  iconSlot: {
     width: ICON_HIT,
     height: ICON_HIT,
-    borderRadius: ICON_HIT / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
   },
-  iconWrapActive: {
-    backgroundColor: COLORS.primary,
+  activeCircle: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  iconGlyph: {
+    zIndex: 1,
   },
   label: {
     fontSize: 10,
