@@ -13,9 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import {
-  markAllNotificationsRead,
-  markNotificationRead,
-} from '../../api/client';
+  markAllNotificationsReadWithOffline,
+  markNotificationReadWithOffline,
+  applyOfflineNotificationReadState,
+  loadNotificationReadOverlay,
+  syncPendingNotificationReads,
+} from '../../services/notificationReadOffline';
 import { extractApiError } from '../../utils/feedback';
 import { NOTIFICATION_CONFIG, formatTimeAgo } from '../../constants/notifications';
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
@@ -65,12 +68,18 @@ export function NotificationsScreen() {
 
   const load = useCallback(async () => {
     try {
+      await syncPendingNotificationReads(userScope).catch(() => undefined);
       const result = await loadWithReadCache<NotificationsPayload>({
         cacheKey: READ_CACHE_KEYS.appNotifications,
         userScope,
         fetchLive: fetchAppNotificationsForCache,
       });
-      const all = result.data.notifications ?? [];
+      const overlay = await loadNotificationReadOverlay(userScope);
+      const all = applyOfflineNotificationReadState(
+        result.data.notifications ?? [],
+        overlay.pendingIds,
+        overlay.markAllPending
+      );
       const filtered = filter === 'unread' ? all.filter((n) => !n.is_read) : all;
       setNotifications(filtered);
       setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
@@ -99,15 +108,16 @@ export function NotificationsScreen() {
   };
 
   const handleMarkRead = async (id: string) => {
+    setNotifications((prev) =>
+      filter === 'unread'
+        ? prev.filter((n) => n.id !== id)
+        : prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+    );
     try {
-      await markNotificationRead(id);
-      setNotifications((prev) =>
-        filter === 'unread'
-          ? prev.filter((n) => n.id !== id)
-          : prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
+      await markNotificationReadWithOffline(id, userScope);
       await refreshUnreadCounts();
-    } catch {
+    } catch (err) {
+      setError(extractApiError(err, 'Could not mark notification as read'));
       await load();
     }
   };
@@ -122,12 +132,13 @@ export function NotificationsScreen() {
   };
 
   const handleClearAll = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      await markAllNotificationsReadWithOffline(userScope);
       await refreshUnreadCounts();
     } catch (err) {
       setError(extractApiError(err, 'Could not clear notifications'));
+      await load();
     }
   };
 

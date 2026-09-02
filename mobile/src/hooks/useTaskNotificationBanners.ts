@@ -1,7 +1,15 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { getAppNotifications, markNotificationRead } from '../api/client';
+import { getAppNotifications } from '../api/client';
 import type { TaskNotificationBannerItem } from '../components/notifications/TaskNotificationBanner';
+import { useReadCacheUserScope } from './useReadCacheUserScope';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../services/offlineReadCache';
+import {
+  applyOfflineNotificationReadState,
+  loadNotificationReadOverlay,
+  markNotificationReadWithOffline,
+  syncPendingNotificationReads,
+} from '../services/notificationReadOffline';
 
 const POLL_MS = 10000;
 
@@ -31,17 +39,28 @@ function isTaskNotification(row: {
 }
 
 export function useTaskNotificationBanners() {
+  const userScope = useReadCacheUserScope();
   const [notifications, setNotifications] = useState<TaskNotificationBannerItem[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const data = await getAppNotifications(true);
-      const rows = (data.notifications ?? []) as Array<
-        TaskNotificationBannerItem & {
-          is_read?: boolean;
-          context_type?: string | null;
-        }
-      >;
+      await syncPendingNotificationReads(userScope).catch(() => undefined);
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.appNotifications,
+        userScope,
+        fetchLive: () => getAppNotifications(false),
+      });
+      const overlay = await loadNotificationReadOverlay(userScope);
+      const rows = applyOfflineNotificationReadState(
+        (result.data.notifications ?? []) as Array<
+          TaskNotificationBannerItem & {
+            is_read?: boolean;
+            context_type?: string | null;
+          }
+        >,
+        overlay.pendingIds,
+        overlay.markAllPending
+      );
       setNotifications(
         rows
           .filter(isTaskNotification)
@@ -59,7 +78,7 @@ export function useTaskNotificationBanners() {
     } catch {
       setNotifications([]);
     }
-  }, []);
+  }, [userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,14 +88,17 @@ export function useTaskNotificationBanners() {
     }, [load])
   );
 
-  const dismiss = useCallback(async (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    try {
-      await markNotificationRead(id);
-    } catch {
-      await load();
-    }
-  }, [load]);
+  const dismiss = useCallback(
+    async (id: string) => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      try {
+        await markNotificationReadWithOffline(id, userScope);
+      } catch {
+        await load();
+      }
+    },
+    [load, userScope]
+  );
 
   return { notifications, dismiss, refresh: load };
 }

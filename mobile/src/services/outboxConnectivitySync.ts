@@ -17,6 +17,7 @@ import {
   warmReadCachesForCurrentUser,
   type WarmReadCacheReason,
 } from './readCacheWarmup';
+import { syncPendingNotificationReads } from './notificationReadOffline';
 
 const IS_DEV =
   typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
@@ -142,7 +143,9 @@ export async function syncOutboxAfterReconnect(
       await resetOutboxForManualRetry(item.id);
     }
 
-    return processReadyOutbox(limit);
+    const outboxResult = await processReadyOutbox(limit);
+    await syncPendingNotificationReads().catch(() => undefined);
+    return outboxResult;
   })();
 
   try {
