@@ -201,6 +201,30 @@ export function countOverlappingStatusKpis(tasks: CategorizableTask[]): {
   };
 }
 
+/** Status filter used by KPI rows on agent/farmer task screens (overlapping overdue counts). */
+export function taskMatchesStatusFilter(
+  task: CategorizableTask,
+  filter: 'all' | TaskCategoryFilter
+): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'overdue') return isTaskOverdue(task.due_date, task.status);
+  const s = normalizeStatusForCategory(task.status);
+  switch (filter) {
+    case 'not_started':
+      return s === 'not-started';
+    case 'in_progress':
+      return s === 'in-progress';
+    case 'submitted_for_approval':
+      return s === 'submitted-for-approval';
+    case 'rejected':
+      return s === 'rejected';
+    case 'completed':
+      return isTaskCompletedStatus(task.status);
+    default:
+      return true;
+  }
+}
+
 export function pickCategorizedTasks<T>(
   categorized: CategorizedTasks<T>,
   filter: 'all' | TaskCategoryFilter

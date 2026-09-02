@@ -12,6 +12,7 @@ import {
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { ListX, SearchX } from 'lucide-react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
@@ -31,8 +32,10 @@ import { useTaskApprovalPolling } from '../../hooks/useTaskApprovalPolling';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
 import {
   categorizeTasks,
+  countOverlappingStatusKpis,
   isTaskOverdue,
-  pickCategorizedTasks,
+  taskMatchesStatusFilter,
+  type CategorizedTasks,
 } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
@@ -58,7 +61,7 @@ import { fetchFarmerAssignedTasksForCache } from '../../services/readCacheFetche
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type TasksRoute = RouteProp<FarmerTabParamList, 'Tasks'>;
-type StatusFilterKey = TaskStatusKpiKey;
+type StatusFilterKey = TaskStatusKpiKey | 'all';
 type TaskSortMode = 'name_asc' | 'name_desc' | 'due_asc' | 'due_desc';
 
 const REFRESH_INTERVAL_SEC = 30;
@@ -167,7 +170,8 @@ function RefreshCountdownBadge({ seconds, total = REFRESH_INTERVAL_SEC }: { seco
 export function FarmerTasksScreen() {
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<NavigationProp<FarmerTabParamList>>();
-  const statusFilter = route.params?.statusFilter;
+  const routeStatusFilter = route.params?.statusFilter;
+  const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
   const scrollTargetId = route.params?.taskId ?? route.params?.highlightTaskId;
   const openSubmitModalParam = route.params?.openSubmitModal === true;
   const userScope = useReadCacheUserScope();
@@ -191,6 +195,12 @@ export function FarmerTasksScreen() {
 
   const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
     useTaskNotificationBanners();
+
+  useEffect(() => {
+    if (routeStatusFilter) {
+      setStatusFilter(routeStatusFilter);
+    }
+  }, [routeStatusFilter]);
 
   const loadPendingRecalls = useCallback(async () => {
     setPendingRecalls(await listPendingTaskRecalls());
@@ -274,14 +284,47 @@ export function FarmerTasksScreen() {
     void softRefresh();
   };
 
-  const categorized = useMemo(() => categorizeTasks(tasks), [tasks]);
-  const displayCategories = useMemo(
-    () =>
-      statusFilter
-        ? pickCategorizedTasks(categorized, statusFilter)
-        : categorized,
-    [categorized, statusFilter]
+  const statusFilteredTasks = useMemo(
+    () => tasks.filter((t) => taskMatchesStatusFilter(t, statusFilter)),
+    [tasks, statusFilter]
   );
+
+  const categoryCounts = useMemo(() => countOverlappingStatusKpis(tasks), [tasks]);
+
+  /**
+   * KPI filters use overlapping counts (In Progress includes overdue in-progress tasks).
+   * When a status KPI is selected, keep those tasks in that section — do not re-bucket
+   * them into Overdue via categorizeTasks.
+   */
+  const displayCategories = useMemo((): CategorizedTasks<ExtendedTaskRow> => {
+    if (statusFilter === 'all') {
+      return categorizeTasks(tasks);
+    }
+    const empty: CategorizedTasks<ExtendedTaskRow> = {
+      overdue: [],
+      inProgress: [],
+      notStarted: [],
+      submittedForApproval: [],
+      rejected: [],
+      completed: [],
+    };
+    switch (statusFilter) {
+      case 'overdue':
+        return { ...empty, overdue: statusFilteredTasks };
+      case 'in_progress':
+        return { ...empty, inProgress: statusFilteredTasks };
+      case 'not_started':
+        return { ...empty, notStarted: statusFilteredTasks };
+      case 'submitted_for_approval':
+        return { ...empty, submittedForApproval: statusFilteredTasks };
+      case 'rejected':
+        return { ...empty, rejected: statusFilteredTasks };
+      case 'completed':
+        return { ...empty, completed: statusFilteredTasks };
+      default:
+        return categorizeTasks(statusFilteredTasks);
+    }
+  }, [tasks, statusFilteredTasks, statusFilter]);
 
   const flatTasks = useMemo(
     () => [
@@ -332,62 +375,45 @@ export function FarmerTasksScreen() {
     return sorted;
   }, [flatTasks, searchQuery, sortMode]);
 
-  const categoryCounts = useMemo(
-    () => ({
-      overdue: categorized.overdue.length,
-      in_progress: categorized.inProgress.length,
-      not_started: categorized.notStarted.length,
-      submitted_for_approval: categorized.submittedForApproval.length,
-      rejected: categorized.rejected.length,
-      completed: categorized.completed.length,
-    }),
-    [categorized]
-  );
-
   useEffect(() => {
     if (loading) return;
     if (statusFilter === 'rejected' && categoryCounts.rejected === 0) {
-      navigation.setParams({ statusFilter: undefined });
+      setStatusFilter('all');
     }
     if (
       statusFilter === 'submitted_for_approval' &&
       categoryCounts.submitted_for_approval === 0
     ) {
-      navigation.setParams({ statusFilter: undefined });
+      setStatusFilter('all');
     }
   }, [
     loading,
     statusFilter,
     categoryCounts.rejected,
     categoryCounts.submitted_for_approval,
-    navigation,
   ]);
 
-  const toggleStatusFilter = (key: StatusFilterKey) => {
-    navigation.setParams({
-      statusFilter: statusFilter === key ? undefined : key,
-    });
+  const toggleStatusFilter = (key: TaskStatusKpiKey) => {
+    setStatusFilter((prev) => (prev === key ? 'all' : key));
   };
 
-  const setStatusFilterFromMenu = (key: StatusFilterKey | 'all') => {
+  const setStatusFilterFromMenu = (key: StatusFilterKey) => {
     setStatusMenuOpen(false);
-    navigation.setParams({
-      statusFilter: key === 'all' ? undefined : key,
-    });
+    setStatusFilter(key);
   };
 
   const resetFilters = () => {
     setStatusMenuOpen(false);
     setSortMenuOpen(false);
     setSortMode('due_asc');
-    navigation.setParams({ statusFilter: undefined });
+    setStatusFilter('all');
   };
 
   const statusFilterLabel =
-    STATUS_FILTER_OPTIONS.find((o) => o.key === (statusFilter ?? 'all'))?.label ?? 'All statuses';
+    STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)?.label ?? 'All statuses';
   const sortLabel = SORT_OPTIONS.find((opt) => opt.key === sortMode)?.label ?? 'Sort';
   const activeFilterCount =
-    (statusFilter ? 1 : 0) + (sortMode !== 'due_asc' ? 1 : 0);
+    (statusFilter !== 'all' ? 1 : 0) + (sortMode !== 'due_asc' ? 1 : 0);
 
   // Deep-link: open the same task module used by notifications.
   useEffect(() => {
@@ -479,10 +505,10 @@ export function FarmerTasksScreen() {
           </View>
           <TaskStatusKpiRow
             counts={categoryCounts}
-            selected={statusFilter ?? null}
+            selected={statusFilter === 'all' ? null : statusFilter}
             onSelect={toggleStatusFilter}
           />
-          {statusFilter ? (
+          {statusFilter !== 'all' ? (
             <Text className="mb-3 mt-2 text-xs text-[#757575]">
               Tap the selected card again to show all tasks
             </Text>
@@ -572,13 +598,13 @@ export function FarmerTasksScreen() {
                         key={opt.key}
                         onPress={() => setStatusFilterFromMenu(opt.key)}
                         className={`px-3 py-2.5 ${
-                          (statusFilter ?? 'all') === opt.key ? 'bg-[#E8F5F0]' : 'bg-white'
+                          statusFilter === opt.key ? 'bg-[#E8F5F0]' : 'bg-white'
                         }`}
                         style={webPressable}
                       >
                         <Text
                           className={`text-sm ${
-                            (statusFilter ?? 'all') === opt.key
+                            statusFilter === opt.key
                               ? 'font-semibold text-[#1A4D3E]'
                               : 'text-[#333333]'
                           }`}
@@ -753,23 +779,68 @@ export function FarmerTasksScreen() {
           ) : null}
         </View>
 
-        {visibleTasks.length === 0 ? (
-          !error ? (
-            <KBCard elevated={false}>
-              <Text className="text-base text-muted-foreground text-center">
-                {searchQuery.trim()
-                  ? 'No tasks match your search.'
-                  : statusFilter
-                    ? 'No tasks match this filter.'
-                    : 'You have no assigned tasks yet. New assignments from your field agent or program team will appear here.'}
-              </Text>
-            </KBCard>
-          ) : null
-        ) : (
-          <View style={styles.cardList}>
-            {visibleTasks.map((item) => renderTask(item))}
+        {(statusFilter !== 'all' || visibleTasks.length > 0 || searchQuery.trim()) ? (
+          <View
+            style={[
+              styles.tasksSection,
+              taskNotifications.length > 0 ? styles.tasksSectionAfterUpdates : null,
+            ]}
+          >
+            <Text className="mb-2 text-sm font-bold text-[#333333]">
+              {statusFilter !== 'all'
+                ? `${statusFilterLabel} (${visibleTasks.length})`
+                : `Your tasks (${visibleTasks.length})`}
+            </Text>
+
+            {visibleTasks.length === 0 ? (
+              !error ? (
+                <KBCard elevated={false} style={styles.filteredEmptyState}>
+                  {searchQuery.trim() ? (
+                    <SearchX size={40} color="#9E9E9E" />
+                  ) : (
+                    <ListX size={40} color="#9E9E9E" />
+                  )}
+                  <Text className="mt-3 text-center text-base font-semibold text-[#333333]">
+                    {searchQuery.trim()
+                      ? 'No tasks match your search'
+                      : statusFilter !== 'all'
+                        ? `No ${statusFilterLabel.toLowerCase()} tasks`
+                        : 'No assigned tasks yet'}
+                  </Text>
+                  <Text className="mt-1 text-center text-sm text-[#757575]">
+                    {searchQuery.trim()
+                      ? 'Try a different search term or clear your filters.'
+                      : statusFilter !== 'all'
+                        ? 'Task updates above are recent activity, not your filtered list. Tap the selected card again to show all tasks.'
+                        : 'New assignments from your field agent or program team will appear here.'}
+                  </Text>
+                  {statusFilter !== 'all' ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Show all tasks"
+                      onPress={() => setStatusFilter('all')}
+                      className="mt-4 rounded-lg bg-[#1A4D3E] px-4 py-2.5"
+                      style={webPressable}
+                    >
+                      <Text className="text-center text-sm font-semibold text-white">Show all tasks</Text>
+                    </Pressable>
+                  ) : null}
+                </KBCard>
+              ) : null
+            ) : (
+              <View style={styles.cardList}>
+                {visibleTasks.map((item) => renderTask(item))}
+              </View>
+            )}
           </View>
-        )}
+        ) : !error ? (
+          <KBCard elevated={false}>
+            <Text className="text-center text-base text-muted-foreground">
+              You have no assigned tasks yet. New assignments from your field agent or program team will
+              appear here.
+            </Text>
+          </KBCard>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -872,5 +943,19 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E8E8E8',
+  },
+  tasksSection: {
+    marginTop: 4,
+  },
+  tasksSectionAfterUpdates: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  filteredEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 20,
   },
 });
