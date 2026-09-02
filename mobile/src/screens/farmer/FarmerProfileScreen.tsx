@@ -14,7 +14,6 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Divider, List, Switch } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { getFarmerMyCentre, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
@@ -37,6 +36,8 @@ import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCa
 import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
+
+const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
 type SupportContacts = {
   fieldAgent?: {
@@ -590,16 +591,22 @@ export function FarmerProfileScreen() {
         />
       </View>
 
-      <Button className="mb-3 h-12 bg-[#D4AF6A]" onPress={() => setHelpOpen(true)}>
-        <View className="flex-row items-center gap-2">
-          <Ionicons name="help-buoy-outline" size={20} color="#1A4D3E" />
-          <Text className="font-semibold text-[#1A4D3E]">Need help? Contact field agent</Text>
-        </View>
-      </Button>
+      <Pressable
+        style={[styles.profileFooterButton, styles.helpButton, webPressable]}
+        onPress={() => setHelpOpen(true)}
+        accessibilityRole="button"
+      >
+        <Ionicons name="help-buoy-outline" size={16} color="#1A4D3E" />
+        <Text style={styles.helpButtonText}>Need help? Contact field agent</Text>
+      </Pressable>
 
-      <Button variant="outline" className="mt-2 border-[#D32F2F]" onPress={logout}>
-        <Text className="text-[#D32F2F]">Sign Out</Text>
-      </Button>
+      <Pressable
+        style={[styles.profileFooterButton, styles.signOutButton, webPressable]}
+        onPress={logout}
+        accessibilityRole="button"
+      >
+        <Text style={styles.signOutButtonText}>Sign Out</Text>
+      </Pressable>
 
       <FarmerHelpModal
         visible={helpOpen}
@@ -644,6 +651,37 @@ function ProfileRow({
 }
 
 const styles = StyleSheet.create({
+  profileFooterButton: {
+    width: '100%',
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  helpButton: {
+    marginBottom: 12,
+    backgroundColor: '#D4AF6A',
+    borderColor: '#D4AF6A',
+  },
+  helpButtonText: {
+    color: '#1A4D3E',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  signOutButton: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D32F2F',
+  },
+  signOutButtonText: {
+    color: '#D32F2F',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   photoPressable: {
     ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
