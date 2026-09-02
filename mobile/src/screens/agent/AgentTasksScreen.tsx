@@ -1120,8 +1120,9 @@ export function AgentTasksScreen() {
 
   if (loading && !hasLoadedRef.current) {
     return (
-      <View className="flex-1 items-center justify-center">
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
         <ActivityIndicator size="large" color="#1A4D3E" />
+        <Text className="mt-3 text-sm text-[#757575]">Loading tasks...</Text>
       </View>
     );
   }

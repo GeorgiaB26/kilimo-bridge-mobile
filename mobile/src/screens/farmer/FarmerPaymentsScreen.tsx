@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, FlatList, Pressable, TextInput, Platform, ScrollView } from 'react-native';
+import { View, FlatList, Pressable, TextInput, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { Text } from '@/components/ui/text';
+import { COLORS } from '../../constants';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
@@ -65,6 +66,7 @@ export function FarmerPaymentsScreen() {
     paddingBottom: 32,
   });
   const [payments, setPayments] = useState<FarmerPaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState({
     transferred: 0,
     pending: 0,
@@ -96,6 +98,8 @@ export function FarmerPaymentsScreen() {
     } catch (err: unknown) {
       setCacheFetchedAt(null);
       setError(extractApiError(err, 'Could not load payments'));
+    } finally {
+      setLoading(false);
     }
   }, [userScope]);
 
@@ -139,6 +143,15 @@ export function FarmerPaymentsScreen() {
     setSortMenuOpen(false);
     setSortMode('newest');
   };
+
+  if (loading && payments.length === 0) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text className="mt-3 text-sm text-[#757575]">Loading your payments...</Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-[#F5F5F5]">

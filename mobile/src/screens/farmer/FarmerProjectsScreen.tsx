@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, FlatList } from 'react-native';
+import { View, FlatList, ActivityIndicator } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
+import { COLORS } from '../../constants';
 import { getFarmerProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
@@ -47,7 +48,7 @@ export function FarmerProjectsScreen() {
   const [useHierarchy, setUseHierarchy] = useState(false);
 
   const [hierarchyError, setHierarchyError] = useState<string | null>(null);
-  const [hierarchyChecked, setHierarchyChecked] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const loadHierarchy = useCallback(() => {
@@ -77,7 +78,9 @@ export function FarmerProjectsScreen() {
         setCacheFetchedAt(null);
         setHierarchyError(extractApiError(err, 'Could not load program projects'));
       })
-      .finally(() => setHierarchyChecked(true));
+      .finally(() => {
+        setLoading(false);
+      });
   }, [userScope]);
 
   useEffect(() => {
@@ -85,7 +88,16 @@ export function FarmerProjectsScreen() {
     getFarmerProjects().then((d) => setProjects(d.projects ?? [])).catch(() => {});
   }, [loadHierarchy]);
 
-  if (useHierarchy || hierarchyChecked) {
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text className="mt-3 text-sm text-[#757575]">Loading your projects...</Text>
+      </View>
+    );
+  }
+
+  if (useHierarchy) {
     const active = hierarchyProjects.filter((p) => p.status !== 'completed');
     const done = hierarchyProjects.filter((p) => p.status === 'completed');
     const shown = tab === 'active' ? active : done;

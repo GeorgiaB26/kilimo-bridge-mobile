@@ -21,7 +21,6 @@ export function AgentCentresScreen() {
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
     try {
       const data = await getAgentCentresInDistrict();
       setCentres(data.centres ?? []);
@@ -41,10 +40,11 @@ export function AgentCentresScreen() {
     }, [load])
   );
 
-  if (loading) {
+  if (loading && centres.length === 0) {
     return (
       <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
         <ActivityIndicator color="#1A4D3E" size="large" />
+        <Text className="mt-3 text-sm text-[#757575]">Loading centres...</Text>
       </View>
     );
   }
