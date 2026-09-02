@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   KeyboardAvoidingView as KCAvoidingView,
+  useKeyboardState,
 } from 'react-native-keyboard-controller';
 import { FormKeyboardScroll } from './FormKeyboardScroll';
 import { modalKeyboardVerticalOffset } from '../../utils/keyboardAvoiding';
@@ -90,8 +91,10 @@ export function KeyboardBottomSheet({
 }: KeyboardBottomSheetProps) {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const isBottom = variant === 'bottom';
-  const bottomInset = isBottom ? insets.bottom : 0;
+  /** Home-indicator padding only when the keyboard is not covering the bottom edge. */
+  const bottomInset = isBottom && !keyboardVisible ? insets.bottom : 0;
   const defaultSheetClass = isBottom
     ? 'max-h-[92%] rounded-t-2xl bg-white'
     : 'max-h-[85%] rounded-xl bg-white p-5';

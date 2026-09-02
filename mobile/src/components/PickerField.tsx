@@ -3,16 +3,17 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Modal,
   Pressable,
   FlatList,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardState } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
+import { KeyboardBottomSheet } from './ui/KeyboardBottomSheet';
 
 type Option = { label: string; value: string };
 
@@ -45,10 +46,9 @@ export function PickerField({
 }: PickerFieldProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  /** Keep the last option above Android 3-button nav / iOS home indicator. */
-  const navFallback = Platform.OS === 'android' ? 48 : 16;
-  const sheetBottomPad = Math.max(insets.bottom, navFallback) + 8;
+  const keyboardHeight = useKeyboardState((state) => (state.isVisible ? state.height : 0));
 
   const normalized = useMemo<Option[]>(
     () => options.map((o) => (typeof o === 'string' ? { label: o || 'None', value: o } : o)),
@@ -95,6 +95,16 @@ export function PickerField({
     close();
   };
 
+  const sheetHeaderHeight = showSearch ? 116 : 52;
+  const listMaxHeight = useMemo(() => {
+    const sheetCap = windowHeight * 0.75;
+    if (keyboardHeight > 0) {
+      // Sheet is lifted by KeyboardBottomSheet; shrink the list to the space above the keyboard.
+      return Math.max(120, windowHeight - keyboardHeight - sheetHeaderHeight - 16);
+    }
+    return Math.max(160, sheetCap - sheetHeaderHeight - insets.bottom);
+  }, [windowHeight, keyboardHeight, sheetHeaderHeight, insets.bottom]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>
@@ -127,10 +137,13 @@ export function PickerField({
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Modal visible={open} transparent animationType="none" onRequestClose={close} statusBarTranslucent>
-        <View style={styles.modalRoot}>
-          <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Dismiss" />
-          <View style={[styles.sheet, { paddingBottom: sheetBottomPad }]}>
+      <KeyboardBottomSheet
+        visible={open}
+        onRequestClose={close}
+        sheetStyle={styles.sheet}
+        sheetClassName="rounded-t-2xl bg-white"
+        header={
+          <>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{label}</Text>
               <Pressable onPress={close} hitSlop={12} accessibilityRole="button">
@@ -153,57 +166,58 @@ export function PickerField({
                 />
               </View>
             ) : null}
-
-            <FlatList
-              data={filtered}
-              keyExtractor={(item, index) => `${item.value}-${index}`}
-              keyboardShouldPersistTaps="handled"
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              ListEmptyComponent={
-                onCreate ? (
-                  <Text style={styles.empty}>
-                    {queryTrimmed
-                      ? 'No matches. Add this name below.'
-                      : 'No verified options yet. Type a name to add it.'}
-                  </Text>
-                ) : (
-                  <Text style={styles.empty}>No matches. Try a different search.</Text>
-                )
-              }
-              ListFooterComponent={
-                onCreate && queryTrimmed && !exactMatch ? (
-                  <Pressable onPress={handleCreate} style={styles.createOption}>
-                    <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-                    <Text style={styles.createOptionText} numberOfLines={2}>
-                      {createLabel ?? `Add “${queryTrimmed}”`}
-                    </Text>
-                  </Pressable>
-                ) : null
-              }
-              renderItem={({ item }) => {
-                const selected = item.value === value;
-                return (
-                  <Pressable
-                    onPress={() => handleSelect(item.value)}
-                    style={[styles.option, selected ? styles.optionSelected : null]}
-                  >
-                    <Text
-                      style={[styles.optionText, selected ? styles.optionTextSelected : null]}
-                      numberOfLines={2}
-                    >
-                      {item.label}
-                    </Text>
-                    {selected ? (
-                      <Ionicons name="checkmark" size={18} color={COLORS.primary} />
-                    ) : null}
-                  </Pressable>
-                );
-              }}
-            />
-          </View>
-        </View>
-      </Modal>
+          </>
+        }
+      >
+        <FlatList
+          data={filtered}
+          keyExtractor={(item, index) => `${item.value}-${index}`}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          style={[styles.list, { maxHeight: listMaxHeight }]}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            onCreate ? (
+              <Text style={styles.empty}>
+                {queryTrimmed
+                  ? 'No matches. Add this name below.'
+                  : 'No verified options yet. Type a name to add it.'}
+              </Text>
+            ) : (
+              <Text style={styles.empty}>No matches. Try a different search.</Text>
+            )
+          }
+          ListFooterComponent={
+            onCreate && queryTrimmed && !exactMatch ? (
+              <Pressable onPress={handleCreate} style={styles.createOption}>
+                <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.createOptionText} numberOfLines={2}>
+                  {createLabel ?? `Add “${queryTrimmed}”`}
+                </Text>
+              </Pressable>
+            ) : null
+          }
+          renderItem={({ item }) => {
+            const selected = item.value === value;
+            return (
+              <Pressable
+                onPress={() => handleSelect(item.value)}
+                style={[styles.option, selected ? styles.optionSelected : null]}
+              >
+                <Text
+                  style={[styles.optionText, selected ? styles.optionTextSelected : null]}
+                  numberOfLines={2}
+                >
+                  {item.label}
+                </Text>
+                {selected ? (
+                  <Ionicons name="checkmark" size={18} color={COLORS.primary} />
+                ) : null}
+              </Pressable>
+            );
+          }}
+        />
+      </KeyboardBottomSheet>
     </View>
   );
 }
@@ -253,19 +267,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  backdrop: {
-    flex: 1,
-  },
   sheet: {
     maxHeight: '75%',
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -301,6 +304,7 @@ const styles = StyleSheet.create({
   },
   list: {
     flexGrow: 0,
+    flexShrink: 1,
   },
   listContent: {
     paddingBottom: 8,
