@@ -21,6 +21,7 @@ import { formatCleanDate } from '../../utils/greeting';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 import {
   dismissFarmerVerificationOutbox,
   listPendingFarmerVerifications,
@@ -94,6 +95,7 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   );
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [reviewingPhoto, setReviewingPhoto] = useState(false);
+  const scrollContentStyle = useTabScreenContentContainerStyle({ paddingBottom: 32 });
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -297,7 +299,7 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
 
   return (
     <>
-      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="pb-8">
+      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerStyle={scrollContentStyle}>
         <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
           <View className="items-center">
             <FarmerProfilePhoto

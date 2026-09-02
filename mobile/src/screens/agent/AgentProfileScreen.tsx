@@ -26,6 +26,7 @@ import { KBCard } from '../../components/ui/KBCard';
 import { KeyboardBottomSheet } from '../../components/ui/KeyboardBottomSheet';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 import type { AgentRootStackParamList, AgentTabParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 const USEFUL_DOCUMENTS = [
   { name: 'User Guide v2.1', size: '2.3 MB', type: 'PDF' },
@@ -55,6 +56,7 @@ export function AgentProfileScreen() {
   const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const [pm, setPm] = useState<{ name: string; phone: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
@@ -144,7 +146,7 @@ export function AgentProfileScreen() {
 
   return (
     <>
-      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
+      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4" contentContainerStyle={scrollContentStyle}>
         <View className="mb-4 items-center rounded-xl bg-white p-5">
           <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-[#1A4D3E]">
             <Text className="text-2xl font-bold text-[#D4AF6A]">

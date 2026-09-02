@@ -36,6 +36,7 @@ import { uploadPhotoToR2 } from '../../services/uploadToR2';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type SupportContacts = {
   fieldAgent?: {
@@ -99,6 +100,7 @@ export function FarmerProfileScreen() {
   const logout = useAuthStore((s) => s.logout);
   const { currency, currencyInfo, selectCountry } = useCurrency();
   const userScope = useReadCacheUserScope();
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const [farmer, setFarmer] = useState<{
     name: string;
     phone_number: string;
@@ -308,7 +310,7 @@ export function FarmerProfileScreen() {
   const photoAwaitingApproval = Boolean(farmer?.pending_picture_url || farmer?.photoUpdatePending);
 
   return (
-    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
+    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4" contentContainerStyle={scrollContentStyle}>
       {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
       {error && !farmer ? <FarmerOfflineBanner message={error} /> : null}
       <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">

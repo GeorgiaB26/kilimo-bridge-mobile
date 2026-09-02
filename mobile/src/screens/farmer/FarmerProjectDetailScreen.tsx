@@ -10,11 +10,13 @@ import { FarmerProjectTasksSection } from '../../components/farmer/FarmerProject
 import { formatCleanDate, formatProjectStatus, formatProjectDate } from '../../utils/greeting';
 import { PROJECT_DESCRIPTIONS } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type Props = NativeStackScreenProps<FarmerProjectsStackParamList, 'ProjectDetail'>;
 
 export function FarmerProjectDetailScreen({ route }: Props) {
   const { project, programProjectId } = route.params;
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const { formatAmount } = useCurrency();
   const statusInfo = formatProjectStatus(project.status);
   const isComplete = project.status === 'Completed';
@@ -23,7 +25,7 @@ export function FarmerProjectDetailScreen({ route }: Props) {
     'A Kilimo Bridge cooperative project. Complete the assigned work to receive your payment via M-Pesa.';
 
   return (
-    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
+    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4" contentContainerStyle={scrollContentStyle}>
       <View className="mb-4 items-center rounded-2xl bg-white p-6">
         <View className="mb-3 h-[72px] w-[72px] items-center justify-center rounded-full bg-[#E8F5F0]">
           <Ionicons name="leaf" size={36} color="#1A4D3E" />

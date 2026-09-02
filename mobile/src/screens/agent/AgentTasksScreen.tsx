@@ -35,6 +35,7 @@ import type { CategorizedTasks } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
@@ -433,6 +434,11 @@ export function AgentTasksScreen() {
   const hasLoadedRef = useRef(false);
   const appliedDeepLinkTaskIdRef = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  const scrollContentStyle = useTabScreenContentContainerStyle({
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 40,
+  });
   const cardListOffsetRef = useRef(0);
   const cardOffsetsRef = useRef<Record<string, number>>({});
   const pendingScrollTaskIdRef = useRef<string | null>(null);
@@ -1125,7 +1131,7 @@ export function AgentTasksScreen() {
       <ScrollView
         ref={scrollRef}
         className="flex-1 bg-[#F5F5F5]"
-        contentContainerClassName="p-4 pb-10"
+        contentContainerStyle={scrollContentStyle}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}

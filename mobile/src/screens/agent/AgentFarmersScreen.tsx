@@ -33,6 +33,7 @@ import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 import { getReadCache, loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { filterFarmersOffline } from '../../utils/farmerListOfflineFilter';
@@ -53,6 +54,7 @@ type FarmersPayload = { farmers?: FarmerRow[]; total?: number };
 export function AgentFarmersScreen() {
   const user = useAuthStore((s) => s.user);
   const userScope = useReadCacheUserScope();
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const route = useRoute<RouteProp<AgentFarmersStackParamList, 'FarmerList'>>();
   const statusFilter = route.params?.statusFilter ?? 'all';
   const navigation = useNavigation<NativeStackNavigationProp<AgentFarmersStackParamList>>();
@@ -269,6 +271,7 @@ export function AgentFarmersScreen() {
   return (
     <FlatList
       className="flex-1 p-4"
+      contentContainerStyle={scrollContentStyle}
       data={filteredFarmers}
       keyExtractor={(item) => item.farmer_id}
       keyboardShouldPersistTaps="handled"

@@ -1,5 +1,5 @@
 import React, { useContext, useLayoutEffect, useMemo } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -77,7 +77,7 @@ function TabBarIcon({
 
 /**
  * Vertical space consumed by the absolute FloatingTabBar (safe-area + margin + pill).
- * Use for tab `sceneStyle.paddingBottom` so scroll content clears the bar.
+ * Apply via `useTabScreenContentContainerStyle` on scroll/list content — not scene padding.
  */
 export function floatingTabBarClearance(bottomInset: number): number {
   const bottomPad = Math.max(bottomInset, 8) + BOTTOM_MARGIN;
@@ -100,10 +100,28 @@ export const floatingTabBarNavigatorScreenOptions = {
   },
 };
 
-/**
- * Tab scenes extend edge-to-edge behind the floating pill.
- * Apply `floatingTabBarClearance()` to scroll content padding instead.
- */
+/** Bottom inset for scroll content on tab screens (e.g. contentContainerStyle). */
+export function useFloatingTabBarScrollInset(): number {
+  const insets = useSafeAreaInsets();
+  return useMemo(() => floatingTabBarClearance(insets.bottom), [insets.bottom]);
+}
+
+const TAB_SCROLL_CONTENT_GAP = 16;
+
+/** Merge floating-tab clearance into ScrollView / FlatList contentContainerStyle. */
+export function useTabScreenContentContainerStyle(
+  style?: StyleProp<ViewStyle>
+): StyleProp<ViewStyle> {
+  const inset = useFloatingTabBarScrollInset();
+  return useMemo(() => {
+    const flat = StyleSheet.flatten(style);
+    const existingBottom =
+      typeof flat?.paddingBottom === 'number' ? flat.paddingBottom : TAB_SCROLL_CONTENT_GAP;
+    return [style, { paddingBottom: inset + existingBottom }];
+  }, [inset, style]);
+}
+
+/** Tab scenes stay full-height so content can scroll behind the pill — no scene padding. */
 export function useFloatingTabBarSceneStyle(): ViewStyle {
   return useMemo(() => ({}), []);
 }

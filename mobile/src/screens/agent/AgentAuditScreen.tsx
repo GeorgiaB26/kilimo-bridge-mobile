@@ -8,6 +8,7 @@ import {
   formatAgentAuditEntry,
   groupAuditByDate,
 } from '../../utils/agentAuditLabels';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type LogRow = {
   action: string;
@@ -50,11 +51,12 @@ export function AgentAuditScreen() {
   });
 
   const grouped = groupAuditByDate(filtered);
+  const scrollContentStyle = useTabScreenContentContainerStyle({ padding: 16, paddingBottom: 40 });
 
   return (
     <FlatList
       className="flex-1 bg-[#F5F5F5]"
-      contentContainerClassName="p-4 pb-10"
+      contentContainerStyle={scrollContentStyle}
       data={grouped}
       keyExtractor={(item) => item.label}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

@@ -23,6 +23,7 @@ import { extractApiError } from '../../utils/feedback';
 import { formatTimeAgo } from '../../constants/notifications';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import type { SupportMessagesStackParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type Nav = NativeStackNavigationProp<SupportMessagesStackParamList, 'SupportTicketsList'>;
 type Route = RouteProp<SupportMessagesStackParamList, 'SupportTicketsList'>;
@@ -40,6 +41,7 @@ export function SupportMessagesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollContentStyle = useTabScreenContentContainerStyle({ paddingHorizontal: 12, paddingBottom: 16 });
 
   useEffect(() => {
     const next = route.params?.statusFilter;
@@ -120,6 +122,7 @@ export function SupportMessagesScreen() {
         <FlatList
           data={tickets}
           keyExtractor={(item) => item.thread_id}
+          contentContainerStyle={scrollContentStyle}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <View style={styles.emptyBox}>

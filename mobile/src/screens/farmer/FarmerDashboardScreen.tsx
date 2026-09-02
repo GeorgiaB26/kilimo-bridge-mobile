@@ -28,6 +28,7 @@ import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCa
 import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<FarmerTabParamList, 'Dashboard'>,
@@ -200,11 +201,13 @@ export function FarmerDashboardScreen() {
     openFarmerTaskModule(navigation, taskId);
   };
 
+  const scrollContentStyle = useTabScreenContentContainerStyle({ paddingBottom: 16 });
+
   return (
     <View className="flex-1 bg-[#F5F5F5]">
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={scrollContentStyle}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF6A" />
         }

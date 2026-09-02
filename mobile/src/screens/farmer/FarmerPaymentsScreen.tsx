@@ -20,6 +20,7 @@ import type { FarmerTabParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { fetchFarmerPaymentsForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type Route = RouteProp<FarmerTabParamList, 'Payments'>;
 type DateSortMode = 'newest' | 'oldest';
@@ -58,6 +59,11 @@ export function FarmerPaymentsScreen() {
   const route = useRoute<Route>();
   const { formatAmount } = useCurrency();
   const userScope = useReadCacheUserScope();
+  const scrollContentStyle = useTabScreenContentContainerStyle({
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+  });
   const [payments, setPayments] = useState<FarmerPaymentRow[]>([]);
   const [summary, setSummary] = useState({
     transferred: 0,
@@ -258,7 +264,7 @@ export function FarmerPaymentsScreen() {
             ) : null}
           </>
         }
-        contentContainerClassName="p-4 pb-8"
+        contentContainerStyle={scrollContentStyle}
         renderItem={({ item }) => {
           const borderColor = paymentStatusColor(item.payment_status);
           const isExpected =

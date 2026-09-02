@@ -19,6 +19,7 @@ import type { FarmerProjectsStackParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { fetchFarmerProjectsForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type Tab = 'active' | 'completed';
 type Nav = NativeStackNavigationProp<FarmerProjectsStackParamList, 'ProjectsList'>;
@@ -39,6 +40,7 @@ export function FarmerProjectsScreen() {
   const navigation = useNavigation<Nav>();
   const { formatAmount } = useCurrency();
   const userScope = useReadCacheUserScope();
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const [tab, setTab] = useState<Tab>('active');
   const [projects, setProjects] = useState<FarmerProject[]>([]);
   const [hierarchyProjects, setHierarchyProjects] = useState<HierarchyProject[]>([]);
@@ -111,7 +113,7 @@ export function FarmerProjectsScreen() {
           className="flex-1"
           data={shown}
           keyExtractor={(item) => item.id}
-          contentContainerClassName="pb-8"
+          contentContainerStyle={scrollContentStyle}
           renderItem={({ item }) => {
             const total = Number(item.assigned_task_count ?? item.task_count) || 0;
             const doneCount = Number(item.completed_task_count) || 0;
@@ -175,7 +177,7 @@ export function FarmerProjectsScreen() {
         className="flex-1"
         data={filtered}
         keyExtractor={(item, i) => item.id ?? `${item.project_name}-${i}`}
-        contentContainerClassName="pb-8"
+        contentContainerStyle={scrollContentStyle}
         renderItem={({ item }) => {
           const statusInfo = formatProjectStatus(item.status ?? '');
           const isComplete = item.status === 'Completed';

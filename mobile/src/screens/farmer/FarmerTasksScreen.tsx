@@ -39,6 +39,7 @@ import {
 } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 import {
   dismissTaskRecallOutbox,
   listPendingTaskRecalls,
@@ -195,6 +196,7 @@ export function FarmerTasksScreen() {
 
   const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
     useTaskNotificationBanners();
+  const scrollContentStyle = useTabScreenContentContainerStyle(styles.listContent);
 
   useEffect(() => {
     if (routeStatusFilter) {
@@ -491,7 +493,7 @@ export function FarmerTasksScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={scrollContentStyle}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
@@ -860,7 +862,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 100,
+    paddingBottom: 16,
   },
   header: {
     marginBottom: 8,

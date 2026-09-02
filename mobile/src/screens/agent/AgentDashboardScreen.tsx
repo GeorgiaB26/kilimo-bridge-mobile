@@ -27,6 +27,7 @@ import {
   TaskStatusKpiRow,
   type TaskStatusKpiKey,
 } from '../../components/TaskStatusKpiRow';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type Nav = BottomTabNavigationProp<AgentTabParamList, 'Dashboard'>;
 
@@ -107,6 +108,7 @@ export function AgentDashboardScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const { notifications: taskNotifications, dismiss: dismissTaskNotification } =
     useTaskNotificationBanners();
+  const scrollContentStyle = useTabScreenContentContainerStyle();
 
   const load = useCallback(async () => {
     try {
@@ -158,7 +160,8 @@ export function AgentDashboardScreen() {
   return (
     <ScrollView
       className="flex-1 bg-[#F5F5F5]"
-      contentContainerClassName="p-4 pb-10"
+      contentContainerClassName="p-4"
+      contentContainerStyle={scrollContentStyle}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       {loadError ? (

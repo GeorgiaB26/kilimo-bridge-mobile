@@ -18,6 +18,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getSupportStats, type SupportTicketStats } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import type { SupportTabParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type Nav = BottomTabNavigationProp<SupportTabParamList, 'Dashboard'>;
 
@@ -62,6 +63,7 @@ export function SupportDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollContentStyle = useTabScreenContentContainerStyle(styles.content);
 
   const load = useCallback(async () => {
     try {
@@ -113,7 +115,7 @@ export function SupportDashboardScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={scrollContentStyle}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <Text style={styles.greeting}>Hello, {user?.name?.split(' ')[0] ?? 'Support'}</Text>
