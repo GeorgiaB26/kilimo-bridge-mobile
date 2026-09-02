@@ -2,13 +2,14 @@ import React from 'react';
 import { Pressable, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
+import { NAV_HEADER_ICON_SIZE_COMPACT } from '../messaging/MessagesNotificationsHeaderIcons';
 
 interface Props {
   onPress: () => void;
   compact?: boolean;
 }
 
-const COMPACT_ICON = 22;
+const COMPACT_ICON = NAV_HEADER_ICON_SIZE_COMPACT;
 
 export function RegisterNewFarmerButton({ onPress, compact }: Props) {
   if (compact) {
@@ -48,7 +49,7 @@ export function RegisterNewFarmerBanner({ onPress }: Props) {
 
 const styles = StyleSheet.create({
   compactHit: {
-    padding: 6,
+    padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },

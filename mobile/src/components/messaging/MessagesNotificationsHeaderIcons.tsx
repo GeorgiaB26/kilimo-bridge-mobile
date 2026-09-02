@@ -30,10 +30,14 @@ function UnreadBadge({ count }: { count: number }) {
   );
 }
 
-const ICON_SIZE_DEFAULT = 22;
-const ICON_SIZE_COMPACT = 20;
-const HIT_PADDING_DEFAULT = 6;
-const HIT_PADDING_COMPACT = 4;
+/** Nav header icon sizes (25% smaller than the previous 22 / 20 defaults). */
+export const NAV_HEADER_ICON_SIZE = 17;
+export const NAV_HEADER_ICON_SIZE_COMPACT = 15;
+
+const ICON_SIZE_DEFAULT = NAV_HEADER_ICON_SIZE;
+const ICON_SIZE_COMPACT = NAV_HEADER_ICON_SIZE_COMPACT;
+const HIT_PADDING_DEFAULT = 5;
+const HIT_PADDING_COMPACT = 3;
 
 export function MessagesNotificationsHeaderIcons({
   messagesRoute = 'MessagesFlow',

@@ -125,6 +125,7 @@ export function AgentProfileScreen() {
         <View style={{ marginRight: 16 }}>
           <MessagesNotificationsHeaderIcons
             iconColor="#fff"
+            compact
             onSettingsPress={() => setSettingsOpen(true)}
           />
         </View>
