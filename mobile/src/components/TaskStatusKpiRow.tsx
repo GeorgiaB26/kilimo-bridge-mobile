@@ -73,13 +73,22 @@ const REJECTED_KPI: KpiCardDef = {
   countColor: '#D32F2F',
 };
 
+/** Columns per row for spacer alignment after chunking. */
+export function kpiColumnsPerRow(cardCount: number): number {
+  if (cardCount === 4) return 2;
+  if (cardCount <= 3) return cardCount;
+  return 3;
+}
+
 /**
  * Chunk visible KPIs into rows:
- * 1–4 → one row; 5 → 3+2; 6 → 3+3; more → wrap every 3.
+ * 4 → 2×2 (wider cards, squarer layout); 1–3 → one row; 5+ → wrap every 3.
  */
 export function chunkKpiRows<T>(cards: T[]): T[][] {
   const n = cards.length;
-  if (n <= 4) return n === 0 ? [] : [cards];
+  if (n === 0) return [];
+  if (n === 4) return [cards.slice(0, 2), cards.slice(2, 4)];
+  if (n <= 3) return [cards];
   const rows: T[][] = [];
   for (let i = 0; i < n; i += 3) {
     rows.push(cards.slice(i, i + 3));
@@ -113,7 +122,7 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
   }, [counts.rejected, counts.submitted_for_approval]);
 
   const rows = useMemo(() => chunkKpiRows(visibleCards), [visibleCards]);
-  const columnsPerRow = visibleCards.length <= 4 ? visibleCards.length : 3;
+  const columnsPerRow = kpiColumnsPerRow(visibleCards.length);
 
   return (
     <View style={styles.kpiStack}>
@@ -138,14 +147,16 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
                   Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
                 ]}
               >
-                <Icon size={20} color={kpi.iconColor} />
-                <Text
-                  className="mt-1 text-2xl font-bold"
-                  style={{ color: kpi.countColor }}
-                >
-                  {count}
-                </Text>
-                <Text className="mt-0.5 text-xs text-[#757575]">{kpi.label}</Text>
+                <View style={styles.kpiMetricRow}>
+                  <Icon size={10} color={kpi.iconColor} />
+                  <Text
+                    className="text-2xl font-bold"
+                    style={[styles.kpiCount, { color: kpi.countColor }]}
+                  >
+                    {count}
+                  </Text>
+                </View>
+                <Text style={styles.kpiLabel}>{kpi.label}</Text>
               </Pressable>
             );
           })}
@@ -175,10 +186,32 @@ const styles = StyleSheet.create({
     minWidth: 0,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: '#E8E8E8',
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
+  },
+  kpiMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  kpiCount: {
+    flexShrink: 1,
+    lineHeight: 28,
+  },
+  kpiLabel: {
+    marginTop: 4,
+    width: '100%',
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#757575',
+    ...Platform.select({
+      android: { textBreakStrategy: 'simple' as const },
+      ios: { lineBreakStrategyIOS: 'standard' as const },
+      default: {},
+    }),
   },
   kpiSpacer: {
     flex: 1,
