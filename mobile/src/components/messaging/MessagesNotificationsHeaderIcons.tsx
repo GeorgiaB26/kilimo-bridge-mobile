@@ -18,12 +18,31 @@ type Props = {
   messageCountOverride?: number;
 };
 
-function UnreadBadge({ count }: { count: number }) {
+function UnreadBadge({ count, compact }: { count: number; compact: boolean }) {
   const label = count > 99 ? '99+' : String(count);
   const wide = label.length > 1;
+  const badgeSize = compact ? BADGE_SIZE_COMPACT : BADGE_SIZE;
   return (
-    <View style={[styles.badge, wide ? styles.badgeWide : null]}>
-      <RNText style={styles.badgeText} allowFontScaling={false}>
+    <View
+      style={[
+        styles.badge,
+        compact ? styles.badgeCompact : styles.badgeDefault,
+        {
+          width: wide ? undefined : badgeSize,
+          height: badgeSize,
+          borderRadius: badgeSize / 2,
+          minWidth: wide ? badgeSize : undefined,
+          paddingHorizontal: wide ? (compact ? 2 : 3) : 0,
+        },
+      ]}
+    >
+      <RNText
+        style={[
+          styles.badgeText,
+          compact ? styles.badgeTextCompact : styles.badgeTextDefault,
+        ]}
+        allowFontScaling={false}
+      >
         {label}
       </RNText>
     </View>
@@ -81,7 +100,7 @@ export function MessagesNotificationsHeaderIcons({
         accessibilityHint="Open messages"
       >
         <Ionicons name="chatbubbles-outline" size={iconSize} color={iconColor} />
-        {displayMessageCount > 0 ? <UnreadBadge count={displayMessageCount} /> : null}
+        {displayMessageCount > 0 ? <UnreadBadge count={displayMessageCount} compact={compact} /> : null}
       </Pressable>
       <Pressable
         onPress={() => openFlow(notificationsRoute)}
@@ -90,7 +109,7 @@ export function MessagesNotificationsHeaderIcons({
         accessibilityHint="Open notifications"
       >
         <Ionicons name="notifications-outline" size={iconSize} color={iconColor} />
-        {notificationCount > 0 ? <UnreadBadge count={notificationCount} /> : null}
+        {notificationCount > 0 ? <UnreadBadge count={notificationCount} compact={compact} /> : null}
       </Pressable>
       {onSettingsPress ? (
         <Pressable
@@ -106,7 +125,9 @@ export function MessagesNotificationsHeaderIcons({
   );
 }
 
-const BADGE_SIZE = 16;
+/** Sized to match NAV_HEADER_ICON_SIZE* (was 16px when icons were 22/20). */
+const BADGE_SIZE = 13;
+const BADGE_SIZE_COMPACT = 11;
 
 const styles = StyleSheet.create({
   row: {
@@ -119,27 +140,31 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: 1,
-    right: 1,
-    width: BADGE_SIZE,
-    height: BADGE_SIZE,
-    borderRadius: BADGE_SIZE / 2,
     backgroundColor: '#FFD700',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  badgeWide: {
-    width: undefined,
-    minWidth: BADGE_SIZE,
-    paddingHorizontal: 3,
+  badgeDefault: {
+    top: 0,
+    right: 0,
+  },
+  badgeCompact: {
+    top: -1,
+    right: -1,
   },
   badgeText: {
     color: '#1A1A1A',
-    fontSize: 8,
     fontWeight: '700',
-    lineHeight: 10,
     textAlign: 'center',
     includeFontPadding: false,
+  },
+  badgeTextDefault: {
+    fontSize: 7,
+    lineHeight: 9,
+  },
+  badgeTextCompact: {
+    fontSize: 6,
+    lineHeight: 8,
   },
 });

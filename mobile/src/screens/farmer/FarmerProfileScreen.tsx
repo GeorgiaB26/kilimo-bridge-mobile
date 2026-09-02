@@ -330,7 +330,7 @@ export function FarmerProfileScreen() {
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4" contentContainerStyle={scrollContentStyle}>
       {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
       {error && !farmer ? <FarmerOfflineBanner message={error} /> : null}
-      <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] px-5 pb-5 pt-4">
+      <View className="mb-5 items-center overflow-hidden rounded-[20px] bg-[#1A4D3E] px-5 pb-5 pt-4">
         <Pressable
           onPress={openPhotoPickerMenu}
           disabled={Boolean(pendingUri) || photoPickerDisabled}
@@ -356,6 +356,42 @@ export function FarmerProfileScreen() {
             <ProfileAvatar name={displayName} pictureUrl={farmer?.picture_url} size="hero" label="" />
           )}
         </Pressable>
+
+        {pendingUri ? (
+          <View style={styles.actionRow}>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={discardPendingPhoto}
+                disabled={savingPhoto}
+                style={[styles.outlineAction, savingPhoto && styles.takePhotoBtnDisabled]}
+              >
+                <Text style={styles.outlineActionText}>Cancel</Text>
+              </Pressable>
+            </View>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={() => void pickProfilePhoto(true)}
+                disabled={savingPhoto || picking}
+                style={[styles.outlineAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
+              >
+                <Text style={styles.outlineActionText}>Retake</Text>
+              </Pressable>
+            </View>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={() => void handleSavePhoto()}
+                disabled={savingPhoto || picking}
+                style={[styles.submitAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
+              >
+                {savingPhoto ? (
+                  <ActivityIndicator color="#1A4D3E" />
+                ) : (
+                  <Text style={styles.submitActionText}>Send</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         <Text style={styles.profileHeaderName}>{displayName}</Text>
         <Text style={styles.profileHeaderLocation}>{location}</Text>
@@ -418,41 +454,6 @@ export function FarmerProfileScreen() {
                 </View>
               </View>
             ) : null}
-          </View>
-        ) : null}
-        {pendingUri ? (
-          <View style={styles.actionRow}>
-            <View style={styles.actionSlot}>
-              <Pressable
-                onPress={discardPendingPhoto}
-                disabled={savingPhoto}
-                style={[styles.outlineAction, savingPhoto && styles.takePhotoBtnDisabled]}
-              >
-                <Text style={styles.outlineActionText}>Cancel</Text>
-              </Pressable>
-            </View>
-            <View style={styles.actionSlot}>
-              <Pressable
-                onPress={() => void pickProfilePhoto(true)}
-                disabled={savingPhoto || picking}
-                style={[styles.outlineAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
-              >
-                <Text style={styles.outlineActionText}>Retake</Text>
-              </Pressable>
-            </View>
-            <View style={styles.actionSlot}>
-              <Pressable
-                onPress={() => void handleSavePhoto()}
-                disabled={savingPhoto || picking}
-                style={[styles.submitAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
-              >
-                {savingPhoto ? (
-                  <ActivityIndicator color="#1A4D3E" />
-                ) : (
-                  <Text style={styles.submitActionText}>Send</Text>
-                )}
-              </Pressable>
-            </View>
           </View>
         ) : null}
       </View>
@@ -786,17 +787,15 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'stretch',
     width: '100%',
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 8,
+    gap: 8,
   },
   actionSlot: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    minWidth: 88,
-    height: 44,
-    marginHorizontal: 4,
+    flex: 1,
+    minWidth: 0,
+    height: 40,
   },
   outlineAction: {
     width: '100%',
@@ -807,11 +806,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   outlineActionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#1A4D3E',
+    textAlign: 'center',
   },
   submitAction: {
     width: '100%',
@@ -820,10 +821,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#D4AF6A',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   submitActionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#1A4D3E',
+    textAlign: 'center',
   },
 });
