@@ -17,6 +17,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
+import { APP_NAV_HEADER_HEIGHT } from '../../navigation/AppNavHeader';
 import { KeyboardAvoidingView as KCAvoidingView } from 'react-native-keyboard-controller';
 import {
   KEYBOARD_AVOIDING_BEHAVIOR,
@@ -292,11 +293,11 @@ export function MessageDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f7f6' },
   header: {
+    height: APP_NAV_HEADER_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.primary,
     paddingHorizontal: 8,
-    paddingVertical: 12,
     gap: 4,
   },
   backBtn: { padding: 4 },

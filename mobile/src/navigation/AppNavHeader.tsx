@@ -13,6 +13,8 @@ type Props = {
   onBack?: () => void;
   showInboxIcons?: boolean;
   rightAccessory?: React.ReactNode;
+  /** Defaults to primary green; Support desk passes blue. */
+  backgroundColor?: string;
 };
 
 export function AppNavHeader({
@@ -20,11 +22,12 @@ export function AppNavHeader({
   onBack,
   showInboxIcons = true,
   rightAccessory,
+  backgroundColor = COLORS.primary,
 }: Props) {
   const hasRight = showInboxIcons || Boolean(rightAccessory);
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { backgroundColor }]}>
       <View style={styles.left}>
         {onBack ? (
           <Pressable
@@ -56,7 +59,6 @@ export function AppNavHeader({
 const styles = StyleSheet.create({
   bar: {
     height: APP_NAV_HEADER_HEIGHT,
-    backgroundColor: COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
