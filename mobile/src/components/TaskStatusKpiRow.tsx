@@ -1,5 +1,5 @@
 import React, { useMemo, type ComponentType } from 'react';
-import { View, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import {
   Ban,
   Bell,
@@ -8,7 +8,7 @@ import {
   Hourglass,
   TriangleAlert,
 } from 'lucide-react-native';
-import { Text } from '@/components/ui/text';
+import { KpiMetricCard } from './ui/KpiMetricCard';
 
 export type TaskStatusKpiKey =
   | 'overdue'
@@ -133,31 +133,19 @@ export function TaskStatusKpiRow({ counts, selected, onSelect }: Props) {
             const count = counts[kpi.key];
             const Icon = kpi.Icon;
             return (
-              <Pressable
+              <KpiMetricCard
                 key={kpi.key}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selectedCard }}
+                label={kpi.label}
+                value={count}
+                Icon={Icon}
+                iconColor={kpi.iconColor}
+                countColor={kpi.countColor}
+                selected={selectedCard}
+                onPress={() => onSelect(kpi.key)}
                 accessibilityLabel={`${kpi.label}: ${count}. ${
                   selectedCard ? 'Filter active, tap to show all tasks' : 'Tap to filter'
                 }`}
-                onPress={() => onSelect(kpi.key)}
-                style={[
-                  styles.kpiCard,
-                  selectedCard ? styles.kpiCardSelected : null,
-                  Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
-                ]}
-              >
-                <View style={styles.kpiMetricRow}>
-                  <Icon size={10} color={kpi.iconColor} />
-                  <Text
-                    className="text-2xl font-bold"
-                    style={[styles.kpiCount, { color: kpi.countColor }]}
-                  >
-                    {count}
-                  </Text>
-                </View>
-                <Text style={styles.kpiLabel}>{kpi.label}</Text>
-              </Pressable>
+              />
             );
           })}
           {row.length < columnsPerRow
@@ -181,44 +169,8 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     gap: 8,
   },
-  kpiCard: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    alignItems: 'stretch',
-  },
-  kpiMetricRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  kpiCount: {
-    flexShrink: 1,
-    lineHeight: 28,
-  },
-  kpiLabel: {
-    marginTop: 4,
-    width: '100%',
-    fontSize: 12,
-    lineHeight: 16,
-    color: '#757575',
-    ...Platform.select({
-      android: { textBreakStrategy: 'simple' as const },
-      ios: { lineBreakStrategyIOS: 'standard' as const },
-      default: {},
-    }),
-  },
   kpiSpacer: {
     flex: 1,
     minWidth: 0,
-  },
-  kpiCardSelected: {
-    borderColor: '#1A4D3E',
-    borderWidth: 2,
   },
 });

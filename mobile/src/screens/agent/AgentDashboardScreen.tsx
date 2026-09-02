@@ -1,5 +1,4 @@
-import React, { useCallback, useState } from 'react';
-import type { ComponentType } from 'react';
+import React, { useCallback, useMemo, useState, type ComponentType } from 'react';
 import { View, ScrollView, RefreshControl, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
@@ -16,6 +15,7 @@ import {
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { KBCard } from '../../components/ui/KBCard';
+import { KpiMetricCard } from '../../components/ui/KpiMetricCard';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
@@ -25,6 +25,8 @@ import { useTaskNotificationBanners } from '../../hooks/useTaskNotificationBanne
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
 import {
   TaskStatusKpiRow,
+  chunkKpiRows,
+  kpiColumnsPerRow,
   type TaskStatusKpiKey,
 } from '../../components/TaskStatusKpiRow';
 import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
@@ -48,38 +50,6 @@ function navigateNested(
       params,
     })
   );
-}
-
-function MetricCard({
-  Icon,
-  iconColor,
-  label,
-  value,
-  color,
-  onPress,
-}: {
-  Icon: ComponentType<{ size?: number; color?: string }>;
-  iconColor?: string;
-  label: string;
-  value: number;
-  color?: string;
-  onPress?: () => void;
-}) {
-  const inner = (
-    <View className="flex-1 rounded-xl border border-[#E8E8E8] bg-white p-3">
-      <Icon size={20} color={iconColor ?? '#757575'} />
-      <Text className="mt-1 text-2xl font-bold" style={{ color: color ?? '#333333' }}>{value}</Text>
-      <Text className="mt-0.5 text-xs text-[#757575]">{label}</Text>
-    </View>
-  );
-  if (onPress) {
-    return (
-      <Pressable onPress={onPress} className="flex-1 active:opacity-85" style={webPressable}>
-        {inner}
-      </Pressable>
-    );
-  }
-  return inner;
 }
 
 function SectionHeading({
@@ -144,6 +114,50 @@ export function AgentDashboardScreen() {
     });
   };
 
+  const farmers = data?.farmers;
+  const tasks = data?.tasks;
+
+  const activityKpiRows = useMemo(() => {
+    const cards = [
+      {
+        key: 'total',
+        label: 'Members registered',
+        value: farmers?.total ?? 0,
+        Icon: Users,
+        iconColor: '#757575',
+        countColor: '#333333',
+        onPress: () => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' }),
+      },
+      {
+        key: 'pending_verification',
+        label: 'Pending verification',
+        value: farmers?.pending_verification ?? 0,
+        Icon: Hourglass,
+        iconColor: '#FBBF24',
+        countColor: '#FBBF24',
+        onPress: () =>
+          navigateNested(navigation, 'Farmers', {
+            screen: 'FarmerList',
+            params: { statusFilter: 'pending_verification' },
+          }),
+      },
+      {
+        key: 'verified',
+        label: 'Verified',
+        value: farmers?.verified ?? 0,
+        Icon: CircleCheck,
+        iconColor: '#10B981',
+        countColor: '#10B981',
+        onPress: () =>
+          navigateNested(navigation, 'Farmers', {
+            screen: 'FarmerList',
+            params: { statusFilter: 'verified' },
+          }),
+      },
+    ];
+    return { rows: chunkKpiRows(cards), columnsPerRow: kpiColumnsPerRow(cards.length) };
+  }, [farmers?.pending_verification, farmers?.total, farmers?.verified, navigation]);
+
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center">
@@ -152,8 +166,6 @@ export function AgentDashboardScreen() {
     );
   }
 
-  const farmers = data?.farmers;
-  const tasks = data?.tasks;
   const recentFarmers = data?.recent_farmers ?? [];
   const recentTasks = tasks?.recent ?? [];
 
@@ -179,39 +191,27 @@ export function AgentDashboardScreen() {
       </View>
 
       <SectionHeading Icon={ChartColumn}>Your activity</SectionHeading>
-      <View className="mb-4 flex-row gap-2">
-        <MetricCard
-          Icon={Users}
-          label="Members registered"
-          value={farmers?.total ?? 0}
-          onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
-        />
-        <MetricCard
-          Icon={Hourglass}
-          iconColor="#FBBF24"
-          label="Pending verification"
-          value={farmers?.pending_verification ?? 0}
-          color="#FBBF24"
-          onPress={() =>
-            navigateNested(navigation, 'Farmers', {
-              screen: 'FarmerList',
-              params: { statusFilter: 'pending_verification' },
-            })
-          }
-        />
-        <MetricCard
-          Icon={CircleCheck}
-          iconColor="#10B981"
-          label="Verified"
-          value={farmers?.verified ?? 0}
-          color="#10B981"
-          onPress={() =>
-            navigateNested(navigation, 'Farmers', {
-              screen: 'FarmerList',
-              params: { statusFilter: 'verified' },
-            })
-          }
-        />
+      <View className="mb-4 gap-2">
+        {activityKpiRows.rows.map((row, rowIndex) => (
+          <View key={`activity-kpi-row-${rowIndex}`} className="flex-row gap-2">
+            {row.map((kpi) => (
+              <KpiMetricCard
+                key={kpi.key}
+                label={kpi.label}
+                value={kpi.value}
+                Icon={kpi.Icon}
+                iconColor={kpi.iconColor}
+                countColor={kpi.countColor}
+                onPress={kpi.onPress}
+              />
+            ))}
+            {row.length < activityKpiRows.columnsPerRow
+              ? Array.from({ length: activityKpiRows.columnsPerRow - row.length }).map((_, i) => (
+                  <View key={`activity-kpi-spacer-${rowIndex}-${i}`} className="flex-1" />
+                ))
+              : null}
+          </View>
+        ))}
       </View>
 
       {(data?.pending_photo_updates?.length ?? 0) > 0 ? (
