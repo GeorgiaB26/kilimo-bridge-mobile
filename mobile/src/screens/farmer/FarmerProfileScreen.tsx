@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Platform,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
@@ -21,13 +22,12 @@ import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
 import { useAuthStore } from '../../store/authStore';
-import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { ProfileAvatar, hasProfilePhoto } from '../../components/ProfileAvatar';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
-import { formatFarmerStatus } from '../../utils/farmerStatus';
-import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
+import { formatCleanDate } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
 import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
 import { useCurrency } from '../../context/CurrencyContext';
@@ -99,7 +99,7 @@ export function FarmerProfileScreen() {
   const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { currency, currencyInfo, selectCountry } = useCurrency();
+  const { currencyInfo, selectCountry } = useCurrency();
   const userScope = useReadCacheUserScope();
   const scrollContentStyle = useTabScreenContentContainerStyle();
   const [farmer, setFarmer] = useState<{
@@ -107,6 +107,7 @@ export function FarmerProfileScreen() {
     phone_number: string;
     country: string;
     district: string;
+    region?: string;
     sub_county: string;
     membership_group_name: string;
     aggregation_center: string | null;
@@ -291,9 +292,8 @@ export function FarmerProfileScreen() {
     contacts?.bankingAgent?.phone ?? farmer?.banking_agent_phone ?? null;
 
   const displayName = farmer?.name ?? user?.name ?? 'Farmer';
+  const location = farmer?.district || farmer?.region || farmer?.country || 'Kenya';
   const country = farmer?.country ?? 'Kenya';
-  const greeting = getLocalizedGreeting(country, displayName);
-  const statusInfo = formatFarmerStatus(farmer?.status);
   const isVerified = (farmer?.status ?? '').toLowerCase().replace(/\s+/g, '_') === 'verified';
 
   const handleHelpSubmit = async (message: string) => {
@@ -309,15 +309,37 @@ export function FarmerProfileScreen() {
   };
 
   const photoAwaitingApproval = Boolean(farmer?.pending_picture_url || farmer?.photoUpdatePending);
+  const hasPhoto = hasProfilePhoto(farmer?.picture_url);
+  const showPhotoGuidance = !pendingUri && !hasPhoto;
+  const photoPickerDisabled = picking || savingPhoto;
+
+  const openPhotoPickerMenu = () => {
+    if (photoPickerDisabled) return;
+    if (Platform.OS === 'web') {
+      void pickProfilePhoto(false);
+      return;
+    }
+    Alert.alert('Profile photo', 'Add a clear photo of your face for verification.', [
+      { text: 'Take photo', onPress: () => void pickProfilePhoto(true) },
+      { text: 'Choose from gallery', onPress: () => void pickProfilePhoto(false) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
 
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4" contentContainerStyle={scrollContentStyle}>
       {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
       {error && !farmer ? <FarmerOfflineBanner message={error} /> : null}
-      <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">
-        <View style={styles.photoPressable}>
+      <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] px-5 pb-5 pt-4">
+        <Pressable
+          onPress={openPhotoPickerMenu}
+          disabled={Boolean(pendingUri) || photoPickerDisabled}
+          style={styles.photoPressable}
+          accessibilityRole="button"
+          accessibilityLabel={hasPhoto ? 'Change profile photo' : 'Add profile photo'}
+        >
           {pendingUri ? (
-            <View className="mb-1 items-center">
+            <View className="items-center">
               <Image
                 source={{ uri: pendingUri }}
                 style={{
@@ -328,61 +350,74 @@ export function FarmerProfileScreen() {
                   borderColor: '#D4AF6A',
                 }}
               />
-              <Text className="mt-2 text-center text-xs text-white/80">Preview — not sent yet</Text>
+              <Text className="mt-1 text-center text-xs text-white/80">Preview — not sent yet</Text>
             </View>
           ) : (
-            <ProfileAvatar name={displayName} pictureUrl={farmer?.picture_url} size="hero" />
+            <ProfileAvatar name={displayName} pictureUrl={farmer?.picture_url} size="hero" label="" />
           )}
+        </Pressable>
+
+        <Text style={styles.profileHeaderName}>{displayName}</Text>
+        <Text style={styles.profileHeaderLocation}>{location}</Text>
+        <View style={styles.profileHeaderStatus}>
+          <FarmerStatusChip status={farmer?.status} micro centered />
         </View>
-        {!pendingUri ? (
-          <View className="mb-1 mt-2 w-full items-center gap-2">
+        <Text style={styles.profileHeaderCurrency}>
+          {currencyInfo.name} ({currencyInfo.code})
+        </Text>
+
+        {!pendingUri && (showPhotoGuidance || photoAwaitingApproval) ? (
+          <View style={styles.photoActions}>
+            {showPhotoGuidance ? (
+              <Text style={styles.photoGuidanceText}>
+                Tap your photo or use Camera / Gallery. Your field agent must approve it before it replaces your current photo.
+              </Text>
+            ) : null}
             {photoAwaitingApproval ? (
               <View style={styles.pendingBanner}>
                 <Text className="text-center text-xs font-semibold text-[#1A4D3E]">
                   New photo waiting for your field agent to approve. Your current photo stays until then.
                 </Text>
               </View>
-            ) : (
-              <Text className="text-center text-xs text-white/80">
-                Take or choose a clear photo of your face. Your field agent must approve it before it replaces your current photo.
-              </Text>
-            )}
-            <View style={styles.pickRow}>
-              <View style={styles.pickSlot}>
-                <Pressable
-                  onPress={() => void pickProfilePhoto(true)}
-                  disabled={picking || savingPhoto}
-                  style={({ pressed }) => [
-                    styles.takePhotoBtn,
-                    (picking || savingPhoto) && styles.takePhotoBtnDisabled,
-                    pressed && styles.takePhotoBtnPressed,
-                  ]}
-                >
-                  {picking ? (
-                    <ActivityIndicator color="#1A4D3E" />
-                  ) : (
-                    <>
-                      <Ionicons name="camera" size={18} color="#1A4D3E" />
-                      <Text className="font-semibold text-[#1A4D3E]">Camera</Text>
-                    </>
-                  )}
-                </Pressable>
+            ) : null}
+            {showPhotoGuidance ? (
+              <View style={styles.pickRow}>
+                <View style={styles.pickSlot}>
+                  <Pressable
+                    onPress={() => void pickProfilePhoto(true)}
+                    disabled={photoPickerDisabled}
+                    style={({ pressed }) => [
+                      styles.takePhotoBtn,
+                      photoPickerDisabled && styles.takePhotoBtnDisabled,
+                      pressed && styles.takePhotoBtnPressed,
+                    ]}
+                  >
+                    {picking ? (
+                      <ActivityIndicator color="#1A4D3E" />
+                    ) : (
+                      <>
+                        <Ionicons name="camera" size={18} color="#1A4D3E" />
+                        <Text className="font-semibold text-[#1A4D3E]">Camera</Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+                <View style={styles.pickSlot}>
+                  <Pressable
+                    onPress={() => void pickProfilePhoto(false)}
+                    disabled={photoPickerDisabled}
+                    style={({ pressed }) => [
+                      styles.takePhotoBtn,
+                      photoPickerDisabled && styles.takePhotoBtnDisabled,
+                      pressed && styles.takePhotoBtnPressed,
+                    ]}
+                  >
+                    <Ionicons name="images" size={18} color="#1A4D3E" />
+                    <Text className="font-semibold text-[#1A4D3E]">Gallery</Text>
+                  </Pressable>
+                </View>
               </View>
-              <View style={styles.pickSlot}>
-                <Pressable
-                  onPress={() => void pickProfilePhoto(false)}
-                  disabled={picking || savingPhoto}
-                  style={({ pressed }) => [
-                    styles.takePhotoBtn,
-                    (picking || savingPhoto) && styles.takePhotoBtnDisabled,
-                    pressed && styles.takePhotoBtnPressed,
-                  ]}
-                >
-                  <Ionicons name="images" size={18} color="#1A4D3E" />
-                  <Text className="font-semibold text-[#1A4D3E]">Gallery</Text>
-                </Pressable>
-              </View>
-            </View>
+            ) : null}
           </View>
         ) : null}
         {pendingUri ? (
@@ -420,20 +455,6 @@ export function FarmerProfileScreen() {
             </View>
           </View>
         ) : null}
-        <View className="mb-3 mt-3 w-full items-center rounded-xl bg-white/10 p-3.5">
-          <Text className="text-center text-[22px] font-bold leading-[30px] text-white">{greeting.primary}</Text>
-          <Text className="mt-1.5 text-center text-sm text-white/85">{greeting.secondary}</Text>
-          <Text className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-[#D4AF6A]">{greeting.languageName}</Text>
-        </View>
-        <Text className="mt-1 text-2xl font-bold text-white">{displayName}</Text>
-        <Text className="mb-3 mt-1 text-center text-sm text-white/80">
-          {[farmer?.district, farmer?.sub_county, country].filter(Boolean).join(' · ')}
-        </Text>
-        <View className="mt-2 w-full items-center">
-          <FarmerStatusChip status={farmer?.status} centered />
-          <Text className="mt-2 text-center text-xs text-white/85">{statusInfo.description}</Text>
-        </View>
-        <Text className="mt-2.5 text-xs font-semibold text-[#D4AF6A]">{currencyInfo.name} ({currency})</Text>
       </View>
 
       {farmer?.kb_farmer_id ? (
@@ -651,6 +672,30 @@ function ProfileRow({
 }
 
 const styles = StyleSheet.create({
+  profileHeaderName: {
+    marginTop: 4,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  profileHeaderLocation: {
+    marginTop: 4,
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.85)',
+    textAlign: 'center',
+  },
+  profileHeaderStatus: {
+    marginTop: 4,
+    alignItems: 'center',
+  },
+  profileHeaderCurrency: {
+    marginTop: 4,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   profileFooterButton: {
     width: '100%',
     minHeight: 44,
@@ -684,6 +729,19 @@ const styles = StyleSheet.create({
   },
   photoPressable: {
     ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  photoActions: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6,
+  },
+  photoGuidanceText: {
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 17,
+    color: 'rgba(255, 255, 255, 0.8)',
+    paddingHorizontal: 4,
   },
   takePhotoBtn: {
     width: '100%',

@@ -132,6 +132,7 @@ export function FarmerProfilePhoto({
       style={[
         styles.wrap,
         { width: dim + ring * 2 + 8, height: dim + ring * 2 + 8 },
+        size === 'hero' && !label ? styles.wrapCompact : null,
       ]}
     >
       <View
@@ -149,7 +150,7 @@ export function FarmerProfilePhoto({
           <Ionicons name="alert-circle" size={16} color={COLORS.alert} />
         </View>
       ) : null}
-      {showMissingPlaceholder && size === 'hero' ? (
+      {showMissingPlaceholder && size === 'hero' && label ? (
         <Text className="mt-2 text-center text-xs text-white/80">{label}</Text>
       ) : null}
     </View>
@@ -158,6 +159,7 @@ export function FarmerProfilePhoto({
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  wrapCompact: { marginBottom: 0 },
   ring: { backgroundColor: COLORS.accent },
   headerFill: {
     width: '100%',
