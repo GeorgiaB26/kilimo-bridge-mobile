@@ -4,12 +4,14 @@ import {
   Pressable,
   Platform,
   StyleSheet,
+  Image,
+  useWindowDimensions,
 } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useNavigation, CommonActions } from '@react-navigation/native';
-import { ChevronRight } from 'lucide-react-native';
+import { ChevronRight, LogOut, MessageCircle, UserRoundPen } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { formatProjectDate } from '../../utils/greeting';
-import { formatFarmerStatus } from '../../utils/farmerStatus';
 import type { FarmerProject } from '../../types/farmerProject';
 import { FarmerProfilePhoto } from '../FarmerProfilePhoto';
 import { FarmerStatusChip } from '../agent/FarmerStatusChip';
@@ -69,6 +71,13 @@ type PaymentRow = {
 
 const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
+const PROFILE_BODY_BG = '#F5F5F5';
+const PROFILE_COVER_HEIGHT = 168;
+const PROFILE_AVATAR_SIZE = 100;
+const PROFILE_AVATAR_OVERLAP = PROFILE_AVATAR_SIZE / 2;
+/** Pull profile details up over the cover fade without moving the cover image. */
+const PROFILE_BODY_LIFT = 18;
+
 type Props = {
   farmer?: FarmerProfile | null;
   paymentSummary?: PaymentSummary | null;
@@ -92,45 +101,106 @@ export function FarmerDashboardProfileCard({
 }: Pick<Props, 'farmer' | 'currencyLabel' | 'onEditProfile' | 'onLogout'>) {
   const name = farmer?.name ?? 'Farmer';
   const location = farmer?.district || farmer?.region || farmer?.country || 'Kenya';
-  const statusInfo = formatFarmerStatus(farmer?.status);
+  const { width: coverWidth } = useWindowDimensions();
 
   return (
-    <View style={styles.profileContainer}>
-      <View style={styles.photoContainer}>
-        <FarmerProfilePhoto name={name} pictureUrl={farmer?.picture_url} size="large" />
+    <View style={styles.profileSection}>
+      <View style={styles.profileCover} accessibilityLabel="Profile cover">
+        <Image
+          source={require('../../../assets/farmer-profile-cover.jpg')}
+          style={styles.profileCoverImage}
+          resizeMode="cover"
+          accessibilityIgnoresInvertColors
+        />
+        <Svg
+          width={coverWidth}
+          height={PROFILE_COVER_HEIGHT}
+          style={styles.profileCoverFade}
+          pointerEvents="none"
+        >
+          <Defs>
+            <LinearGradient id="farmerProfileCoverTopDim" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#000000" stopOpacity={0.4} />
+              <Stop offset="0.35" stopColor="#000000" stopOpacity={0.32} />
+              <Stop offset="0.55" stopColor="#000000" stopOpacity={0.14} />
+              <Stop offset="0.72" stopColor="#000000" stopOpacity={0} />
+            </LinearGradient>
+            <LinearGradient id="farmerProfileCoverFade" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={PROFILE_BODY_BG} stopOpacity={0} />
+              <Stop offset="0.5" stopColor={PROFILE_BODY_BG} stopOpacity={0} />
+              <Stop offset="1" stopColor={PROFILE_BODY_BG} stopOpacity={1} />
+            </LinearGradient>
+          </Defs>
+          <Rect
+            x={0}
+            y={0}
+            width={coverWidth}
+            height={PROFILE_COVER_HEIGHT}
+            fill="url(#farmerProfileCoverTopDim)"
+          />
+          <Rect
+            x={0}
+            y={0}
+            width={coverWidth}
+            height={PROFILE_COVER_HEIGHT}
+            fill="url(#farmerProfileCoverFade)"
+          />
+        </Svg>
       </View>
-      <Text className="text-white" style={styles.profileName}>
-        {name}
-      </Text>
-      <Text className="text-white" style={styles.profileLocation}>
-        {location}
-      </Text>
-      <View style={styles.statusBlock}>
-        <FarmerStatusChip status={farmer?.status} centered />
-        <Text className="text-white" style={styles.statusText}>
-          {statusInfo.description}
-        </Text>
-      </View>
-      <Text className="text-white" style={styles.currencyText}>
-        {currencyLabel ?? 'Kenyan Shilling (KES)'}
-      </Text>
-      <View style={styles.profileActions}>
-        <Pressable style={styles.editButton} onPress={onEditProfile}>
-          <Text className="text-white" style={styles.buttonText}>
-            Edit Profile
+      <View style={styles.profileBody}>
+        <View style={[styles.profileBodyContent, { marginTop: -PROFILE_BODY_LIFT }]}>
+          <View style={[styles.profileAvatarWrap, { marginTop: -PROFILE_AVATAR_OVERLAP }]}>
+            <View style={styles.profileAvatarRing}>
+              <View style={styles.profileAvatarClip}>
+                <FarmerProfilePhoto
+                  name={name}
+                  pictureUrl={farmer?.picture_url}
+                  size="large"
+                  variant="header"
+                />
+              </View>
+            </View>
+          </View>
+
+          <Text style={styles.profileName}>{name}</Text>
+          <Text style={styles.profileLocation}>{location}</Text>
+
+          <View style={styles.statusBlock}>
+            <FarmerStatusChip status={farmer?.status} micro centered />
+          </View>
+
+          <Text style={styles.currencyText}>
+            {currencyLabel ?? 'Kenyan Shilling (KES)'}
           </Text>
-        </Pressable>
-        <Pressable style={styles.logoutButton} onPress={onLogout}>
-          <Text className="text-white" style={styles.logoutButtonText}>
-            Logout
-          </Text>
-        </Pressable>
+
+          <View style={styles.profileActions}>
+            <Pressable
+              style={[styles.profileActionButton, webPressable]}
+              onPress={onEditProfile}
+              accessibilityRole="button"
+            >
+              <UserRoundPen size={16} color="#333333" strokeWidth={2.25} />
+              <Text style={styles.profileActionButtonText}>Edit Profile</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.profileActionButton, styles.profileLogoutButton, webPressable]}
+              onPress={onLogout}
+              accessibilityRole="button"
+            >
+              <LogOut size={16} color="#FFFFFF" strokeWidth={2.25} />
+              <Text style={[styles.profileActionButtonText, styles.profileLogoutButtonText]}>
+                Logout
+              </Text>
+            </Pressable>
+          </View>
+
+          {farmer?.pending_picture_url || farmer?.photoUpdatePending ? (
+            <Text style={styles.pendingPhotoNote}>
+              New photo sent — waiting for your field agent to approve it.
+            </Text>
+          ) : null}
+        </View>
       </View>
-      {farmer?.pending_picture_url || farmer?.photoUpdatePending ? (
-        <Text className="text-white" style={styles.pendingPhotoNote}>
-          New photo sent — waiting for your field agent to approve it.
-        </Text>
-      ) : null}
     </View>
   );
 }
@@ -367,7 +437,12 @@ export function FarmerDashboardSupportSection(_props: {
 
   return (
     <View style={styles.supportSection}>
-      <Pressable style={styles.supportButton} onPress={() => setSupportOpen(true)}>
+      <Pressable
+        style={[styles.supportButton, webPressable]}
+        onPress={() => setSupportOpen(true)}
+        accessibilityRole="button"
+      >
+        <MessageCircle size={16} color="#333333" strokeWidth={2.25} />
         <Text style={styles.supportButtonText}>Contact Support</Text>
       </Pressable>
       <ContactSupportModal
@@ -380,82 +455,127 @@ export function FarmerDashboardSupportSection(_props: {
 }
 
 const styles = StyleSheet.create({
-  profileContainer: {
+  profileSection: {
+    marginBottom: 8,
+    backgroundColor: PROFILE_BODY_BG,
+  },
+  profileCover: {
+    height: PROFILE_COVER_HEIGHT,
+    width: '100%',
+    overflow: 'hidden',
+    backgroundColor: PROFILE_BODY_BG,
+  },
+  profileCoverImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  profileCoverFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: 0,
+  },
+  profileBody: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    backgroundColor: '#2d5a4a',
-    marginHorizontal: 12,
-    marginVertical: 16,
-    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    backgroundColor: PROFILE_BODY_BG,
+  },
+  profileBodyContent: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  profileAvatarWrap: {
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  profileAvatarRing: {
+    width: PROFILE_AVATAR_SIZE + 8,
+    height: PROFILE_AVATAR_SIZE + 8,
+    borderRadius: (PROFILE_AVATAR_SIZE + 8) / 2,
+    padding: 4,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 4,
   },
-  photoContainer: { marginBottom: 12, alignItems: 'center' },
+  profileAvatarClip: {
+    width: PROFILE_AVATAR_SIZE,
+    height: PROFILE_AVATAR_SIZE,
+    borderRadius: PROFILE_AVATAR_SIZE / 2,
+    overflow: 'hidden',
+    backgroundColor: PROFILE_BODY_BG,
+  },
   profileName: {
+    marginTop: 10,
     fontSize: 24,
     fontWeight: '700',
-    color: '#fff',
-    marginBottom: 4,
+    color: '#1A1A1A',
     textAlign: 'center',
   },
   profileLocation: {
-    fontSize: 14,
-    color: '#fff',
-    marginBottom: 12,
+    marginTop: 4,
+    fontSize: 15,
+    color: '#757575',
     textAlign: 'center',
   },
   statusBlock: {
-    width: '100%',
+    marginTop: 4,
     alignItems: 'center',
-    marginBottom: 4,
-  },
-  statusText: {
-    fontSize: 14,
-    color: '#fff',
-    marginTop: 8,
-    marginBottom: 4,
-    textAlign: 'center',
   },
   currencyText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-    marginBottom: 16,
+    marginTop: 4,
+    marginBottom: 18,
+    fontSize: 13,
+    color: '#757575',
+    fontWeight: '500',
     textAlign: 'center',
   },
   profileActions: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
+    gap: 10,
     width: '100%',
+    maxWidth: 360,
   },
   pendingPhotoNote: {
-    marginTop: 12,
+    marginTop: 14,
     fontSize: 12,
     textAlign: 'center',
-    color: '#D4AF6A',
+    color: '#B45309',
     fontWeight: '600',
+    paddingHorizontal: 8,
   },
-  editButton: {
+  profileActionButton: {
     flex: 1,
-    backgroundColor: '#4CAF50',
-    paddingVertical: 10,
-    borderRadius: 6,
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#D0D0D0',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
-  logoutButton: {
-    flex: 1,
-    backgroundColor: '#E83838',
-    paddingVertical: 10,
-    borderRadius: 6,
-    alignItems: 'center',
+  profileActionButtonText: {
+    color: '#333333',
+    fontWeight: '600',
+    fontSize: 14,
   },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
-  logoutButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  profileLogoutButton: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#1A1A1A',
+  },
+  profileLogoutButtonText: {
+    color: '#FFFFFF',
+  },
   earningsCard: {
     backgroundColor: '#fff',
     marginHorizontal: 12,
@@ -644,17 +764,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   supportButton: {
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
+    width: '100%',
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#D0D0D0',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   supportButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1F4E78',
+    color: '#333333',
   },
 });
