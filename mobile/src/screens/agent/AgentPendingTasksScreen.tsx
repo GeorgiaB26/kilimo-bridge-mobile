@@ -172,14 +172,15 @@ export function AgentPendingTasksScreen() {
               ) : null}
               <Text className="mt-2 text-sm leading-5 text-[#333333]">{item.message}</Text>
               <Button
-                className="mt-3 h-11 bg-[#1A4D3E]"
+                size="pill"
+                className="mt-3 bg-[#1A4D3E]"
                 onPress={() => markContacted(item.id)}
                 disabled={acting === item.id}
               >
                 {acting === item.id ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text className="text-white">Mark contacted</Text>
+                  <Text className="font-semibold text-white">Mark contacted</Text>
                 )}
               </Button>
             </KBCard>
@@ -217,14 +218,15 @@ export function AgentPendingTasksScreen() {
                       <Text className="text-sm leading-5 text-[#333333]">Photo attached</Text>
                     ) : null}
                     <Button
-                      className="mb-1 h-11 bg-[#2E7D5E]"
+                      size="pill"
+                      className="mb-1 bg-[#2E7D5E]"
                       onPress={() => approve(item.id)}
                       disabled={acting === item.id}
                     >
                       {acting === item.id ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Text className="text-white">Approve</Text>
+                        <Text className="font-semibold text-white">Approve</Text>
                       )}
                     </Button>
                     <TextInput
@@ -235,14 +237,15 @@ export function AgentPendingTasksScreen() {
                     />
                     <Button
                       variant="outline"
-                      className="h-11"
+                      size="pill"
+                      className="border-[#D32F2F]"
                       onPress={() => reject(item.id)}
                       disabled={acting === item.id}
                     >
                       {acting === item.id ? (
                         <ActivityIndicator color="#D32F2F" />
                       ) : (
-                        <Text className="text-[#D32F2F]">Reject</Text>
+                        <Text className="font-semibold text-[#D32F2F]">Reject</Text>
                       )}
                     </Button>
                   </View>

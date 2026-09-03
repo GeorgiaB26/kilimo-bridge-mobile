@@ -335,14 +335,15 @@ export function AgentFarmersScreen() {
                   ) : null}
                   {item.status !== 'needs_review' ? (
                     <Button
-                      className="mt-2 h-10 bg-[#1A4D3E]"
+                      size="pill"
+                      className="mt-2 bg-[#1A4D3E]"
                       disabled={pushingId === item.id}
                       onPress={() => handlePushRegistration(item.id, item.formData.name || 'Unnamed farmer')}
                     >
                       {pushingId === item.id ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Text className="text-white">Push Registration</Text>
+                        <Text className="font-semibold text-white">Push Registration</Text>
                       )}
                     </Button>
                   ) : null}

@@ -203,13 +203,13 @@ export function AgentProfileScreen() {
               <Row label="Name" value={pm.name} />
               <Row label="Phone" value={pm.phone} />
               <View className="mt-3 flex-row gap-2">
-                <Button variant="outline" className="flex-1 h-10" onPress={() => callPhone(pm.phone)}>
+                <Button variant="outline" size="pill" className="flex-1" onPress={() => callPhone(pm.phone)}>
                   <View className="flex-row items-center gap-1.5">
                     <Phone size={16} color="#1A4D3E" />
                     <Text>Call PM</Text>
                   </View>
                 </Button>
-                <Button variant="outline" className="flex-1 h-10" onPress={() => callPhone(pm.phone)}>
+                <Button variant="outline" size="pill" className="flex-1" onPress={() => callPhone(pm.phone)}>
                   <View className="flex-row items-center gap-1.5">
                     <MessageCircle size={16} color="#1A4D3E" />
                     <Text>Message PM</Text>
@@ -218,6 +218,7 @@ export function AgentProfileScreen() {
               </View>
               <Button
                 variant="ghost"
+                size="pill"
                 className="mt-2"
                 onPress={() => Alert.alert('Get help', 'Contact your PM for support with registrations, tasks, or payments.')}
               >
@@ -247,26 +248,27 @@ export function AgentProfileScreen() {
               <View className="mt-2 flex-row gap-2">
                 <Button
                   variant="outline"
-                  className="h-8"
+                  size="pill"
                   onPress={() => Alert.alert('Download', `${doc.name} will be available in a future update.`)}
                 >
-                  <Text className="text-xs">Download</Text>
+                  <Text className="font-semibold text-xs">Download</Text>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8"
+                  size="pill"
                   onPress={() => Alert.alert('Share', `${doc.name} sharing coming soon.`)}
                 >
-                  <Text className="text-xs">Share</Text>
+                  <Text className="font-semibold text-xs">Share</Text>
                 </Button>
               </View>
             </View>
           ))}
           <Button
             variant="ghost"
+            size="pill"
             onPress={() => Alert.alert('Request document', 'Ask your PM to upload new documents via the admin portal.')}
           >
-            <Text className="text-[#1A4D3E]">+ Request document</Text>
+            <Text className="font-semibold text-[#1A4D3E]">+ Request document</Text>
           </Button>
         </KBCard>
 
@@ -305,8 +307,13 @@ export function AgentProfileScreen() {
           />
         </KBCard>
 
-        <Button variant="outline" onPress={logout}>
-          <Text>Sign out</Text>
+        <Button
+          variant="outline"
+          size="pill"
+          className="border-[#D32F2F] bg-white"
+          onPress={logout}
+        >
+          <Text className="font-semibold text-[#D32F2F]">Sign out</Text>
         </Button>
       </ScrollView>
 
@@ -332,11 +339,11 @@ export function AgentProfileScreen() {
             <TextInput label="Phone" value={editPhone} onChangeText={setEditPhone} mode="outlined" style={{ marginBottom: 12 }} />
             <Text className="mb-2 text-sm font-semibold text-[#757575]">Area of coverage (read-only)</Text>
             <Text className="mb-4 text-[#333333]">{user?.district ?? user?.region ?? '—'}</Text>
-            <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={submitProfileRequest}>
-              <Text className="text-white">Submit request</Text>
+            <Button size="pill" className="mb-2 bg-[#1A4D3E]" onPress={submitProfileRequest}>
+              <Text className="font-semibold text-white">Submit request</Text>
             </Button>
-            <Button variant="outline" onPress={() => setSettingsOpen(false)}>
-              <Text>Cancel</Text>
+            <Button variant="outline" size="pill" onPress={() => setSettingsOpen(false)}>
+              <Text className="font-semibold">Cancel</Text>
             </Button>
       </KeyboardBottomSheet>
     </>

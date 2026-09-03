@@ -9,6 +9,7 @@ import {
   TextInput,
   Pressable,
   Platform,
+  StyleSheet,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
@@ -20,10 +21,12 @@ import {
   CircleCheck,
   CircleX,
   Hourglass,
+  Plus,
   TriangleAlert,
 } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { pillButtonBase, pillButtonTextBase } from '@/components/ui/pillButtonStyles';
 import {
   getAgentHelpRequests,
   resolveAgentHelpRequest,
@@ -354,13 +357,14 @@ function TaskSection({
                   <Text className="text-sm font-semibold text-[#D32F2F]">Photo required</Text>
                 )}
                 <Button
-                  className="h-11 bg-[#2E7D5E]"
+                  size="pill"
+                  className="bg-[#2E7D5E]"
                   onPress={() => {
                     void Promise.resolve(approve(item.id)).catch(() => undefined);
                   }}
                   disabled={acting === item.id}
                 >
-                  <Text className="text-white">Approve</Text>
+                  <Text className="font-semibold text-white">Approve</Text>
                 </Button>
                 {setRejectReason ? (
                   <TextInput
@@ -372,13 +376,14 @@ function TaskSection({
                 ) : null}
                 <Button
                   variant="outline"
-                  className="h-11"
+                  size="pill"
+                  className="border-[#D32F2F]"
                   onPress={() => {
                     void Promise.resolve(reject(item.id)).catch(() => undefined);
                   }}
                   disabled={acting === item.id}
                 >
-                  <Text className="text-[#D32F2F]">Reject</Text>
+                  <Text className="font-semibold text-[#D32F2F]">Reject</Text>
                 </Button>
               </View>
             ) : (
@@ -1138,10 +1143,12 @@ export function AgentTasksScreen() {
         {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         <Pressable
           onPress={() => setAddModalOpen(true)}
-          className="mb-3 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
-          style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+          style={[styles.createTaskButton, Platform.OS === 'web' ? { cursor: 'pointer' } : null]}
+          accessibilityRole="button"
+          accessibilityLabel="Create task"
         >
-          <Text className="font-bold text-black">+ Create task</Text>
+          <Plus size={16} color="#1A1A1A" strokeWidth={2.25} />
+          <Text style={styles.createTaskButtonText}>Create task</Text>
         </Pressable>
 
         <Text className="text-2xl font-bold text-[#333333]">Tasks</Text>
@@ -1404,8 +1411,8 @@ export function AgentTasksScreen() {
               <KBCard key={item.id} style={{ marginBottom: 8 }}>
                 <Text className="font-bold text-[#333333]">{item.farmer_name}</Text>
                 <Text className="text-sm text-[#757575]">{item.message}</Text>
-                <Button className="mt-2 h-10 bg-[#1A4D3E]" onPress={() => markContacted(item.id)} disabled={acting === item.id}>
-                  <Text className="text-white">Mark contacted</Text>
+                <Button size="pill" className="mt-2 bg-[#1A4D3E]" onPress={() => markContacted(item.id)} disabled={acting === item.id}>
+                  <Text className="font-semibold text-white">Mark contacted</Text>
                 </Button>
               </KBCard>
             ))}
@@ -1520,3 +1527,17 @@ export function AgentTasksScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  createTaskButton: {
+    ...pillButtonBase,
+    width: '100%',
+    marginBottom: 12,
+    backgroundColor: '#FFD700',
+    borderColor: '#FFD700',
+  },
+  createTaskButtonText: {
+    ...pillButtonTextBase,
+    color: '#1A1A1A',
+  },
+});

@@ -83,11 +83,11 @@ export function VerifyFarmerModal({
         textAlignVertical="top"
       />
 
-      <Button className="mb-2 h-12 bg-[#1A4D3E]" disabled={loading} onPress={handleSubmit}>
-        <Text className="text-white">{loading ? 'Submitting…' : 'Submit verification'}</Text>
+      <Button size="pill" className="mb-2 bg-[#1A4D3E]" disabled={loading} onPress={handleSubmit}>
+        <Text className="font-semibold text-white">{loading ? 'Submitting…' : 'Submit verification'}</Text>
       </Button>
-      <Button variant="ghost" className="h-11" onPress={handleClose}>
-        <Text>Cancel</Text>
+      <Button variant="ghost" size="pill" onPress={handleClose}>
+        <Text className="font-semibold">Cancel</Text>
       </Button>
     </KeyboardBottomSheet>
   );

@@ -236,8 +236,12 @@ export function AgentCentreDashboardScreen() {
         onChangeText={setQuantity}
         keyboardType="decimal-pad"
       />
-      <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={receiveDelivery} disabled={receiving}>
-        {receiving ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Log delivery</Text>}
+      <Button size="pill" className="mb-2 bg-[#1A4D3E]" onPress={receiveDelivery} disabled={receiving}>
+        {receiving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text className="font-semibold text-white">Log delivery</Text>
+        )}
       </Button>
 
       <Text className="mb-2 mt-5 text-base font-bold text-[#333333]">Inventory</Text>
@@ -251,22 +255,22 @@ export function AgentCentreDashboardScreen() {
             <View className="mt-2 flex-row items-center justify-between">
               <KBStatusChip label={item.quality_status} variant={item.is_marketplace_ready ? 'success' : 'pending'} />
               {item.quality_status === 'pending' ? (
-                <View className="flex-row gap-1">
+                <View className="flex-row gap-2">
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="pill"
                     disabled={actingId === item.id}
                     onPress={() => applyQc(item, 'approve')}
                   >
-                    <Text className="text-[#2E7D5E]">Approve QC</Text>
+                    <Text className="font-semibold text-[#2E7D5E]">Approve QC</Text>
                   </Button>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="pill"
                     disabled={actingId === item.id}
                     onPress={() => applyQc(item, 'reject')}
                   >
-                    <Text className="text-[#D32F2F]">Reject</Text>
+                    <Text className="font-semibold text-[#D32F2F]">Reject</Text>
                   </Button>
                 </View>
               ) : null}

@@ -287,11 +287,11 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
             {loadError ?? 'Could not load farmer profile.'}
           </Text>
         </View>
-        <Button variant="outline" className="mt-4" onPress={() => navigation.goBack()}>
-          <Text>Back to farmers</Text>
+        <Button variant="outline" size="pill" className="mt-4" onPress={() => navigation.goBack()}>
+          <Text className="font-semibold">Back to farmers</Text>
         </Button>
-        <Button variant="ghost" className="mt-2" onPress={load}>
-          <Text>Retry</Text>
+        <Button variant="ghost" size="pill" className="mt-2" onPress={load}>
+          <Text className="font-semibold">Retry</Text>
         </Button>
       </View>
     );
@@ -480,8 +480,8 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
           ) : null}
 
           {canVerify && pendingVerifications.length === 0 ? (
-            <Button className="h-12 bg-[#1A4D3E]" onPress={() => setVerifyModalOpen(true)}>
-              <Text className="text-white">Verify Farmer</Text>
+            <Button size="pill" className="bg-[#1A4D3E]" onPress={() => setVerifyModalOpen(true)}>
+              <Text className="font-semibold text-white">Verify Farmer</Text>
             </Button>
           ) : null}
         </View>
@@ -514,44 +514,48 @@ const styles = StyleSheet.create({
   reviewRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   reviewSlot: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    minWidth: 120,
-    height: 48,
-    marginHorizontal: 4,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
   },
   rejectBtn: {
     width: '100%',
-    height: '100%',
-    borderRadius: 8,
+    minHeight: 44,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: '#D32F2F',
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
   rejectBtnText: {
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#D32F2F',
-    fontSize: 15,
+    fontSize: 14,
   },
   approveBtn: {
     width: '100%',
-    height: '100%',
-    borderRadius: 8,
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#1A4D3E',
     backgroundColor: '#1A4D3E',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
   approveBtnText: {
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#fff',
-    fontSize: 15,
+    fontSize: 14,
   },
   reviewDisabled: {
     opacity: 0.65,

@@ -296,11 +296,12 @@ export function AgentTaskDetailModal({
             {isApproval && onApprove && onReject ? (
               <View className="mb-4 gap-2">
                 <Button
-                  className="h-11 bg-[#2E7D5E]"
+                  size="pill"
+                  className="bg-[#2E7D5E]"
                   onPress={handleApprove}
                   disabled={acting || loading}
                 >
-                  <Text className="text-white">Approve submission</Text>
+                  <Text className="font-semibold text-white">Approve submission</Text>
                 </Button>
                 <TextInput
                   className="rounded-lg border border-[#E0E0E0] bg-white p-2.5"
@@ -308,14 +309,20 @@ export function AgentTaskDetailModal({
                   value={rejectReason}
                   onChangeText={setRejectReason}
                 />
-                <Button variant="outline" className="h-11" onPress={handleReject} disabled={acting}>
-                  <Text className="text-[#D32F2F]">Reject submission</Text>
+                <Button
+                  variant="outline"
+                  size="pill"
+                  className="border-[#D32F2F]"
+                  onPress={handleReject}
+                  disabled={acting}
+                >
+                  <Text className="font-semibold text-[#D32F2F]">Reject submission</Text>
                 </Button>
               </View>
             ) : null}
 
-            <Button variant="outline" className="h-11" onPress={onClose}>
-              <Text>Close</Text>
+            <Button variant="outline" size="pill" onPress={onClose}>
+              <Text className="font-semibold">Close</Text>
             </Button>
     </KeyboardBottomSheet>
   );

@@ -341,22 +341,22 @@ export function AgentDashboardScreen() {
       <View className="flex-row flex-wrap gap-2">
         <Button
           variant="outline"
-          className="h-10"
+          size="pill"
           onPress={() =>
             navigateNested(navigation, 'Tasks', { filter: 'all', openAdd: true })
           }
         >
-          <Text>+ Add task</Text>
+          <Text className="font-semibold">+ Add task</Text>
         </Button>
         <Button
           variant="outline"
-          className="h-10"
+          size="pill"
           onPress={() => navigateNested(navigation, 'Farmers', { screen: 'FarmerList' })}
         >
-          <Text>View members</Text>
+          <Text className="font-semibold">View members</Text>
         </Button>
-        <Button variant="outline" className="h-10" onPress={() => navigateNested(navigation, 'Audit')}>
-          <Text>Activity log</Text>
+        <Button variant="outline" size="pill" onPress={() => navigateNested(navigation, 'Audit')}>
+          <Text className="font-semibold">Activity log</Text>
         </Button>
       </View>
     </ScrollView>
