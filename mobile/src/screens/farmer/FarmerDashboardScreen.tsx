@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, ScrollView, RefreshControl } from 'react-native';
+import { View, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -13,6 +13,7 @@ import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanne
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { useAuthStore } from '../../store/authStore';
 import { useCurrency } from '../../context/CurrencyContext';
+import { COLORS } from '../../constants';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerTabParamList, FarmerProjectsStackParamList } from '../../navigation/types';
 import {
@@ -96,6 +97,7 @@ export function FarmerDashboardScreen() {
   const userScope = useReadCacheUserScope();
   const [data, setData] = useState<DashboardData | null>(null);
   const [recentPayments, setRecentPayments] = useState<PaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
@@ -123,6 +125,8 @@ export function FarmerDashboardScreen() {
       setRecentPayments([]);
       setCacheFetchedAt(null);
       setError(extractApiError(err, 'Backend offline or farmer account not linked'));
+    } finally {
+      setLoading(false);
     }
   }, [userScope]);
 
@@ -202,6 +206,15 @@ export function FarmerDashboardScreen() {
   };
 
   const scrollContentStyle = useTabScreenContentContainerStyle({ paddingBottom: 16 });
+
+  if (loading && !data) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text className="mt-3 text-sm text-[#757575]">Loading your home...</Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-[#F5F5F5]">
