@@ -76,7 +76,7 @@ const PROFILE_COVER_HEIGHT = 168;
 const PROFILE_AVATAR_SIZE = 100;
 const PROFILE_AVATAR_OVERLAP = PROFILE_AVATAR_SIZE / 2;
 /** Pull profile details up over the cover fade without moving the cover image. */
-const PROFILE_BODY_LIFT = 18;
+const PROFILE_BODY_LIFT = 53;
 
 type Props = {
   farmer?: FarmerProfile | null;
