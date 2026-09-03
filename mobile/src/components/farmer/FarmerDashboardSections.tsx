@@ -456,7 +456,7 @@ export function FarmerDashboardSupportSection(_props: {
 
 const styles = StyleSheet.create({
   profileSection: {
-    marginBottom: 8,
+    marginBottom: 4,
     backgroundColor: PROFILE_BODY_BG,
   },
   profileCover: {
@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
   profileBody: {
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 12,
     backgroundColor: PROFILE_BODY_BG,
   },
   profileBodyContent: {
@@ -577,31 +577,29 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   earningsCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     marginHorizontal: 12,
-    marginVertical: 8,
+    marginTop: 4,
+    marginBottom: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
   },
   earningsLabel: {
     fontSize: 12,
     color: '#999',
     marginBottom: 4,
     fontWeight: '500',
+    textAlign: 'center',
   },
   earningsAmount: {
     fontSize: 24,
     fontWeight: '700',
     color: '#1F4E78',
     marginBottom: 12,
+    textAlign: 'center',
   },
   earningsBreakdown: {
     flexDirection: 'row',
@@ -634,7 +632,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1F4E78',
-    marginBottom: 12,
+    marginBottom: 0,
   },
   snapshotCard: {
     borderRadius: 12,
