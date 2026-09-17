@@ -32,15 +32,22 @@ Authenticates over SFTP and lists one remote directory. Read-only — no uploads
 writes, or deletes. Prints the server's SHA256 host key fingerprint so it can be
 pinned later, and never prints the password.
 
+Emits an `ssh2` handshake debug trace by default (timestamps + milestone summary on
+failure) so a pre-auth stall can be distinguished from a credential rejection.
+Offers a broad modern-then-legacy algorithm list (including `hmac-sha1`,
+`diffie-hellman-group1-sha1`, `ssh-dss`, `3des-cbc`) for older bank appliances.
+
 ```bash
 npm install ssh2-sftp-client
 EQUITY_SFTP_HOST=<host> EQUITY_SFTP_PORT=<port> node test-sftp.js
 ```
 
 Reads `EQUITY_SFTP_USERNAME` and `EQUITY_SFTP_PASSWORD` from the service environment.
+Optional: `EQUITY_SFTP_DEBUG=0` to silence the live trace; `EQUITY_SFTP_TIMEOUT_MS`
+(default `45000`).
 
-**Partner SFTP accounts commonly lock after a few failed authentications.** Budget two
-or three attempts, and diagnose rather than retry on failure.
+A timeout **before** the line `Authentication about to begin` means credentials were
+not sent — that attempt should not count toward password lockout.
 
 ## Usage
 
