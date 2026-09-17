@@ -1,0 +1,7 @@
+Transaction ID,Reference Number,Customer Reference,Status,Payment Type,Debit Account Number,Debit Currency,Debit Amount,Beneficiary Name,Credit Account Number,Beneficiary bank & Branch Code / Swift Code,Credit Currency,Credit Amount,Exchange Rates,Deal Reference,Payment Date,Remitter Information,Remitter Information 2,Remitter Information 3,Remitter Information 4,Intermediate Account,Intermediate Swift,Charge Type,Routing Code,Error Code,Error Description
+BT26080434535735,H2H2085851931618,72,Success,EFT,012345677777,KES,101,Kanda Bongoman,0992000088727,59000,KES,101,1,,17/09/2026,,,,,,,OUR,,,Success
+BT26080434535739,H2H2085851931618,74,Success,SWIFT,0560299427842,USD,10,Franco Luambo,3454353453453,CITITZTZXXX,USD,10,1,,17/09/2026,,,,,,,OUR,,,Success
+BT26080434535734,H2H2085851931618,70,Verification Failure,IFT,012345677777,KES,100,John Doe,0460193871411,,KES,100,1,,12/06/2026,,,,,,,OUR,,VERFAL,Back value dated transactions not accepted.
+BT26080434535736,H2H2085851931618,72,Success,PESALINK,012345677777,KES,101,Fally Ipupa,01109188857800,11000,KES,101,1,,17/09/2026,,,,,,,OUR,,,Success
+BT26080434535738,H2H2085851931618,71,Success,WALLET,012345677777,KES,100,Amos Wanje,0722000000,,KES,100,1,,17/09/2026,,,,,,,OUR,,,Success
+BT26080434535737,H2H2085851931618,73,Success,RTGS,012345677777,KES,102,Ferre Gola,0992000088727,59000,KES,102,1,,17/09/2026,,,,,,,OUR,,,Success
