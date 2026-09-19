@@ -1,4 +1,4 @@
-/** Shared task categorization: OVERDUE → IN PROGRESS → NOT STARTED → COMPLETED */
+/** Shared task categorization: OVERDUE → IN PROGRESS → NOT STARTED → SUBMITTED → REJECTED → COMPLETED */
 
 export type DueDateInput = string | Date | null | undefined;
 
@@ -11,19 +11,29 @@ export interface TaskCategoryCounts {
   overdue: number;
   inProgress: number;
   notStarted: number;
+  submittedForApproval: number;
+  rejected: number;
   completed: number;
   total: number;
 }
 
 function normalizeStatusForCategory(status?: string | null): string {
   const s = (status ?? 'not-started').toLowerCase().replace(/_/g, '-');
-  if (s === 'submitted-for-approval' || s === 'submitted') return 'in-progress';
+  if (s === 'submitted') return 'submitted-for-approval';
   if (s === 'approved') return 'completed';
   return s;
 }
 
 function isCompletedStatus(status?: string | null): boolean {
   return normalizeStatusForCategory(status) === 'completed';
+}
+
+function isRejectedStatus(status?: string | null): boolean {
+  return normalizeStatusForCategory(status) === 'rejected';
+}
+
+function isSubmittedForApprovalStatus(status?: string | null): boolean {
+  return normalizeStatusForCategory(status) === 'submitted-for-approval';
 }
 
 function isInProgressStatus(status?: string | null): boolean {
@@ -62,7 +72,14 @@ export function compareDueDates(a?: DueDateInput, b?: DueDateInput): number {
 }
 
 function isOverdue(due?: DueDateInput, status?: string | null): boolean {
-  if (status && isCompletedStatus(status)) return false;
+  if (
+    status &&
+    (isCompletedStatus(status) ||
+      isRejectedStatus(status) ||
+      isSubmittedForApprovalStatus(status))
+  ) {
+    return false;
+  }
   const dueDay = parseDueDay(due);
   if (!dueDay) return false;
   const today = new Date();
@@ -74,11 +91,21 @@ export function countTaskCategories(tasks: CategorizableTaskRow[]): TaskCategory
   let overdue = 0;
   let inProgress = 0;
   let notStarted = 0;
+  let submittedForApproval = 0;
+  let rejected = 0;
   let completed = 0;
 
   for (const task of tasks) {
     if (isCompletedStatus(task.status)) {
       completed++;
+      continue;
+    }
+    if (isRejectedStatus(task.status)) {
+      rejected++;
+      continue;
+    }
+    if (isSubmittedForApprovalStatus(task.status)) {
+      submittedForApproval++;
       continue;
     }
     if (isOverdue(task.due_date, task.status)) {
@@ -96,7 +123,63 @@ export function countTaskCategories(tasks: CategorizableTaskRow[]): TaskCategory
     overdue,
     inProgress,
     notStarted,
+    submittedForApproval,
+    rejected,
     completed,
     total: tasks.length,
+  };
+}
+
+/**
+ * KPI counts where Overdue overlaps status buckets (matches agent Tasks filters).
+ * In Progress / Not Started include overdue tasks of that status.
+ */
+export function countOverlappingStatusKpis(tasks: CategorizableTaskRow[]): {
+  overdue: number;
+  in_progress: number;
+  not_started: number;
+  submitted_for_approval: number;
+  rejected: number;
+  completed: number;
+} {
+  let overdue = 0;
+  let in_progress = 0;
+  let not_started = 0;
+  let submitted_for_approval = 0;
+  let rejected = 0;
+  let completed = 0;
+
+  for (const task of tasks) {
+    if (isCompletedStatus(task.status)) {
+      completed += 1;
+      continue;
+    }
+    if (isRejectedStatus(task.status)) {
+      rejected += 1;
+      continue;
+    }
+    if (isSubmittedForApprovalStatus(task.status)) {
+      submitted_for_approval += 1;
+      continue;
+    }
+    if (isOverdue(task.due_date, task.status)) {
+      overdue += 1;
+    }
+    if (isInProgressStatus(task.status)) {
+      in_progress += 1;
+    } else if (normalizeStatusForCategory(task.status) === 'not-started') {
+      not_started += 1;
+    } else {
+      not_started += 1;
+    }
+  }
+
+  return {
+    overdue,
+    in_progress,
+    not_started,
+    submitted_for_approval,
+    rejected,
+    completed,
   };
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Image, ActivityIndicator, Pressable, Platform, StyleSheet } from 'react-native';
+import { View, Image, ActivityIndicator, Pressable, Platform, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -71,61 +71,79 @@ export function PhotoScreen({ navigation }: Props) {
   const hasPhoto = !!formData.pictureBase64;
 
   return (
-    <View className="flex-1">
-      <ScreenHeader
-        title="Verification photo"
-        subtitle="Required — take a clear photo of the member's face"
-      />
-      <Text className="mb-4 text-sm text-[#757575]">
-        This must be a real photo from your camera or gallery. Letter avatars are not accepted.
-      </Text>
-      <View className="my-4 items-center">
-        {hasPhoto && formData.pictureUri ? (
-          <Image source={{ uri: formData.pictureUri }} className="h-40 w-40 rounded-full" />
-        ) : (
-          <View className="h-40 w-40 items-center justify-center rounded-full border-2 border-dashed border-[#D4AF6A] bg-[#1A4D3E]">
-            <Ionicons name="camera-outline" size={48} color="#D4AF6A" />
-            <Text className="mt-2 text-center text-xs font-semibold text-[#D4AF6A]">Photo required</Text>
-          </View>
-        )}
-      </View>
-      <Pressable
-        onPress={() => pickImage(true)}
-        disabled={loading}
-        style={({ pressed }) => [styles.primaryBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Take photo</Text>}
-      </Pressable>
-      <Pressable
-        onPress={() => pickImage(false)}
-        disabled={loading}
-        style={({ pressed }) => [styles.outlineBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
-        className="mt-2"
-      >
-        {loading ? <ActivityIndicator color="#1A4D3E" /> : <Text className="font-semibold text-[#333333]">Choose from gallery</Text>}
-      </Pressable>
-      {formData.pictureUri ? (
+        <ScreenHeader
+          title="Verification photo"
+          subtitle="Required — take a clear photo of the member's face"
+        />
+        <Text style={styles.hint}>
+          This must be a real photo from your camera or gallery. Letter avatars are not accepted.
+        </Text>
+        <View style={styles.previewWrap}>
+          {hasPhoto && formData.pictureUri ? (
+            <Image source={{ uri: formData.pictureUri }} style={styles.preview} />
+          ) : (
+            <View style={styles.placeholder}>
+              <Ionicons name="camera-outline" size={48} color="#D4AF6A" />
+              <Text style={styles.placeholderLabel}>Photo required</Text>
+            </View>
+          )}
+        </View>
         <Pressable
-          onPress={() => updateForm({ pictureUri: undefined, pictureBase64: undefined })}
-          style={({ pressed }) => [styles.outlineBtn, pressed && styles.btnPressed]}
-          className="mt-2"
+          onPress={() => pickImage(true)}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel={hasPhoto ? 'Retake photo' : 'Take photo'}
+          style={({ pressed }) => [styles.primaryBtn, loading && styles.btnDisabled, pressed && styles.btnPressed]}
         >
-          <Text className="font-semibold text-[#333333]">Retake</Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryBtnText}>{hasPhoto ? 'Retake photo' : 'Take photo'}</Text>
+          )}
         </Pressable>
-      ) : null}
-      {error ? <Text className="mb-2 mt-2 text-sm text-[#D32F2F]">{error}</Text> : null}
-      <View className="mt-2 flex-row gap-3">
+        <Pressable
+          onPress={() => pickImage(false)}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel="Choose from gallery"
+          style={({ pressed }) => [
+            styles.outlineBtn,
+            styles.btnSpaced,
+            loading && styles.btnDisabled,
+            pressed && styles.btnPressed,
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator color="#1A4D3E" />
+          ) : (
+            <Text style={styles.outlineBtnText}>Choose from gallery</Text>
+          )}
+        </Pressable>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+
+      <View style={styles.footer}>
         <Pressable
           onPress={() => navigation.goBack()}
-          style={({ pressed }) => [styles.outlineBtn, styles.halfBtn, pressed && styles.btnPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          style={({ pressed }) => [styles.navBtn, styles.outlineBtn, pressed && styles.btnPressed]}
         >
-          <Text className="font-semibold text-[#333333]">Back</Text>
+          <Text style={styles.outlineBtnText}>Back</Text>
         </Pressable>
         <Pressable
           onPress={handleNext}
-          style={({ pressed }) => [styles.primaryBtn, styles.halfBtn, pressed && styles.btnPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Next"
+          style={({ pressed }) => [styles.navBtn, styles.primaryBtn, pressed && styles.btnPressed]}
         >
-          <Text className="font-semibold text-white">Next</Text>
+          <Text style={styles.primaryBtnText}>Next</Text>
         </Pressable>
       </View>
     </View>
@@ -133,6 +151,74 @@ export function PhotoScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 24,
+  },
+  hint: {
+    marginBottom: 16,
+    fontSize: 14,
+    color: '#757575',
+  },
+  previewWrap: {
+    marginVertical: 16,
+    alignItems: 'center',
+  },
+  preview: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#E8E8E8',
+  },
+  placeholder: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#D4AF6A',
+    backgroundColor: '#1A4D3E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderLabel: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D4AF6A',
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
+    width: '100%',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E0E0E0',
+    backgroundColor: '#F5F5F5',
+  },
+  navBtn: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
   primaryBtn: {
     height: 48,
     borderRadius: 8,
@@ -146,12 +232,33 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
-  halfBtn: {
-    flex: 1,
+  btnSpaced: {
+    marginTop: 8,
+  },
+  primaryBtnText: {
+    width: '100%',
+    textAlign: 'center',
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  outlineBtnText: {
+    width: '100%',
+    textAlign: 'center',
+    fontWeight: '600',
+    color: '#333333',
+    fontSize: 16,
+  },
+  error: {
+    marginTop: 8,
+    marginBottom: 4,
+    fontSize: 14,
+    color: '#D32F2F',
   },
   btnDisabled: {
     opacity: 0.65,

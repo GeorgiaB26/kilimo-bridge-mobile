@@ -31,8 +31,8 @@ function BreakdownRow({
     <View style={styles.row}>
       <View style={[styles.dot, { backgroundColor: dotColor }]} />
       <View style={styles.rowBody}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowAmount}>{formatAmount(amount)}</Text>
+        <Text className="text-sm text-white">{label}</Text>
+        <Text className="text-sm font-bold text-white">{formatAmount(amount)}</Text>
       </View>
     </View>
   );
@@ -41,8 +41,10 @@ function BreakdownRow({
 export function PaymentSummaryBreakdown({ summary, formatAmount }: Props) {
   return (
     <View style={styles.wrap}>
-      <Text style={styles.totalLabel}>Total earnings</Text>
-      <Text style={styles.totalAmount}>{formatAmount(summary.total)}</Text>
+      <Text className="text-sm text-white/85">Total earnings</Text>
+      <Text className="my-2 text-4xl font-extrabold text-white">
+        {formatAmount(summary.total)}
+      </Text>
       <BreakdownRow
         label="Completed"
         amount={summary.completed ?? summary.transferred}
@@ -72,11 +74,7 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
   },
-  totalLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 14 },
-  totalAmount: { color: '#D4AF6A', fontSize: 36, fontWeight: '800', marginVertical: 8 },
   row: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
   rowBody: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rowLabel: { color: '#fff', fontSize: 14 },
-  rowAmount: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

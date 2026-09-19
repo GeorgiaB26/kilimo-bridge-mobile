@@ -48,7 +48,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   return (
     <View className="flex-1 bg-white">
       <View className="items-center pb-2 pt-12">
-        <KilimoLogo width={180} height={50} />
+        <KilimoLogo size={96} />
       </View>
       <View className="flex-1 items-center justify-center p-8">
         <View className="mb-8 h-[120px] w-[120px] items-center justify-center rounded-full bg-[#F5F5F5]">

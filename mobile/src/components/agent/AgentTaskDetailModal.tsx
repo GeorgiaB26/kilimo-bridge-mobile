@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
-import { View, Modal, ScrollView, Pressable, Alert, Platform, TextInput } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Pressable, Alert, Platform, TextInput } from 'react-native';
 import { Bell, X } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { KBCard } from '../ui/KBCard';
 import { KBStatusChip } from '../ui/KBStatusChip';
+import { KeyboardBottomSheet } from '../ui/KeyboardBottomSheet';
+import { TaskEvidenceImage } from '../TaskEvidenceImage';
 import { formatCleanDate } from '../../utils/greeting';
-import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
+import {
+  isSubmittedForApprovalStatus,
+  taskStatusLabel,
+  taskStatusVariant,
+} from '../../utils/taskStatus';
 import { extractApiError } from '../../utils/feedback';
 import { setTaskReminder, type ReminderType } from '../../utils/taskReminders';
 import { setAgentTaskReminder } from '../../api/client';
@@ -22,6 +28,7 @@ export type AgentTaskDetail = {
   payment_value_kes?: number;
   notes?: string;
   photo_evidence_url?: string;
+  rejection_reason?: string;
   priority?: string;
   source: 'farmer' | 'personal';
   assigned_farmer_names?: string[];
@@ -55,12 +62,17 @@ export function AgentTaskDetailModal({
   const [rejectReason, setRejectReason] = useState('');
   const [acting, setActing] = useState(false);
 
+  useEffect(() => {
+    if (!visible) setRejectReason('');
+  }, [visible]);
+
   if (!task) return null;
 
-  const isApproval =
-    task.source === 'farmer' &&
-    (task.status === 'submitted-for-approval' || task.status === 'submitted');
+  const isApproval = isSubmittedForApprovalStatus(task.status);
   const normalizedPersonalStatus = task.status.replace(/-/g, '_');
+  const canEditPersonalStatus =
+    task.source === 'personal' && !isApproval && Boolean(onUpdateStatus);
+  const photoUrl = task.photo_evidence_url?.trim() || '';
 
   const handleReminder = async (type: ReminderType) => {
     if (!task.due_date) {
@@ -83,7 +95,6 @@ export function AgentTaskDetailModal({
     setActing(true);
     try {
       await onUpdateStatus(task.id, status);
-      Alert.alert('Updated', 'Task status saved.');
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not update task'));
     } finally {
@@ -97,8 +108,8 @@ export function AgentTaskDetailModal({
     try {
       await onApprove(task.id);
       onClose();
-    } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not approve'));
+    } catch {
+      /* parent surfaces the error */
     } finally {
       setActing(false);
     }
@@ -115,39 +126,29 @@ export function AgentTaskDetailModal({
       await onReject(task.id, rejectReason.trim());
       setRejectReason('');
       onClose();
-    } catch (err: unknown) {
-      Alert.alert('Error', extractApiError(err, 'Could not reject'));
+    } catch {
+      /* parent surfaces the error */
     } finally {
       setActing(false);
     }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View
-        className="flex-1 justify-end bg-black/40"
-        style={Platform.OS === 'web' ? { zIndex: 1000 } : undefined}
-      >
-        <View className="max-h-[92%] rounded-t-2xl bg-white p-5">
+    <KeyboardBottomSheet
+      visible={visible}
+      onRequestClose={onClose}
+      scrollable
+      backdropPressDisabled={acting || loading}
+      avoidingViewStyle={Platform.OS === 'web' ? { zIndex: 1000 } : undefined}
+      sheetClassName="max-h-[92%] rounded-t-2xl bg-white p-5"
+    >
           <View className="mb-4 flex-row items-start justify-between gap-3">
             <View className="flex-1">
               <Text className="text-lg font-bold text-[#333333]">{task.name}</Text>
               <View className="mt-2">
                 <KBStatusChip
-                  label={
-                    task.source === 'personal'
-                      ? normalizedPersonalStatus.replace(/_/g, ' ')
-                      : taskStatusLabel(task.status)
-                  }
-                  variant={
-                    task.source === 'personal'
-                      ? normalizedPersonalStatus === 'completed'
-                        ? 'success'
-                        : normalizedPersonalStatus === 'in_progress'
-                          ? 'warning'
-                          : 'pending'
-                      : taskStatusVariant(task.status)
-                  }
+                  label={taskStatusLabel(task.status)}
+                  variant={taskStatusVariant(task.status)}
                 />
               </View>
             </View>
@@ -156,7 +157,6 @@ export function AgentTaskDetailModal({
             </Pressable>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled">
             {task.description ? (
               <Text className="mb-3 text-sm leading-5 text-[#333333]">{task.description}</Text>
             ) : null}
@@ -194,7 +194,7 @@ export function AgentTaskDetailModal({
                   </Text>
                 </>
               ) : null}
-              {task.source === 'personal' && !task.assigned_farmer_names?.length ? (
+              {task.source === 'personal' && !task.assigned_farmer_names?.length && !task.farmer_name ? (
                 <>
                   <Text className="mt-3 text-xs font-semibold text-[#757575]">Assigned to</Text>
                   <Text className="mt-1 text-base text-[#333333]">You (field agent)</Text>
@@ -202,14 +202,46 @@ export function AgentTaskDetailModal({
               ) : null}
             </KBCard>
 
-            {task.notes ? (
+            {task.rejection_reason ? (
               <View className="mb-3">
-                <Text className="text-xs font-semibold text-[#757575]">Submission notes</Text>
-                <Text className="mt-1 text-sm text-[#333333]">{task.notes}</Text>
+                <Text className="text-xs font-semibold text-[#757575]">Rejection reason</Text>
+                <Text className="mt-1 text-sm font-semibold leading-5 text-[#D32F2F]">
+                  {task.rejection_reason}
+                </Text>
               </View>
             ) : null}
 
-            {task.source === 'personal' && onUpdateStatus ? (
+            {isApproval || task.notes || photoUrl ? (
+              <View className="mb-3">
+                <Text className="mb-2 text-sm font-semibold text-[#333333]">
+                  {isApproval ? 'Farmer submission' : 'Evidence'}
+                </Text>
+                {task.notes ? (
+                  <View className="mb-3">
+                    <Text className="text-xs font-semibold text-[#757575]">Notes</Text>
+                    <Text className="mt-1 text-sm leading-5 text-[#333333]">{task.notes}</Text>
+                  </View>
+                ) : isApproval ? (
+                  <Text className="mb-3 text-sm text-[#757575]">No notes provided.</Text>
+                ) : null}
+                {photoUrl ? (
+                  <View>
+                    <Text className="mb-2 text-xs font-semibold text-[#757575]">Photo evidence</Text>
+                    <TaskEvidenceImage
+                      taskId={task.id}
+                      remoteUrl={photoUrl}
+                      className="h-52 w-full rounded-xl bg-[#F0F0F0]"
+                      resizeMode="cover"
+                      accessibilityLabel="Task photo evidence"
+                    />
+                  </View>
+                ) : isApproval ? (
+                  <Text className="text-sm font-semibold text-[#D32F2F]">Photo required</Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {canEditPersonalStatus ? (
               <View className="mb-4">
                 <Text className="mb-2 text-sm font-semibold text-[#333333]">Update status</Text>
                 <View className="flex-row flex-wrap gap-2">
@@ -235,7 +267,7 @@ export function AgentTaskDetailModal({
               </View>
             ) : null}
 
-            {task.source === 'personal' && task.due_date ? (
+            {task.source === 'personal' && task.due_date && !isApproval ? (
               <View className="mb-4">
                 <Text className="mb-2 text-sm font-semibold text-[#333333]">Reminders</Text>
                 <View className="flex-row flex-wrap gap-2">
@@ -264,11 +296,12 @@ export function AgentTaskDetailModal({
             {isApproval && onApprove && onReject ? (
               <View className="mb-4 gap-2">
                 <Button
-                  className="h-11 bg-[#2E7D5E]"
+                  size="pill"
+                  className="bg-[#2E7D5E]"
                   onPress={handleApprove}
                   disabled={acting || loading}
                 >
-                  <Text className="text-white">Approve submission</Text>
+                  <Text className="font-semibold text-white">Approve submission</Text>
                 </Button>
                 <TextInput
                   className="rounded-lg border border-[#E0E0E0] bg-white p-2.5"
@@ -276,18 +309,21 @@ export function AgentTaskDetailModal({
                   value={rejectReason}
                   onChangeText={setRejectReason}
                 />
-                <Button variant="outline" className="h-11" onPress={handleReject} disabled={acting}>
-                  <Text className="text-[#D32F2F]">Reject submission</Text>
+                <Button
+                  variant="outline"
+                  size="pill"
+                  className="border-[#D32F2F]"
+                  onPress={handleReject}
+                  disabled={acting}
+                >
+                  <Text className="font-semibold text-[#D32F2F]">Reject submission</Text>
                 </Button>
               </View>
             ) : null}
 
-            <Button variant="outline" className="h-11" onPress={onClose}>
-              <Text>Close</Text>
+            <Button variant="outline" size="pill" onPress={onClose}>
+              <Text className="font-semibold">Close</Text>
             </Button>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </KeyboardBottomSheet>
   );
 }

@@ -1,29 +1,24 @@
 {
   "expo": {
-    "name": "Kilimo Bridge",
-    "slug": "kilimo-bridge",
+    "name": "mobile",
+    "slug": "mobile",
     "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1A4D3E"
-    },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.kilimobridge.mobile",
-      "icon": "./assets/icon.png"
+      "supportsTablet": true
     },
     "android": {
-      "package": "com.kilimobridge.mobile",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#1A4D3E",
+        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.kilimobridge.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -31,6 +26,11 @@
     },
     "plugins": [
       "expo-sqlite"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1e2fd0c7-16c0-459a-aba3-4fa7552345fa"
+      }
+    }
   }
 }

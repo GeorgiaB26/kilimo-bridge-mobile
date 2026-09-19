@@ -13,16 +13,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
 import { COLORS } from '../../constants';
 import {
-  getAppNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-} from '../../api/client';
+  markAllNotificationsReadWithOffline,
+  markNotificationReadWithOffline,
+  applyOfflineNotificationReadState,
+  loadNotificationReadOverlay,
+  syncPendingNotificationReads,
+} from '../../services/notificationReadOffline';
 import { extractApiError } from '../../utils/feedback';
 import { NOTIFICATION_CONFIG, formatTimeAgo } from '../../constants/notifications';
 import { navigateFromNotification } from '../../utils/farmerNotificationNavigation';
 import { useAuthStore } from '../../store/authStore';
 import { useUnreadInboxCounts } from '../../hooks/useUnreadInboxCounts';
+import { isSupportDeskUser } from '../../../shared/src/supportDesk';
 import type { NotificationsStackParamList } from '../../navigation/types';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchAppNotificationsForCache } from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 
 type NotificationRow = {
   id: string;
@@ -36,6 +43,8 @@ type NotificationRow = {
   action_url?: string | null;
 };
 
+type NotificationsPayload = { notifications?: NotificationRow[] };
+
 type Nav = NativeStackNavigationProp<NotificationsStackParamList, 'NotificationsList'>;
 
 const POLL_MS = 10000;
@@ -44,24 +53,45 @@ export function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
   const user = useAuthStore((s) => s.user);
   const isAgent = user?.role === 'agent' || user?.role === 'field_officer';
+  const isSupportDesk = isSupportDeskUser({
+    userId: user?.userId,
+    phoneNumber: user?.phoneNumber,
+  });
   const { refresh: refreshUnreadCounts } = useUnreadInboxCounts();
+  const userScope = useReadCacheUserScope();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await getAppNotifications(filter === 'unread');
-      setNotifications(data.notifications ?? []);
+      await syncPendingNotificationReads(userScope).catch(() => undefined);
+      const result = await loadWithReadCache<NotificationsPayload>({
+        cacheKey: READ_CACHE_KEYS.appNotifications,
+        userScope,
+        fetchLive: fetchAppNotificationsForCache,
+      });
+      const overlay = await loadNotificationReadOverlay(userScope);
+      const all = applyOfflineNotificationReadState(
+        result.data.notifications ?? [],
+        overlay.pendingIds,
+        overlay.markAllPending
+      );
+      const filtered = filter === 'unread' ? all.filter((n) => !n.is_read) : all;
+      setNotifications(filtered);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
       setError(null);
     } catch (err) {
+      setNotifications([]);
+      setCacheFetchedAt(null);
       setError(extractApiError(err, 'Could not load notifications'));
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, userScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,15 +108,16 @@ export function NotificationsScreen() {
   };
 
   const handleMarkRead = async (id: string) => {
+    setNotifications((prev) =>
+      filter === 'unread'
+        ? prev.filter((n) => n.id !== id)
+        : prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+    );
     try {
-      await markNotificationRead(id);
-      setNotifications((prev) =>
-        filter === 'unread'
-          ? prev.filter((n) => n.id !== id)
-          : prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
+      await markNotificationReadWithOffline(id, userScope);
       await refreshUnreadCounts();
-    } catch {
+    } catch (err) {
+      setError(extractApiError(err, 'Could not mark notification as read'));
       await load();
     }
   };
@@ -97,16 +128,17 @@ export function NotificationsScreen() {
     } else {
       await refreshUnreadCounts();
     }
-    navigateFromNotification(navigation, item, { isAgent });
+    navigateFromNotification(navigation, item, { isAgent, isSupportDesk });
   };
 
   const handleClearAll = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      await markAllNotificationsReadWithOffline(userScope);
       await refreshUnreadCounts();
     } catch (err) {
       setError(extractApiError(err, 'Could not clear notifications'));
+      await load();
     }
   };
 
@@ -143,6 +175,8 @@ export function NotificationsScreen() {
         </View>
       </View>
 
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+
       {loading && notifications.length === 0 ? (
         <ActivityIndicator style={styles.loader} color={COLORS.primary} />
       ) : error && notifications.length === 0 ? (
@@ -164,13 +198,21 @@ export function NotificationsScreen() {
                   <config.Icon size={22} color={config.color} />
                 </View>
                 <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle}>{item.title || config.title}</Text>
+                  <Text className="text-[#333333]" style={styles.cardTitle}>
+                    {item.title || config.title}
+                  </Text>
                   <Text style={styles.cardMessage} numberOfLines={2}>{item.message}</Text>
                   <Text style={styles.cardTime}>{formatTimeAgo(item.created_at)}</Text>
                   {(item.type === 'task_qc_failed' ||
                     item.context_type === 'farmer_task' ||
                     item.title?.toLowerCase().includes('qc')) && (
-                    <Text style={styles.tapHint}>Tap to view →</Text>
+                    <Text style={styles.tapHint}>Tap to view task details →</Text>
+                  )}
+                  {(item.context_type === 'support_ticket' ||
+                    item.type?.includes('support') ||
+                    item.title?.toLowerCase().includes('support ticket') ||
+                    item.title?.toLowerCase().includes('support replied')) && (
+                    <Text style={styles.tapHint}>Tap to open support thread →</Text>
                   )}
                 </View>
                 {!item.is_read ? (
@@ -234,7 +276,7 @@ const styles = StyleSheet.create({
   unreadCard: { borderColor: '#4472C4', backgroundColor: '#f8fbff' },
   icon: { marginRight: 10, alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1 },
-  cardTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4 },
+  cardTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4, color: COLORS.text },
   cardMessage: { fontSize: 13, color: '#444', lineHeight: 18 },
   cardTime: { fontSize: 12, color: COLORS.muted, marginTop: 6 },
   tapHint: {

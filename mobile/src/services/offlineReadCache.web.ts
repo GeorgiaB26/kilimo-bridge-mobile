@@ -114,9 +114,13 @@ export async function loadWithReadCache<T>(options: {
     const saved = await putReadCache(options.cacheKey, data, options.userScope);
     return { data, fromCache: false, fetchedAt: saved.fetchedAt };
   } catch (err) {
-    const cached = await getReadCache<T>(options.cacheKey, options.userScope);
-    if (cached) {
-      return { data: cached.payload, fromCache: true, fetchedAt: cached.fetchedAt };
+    try {
+      const cached = await getReadCache<T>(options.cacheKey, options.userScope);
+      if (cached) {
+        return { data: cached.payload, fromCache: true, fetchedAt: cached.fetchedAt };
+      }
+    } catch {
+      /* Cache read failed — surface the original fetch error. */
     }
     throw err;
   }

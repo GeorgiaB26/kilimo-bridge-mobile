@@ -8,9 +8,14 @@ export type OutboxActionType =
   | 'farmer_registration'
   | 'task_submission'
   | 'task_approval'
+  | 'agent_task_approval'
+  | 'task_recall'
+  | 'task_start'
   | 'farmer_verification'
   | 'centre_qc'
-  | 'project_assign';
+  | 'project_assign'
+  | 'agent_task_create'
+  | 'agent_task_status_update';
 
 /**
  * Lifecycle:

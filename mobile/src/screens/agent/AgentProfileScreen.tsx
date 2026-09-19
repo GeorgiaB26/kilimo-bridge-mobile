@@ -1,8 +1,10 @@
-import React, { useCallback, useState } from 'react';
-import { View, ScrollView, Linking, Alert, Modal, Pressable, Switch } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useLayoutEffect, useState } from 'react';
+import { View, ScrollView, Linking, Alert, Pressable, Switch } from 'react-native';
+import { useFocusEffect, useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
+import type { CompositeNavigationProp } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TextInput } from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
 import {
   ChevronRight,
   CircleCheck,
@@ -12,16 +14,19 @@ import {
   MessageCircle,
   Phone,
   Star,
+  Store,
   X,
 } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useAuthStore } from '../../store/authStore';
 import { getAgentDashboard, getNotificationSettings, updateNotificationSettings } from '../../api/client';
-import { APP_BUILD } from '../../constants/build';
 import { extractApiError } from '../../utils/feedback';
 import { KBCard } from '../../components/ui/KBCard';
+import { KeyboardBottomSheet } from '../../components/ui/KeyboardBottomSheet';
 import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
+import type { AgentRootStackParamList, AgentTabParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 const USEFUL_DOCUMENTS = [
   { name: 'User Guide v2.1', size: '2.3 MB', type: 'PDF' },
@@ -31,9 +36,27 @@ const USEFUL_DOCUMENTS = [
   { name: 'Common Issues & Solutions', size: '1.5 MB', type: 'PDF' },
 ];
 
+type ProfileNav = CompositeNavigationProp<
+  BottomTabNavigationProp<AgentTabParamList, 'Profile'>,
+  NativeStackNavigationProp<AgentRootStackParamList>
+>;
+
+function openRootScreen(navigation: ProfileNav, route: keyof AgentRootStackParamList) {
+  let nav: NavigationProp<ParamListBase> | undefined = navigation;
+  while (nav) {
+    if (nav.getState().routeNames.includes(route)) {
+      nav.navigate(route);
+      return;
+    }
+    nav = nav.getParent();
+  }
+}
+
 export function AgentProfileScreen() {
+  const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const [pm, setPm] = useState<{ name: string; phone: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
@@ -96,6 +119,20 @@ export function AgentProfileScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ marginRight: 16 }}>
+          <MessagesNotificationsHeaderIcons
+            iconColor="#fff"
+            compact
+            onSettingsPress={() => setSettingsOpen(true)}
+          />
+        </View>
+      ),
+    });
+  }, [navigation]);
+
   const callPhone = (phone: string) => {
     Linking.openURL(`tel:${phone.replace(/\s/g, '')}`);
   };
@@ -110,17 +147,7 @@ export function AgentProfileScreen() {
 
   return (
     <>
-      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
-        <View className="mb-4 flex-row items-center justify-between">
-          <Text className="text-[22px] font-bold text-[#1A4D3E]">Profile</Text>
-          <View className="flex-row items-center gap-1">
-            <MessagesNotificationsHeaderIcons iconColor="#1A4D3E" />
-            <Pressable onPress={() => setSettingsOpen(true)} accessibilityLabel="Settings">
-              <Ionicons name="settings-outline" size={26} color="#1A4D3E" />
-            </Pressable>
-          </View>
-        </View>
-
+      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4" contentContainerStyle={scrollContentStyle}>
         <View className="mb-4 items-center rounded-xl bg-white p-5">
           <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-[#1A4D3E]">
             <Text className="text-2xl font-bold text-[#D4AF6A]">
@@ -153,6 +180,18 @@ export function AgentProfileScreen() {
           <Row label="Region" value={user?.region ?? user?.district} />
           <Row label="District" value={user?.district} />
           <Row label="Aggregation centre" value={user?.aggregationCenter} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View centres in my district"
+            className="mt-2 flex-row items-center justify-between border-t border-[#F0F0F0] pt-3"
+            onPress={() => openRootScreen(navigation, 'CentresList')}
+          >
+            <View className="flex-row items-center gap-1.5">
+              <Store size={16} color="#1A4D3E" />
+              <Text className="text-sm font-semibold text-[#1A4D3E]">Centres in my district</Text>
+            </View>
+            <ChevronRight size={16} color="#1A4D3E" />
+          </Pressable>
         </KBCard>
 
         <KBCard style={{ marginBottom: 12 }}>
@@ -164,13 +203,13 @@ export function AgentProfileScreen() {
               <Row label="Name" value={pm.name} />
               <Row label="Phone" value={pm.phone} />
               <View className="mt-3 flex-row gap-2">
-                <Button variant="outline" className="flex-1 h-10" onPress={() => callPhone(pm.phone)}>
+                <Button variant="outline" size="pill" className="flex-1" onPress={() => callPhone(pm.phone)}>
                   <View className="flex-row items-center gap-1.5">
                     <Phone size={16} color="#1A4D3E" />
                     <Text>Call PM</Text>
                   </View>
                 </Button>
-                <Button variant="outline" className="flex-1 h-10" onPress={() => callPhone(pm.phone)}>
+                <Button variant="outline" size="pill" className="flex-1" onPress={() => callPhone(pm.phone)}>
                   <View className="flex-row items-center gap-1.5">
                     <MessageCircle size={16} color="#1A4D3E" />
                     <Text>Message PM</Text>
@@ -179,6 +218,7 @@ export function AgentProfileScreen() {
               </View>
               <Button
                 variant="ghost"
+                size="pill"
                 className="mt-2"
                 onPress={() => Alert.alert('Get help', 'Contact your PM for support with registrations, tasks, or payments.')}
               >
@@ -208,26 +248,27 @@ export function AgentProfileScreen() {
               <View className="mt-2 flex-row gap-2">
                 <Button
                   variant="outline"
-                  className="h-8"
+                  size="pill"
                   onPress={() => Alert.alert('Download', `${doc.name} will be available in a future update.`)}
                 >
-                  <Text className="text-xs">Download</Text>
+                  <Text className="font-semibold text-xs">Download</Text>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8"
+                  size="pill"
                   onPress={() => Alert.alert('Share', `${doc.name} sharing coming soon.`)}
                 >
-                  <Text className="text-xs">Share</Text>
+                  <Text className="font-semibold text-xs">Share</Text>
                 </Button>
               </View>
             </View>
           ))}
           <Button
             variant="ghost"
+            size="pill"
             onPress={() => Alert.alert('Request document', 'Ask your PM to upload new documents via the admin portal.')}
           >
-            <Text className="text-[#1A4D3E]">+ Request document</Text>
+            <Text className="font-semibold text-[#1A4D3E]">+ Request document</Text>
           </Button>
         </KBCard>
 
@@ -266,15 +307,22 @@ export function AgentProfileScreen() {
           />
         </KBCard>
 
-        <Button variant="outline" onPress={logout}>
-          <Text>Sign out</Text>
+        <Button
+          variant="outline"
+          size="pill"
+          className="border-[#D32F2F] bg-white"
+          onPress={logout}
+        >
+          <Text className="font-semibold text-[#D32F2F]">Sign out</Text>
         </Button>
-        <Text className="mt-4 text-center text-[11px] text-[#757575]">Release {APP_BUILD}</Text>
       </ScrollView>
 
-      <Modal visible={settingsOpen} animationType="slide" transparent onRequestClose={() => setSettingsOpen(false)}>
-        <View className="flex-1 justify-end bg-black/40">
-          <View className="rounded-t-2xl bg-white p-5">
+      <KeyboardBottomSheet
+        visible={settingsOpen}
+        onRequestClose={() => setSettingsOpen(false)}
+        scrollable
+        sheetClassName="rounded-t-2xl bg-white p-5"
+      >
             <View className="mb-4 flex-row items-center justify-between">
               <Text className="text-lg font-bold">Edit profile</Text>
               <Pressable onPress={() => setSettingsOpen(false)}>
@@ -291,15 +339,13 @@ export function AgentProfileScreen() {
             <TextInput label="Phone" value={editPhone} onChangeText={setEditPhone} mode="outlined" style={{ marginBottom: 12 }} />
             <Text className="mb-2 text-sm font-semibold text-[#757575]">Area of coverage (read-only)</Text>
             <Text className="mb-4 text-[#333333]">{user?.district ?? user?.region ?? '—'}</Text>
-            <Button className="mb-2 h-11 bg-[#1A4D3E]" onPress={submitProfileRequest}>
-              <Text className="text-white">Submit request</Text>
+            <Button size="pill" className="mb-2 bg-[#1A4D3E]" onPress={submitProfileRequest}>
+              <Text className="font-semibold text-white">Submit request</Text>
             </Button>
-            <Button variant="outline" onPress={() => setSettingsOpen(false)}>
-              <Text>Cancel</Text>
+            <Button variant="outline" size="pill" onPress={() => setSettingsOpen(false)}>
+              <Text className="font-semibold">Cancel</Text>
             </Button>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardBottomSheet>
     </>
   );
 }

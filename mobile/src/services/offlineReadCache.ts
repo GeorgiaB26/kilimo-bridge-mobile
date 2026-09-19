@@ -2,12 +2,12 @@
  * Offline read cache (native) — SQLite table `read_cache` in kilimo_offline.db.
  * Falls back to AsyncStorage if SQLite is unavailable.
  */
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   readCacheCompositeKey,
   type ReadCacheEntry,
 } from './offlineReadCacheTypes';
+import { getOfflineSqliteDb } from './offlineSqlite';
 
 export type { ReadCacheEntry } from './offlineReadCacheTypes';
 export {
@@ -17,14 +17,7 @@ export {
   readCacheCompositeKey,
 } from './offlineReadCacheTypes';
 
-const DB_NAME = 'kilimo_offline.db';
 const ASYNC_FALLBACK_KEY = 'kilimo_read_cache_v1';
-
-type OfflineSqliteDb = {
-  execAsync: (sql: string) => Promise<void>;
-  getAllAsync: <T>(sql: string, params?: (string | number | null)[]) => Promise<T[]>;
-  runAsync: (sql: string, params?: (string | number | null)[]) => Promise<unknown>;
-};
 
 type CacheRow = {
   composite_key: string;
@@ -38,36 +31,6 @@ type StoreMap = Record<
   string,
   { cacheKey: string; userScope: string; payload_json: string; fetched_at: string }
 >;
-
-let dbReady = false;
-let sqliteDb: OfflineSqliteDb | null = null;
-
-async function initDb(): Promise<void> {
-  if (dbReady) return;
-  if (Platform.OS === 'web') {
-    dbReady = true;
-    return;
-  }
-  try {
-    const { openDatabaseAsync } = await import('expo-sqlite');
-    const database = await openDatabaseAsync(DB_NAME);
-    sqliteDb = database as unknown as OfflineSqliteDb;
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS read_cache (
-        composite_key TEXT PRIMARY KEY NOT NULL,
-        cache_key TEXT NOT NULL,
-        user_scope TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        fetched_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_read_cache_scope
-        ON read_cache (user_scope);
-    `);
-  } catch {
-    sqliteDb = null;
-  }
-  dbReady = true;
-}
 
 async function loadAsyncStore(): Promise<StoreMap> {
   const raw = await AsyncStorage.getItem(ASYNC_FALLBACK_KEY);
@@ -97,7 +60,7 @@ export async function putReadCache<T>(
   payload: T,
   userScope: string
 ): Promise<ReadCacheEntry<T>> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const fetchedAt = new Date().toISOString();
   const scope = userScope.trim() || 'anon';
   const composite = readCacheCompositeKey(scope, cacheKey);
@@ -128,7 +91,7 @@ export async function getReadCache<T>(
   cacheKey: string,
   userScope: string
 ): Promise<ReadCacheEntry<T> | null> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const scope = userScope.trim() || 'anon';
   const composite = readCacheCompositeKey(scope, cacheKey);
 
@@ -163,7 +126,7 @@ export async function getReadCache<T>(
 }
 
 export async function deleteReadCache(cacheKey: string, userScope: string): Promise<void> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const composite = readCacheCompositeKey(userScope.trim() || 'anon', cacheKey);
   if (!sqliteDb) {
     const store = await loadAsyncStore();
@@ -177,7 +140,7 @@ export async function deleteReadCache(cacheKey: string, userScope: string): Prom
 }
 
 export async function clearReadCacheForUser(userScope: string): Promise<number> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   const scope = userScope.trim() || 'anon';
   if (!sqliteDb) {
     const store = await loadAsyncStore();
@@ -210,9 +173,13 @@ export async function loadWithReadCache<T>(options: {
     const saved = await putReadCache(options.cacheKey, data, options.userScope);
     return { data, fromCache: false, fetchedAt: saved.fetchedAt };
   } catch (err) {
-    const cached = await getReadCache<T>(options.cacheKey, options.userScope);
-    if (cached) {
-      return { data: cached.payload, fromCache: true, fetchedAt: cached.fetchedAt };
+    try {
+      const cached = await getReadCache<T>(options.cacheKey, options.userScope);
+      if (cached) {
+        return { data: cached.payload, fromCache: true, fetchedAt: cached.fetchedAt };
+      }
+    } catch {
+      /* Cache read failed (e.g. native SQLite) — surface the original fetch error. */
     }
     throw err;
   }

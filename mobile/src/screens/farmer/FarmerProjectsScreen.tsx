@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, FlatList } from 'react-native';
+import { View, FlatList, ActivityIndicator } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
-import { getFarmerHierarchyProjects, getFarmerProjects } from '../../api/client';
+import { COLORS } from '../../constants';
+import { getFarmerProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
@@ -16,9 +17,10 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { formatProjectStatus, formatDisplayDate, formatProjectDate } from '../../utils/greeting';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerProjectsStackParamList } from '../../navigation/types';
-import { FarmerInboxHeaderBar } from '../../components/messaging/FarmerInboxHeaderBar';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerProjectsForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type Tab = 'active' | 'completed';
 type Nav = NativeStackNavigationProp<FarmerProjectsStackParamList, 'ProjectsList'>;
@@ -39,20 +41,21 @@ export function FarmerProjectsScreen() {
   const navigation = useNavigation<Nav>();
   const { formatAmount } = useCurrency();
   const userScope = useReadCacheUserScope();
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const [tab, setTab] = useState<Tab>('active');
   const [projects, setProjects] = useState<FarmerProject[]>([]);
   const [hierarchyProjects, setHierarchyProjects] = useState<HierarchyProject[]>([]);
   const [useHierarchy, setUseHierarchy] = useState(false);
 
   const [hierarchyError, setHierarchyError] = useState<string | null>(null);
-  const [hierarchyChecked, setHierarchyChecked] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
 
   const loadHierarchy = useCallback(() => {
     loadWithReadCache({
       cacheKey: READ_CACHE_KEYS.farmerProjects,
       userScope,
-      fetchLive: () => getFarmerHierarchyProjects(),
+      fetchLive: fetchFarmerProjectsForCache,
     })
       .then((result) => {
         const list = result.data.projects ?? [];
@@ -75,7 +78,9 @@ export function FarmerProjectsScreen() {
         setCacheFetchedAt(null);
         setHierarchyError(extractApiError(err, 'Could not load program projects'));
       })
-      .finally(() => setHierarchyChecked(true));
+      .finally(() => {
+        setLoading(false);
+      });
   }, [userScope]);
 
   useEffect(() => {
@@ -83,17 +88,24 @@ export function FarmerProjectsScreen() {
     getFarmerProjects().then((d) => setProjects(d.projects ?? [])).catch(() => {});
   }, [loadHierarchy]);
 
-  if (useHierarchy || hierarchyChecked) {
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text className="mt-3 text-sm text-[#757575]">Loading your projects...</Text>
+      </View>
+    );
+  }
+
+  if (useHierarchy) {
     const active = hierarchyProjects.filter((p) => p.status !== 'completed');
     const done = hierarchyProjects.filter((p) => p.status === 'completed');
     const shown = tab === 'active' ? active : done;
 
     return (
       <View className="flex-1 bg-[#F5F5F5]">
-        <FarmerInboxHeaderBar />
         <View className="flex-1 p-4">
-        <Text className="text-[26px] font-bold text-[#1A4D3E]">Your program projects</Text>
-        <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">
+        <Text className="mb-4 text-sm leading-5 text-[#757575]">
           Tap a project to see your assigned tasks and mark them complete
         </Text>
         {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
@@ -113,7 +125,7 @@ export function FarmerProjectsScreen() {
           className="flex-1"
           data={shown}
           keyExtractor={(item) => item.id}
-          contentContainerClassName="pb-8"
+          contentContainerStyle={scrollContentStyle}
           renderItem={({ item }) => {
             const total = Number(item.assigned_task_count ?? item.task_count) || 0;
             const doneCount = Number(item.completed_task_count) || 0;
@@ -157,10 +169,8 @@ export function FarmerProjectsScreen() {
 
   return (
     <View className="flex-1 bg-[#F5F5F5]">
-      <FarmerInboxHeaderBar />
       <View className="flex-1 p-4">
-      <Text className="text-[26px] font-bold text-[#1A4D3E]">Your Projects</Text>
-      <Text className="mb-4 mt-1 text-sm leading-5 text-[#757575]">
+      <Text className="mb-4 text-sm leading-5 text-[#757575]">
         {tab === 'active'
           ? 'Training and work you are currently doing'
           : 'Projects you have finished and been paid for'}
@@ -179,7 +189,7 @@ export function FarmerProjectsScreen() {
         className="flex-1"
         data={filtered}
         keyExtractor={(item, i) => item.id ?? `${item.project_name}-${i}`}
-        contentContainerClassName="pb-8"
+        contentContainerStyle={scrollContentStyle}
         renderItem={({ item }) => {
           const statusInfo = formatProjectStatus(item.status ?? '');
           const isComplete = item.status === 'Completed';

@@ -1,9 +1,8 @@
-import React, { useCallback, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, ScrollView, ActivityIndicator, Alert, Image, Pressable, StyleSheet, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  ChevronLeft,
   CircleCheck,
   Hourglass,
   Square,
@@ -11,16 +10,18 @@ import {
 } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { getAgentFarmerById, getAdminFarmerTasks } from '../../api/client';
+import { getAgentFarmerById, getAdminFarmerTasks, reviewFarmerProfilePhoto } from '../../api/client';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { VerifyFarmerModal } from '../../components/agent/VerifyFarmerModal';
 import { FarmerProfilePhoto } from '../../components/FarmerProfilePhoto';
 import { OutboxFarmerVerificationCard } from '../../components/OutboxFarmerVerificationCard';
 import { isUsableFarmerPhotoUrl } from '../../../shared/src/farmerPhoto';
 import { formatFarmerStatus } from '../../utils/farmerStatus';
+import { formatCleanDate } from '../../utils/greeting';
 import { extractApiError } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 import type { AgentFarmersStackParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 import {
   dismissFarmerVerificationOutbox,
   listPendingFarmerVerifications,
@@ -51,6 +52,7 @@ type FarmerDetail = {
   centre_location_level_1?: string;
   centre_location_level_2?: string;
   picture_url?: string | null;
+  pending_picture_url?: string | null;
   status: string;
   key?: string;
   created_at?: string;
@@ -74,9 +76,8 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
 
 function formatDate(value?: string | null): string | undefined {
   if (!value) return undefined;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return undefined;
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const formatted = formatCleanDate(value);
+  return formatted === 'N/A' ? undefined : formatted;
 }
 
 export function AgentFarmerProfileScreen({ route, navigation }: Props) {
@@ -93,6 +94,18 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     []
   );
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [reviewingPhoto, setReviewingPhoto] = useState(false);
+  const scrollContentStyle = useTabScreenContentContainerStyle({ paddingBottom: 32 });
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    hasLoadedRef.current = false;
+    setFarmer(null);
+    setLoading(true);
+    setLoadError(null);
+    setTaskCompleted(0);
+    setTaskOutstanding(0);
+  }, [farmerId]);
 
   const loadPending = useCallback(async () => {
     const all = await listPendingFarmerVerifications();
@@ -100,28 +113,36 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   }, [farmerId]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedRef.current) {
+      setLoading(true);
+    }
     setLoadError(null);
     try {
-      const data = await getAgentFarmerById(farmerId);
-      setFarmer(data.farmer as FarmerDetail);
-      try {
-        const tasksData = await getAdminFarmerTasks({ farmer_id: farmerId });
-        const tasks = tasksData.tasks ?? [];
+      const [farmerResult, tasksResult] = await Promise.all([
+        getAgentFarmerById(farmerId),
+        getAdminFarmerTasks({ farmer_id: farmerId }).catch(() => null),
+      ]);
+      setFarmer(farmerResult.farmer as FarmerDetail);
+
+      if (tasksResult) {
+        const tasks = tasksResult.tasks ?? [];
         const completed = tasks.filter((t: { status?: string }) =>
           ['approved', 'completed'].includes(t.status ?? '')
         ).length;
-        const outstanding = tasks.filter((t: { status?: string }) =>
-          !['approved', 'completed'].includes(t.status ?? '')
+        const outstanding = tasks.filter(
+          (t: { status?: string }) => !['approved', 'completed'].includes(t.status ?? '')
         ).length;
         setTaskCompleted(completed);
         setTaskOutstanding(outstanding);
-      } catch {
+      } else {
         setTaskCompleted(0);
         setTaskOutstanding(0);
       }
+      hasLoadedRef.current = true;
     } catch (err: unknown) {
-      setFarmer(null);
+      if (!hasLoadedRef.current) {
+        setFarmer(null);
+      }
       setLoadError(extractApiError(err, 'Could not load farmer profile'));
     } finally {
       setLoading(false);
@@ -130,10 +151,18 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
       void (async () => {
+        // Paint profile ASAP — do not wait on outbox sync before fetching.
+        await Promise.all([load(), loadPending()]);
+        if (cancelled) return;
         await syncAllPendingFarmerVerifications();
+        if (cancelled) return;
         await Promise.all([load(), loadPending()]);
       })();
+      return () => {
+        cancelled = true;
+      };
     }, [load, loadPending])
   );
 
@@ -148,6 +177,25 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
   ]
     .filter(Boolean)
     .join(', ');
+
+  const handlePhotoReview = async (decision: 'approved' | 'rejected') => {
+    if (!farmer || reviewingPhoto) return;
+    setReviewingPhoto(true);
+    try {
+      await reviewFarmerProfilePhoto(farmerId, decision);
+      Alert.alert(
+        decision === 'approved' ? 'Photo approved' : 'Photo not approved',
+        decision === 'approved'
+          ? `${farmer.name}'s profile photo has been updated.`
+          : `${farmer.name}'s current photo is unchanged. They can submit another photo.`
+      );
+      await load();
+    } catch (err: unknown) {
+      Alert.alert('Could not review photo', extractApiError(err, 'Please try again.'));
+    } finally {
+      setReviewingPhoto(false);
+    }
+  };
 
   const handleVerifySubmit = async (
     verificationStatus: 'verified' | 'rejected',
@@ -218,10 +266,15 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     }
   };
 
-  if (loading) {
+  if (loading && !farmer) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="#1A4D3E" />
+      <View className="flex-1 bg-[#F5F5F5]">
+        <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
+          <Text className="mt-4 text-2xl font-bold text-white">{routeName}</Text>
+        </View>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#1A4D3E" />
+        </View>
       </View>
     );
   }
@@ -234,11 +287,11 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
             {loadError ?? 'Could not load farmer profile.'}
           </Text>
         </View>
-        <Button variant="outline" className="mt-4" onPress={() => navigation.goBack()}>
-          <Text>Back to farmers</Text>
+        <Button variant="outline" size="pill" className="mt-4" onPress={() => navigation.goBack()}>
+          <Text className="font-semibold">Back to farmers</Text>
         </Button>
-        <Button variant="ghost" className="mt-2" onPress={load}>
-          <Text>Retry</Text>
+        <Button variant="ghost" size="pill" className="mt-2" onPress={load}>
+          <Text className="font-semibold">Retry</Text>
         </Button>
       </View>
     );
@@ -246,21 +299,9 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
 
   return (
     <>
-      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="pb-8">
+      <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerStyle={scrollContentStyle}>
         <View className="items-center bg-[#1A4D3E] px-4 pb-6 pt-4">
-          <View className="w-full flex-row items-center justify-between">
-            <Pressable onPress={() => navigation.goBack()} className="flex-row items-center gap-1 py-2">
-              <ChevronLeft size={20} color="#FFFFFF" />
-              <Text className="text-lg text-white">Back</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => Alert.alert('Edit profile', 'Profile editing will be available in a future update.')}
-              className="py-2"
-            >
-              <Text className="text-sm font-semibold text-[#D4AF6A]">Edit</Text>
-            </Pressable>
-          </View>
-          <View className="mt-2 items-center">
+          <View className="items-center">
             <FarmerProfilePhoto
               name={farmer.name || routeName}
               pictureUrl={farmer.picture_url}
@@ -282,6 +323,43 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
         </View>
 
         <View className="p-4">
+          {farmer.pending_picture_url ? (
+            <View className="mb-3 rounded-lg border border-[#FBBF24] bg-[#FFF8E1] p-3.5">
+              <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
+                New profile photo
+              </Text>
+              <Text className="mb-3 text-sm text-[#333333]">
+                {farmer.name} submitted this photo. Approve it to replace their current profile picture.
+              </Text>
+              <View style={styles.pendingPhotoWrap}>
+                <Image source={{ uri: farmer.pending_picture_url }} style={styles.pendingPhoto} />
+              </View>
+              <View style={styles.reviewRow}>
+                <View style={styles.reviewSlot}>
+                  <Pressable
+                    onPress={() => void handlePhotoReview('rejected')}
+                    disabled={reviewingPhoto}
+                    style={[styles.rejectBtn, reviewingPhoto && styles.reviewDisabled]}
+                  >
+                    <Text style={styles.rejectBtnText}>Reject</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.reviewSlot}>
+                  <Pressable
+                    onPress={() => void handlePhotoReview('approved')}
+                    disabled={reviewingPhoto}
+                    style={[styles.approveBtn, reviewingPhoto && styles.reviewDisabled]}
+                  >
+                    {reviewingPhoto ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.approveBtnText}>Approved</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ) : null}
           {pendingVerifications.length > 0 ? (
             <View className="mb-3">
               <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">
@@ -402,8 +480,8 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
           ) : null}
 
           {canVerify && pendingVerifications.length === 0 ? (
-            <Button className="h-12 bg-[#1A4D3E]" onPress={() => setVerifyModalOpen(true)}>
-              <Text className="text-white">Verify Farmer</Text>
+            <Button size="pill" className="bg-[#1A4D3E]" onPress={() => setVerifyModalOpen(true)}>
+              <Text className="font-semibold text-white">Verify Farmer</Text>
             </Button>
           ) : null}
         </View>
@@ -421,3 +499,66 @@ export function AgentFarmerProfileScreen({ route, navigation }: Props) {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  pendingPhotoWrap: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  pendingPhoto: {
+    width: 160,
+    height: 160,
+    borderRadius: 12,
+    backgroundColor: '#E8E8E8',
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reviewSlot: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+  },
+  rejectBtn: {
+    width: '100%',
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  rejectBtnText: {
+    fontWeight: '600',
+    color: '#D32F2F',
+    fontSize: 14,
+  },
+  approveBtn: {
+    width: '100%',
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#1A4D3E',
+    backgroundColor: '#1A4D3E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  approveBtnText: {
+    fontWeight: '600',
+    color: '#fff',
+    fontSize: 14,
+  },
+  reviewDisabled: {
+    opacity: 0.65,
+  },
+});
+

@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView } from 'react-native';
-import { Button, Surface, TextInput } from 'react-native-paper';
+import { View, Text, StyleSheet, Modal } from 'react-native';
+import { Button, Surface } from 'react-native-paper';
+import { FormKeyboardScroll } from './ui/FormKeyboardScroll';
 import { PickerField } from './PickerField';
+import { VillagePickerField } from './VillagePickerField';
 import { COLORS } from '../constants';
 import {
   getCountryConfig,
@@ -51,7 +53,12 @@ export function FarmerLocationPrompt({ country, visible, onCompleted }: FarmerLo
     }
     setSaving(true);
     try {
-      await updateFarmerLocation({ district, subCounty, parish: parish || undefined, village: village || undefined });
+      await updateFarmerLocation({
+        district,
+        subCounty,
+        parish: parish || undefined,
+        village: village || undefined,
+      });
       onCompleted();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not save location');
@@ -62,7 +69,7 @@ export function FarmerLocationPrompt({ country, visible, onCompleted }: FarmerLo
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <FormKeyboardScroll style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Complete your location</Text>
         <Text style={styles.subtitle}>
           Your cooperative imported your profile. Please confirm where you farm in {country} so we can assign the right aggregation centre.
@@ -76,6 +83,7 @@ export function FarmerLocationPrompt({ country, visible, onCompleted }: FarmerLo
               setDistrict(value);
               setSubCounty('');
               setParish('');
+              setVillage('');
             }}
             required
           />
@@ -86,6 +94,7 @@ export function FarmerLocationPrompt({ country, visible, onCompleted }: FarmerLo
             onSelect={(value) => {
               setSubCounty(value);
               setParish('');
+              setVillage('');
             }}
             required
           />
@@ -94,24 +103,29 @@ export function FarmerLocationPrompt({ country, visible, onCompleted }: FarmerLo
               label={labels[2]}
               value={parish}
               options={level3Options}
-              onSelect={setParish}
+              onSelect={(value) => {
+                setParish(value);
+                setVillage('');
+              }}
             />
           ) : null}
-          <TextInput
-            label={labels[3] ?? 'Village'}
-            value={village}
-            onChangeText={setVillage}
-            mode="outlined"
-            style={styles.input}
-            outlineColor={COLORS.border}
-            activeOutlineColor={COLORS.primary}
+          <VillagePickerField
+            country={country}
+            district={district}
+            subCounty={subCounty}
+            parish={parish}
+            village={village}
+            labels={labels}
+            level3Required={level3Options.length > 0}
+            persistHint="it is saved when you tap Save location."
+            onChange={setVillage}
           />
         </Surface>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button mode="contained" onPress={handleSave} loading={saving} buttonColor={COLORS.primary} style={styles.btn}>
           Save location
         </Button>
-      </ScrollView>
+      </FormKeyboardScroll>
     </Modal>
   );
 }
@@ -123,6 +137,5 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 15, color: COLORS.muted, lineHeight: 22, marginBottom: 20 },
   card: { padding: 16, borderRadius: 12, backgroundColor: COLORS.background, marginBottom: 16 },
   error: { color: COLORS.alert, marginBottom: 12 },
-  input: { marginTop: 8, backgroundColor: COLORS.background },
   btn: { borderRadius: 12 },
 });

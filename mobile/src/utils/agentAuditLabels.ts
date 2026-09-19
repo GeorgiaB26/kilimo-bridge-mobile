@@ -10,6 +10,7 @@ import {
   User,
   Users,
 } from 'lucide-react-native';
+import { formatCleanDate } from './greeting';
 
 export type AuditIcon = ComponentType<{ size?: number | string; color?: string }>;
 
@@ -134,9 +135,7 @@ export function groupAuditByDate(
     } else if (day.getTime() === yesterday.getTime()) {
       label = 'Yesterday';
     } else {
-      label = d
-        .toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-        .toUpperCase();
+      label = formatCleanDate(d.toISOString()).toUpperCase();
     }
     groups[label] = groups[label] ?? [];
     groups[label].push(log);

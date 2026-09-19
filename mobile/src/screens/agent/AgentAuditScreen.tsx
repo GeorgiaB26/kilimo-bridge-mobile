@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, FlatList, RefreshControl, TextInput } from 'react-native';
+import { View, FlatList, RefreshControl, TextInput, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/ui/text';
@@ -8,6 +8,7 @@ import {
   formatAgentAuditEntry,
   groupAuditByDate,
 } from '../../utils/agentAuditLabels';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type LogRow = {
   action: string;
@@ -19,6 +20,7 @@ type LogRow = {
 
 export function AgentAuditScreen() {
   const [logs, setLogs] = useState<LogRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -28,6 +30,8 @@ export function AgentAuditScreen() {
       setLogs(r.data.logs ?? []);
     } catch {
       setLogs([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -50,11 +54,21 @@ export function AgentAuditScreen() {
   });
 
   const grouped = groupAuditByDate(filtered);
+  const scrollContentStyle = useTabScreenContentContainerStyle({ padding: 16, paddingBottom: 40 });
+
+  if (loading && logs.length === 0) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
+        <ActivityIndicator size="large" color="#1A4D3E" />
+        <Text className="mt-3 text-sm text-[#757575]">Loading activity...</Text>
+      </View>
+    );
+  }
 
   return (
     <FlatList
       className="flex-1 bg-[#F5F5F5]"
-      contentContainerClassName="p-4 pb-10"
+      contentContainerStyle={scrollContentStyle}
       data={grouped}
       keyExtractor={(item) => item.label}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

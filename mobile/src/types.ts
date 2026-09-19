@@ -50,7 +50,7 @@ export interface RegistrationFormData {
   preferredLanguageOther?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
-  specialVulnerabilities?: string[] | string;
+  specialVulnerabilities?: string[];
   specialVulnerabilitiesOther?: string;
   pictureBase64?: string;
   project1?: string;
@@ -58,6 +58,11 @@ export interface RegistrationFormData {
   project3?: string;
   pictureUri?: string;
 }
+
+/** POST /farmers/register body — vulnerabilities are a comma-separated string, not the form's string[]. */
+export type FarmerRegistrationPayload = Omit<RegistrationFormData, 'specialVulnerabilities'> & {
+  specialVulnerabilities?: string;
+};
 
 export interface ImportValidationResult {
   status: string;

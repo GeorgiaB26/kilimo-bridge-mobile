@@ -1,10 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants';
-import { getFarmerHierarchyProjects, getFarmerProjectTasks } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { KBCard } from '../ui/KBCard';
 import { KBStatusChip } from '../ui/KBStatusChip';
@@ -18,9 +17,23 @@ import {
   syncAllPendingTaskSubmissions,
   type PendingTaskSubmissionView,
 } from '../../services/submitFarmerTaskOutbox';
+import {
+  dismissTaskRecallOutbox,
+  listPendingTaskRecalls,
+  pushPendingTaskRecall,
+  recallFarmerTaskWithOutbox,
+  syncAllPendingTaskRecalls,
+  type PendingTaskRecallView,
+} from '../../services/submitTaskRecallOutbox';
+import { OutboxTaskRecallCard } from '../OutboxTaskRecallCard';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import {
+  fetchFarmerProjectTasksForCache,
+  fetchFarmerProjectsForCache,
+} from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
 import { OfflineCachedDataBanner } from '../OfflineCachedDataBanner';
+import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
 
 export interface FarmerTaskRow {
   id: string;
@@ -33,6 +46,8 @@ export interface FarmerTaskRow {
   rejection_reason?: string;
   photo_evidence_url?: string | null;
   photo_url?: string | null;
+  photo_evidence_key?: string | null;
+  notes?: string | null;
 }
 
 interface Props {
@@ -63,6 +78,7 @@ function evidencePhotoUri(item: FarmerTaskRow): string | null {
 }
 
 export function FarmerProjectTasksSection({ programProjectId, compact }: Props) {
+  const navigation = useNavigation();
   const userScope = useReadCacheUserScope();
   const [tasks, setTasks] = useState<FarmerTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +90,9 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
   );
   const [orphanPending, setOrphanPending] = useState<PendingTaskSubmissionView[]>([]);
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [pendingRecalls, setPendingRecalls] = useState<PendingTaskRecallView[]>([]);
+  const [pushingRecallId, setPushingRecallId] = useState<string | null>(null);
+  const [recallingId, setRecallingId] = useState<string | null>(null);
 
   const resolveProjectId = useCallback(async (): Promise<string | null> => {
     if (programProjectId) return programProjectId;
@@ -81,7 +100,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerProjects,
         userScope,
-        fetchLive: () => getFarmerHierarchyProjects(),
+        fetchLive: fetchFarmerProjectsForCache,
       });
       return result.data.projects?.[0]?.id ?? null;
     } catch {
@@ -111,6 +130,9 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
 
   const load = useCallback(async () => {
     try {
+      await syncAllPendingTaskRecalls();
+      setPendingRecalls(await listPendingTaskRecalls());
+
       const pendingList = await listPendingTaskSubmissions();
       if (pendingList.length > 0) {
         await syncAllPendingTaskSubmissions();
@@ -127,7 +149,7 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerTasks(pid),
         userScope,
-        fetchLive: () => getFarmerProjectTasks(pid),
+        fetchLive: () => fetchFarmerProjectTasksForCache(pid),
       });
       const list = (result.data.tasks ?? []) as FarmerTaskRow[];
       list.sort((a, b) => a.task_order - b.task_order);
@@ -170,6 +192,40 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
     }
   };
 
+  const handleRecall = async (item: FarmerTaskRow) => {
+    setRecallingId(item.id);
+    try {
+      const result = await recallFarmerTaskWithOutbox({
+        taskId: item.id,
+        taskName: item.name,
+        source: 'hierarchy',
+        expectedStatus: item.status || 'submitted-for-approval',
+      });
+      setPendingRecalls(await listPendingTaskRecalls());
+      if (result.mode === 'online') {
+        showMessage(
+          'Submission recalled',
+          'Your photo and notes are still saved. Edit and resubmit when ready.'
+        );
+        await load();
+        setSubmitTask({ ...item, status: 'in-progress' });
+        return;
+      }
+      if (result.mode === 'offline') {
+        showMessage(
+          'Recall saved offline',
+          'We will push your recall when you are back online.'
+        );
+        return;
+      }
+      showMessage('Needs your review', result.error);
+    } catch (err: unknown) {
+      showMessage('Error', extractApiError(err, 'Could not recall task'));
+    } finally {
+      setRecallingId(null);
+    }
+  };
+
   const completedCount = tasks.filter((t) => ['approved', 'completed'].includes(t.status)).length;
   const pendingCount = pendingByTask.size + orphanPending.length;
 
@@ -195,6 +251,43 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {pendingRecalls.length > 0 ? (
+        <View style={styles.offlineSection}>
+          <Text style={styles.offlineTitle}>Queued recalls ({pendingRecalls.length})</Text>
+          {pendingRecalls.map((item) => (
+            <OutboxTaskRecallCard
+              key={item.id}
+              item={item}
+              pushing={pushingRecallId === item.id}
+              onPush={() => {
+                void (async () => {
+                  setPushingRecallId(item.id);
+                  try {
+                    const result = await pushPendingTaskRecall(item.id);
+                    if (result.success) {
+                      showMessage('Recall synced', 'You can edit and resubmit when ready.');
+                      await load();
+                    } else if (result.needsReview) {
+                      showMessage('Needs your review', result.error || 'Conflict detected');
+                    } else {
+                      showMessage('Sync failed', result.error || 'Could not push recall');
+                    }
+                    setPendingRecalls(await listPendingTaskRecalls());
+                  } finally {
+                    setPushingRecallId(null);
+                  }
+                })();
+              }}
+              onDismiss={() => {
+                void (async () => {
+                  await dismissTaskRecallOutbox(item.id);
+                  setPendingRecalls(await listPendingTaskRecalls());
+                })();
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
       {cacheFetchedAt ? (
         <View style={styles.cacheBannerWrap}>
           <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} />
@@ -236,18 +329,21 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
 
       {tasks.map((item) => {
         const pending = pendingByTask.get(item.id);
-        const isApproved = item.status === 'approved' || item.status === 'completed';
-        const isSubmitted = item.status === 'submitted-for-approval';
-        const isRejected = item.status === 'rejected';
+        const statusKey = normalizeTaskStatus(item.status);
+        const isCompleted = statusKey === 'completed';
+        const isApproved = statusKey === 'approved';
+        const isPaidOrApproved = isApproved || isCompleted;
+        const isSubmitted = statusKey === 'submitted-for-approval';
+        const isRejected = statusKey === 'rejected';
         const openable = canOpenTask(item.status, !!pending);
         const evidenceUri =
-          (isSubmitted || isApproved) ? evidencePhotoUri(item) : null;
+          isSubmitted || isPaidOrApproved || isRejected ? evidencePhotoUri(item) : null;
 
         return (
           <KBCard
             key={item.id}
             elevated={false}
-            onPress={openable ? () => setSubmitTask(item) : undefined}
+            onPress={() => openFarmerTaskModule(navigation, item.id)}
           >
             <View style={styles.row}>
               <View style={styles.nameCol}>
@@ -260,10 +356,12 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
                     <Ionicons name="cloud-offline-outline" size={16} color={COLORS.warning} />
                     <Text style={styles.offlineBadgeText}>Saved offline</Text>
                   </View>
-                ) : isApproved ? (
+                ) : isPaidOrApproved ? (
                   <View style={styles.approvedBadge}>
                     <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-                    <Text style={styles.approvedText}>Approved</Text>
+                    <Text style={styles.approvedText}>
+                      {isCompleted ? 'Completed' : 'Approved'}
+                    </Text>
                   </View>
                 ) : (
                   <KBStatusChip
@@ -306,15 +404,24 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
               </View>
             ) : null}
 
-            {!pending && evidenceUri ? (
+            {!pending && (isSubmitted || isPaidOrApproved || isRejected) ? (
               <View style={styles.evidenceWrap}>
-                <Text style={styles.evidenceLabel}>Your submitted photo</Text>
-                <Image
-                  source={{ uri: evidenceUri }}
-                  style={styles.evidenceImage}
-                  resizeMode="cover"
-                  accessibilityLabel={`Evidence photo for ${item.name}`}
-                />
+                <Text style={styles.evidenceLabel}>Your submission</Text>
+                {item.notes?.trim() ? (
+                  <Text style={styles.notesText}>{item.notes.trim()}</Text>
+                ) : (
+                  <Text style={styles.notesMuted}>No notes provided.</Text>
+                )}
+                {evidenceUri ? (
+                  <Image
+                    source={{ uri: evidenceUri }}
+                    style={styles.evidenceImage}
+                    resizeMode="cover"
+                    accessibilityLabel={`Evidence photo for ${item.name}`}
+                  />
+                ) : (
+                  <Text style={styles.rejected}>Photo required</Text>
+                )}
               </View>
             ) : null}
 
@@ -326,26 +433,61 @@ export function FarmerProjectTasksSection({ programProjectId, compact }: Props) 
               <Text style={styles.rejected}>Rejected: {item.rejection_reason}</Text>
             ) : null}
 
+            {!pending && isSubmitted ? (
+              <Button
+                mode="outlined"
+                textColor={COLORS.primary}
+                loading={recallingId === item.id}
+                disabled={recallingId === item.id}
+                onPress={() => void handleRecall(item)}
+                style={styles.openBtn}
+              >
+                Recall submission
+              </Button>
+            ) : null}
+
             {openable ? (
               <Button
                 mode="contained"
                 buttonColor={isRejected ? COLORS.warning : COLORS.primary}
-                onPress={() => setSubmitTask(item)}
+                onPress={() =>
+                  openFarmerTaskModule(navigation, item.id, {
+                    openSubmitModal: isRejected || statusKey === 'in-progress',
+                  })
+                }
                 style={styles.openBtn}
               >
                 {isRejected ? 'Resubmit' : 'Open'}
               </Button>
             ) : null}
 
-            {!pending && (isApproved || isSubmitted) ? (
-              <Text style={styles.locked}>Task locked — no further edits</Text>
+            {!pending && isPaidOrApproved ? (
+              <Text style={styles.locked}>
+                {isCompleted
+                  ? 'Payment transferred — task complete'
+                  : 'Task locked — no further edits'}
+              </Text>
             ) : null}
           </KBCard>
         );
       })}
 
       <FarmerTaskSubmitModal
-        task={submitTask}
+        task={
+          submitTask
+            ? {
+                id: submitTask.id,
+                name: submitTask.name,
+                description: submitTask.description,
+                payment_value_kes: submitTask.payment_value_kes,
+                source: 'hierarchy',
+                initialNotes: submitTask.notes ?? null,
+                initialPhotoUri: evidencePhotoUri(submitTask),
+                initialPhotoKey: submitTask.photo_evidence_key ?? null,
+                rejectionReason: submitTask.rejection_reason ?? null,
+              }
+            : null
+        }
         visible={!!submitTask}
         onClose={() => setSubmitTask(null)}
         onSubmitted={async () => {
@@ -377,6 +519,8 @@ const styles = StyleSheet.create({
   due: { fontSize: 13, color: COLORS.muted, marginTop: 6 },
   evidenceWrap: { marginTop: 10 },
   evidenceLabel: { fontSize: 12, fontWeight: '600', color: COLORS.muted, marginBottom: 6 },
+  notesText: { fontSize: 14, color: COLORS.text, lineHeight: 20, marginBottom: 8 },
+  notesMuted: { fontSize: 14, color: COLORS.muted, lineHeight: 20, marginBottom: 8 },
   evidenceImage: {
     width: '100%',
     height: 160,

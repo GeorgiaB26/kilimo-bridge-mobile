@@ -3,10 +3,19 @@ import { authenticate, requirePermission } from '../middleware/auth';
 import {
   listFarmerProgramProjects,
   listFarmerTasks,
+  getFarmerTask,
   getFarmerTaskForFarmer,
   submitFarmerTask,
+  recallFarmerTask,
+  startFarmerTask,
 } from '../services/hierarchyService';
 import { listAllFarmerAssignedTasks } from '../services/farmerPortalService';
+import {
+  getAgentTaskAssignedToFarmer,
+  submitAgentTaskByFarmer,
+  recallAgentTaskByFarmer,
+  startAgentTaskByFarmer,
+} from '../services/agentDashboardService';
 import { getAdminNotifyPhone, sendSms } from '../services/notificationService';
 import { resolvePhotoUrlForDisplay } from '../services/r2StorageService';
 
@@ -46,6 +55,7 @@ async function mapFarmerTaskRow(row: Record<string, unknown>) {
     task_order: row.task_order,
     photo_url: await resolvePhotoUrlForDisplay(stored),
     photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+    photo_evidence_key: stored,
     notes: row.notes,
     approval_date: row.approved_date,
     rejection_reason: row.rejection_reason,
@@ -53,6 +63,7 @@ async function mapFarmerTaskRow(row: Record<string, unknown>) {
     assigned_at: row.assigned_at ?? row.created_at,
     assigned_by_name: row.assigned_by_name,
     assigned_by_user_id: row.assigned_by_user_id,
+    farmer_started_at: row.farmer_started_at ?? null,
   };
 }
 
@@ -194,6 +205,74 @@ router.post(
   })
 );
 
+router.post(
+  '/tasks/:farmerTaskId/recall',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    try {
+      const task = await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId);
+      if (!task?.id) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+      }
+      const updated = await recallFarmerTask(task.id, farmerId);
+      res.json({
+        status: 'in-progress',
+        message: 'Submission recalled — edit and resubmit when ready',
+        task: await mapFarmerTaskRow(updated as Record<string, unknown>),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not recall task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  '/tasks/:farmerTaskId/start',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const start_date =
+      typeof req.body?.start_date === 'string' ? req.body.start_date : '';
+    try {
+      const task = await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId);
+      if (!task?.id) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+      }
+      const updated = await startFarmerTask(task.id, farmerId, start_date);
+      res.json({
+        status: 'in-progress',
+        message: 'Task started',
+        task: await mapFarmerTaskRow(updated as Record<string, unknown>),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not start task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
 router.get(
   '/hierarchy/projects',
   requirePermission('hierarchy.read.own'),
@@ -287,6 +366,192 @@ router.post(
         : null
     );
     res.json({ ...(updated as object), photo_evidence_url });
+  })
+);
+
+router.post(
+  '/hierarchy/tasks/:farmerTaskId/recall',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    try {
+      const task = await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId);
+      if (!task?.id) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+      }
+      const updated = await recallFarmerTask(task.id, farmerId);
+      const stored =
+        typeof (updated as { photo_evidence_url?: string })?.photo_evidence_url === 'string'
+          ? (updated as { photo_evidence_url: string }).photo_evidence_url
+          : null;
+      res.json({
+        ...(updated as object),
+        photo_evidence_key: stored,
+        photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not recall task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  '/hierarchy/tasks/:farmerTaskId/start',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const start_date =
+      typeof req.body?.start_date === 'string' ? req.body.start_date : '';
+    try {
+      const task = await getFarmerTaskForFarmer(farmerId, req.params.farmerTaskId);
+      if (!task?.id) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+      }
+      const updated = await startFarmerTask(task.id, farmerId, start_date);
+      const stored =
+        typeof (updated as { photo_evidence_url?: string })?.photo_evidence_url === 'string'
+          ? (updated as { photo_evidence_url: string }).photo_evidence_url
+          : null;
+      res.json({
+        ...(updated as object),
+        photo_evidence_key: stored,
+        photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not start task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+/** Farmer submits photo + notes on a field-agent-assigned agent_tasks row. */
+router.post(
+  '/agent-tasks/:taskId/submit',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+
+    const { photo_url, notes } = req.body ?? {};
+    try {
+      const updated = await submitAgentTaskByFarmer(req.params.taskId, farmerId, {
+        photo_url,
+        notes,
+      });
+      res.json({
+        ...updated,
+        source: 'agent_assignment',
+        photo_evidence_url: updated.photo_evidence_url,
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not submit task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+/** Farmer recalls evidence on an agent-assigned task before review. */
+router.post(
+  '/agent-tasks/:taskId/recall',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+
+    try {
+      const updated = await recallAgentTaskByFarmer(req.params.taskId, farmerId);
+      res.json({
+        ...updated,
+        source: 'agent_assignment',
+        photo_evidence_url: updated.photo_evidence_url,
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not recall task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+/** Farmer starts a not-started agent-assigned task (picks start date). */
+router.post(
+  '/agent-tasks/:taskId/start',
+  requirePermission('tasks.submit'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const start_date =
+      typeof req.body?.start_date === 'string' ? req.body.start_date : '';
+    try {
+      const updated = await startAgentTaskByFarmer(req.params.taskId, farmerId, start_date);
+      res.json({
+        ...updated,
+        source: 'agent_assignment',
+        photo_evidence_url: updated.photo_evidence_url,
+      });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not start task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.get(
+  '/agent-tasks/:taskId',
+  requirePermission('hierarchy.read.own'),
+  asyncHandler(async (req, res) => {
+    const farmerId = farmerIdOr400(req, res);
+    if (!farmerId) return;
+    const task = await getAgentTaskAssignedToFarmer(req.params.taskId, farmerId);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    res.json({ ...task, source: 'agent_assignment' });
   })
 );
 

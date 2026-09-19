@@ -1,0 +1,7 @@
+Transaction Type Code,Debit Account No.,Beneficiary Account No.,Beneficiary Name,Beneficiary Bank Swift Code / Local Bank Code,Purpose Code,Purpose Of Payment,Transaction Currency,Payment Amount,Payment Type,Beneficiary Mobile No,Service Provider,Charge Type,Value Date,Customer Reference No,Deal Reference No
+BT,012345677777,0460193871411,John Doe,,,,KES,100,,,,OUR,17-09-2026,70,
+MW,012345677777,,Amos Wanje,,,,KES,100,,0722000000,MPESA,OUR,04-08-2026,71,
+LBT,012345677777,0992000088727,Kanda Bongoman,59000,SALA,,KES,101,EFT,,,OUR,04-08-2026,72,
+LBT,012345677777,0992000088727,Ferre Gola,59000,SALA,,UGX,102,RTGS,,,OUR,04-08-2026,73,
+TT,0560299427842,3454353453453,Franco Luambo,CITITZTZXXX,SALA,UTILITIES,USD,10,,,,OUR,04-08-2026,74,
+LBT,012345677777,01109188857800,Fally Ipupa,11000,SALA,,USD,101,PESALINK,,,OUR,04-08-2026,72,

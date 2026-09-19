@@ -1,17 +1,17 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { COLORS } from '../constants';
 import { FarmerDashboardScreen } from '../screens/farmer/FarmerDashboardScreen';
 import { FarmerProjectsNavigator } from './FarmerProjectsNavigator';
 import { FarmerPaymentsScreen } from '../screens/farmer/FarmerPaymentsScreen';
 import { FarmerTasksScreen } from '../screens/farmer/FarmerTasksScreen';
 import { FarmerProfileScreen } from '../screens/farmer/FarmerProfileScreen';
 import { FarmerTaskDetailScreen } from '../screens/farmer/FarmerTaskDetailScreen';
-import { FarmerFloatingTabBar } from './FarmerFloatingTabBar';
+import { FloatingTabBar, FARMER_TAB_ICONS, floatingTabBarNavigatorScreenOptions, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
 import type { FarmerRootStackParamList, FarmerTabParamList } from './types';
+import { farmerTabHeaderScreenOptions } from './farmerHeaderOptions';
 
 import { FarmerCurrencySync } from '../components/FarmerCurrencySync';
 import { FarmerTabScene } from './FarmerTabScene';
@@ -30,40 +30,43 @@ function withFarmerTabScene<P extends object>(Component: React.ComponentType<P>)
 const RootStack = createNativeStackNavigator<FarmerRootStackParamList>();
 
 function FarmerTabNavigator() {
+  const tabSceneStyle = useFloatingTabBarSceneStyle();
+
   return (
     <Tab.Navigator
-      tabBar={(props) => <FarmerFloatingTabBar {...props} />}
-      screenOptions={{
-        headerStyle: { backgroundColor: COLORS.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600' },
-        sceneStyle: { paddingBottom: 88 },
-      }}
+      tabBar={(props) => <FloatingTabBar {...props} icons={FARMER_TAB_ICONS} />}
+      screenOptions={({ route }) => ({
+        // Projects renders its own matching header via FarmerProjectsNavigator stack.
+        headerShown: route.name !== 'Projects',
+        ...farmerTabHeaderScreenOptions,
+        ...floatingTabBarNavigatorScreenOptions,
+        sceneStyle: tabSceneStyle,
+      })}
     >
       <Tab.Screen
         name="Dashboard"
         component={withFarmerTabScene(FarmerDashboardScreen)}
-        options={{ title: 'Home', headerShown: false }}
+        options={{ title: 'Dashboard', tabBarLabel: 'Home' }}
       />
       <Tab.Screen
         name="Projects"
         component={withFarmerTabScene(FarmerProjectsNavigator)}
-        options={{ headerShown: false }}
+        options={{ title: 'Projects', tabBarLabel: 'Projects' }}
       />
       <Tab.Screen
         name="Tasks"
         component={withFarmerTabScene(FarmerTasksScreen)}
-        options={{ title: 'Tasks', headerShown: false }}
+        options={{ title: 'Tasks' }}
       />
       <Tab.Screen
         name="Payments"
         component={withFarmerTabScene(FarmerPaymentsScreen)}
-        options={{ headerShown: false }}
+        options={{ title: 'Payments' }}
       />
       <Tab.Screen
         name="Profile"
         component={withFarmerTabScene(FarmerProfileScreen)}
-        options={{ headerShown: false }}
+        options={{ title: 'Profile' }}
       />
     </Tab.Navigator>
   );

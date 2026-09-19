@@ -1,26 +1,21 @@
 import React, { useState, useCallback } from 'react';
-import { View, ScrollView, RefreshControl } from 'react-native';
+import { View, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
 import { FarmerLocationPrompt } from '../../components/FarmerLocationPrompt';
-import {
-  getFarmerDashboard,
-  getFarmerPayments,
-  getFarmerHierarchyProjects,
-  getFarmerAssignedTasks,
-} from '../../api/client';
+import { getFarmerPayments, getFarmerHierarchyProjects } from '../../api/client';
 import { extractApiError } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { useAuthStore } from '../../store/authStore';
 import { useCurrency } from '../../context/CurrencyContext';
+import { COLORS } from '../../constants';
 import type { FarmerProject } from '../../types/farmerProject';
 import type { FarmerTabParamList, FarmerProjectsStackParamList } from '../../navigation/types';
-import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
 import {
   FarmerDashboardProfileCard,
   FarmerDashboardEarningsCard,
@@ -31,7 +26,10 @@ import {
   FarmerDashboardSupportSection,
 } from '../../components/farmer/FarmerDashboardSections';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<FarmerTabParamList, 'Dashboard'>,
@@ -41,6 +39,7 @@ type DashboardNav = CompositeNavigationProp<
 type PaymentRow = {
   id: string;
   project_name?: string;
+  task_name?: string;
   amount: number;
   payment_status: string;
   created_at?: string;
@@ -55,6 +54,8 @@ type DashboardData = {
     status?: string;
     profileLocationPending?: boolean;
     picture_url?: string | null;
+    pending_picture_url?: string | null;
+    photoUpdatePending?: boolean;
   };
   pendingAmount: number;
   totalEarnings: number;
@@ -72,6 +73,8 @@ type DashboardData = {
     overdue: number;
     in_progress?: number;
     not_started?: number;
+    submitted_for_approval?: number;
+    rejected?: number;
     completed?: number;
     total?: number;
   };
@@ -94,6 +97,7 @@ export function FarmerDashboardScreen() {
   const userScope = useReadCacheUserScope();
   const [data, setData] = useState<DashboardData | null>(null);
   const [recentPayments, setRecentPayments] = useState<PaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
@@ -103,19 +107,7 @@ export function FarmerDashboardScreen() {
       const result = await loadWithReadCache({
         cacheKey: READ_CACHE_KEYS.farmerDashboard,
         userScope,
-        fetchLive: async () => {
-          const dashboard = await getFarmerDashboard();
-          let recentTasks = dashboard.recentTasks ?? dashboard.assignedTasks ?? [];
-          if (!recentTasks.length) {
-            try {
-              const tasksRes = await getFarmerAssignedTasks();
-              recentTasks = (tasksRes.tasks ?? []).slice(0, 3);
-            } catch {
-              /* keep dashboard-only data */
-            }
-          }
-          return { ...dashboard, recentTasks };
-        },
+        fetchLive: fetchFarmerDashboardForCache,
       });
       setData(result.data as DashboardData);
       setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
@@ -133,6 +125,8 @@ export function FarmerDashboardScreen() {
       setRecentPayments([]);
       setCacheFetchedAt(null);
       setError(extractApiError(err, 'Backend offline or farmer account not linked'));
+    } finally {
+      setLoading(false);
     }
   }, [userScope]);
 
@@ -192,35 +186,45 @@ export function FarmerDashboardScreen() {
   const goToProfile = () => navigation.navigate('Profile');
   const goToPayments = () => navigation.navigate('Payments');
   const goToTasks = (
-    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed',
-    taskId?: string
+    statusFilter?:
+      | 'overdue'
+      | 'in_progress'
+      | 'not_started'
+      | 'submitted_for_approval'
+      | 'rejected'
+      | 'completed'
   ) => {
-    if (!statusFilter && !taskId) {
+    if (!statusFilter) {
       navigation.navigate('Tasks');
       return;
     }
-    navigation.navigate('Tasks', {
-      ...(statusFilter ? { statusFilter } : {}),
-      ...(taskId ? { taskId, highlightTaskId: taskId } : {}),
-    });
+    navigation.navigate('Tasks', { statusFilter });
   };
+
+  const openTask = (taskId: string) => {
+    openFarmerTaskModule(navigation, taskId);
+  };
+
+  const scrollContentStyle = useTabScreenContentContainerStyle({ paddingBottom: 16 });
+
+  if (loading && !data) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text className="mt-3 text-sm text-[#757575]">Loading your home...</Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-[#F5F5F5]">
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={scrollContentStyle}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF6A" />
         }
       >
-        <View className="bg-white px-4 pb-3 pt-4">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-[28px] font-bold text-[#1F4E78]">Dashboard</Text>
-            <MessagesNotificationsHeaderIcons iconColor="#1A4D3E" />
-          </View>
-        </View>
-
         {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         {error && !data ? <FarmerOfflineBanner message={error} /> : null}
 
@@ -251,17 +255,17 @@ export function FarmerDashboardScreen() {
         <FarmerDashboardRecentTasks
           tasks={data?.recentTasks}
           onTasksPress={() => goToTasks()}
-          onTaskPress={(taskId) => goToTasks(undefined, taskId)}
+          onTaskPress={(taskId) => openTask(taskId)}
         />
 
-        <View style={{ paddingHorizontal: 12, marginVertical: 12 }}>
-          <Text className="mb-3 text-base font-bold text-[#1F4E78]">Recent Projects</Text>
-          <FarmerDashboardRecentProjects
-            projects={data?.activeProjects ?? []}
-            formatAmount={formatAmount}
-            onProjectPress={openProjectDetail}
-          />
-        </View>
+        <FarmerDashboardRecentProjects
+          projects={data?.activeProjects ?? []}
+          formatAmount={formatAmount}
+          onProjectPress={openProjectDetail}
+          onProjectsPress={() =>
+            navigation.navigate('Projects', { screen: 'ProjectsList' })
+          }
+        />
 
         <View style={{ paddingHorizontal: 12, marginVertical: 12 }}>
           <Text className="mb-3 text-base font-bold text-[#1F4E78]">Recent Payments</Text>

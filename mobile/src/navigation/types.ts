@@ -17,7 +17,13 @@ export type FarmerTabParamList = {
   Dashboard: undefined;
   Projects: NavigatorScreenParams<FarmerProjectsStackParamList>;
   Tasks: {
-    statusFilter?: 'overdue' | 'in_progress' | 'not_started' | 'completed' | 'rejected';
+    statusFilter?:
+      | 'overdue'
+      | 'in_progress'
+      | 'not_started'
+      | 'submitted_for_approval'
+      | 'rejected'
+      | 'completed';
     highlightTaskId?: string;
     taskId?: string;
     /** Open submit/resubmit modal after deep-link (e.g. QC failure notification). */
@@ -32,8 +38,8 @@ export type FarmerRootStackParamList = {
   MainTabs: NavigatorScreenParams<FarmerTabParamList> | undefined;
   MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
   NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
-  /** Full task detail — opened from QC / task notifications. */
-  TaskDetail: { taskId: string; fromNotification?: boolean };
+  /** Full task detail — opened from notifications, dashboard, and task lists. */
+  TaskDetail: { taskId: string; fromNotification?: boolean; openSubmitModal?: boolean };
 };
 
 export type AdminTabParamList = {
@@ -84,8 +90,16 @@ export type AgentTabParamList = {
   Dashboard: undefined;
   Farmers: NavigatorScreenParams<AgentFarmersStackParamList> | undefined;
   Tasks: {
-    filter?: 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
+    filter?:
+      | 'all'
+      | 'overdue'
+      | 'not_started'
+      | 'in_progress'
+      | 'submitted_for_approval'
+      | 'rejected'
+      | 'completed';
     openAdd?: boolean;
+    /** Deep-link from notification — open this task in the detail modal. */
     taskId?: string;
     highlightTaskId?: string;
   } | undefined;
@@ -97,11 +111,42 @@ export type AgentRootStackParamList = {
   MainTabs: NavigatorScreenParams<AgentTabParamList> | undefined;
   MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
   NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
+  /** View-only list of aggregation centres in the agent's district. */
+  CentresList: undefined;
 };
 
 export type MessagesStackParamList = {
   MessagesList: undefined;
-  MessageDetail: { threadId: string };
+  MessageDetail: {
+    threadId: string;
+    /** Optional hints from the list; detail API is source of truth. */
+    title?: string | null;
+    contextType?: string | null;
+    supportStatus?: string | null;
+  };
+};
+
+export type SupportMessagesStackParamList = {
+  SupportTicketsList:
+    | {
+        statusFilter?: 'open' | 'resolved' | 'all';
+      }
+    | undefined;
+  SupportTicketDetail: {
+    threadId: string;
+    subject?: string | null;
+    status?: string | null;
+  };
+};
+
+export type SupportTabParamList = {
+  Dashboard: undefined;
+  Messages: NavigatorScreenParams<SupportMessagesStackParamList> | undefined;
+};
+
+export type SupportRootStackParamList = {
+  MainTabs: NavigatorScreenParams<SupportTabParamList> | undefined;
+  NotificationsFlow: NavigatorScreenParams<NotificationsStackParamList> | undefined;
 };
 
 export type NotificationsStackParamList = {

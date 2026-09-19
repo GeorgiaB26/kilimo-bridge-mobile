@@ -52,19 +52,7 @@ export function DetailsScreen({ navigation }: Props) {
 
   return (
     <View className="flex-1">
-      <ScreenHeader title="Additional details" subtitle="Household, farm, and location info" />
-      <FormField
-        label="Ward"
-        value={formData.ward ?? formData.parish ?? ''}
-        onChangeText={(ward) => updateForm({ ward, parish: ward })}
-        placeholder="Ward or area name"
-      />
-      <FormField
-        label="Village"
-        value={formData.village ?? ''}
-        onChangeText={(village) => updateForm({ village })}
-        placeholder="Village or estate"
-      />
+      <ScreenHeader title="Additional details" subtitle="Household and farm info" />
       <FormField
         label="Family size"
         value={formData.familySize ?? ''}
@@ -90,7 +78,7 @@ export function DetailsScreen({ navigation }: Props) {
       <PickerField
         label="Special needs"
         value={formData.specialNeeds ?? 'no'}
-        options={SPECIAL_NEEDS_OPTIONS}
+        options={[...SPECIAL_NEEDS_OPTIONS]}
         onSelect={(specialNeeds) => updateForm({ specialNeeds: specialNeeds as 'yes' | 'no' })}
       />
       <View className="flex-row gap-2">

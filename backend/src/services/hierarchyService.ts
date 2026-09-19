@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
+import { resolveFarmerAppUserId } from './farmerAppUser';
 
 /** Adds assigner tracking on farmer_tasks for farmer portal "assigned by" display. */
 export async function ensureFarmerTaskAssignerColumn(): Promise<void> {
@@ -8,6 +9,33 @@ export async function ensureFarmerTaskAssignerColumn(): Promise<void> {
     ALTER TABLE farmer_tasks
     ADD COLUMN IF NOT EXISTS assigned_by_user_id TEXT
   `);
+  await ensureFarmerTaskInProgressStatus();
+  await ensureFarmerTaskStartedAtColumn();
+}
+
+/** Farmer-picked start date when they start a not-started task. */
+export async function ensureFarmerTaskStartedAtColumn(): Promise<void> {
+  await query(`
+    ALTER TABLE farmer_tasks
+    ADD COLUMN IF NOT EXISTS farmer_started_at DATE
+  `);
+}
+
+/**
+ * Recall returns submissions to in-progress (not not-started).
+ * Legacy task_status enums only had not-started/submitted/approved/rejected/completed.
+ */
+export async function ensureFarmerTaskInProgressStatus(): Promise<void> {
+  const row = await queryOne<{ exists: boolean }>(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_enum e
+      JOIN pg_type t ON t.oid = e.enumtypid
+      WHERE t.typname = 'task_status' AND e.enumlabel = 'in-progress'
+    ) AS exists
+  `);
+  if (row?.exists) return;
+  await query(`ALTER TYPE task_status ADD VALUE 'in-progress'`);
 }
 
 export function toDbTaskStatus(status: string): string {
@@ -282,6 +310,19 @@ export async function createTask(data: {
     data.payment_value_kes ?? 0, data.due_date ?? null, data.assigned_agronomist_id ?? null,
   ]);
   await refreshProjectTaskCounts(data.program_project_id);
+
+  const existingFarmers = await query<{ farmer_id: string }>(
+    'SELECT farmer_id FROM program_project_farmers WHERE program_project_id = $1',
+    [data.program_project_id]
+  );
+  if (existingFarmers.length > 0) {
+    await assignFarmersToProject(
+      data.program_project_id,
+      existingFarmers.map((f) => f.farmer_id),
+      [id]
+    );
+  }
+
   return queryOne('SELECT * FROM tasks WHERE id = $1', [id]);
 }
 
@@ -393,6 +434,7 @@ export async function assignFarmersToProject(
   }
 
   let assigned = 0;
+  const newFarmerTaskIds: string[] = [];
   for (const farmerId of farmerIds) {
     await query(`
       INSERT INTO program_project_farmers (id, program_project_id, farmer_id)
@@ -400,15 +442,82 @@ export async function assignFarmersToProject(
       ON CONFLICT (program_project_id, farmer_id) DO NOTHING
     `, [uuidv4(), programProjectId, farmerId]);
     for (const t of taskRows) {
-      await query(`
+      const inserted = await queryOne<{ id: string }>(`
         INSERT INTO farmer_tasks (id, task_id, farmer_id, program_project_id, assigned_by_user_id)
         VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (task_id, farmer_id) DO NOTHING
+        RETURNING id
       `, [uuidv4(), t.id, farmerId, programProjectId, assignedByUserId ?? null]);
+      if (inserted?.id) newFarmerTaskIds.push(inserted.id);
     }
     assigned++;
   }
+  await notifyFarmersOfNewTaskAssignments(newFarmerTaskIds);
   return { assigned, farmer_ids: farmerIds, task_ids: taskRows.map((t) => t.id) };
+}
+
+async function notifyFarmersOfNewTaskAssignments(farmerTaskIds: string[]): Promise<void> {
+  if (farmerTaskIds.length === 0) return;
+
+  const placeholders = farmerTaskIds.map((_, i) => `$${i + 1}`).join(',');
+  const rows = await query<{
+    id: string;
+    farmer_id: string;
+    name: string;
+    program_project_name: string;
+    due_date: string | null;
+  }>(
+    `
+    SELECT ft.id, ft.farmer_id, t.name, pp.name AS program_project_name, t.due_date::text AS due_date
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    JOIN program_projects pp ON pp.id = ft.program_project_id
+    WHERE ft.id IN (${placeholders})
+    `,
+    farmerTaskIds
+  );
+
+  const { createNotification } = await import('./notificationService');
+
+  for (const row of rows) {
+    const farmerUserId = await resolveFarmerAppUserId(row.farmer_id);
+    const due = row.due_date ? ` Due ${row.due_date}.` : '';
+    try {
+      if (farmerUserId) {
+        await createNotification({
+          userId: farmerUserId,
+          title: 'New Task Assigned',
+          message: `You have been assigned "${row.name}" on ${row.program_project_name}.${due}`,
+          type: 'task_assigned',
+          contextType: 'farmer_task',
+          contextId: row.id,
+          actionUrl: `/tasks/${row.id}`,
+          priority: 'high',
+        });
+      }
+      const farmerName =
+        (
+          await queryOne<{ name: string | null }>(
+            'SELECT name FROM farmers WHERE farmer_id = $1',
+            [row.farmer_id]
+          )
+        )?.name?.trim() || 'A farmer';
+      for (const agentUserId of await resolveAgentUserIdsForFarmer(row.farmer_id)) {
+        await createNotification({
+          userId: agentUserId,
+          title: 'New Task Assigned',
+          message: `${farmerName} was assigned "${row.name}" on ${row.program_project_name}.`,
+          type: 'task_assigned',
+          contextType: 'farmer_task',
+          contextId: row.id,
+          actionUrl: `/tasks/${row.id}`,
+          priority: 'normal',
+        });
+      }
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 const FARMER_TASK_DETAIL_SQL = `
@@ -419,21 +528,133 @@ const FARMER_TASK_DETAIL_SQL = `
     JOIN program_projects pp ON pp.id = ft.program_project_id
     JOIN farmers f ON f.farmer_id = ft.farmer_id`;
 
-export async function getFarmerTask(farmerTaskId: string) {
+/** Row shape returned by FARMER_TASK_DETAIL_SQL (status mapped for API consumers). */
+export type FarmerTaskDetailRow = {
+  id: string;
+  task_id?: string;
+  farmer_id?: string;
+  name?: string;
+  description?: string;
+  status?: string;
+  task_order?: number;
+  payment_value_kes?: number;
+  due_date?: string | null;
+  program_project_name?: string;
+  farmer_name?: string;
+  farmer_phone?: string;
+  photo_evidence_url?: string | null;
+  notes?: string | null;
+  approved_date?: string | null;
+  rejection_reason?: string | null;
+  submitted_date?: string | null;
+  farmer_started_at?: string | null;
+  assigned_at?: string | null;
+  created_at?: string | null;
+};
+
+export async function getFarmerTask(farmerTaskId: string): Promise<FarmerTaskDetailRow | null> {
   const row = await queryOne(`${FARMER_TASK_DETAIL_SQL} WHERE ft.id = $1`, [farmerTaskId]);
   if (!row) return null;
-  return mapFarmerTaskRow(row as { status?: string });
+  return mapFarmerTaskRow(row as FarmerTaskDetailRow);
 }
 
-/** Resolve a farmer assignment by farmer_tasks.id or program tasks.id (task template). */
-export async function getFarmerTaskForFarmer(farmerId: string, taskRef: string) {
+/** Resolve by farmer_tasks.id or program tasks.id (task template) for one farmer. */
+export async function getFarmerTaskForFarmer(
+  farmerId: string,
+  taskRef: string
+): Promise<FarmerTaskDetailRow | null> {
   const row = await queryOne(
     `${FARMER_TASK_DETAIL_SQL}
      WHERE ft.farmer_id = $1 AND (ft.id = $2 OR ft.task_id = $2)`,
     [farmerId, taskRef]
   );
   if (!row) return null;
-  return mapFarmerTaskRow(row as { status?: string });
+  return mapFarmerTaskRow(row as FarmerTaskDetailRow);
+}
+
+/** User ids of field agents who should review this farmer (registered agent + district agents). */
+export async function resolveAgentUserIdsForFarmer(farmerId: string): Promise<string[]> {
+  const farmer = await queryOne<{
+    district: string | null;
+    registered_by_agent_id: string | null;
+  }>(
+    `SELECT district, registered_by_agent_id FROM farmers WHERE farmer_id = $1`,
+    [farmerId]
+  );
+  if (!farmer) return [];
+
+  const ids = new Set<string>();
+
+  if (farmer.registered_by_agent_id) {
+    const registered = await queryOne<{ user_id: string }>(
+      `SELECT u.user_id::text AS user_id
+       FROM agents a
+       JOIN users u ON u.user_id = a.user_id
+       WHERE a.agent_id = $1`,
+      [farmer.registered_by_agent_id]
+    );
+    if (registered?.user_id) ids.add(registered.user_id);
+  }
+
+  if (farmer.district) {
+    const districtAgents = await query<{ user_id: string }>(
+      `SELECT DISTINCT u.user_id::text AS user_id
+       FROM agents a
+       JOIN users u ON u.user_id = a.user_id
+       WHERE a.district = $1 AND (a.status IS NULL OR a.status = 'active')`,
+      [farmer.district]
+    );
+    for (const row of districtAgents) {
+      if (row.user_id) ids.add(row.user_id);
+    }
+  }
+
+  return [...ids];
+}
+
+/**
+ * In-app notify for field agents when a farmer submits hierarchy task evidence.
+ * context_type=farmer_task so the agent app can deep-link to Tasks.
+ */
+export async function notifyAgentsOfFarmerTaskSubmission(
+  farmerTaskId: string,
+  options?: { resubmitted?: boolean }
+): Promise<void> {
+  const task = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+    farmer_name?: string;
+  } | null;
+  if (!task?.farmer_id || !task.id) return;
+
+  const agentUserIds = await resolveAgentUserIdsForFarmer(task.farmer_id);
+  if (agentUserIds.length === 0) return;
+
+  const { createNotification } = await import('./notificationService');
+  const farmerName = task.farmer_name ?? 'A farmer';
+  const taskName = task.name ?? 'a task';
+  const resubmitted = Boolean(options?.resubmitted);
+  const title = resubmitted ? 'Task evidence resubmitted' : 'Task evidence submitted';
+  const message = resubmitted
+    ? `${farmerName} resubmitted evidence for "${taskName}". Review in your Tasks tab.`
+    : `${farmerName} submitted evidence for "${taskName}". Review in your Tasks tab.`;
+
+  for (const userId of agentUserIds) {
+    try {
+      await createNotification({
+        userId,
+        title,
+        message,
+        type: 'task',
+        contextType: 'farmer_task',
+        contextId: task.id,
+        priority: 'high',
+      });
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 export async function listFarmerTasks(
@@ -475,7 +696,28 @@ export async function listFarmerProgramProjects(farmerId: string) {
     SELECT pp.id, pp.name, pp.status, pp.start_date, pp.end_date, pp.budget_kes, pp.program_id,
       p.name AS program_name,
       (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1) AS assigned_task_count,
-      (SELECT COUNT(*)::int FROM farmer_tasks ft WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1 AND ft.status IN ('approved','completed')) AS completed_task_count
+      (SELECT COUNT(*)::int FROM farmer_tasks ft
+        JOIN tasks t ON t.id = ft.task_id
+        WHERE ft.program_project_id = pp.id AND ft.farmer_id = $1
+          AND (
+            ft.status IN ('approved','completed')
+            OR EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.farmer_id = ft.farmer_id
+                AND lower(p.payment_status::text) IN ('transferred', 'paid')
+                AND (
+                  p.description = 'Task:' || ft.id
+                  OR ABS(COALESCE(p.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
+                )
+            )
+            OR EXISTS (
+              SELECT 1 FROM bank_transactions bt
+              WHERE bt.farmer_id = ft.farmer_id
+                AND bt.status = 'completed'
+                AND ABS(COALESCE(bt.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
+            )
+          )
+      ) AS completed_task_count
     FROM program_project_farmers pf
     JOIN program_projects pp ON pp.id = pf.program_project_id
     JOIN programs p ON p.id = pp.program_id
@@ -485,12 +727,191 @@ export async function listFarmerProgramProjects(farmerId: string) {
 }
 
 export async function submitFarmerTask(farmerTaskId: string, data: { photo_url?: string; notes?: string }) {
+  const existing = await queryOne<{ status: string }>(
+    'SELECT status FROM farmer_tasks WHERE id = $1',
+    [farmerTaskId]
+  );
+  const prior = (existing?.status ?? '').toLowerCase();
+  const resubmitted = prior === 'rejected' || prior === 'submitted';
+
   await query(`
     UPDATE farmer_tasks SET status = 'submitted', submitted_date = NOW(),
-      photo_evidence_url = $1, notes = $2, updated_at = NOW()
+      photo_evidence_url = $1, notes = $2, rejection_reason = NULL, updated_at = NOW()
     WHERE id = $3
   `, [data.photo_url ?? null, data.notes ?? null, farmerTaskId]);
+
+  const updated = await getFarmerTask(farmerTaskId);
+  await notifyAgentsOfFarmerTaskSubmission(farmerTaskId, { resubmitted });
+  return updated;
+}
+
+function parseFarmerStartDate(raw: string): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw Object.assign(new Error('Start date must be YYYY-MM-DD'), { statusCode: 400 });
+  }
+  const probe = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(probe.getTime())) {
+    throw Object.assign(new Error('Start date must be a valid calendar day'), { statusCode: 400 });
+  }
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  if (probe.getTime() > today.getTime()) {
+    throw Object.assign(new Error('Start date cannot be in the future'), { statusCode: 400 });
+  }
+  return trimmed;
+}
+
+/**
+ * Farmer starts a not-started hierarchy task: status → in-progress, sets farmer_started_at.
+ */
+export async function startFarmerTask(
+  farmerTaskId: string,
+  farmerId: string,
+  startDate: string
+) {
+  const day = parseFarmerStartDate(startDate);
+  const existing = await queryOne<{ status: string; farmer_id: string }>(
+    'SELECT status, farmer_id FROM farmer_tasks WHERE id = $1',
+    [farmerTaskId]
+  );
+  if (!existing) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  if (existing.farmer_id !== farmerId) {
+    throw Object.assign(new Error('Not your task'), { statusCode: 403 });
+  }
+  const prior = (existing.status ?? '').toLowerCase().replace(/_/g, '-');
+  if (prior !== 'not-started') {
+    throw Object.assign(
+      new Error('Only not-started tasks can be started'),
+      { statusCode: 409 }
+    );
+  }
+
+  await query(
+    `
+    UPDATE farmer_tasks SET
+      status = 'in-progress',
+      farmer_started_at = $1::date,
+      updated_at = NOW()
+    WHERE id = $2 AND farmer_id = $3
+    `,
+    [day, farmerTaskId, farmerId]
+  );
+
+  await notifyAgentsOfFarmerTaskStarted(farmerTaskId);
+
   return getFarmerTask(farmerTaskId);
+}
+
+/**
+ * Farmer recalls a hierarchy submission before review.
+ * Status → in-progress; photo + notes are kept for edit/resubmit.
+ * 409 when not still submitted.
+ */
+export async function recallFarmerTask(farmerTaskId: string, farmerId: string) {
+  const existing = await queryOne<{ status: string; farmer_id: string }>(
+    'SELECT status, farmer_id FROM farmer_tasks WHERE id = $1',
+    [farmerTaskId]
+  );
+  if (!existing) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 });
+  }
+  if (existing.farmer_id !== farmerId) {
+    throw Object.assign(new Error('Not your task'), { statusCode: 403 });
+  }
+  const prior = (existing.status ?? '').toLowerCase().replace(/_/g, '-');
+  if (prior !== 'submitted' && prior !== 'submitted-for-approval') {
+    throw Object.assign(
+      new Error('Only submitted tasks can be recalled (already reviewed or not submitted)'),
+      { statusCode: 409 }
+    );
+  }
+
+  await query(
+    `
+    UPDATE farmer_tasks SET
+      status = 'in-progress',
+      submitted_date = NULL,
+      updated_at = NOW()
+    WHERE id = $1 AND farmer_id = $2
+    `,
+    [farmerTaskId, farmerId]
+  );
+
+  const updated = await getFarmerTask(farmerTaskId);
+  await notifyAgentsOfFarmerTaskRecall(farmerTaskId);
+  return updated;
+}
+
+/** Notify field agents that a farmer started a program hierarchy task. */
+export async function notifyAgentsOfFarmerTaskStarted(farmerTaskId: string): Promise<void> {
+  const task = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+    farmer_name?: string;
+  } | null;
+  if (!task?.farmer_id || !task.id) return;
+
+  const agentUserIds = await resolveAgentUserIdsForFarmer(task.farmer_id);
+  if (agentUserIds.length === 0) return;
+
+  const { createNotification } = await import('./notificationService');
+  const farmerName = task.farmer_name ?? 'A farmer';
+  const taskName = task.name ?? 'a task';
+
+  for (const userId of agentUserIds) {
+    try {
+      await createNotification({
+        userId,
+        title: 'Farmer Started Task',
+        message: `${farmerName} has started: ${taskName}`,
+        type: 'success',
+        contextType: 'farmer_task',
+        contextId: task.id,
+        actionUrl: `/tasks/${task.id}`,
+        priority: 'high',
+      });
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+/** Notify field agents that a farmer withdrew hierarchy evidence before review. */
+export async function notifyAgentsOfFarmerTaskRecall(farmerTaskId: string): Promise<void> {
+  const task = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+    farmer_name?: string;
+  } | null;
+  if (!task?.farmer_id || !task.id) return;
+
+  const agentUserIds = await resolveAgentUserIdsForFarmer(task.farmer_id);
+  if (agentUserIds.length === 0) return;
+
+  const { createNotification } = await import('./notificationService');
+  const farmerName = task.farmer_name ?? 'A farmer';
+  const taskName = task.name ?? 'a task';
+
+  for (const userId of agentUserIds) {
+    try {
+      await createNotification({
+        userId,
+        title: 'Task evidence recalled',
+        message: `${farmerName} recalled their submission for "${taskName}". It is no longer awaiting review.`,
+        type: 'task',
+        contextType: 'farmer_task',
+        contextId: task.id,
+        priority: 'normal',
+      });
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
@@ -504,7 +925,15 @@ export async function approveFarmerTask(farmerTaskId: string, notes?: string) {
     WHERE id = $2
   `, [notes ?? null, farmerTaskId]);
   if (row) await refreshProjectTaskCounts(row.program_project_id);
-  return getFarmerTask(farmerTaskId);
+  const updated = (await getFarmerTask(farmerTaskId)) as {
+    id?: string;
+    farmer_id?: string;
+    name?: string;
+    payment_value_kes?: number;
+  } | null;
+  await createPendingPaymentForApprovedTask(updated);
+  await notifyFarmerOfHierarchyTaskReview(updated, 'approved');
+  return updated;
 }
 
 export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: string) {
@@ -512,46 +941,346 @@ export async function rejectFarmerTask(farmerTaskId: string, rejection_reason: s
     UPDATE farmer_tasks SET status = 'rejected', rejection_reason = $1, updated_at = NOW()
     WHERE id = $2
   `, [rejection_reason, farmerTaskId]);
-  await notifyFarmerTaskQcFailed(farmerTaskId, rejection_reason);
-  return getFarmerTask(farmerTaskId);
-}
-
-/** In-app notification when a farmer task fails QC / is rejected by reviewer. */
-export async function notifyFarmerTaskQcFailed(
-  farmerTaskId: string,
-  rejectionReason: string
-): Promise<void> {
-  const task = (await getFarmerTask(farmerTaskId)) as {
+  const updated = (await getFarmerTask(farmerTaskId)) as {
     id?: string;
     farmer_id?: string;
     name?: string;
   } | null;
-  if (!task?.farmer_id || !task.id) return;
+  await notifyFarmerOfHierarchyTaskReview(updated, 'rejected', rejection_reason);
+  return updated;
+}
 
-  const farmerUser = await queryOne<{ user_id: string }>(
-    'SELECT user_id FROM users WHERE farmer_id = $1 LIMIT 1',
-    [task.farmer_id]
-  );
-  if (!farmerUser?.user_id) return;
+/** In-app notification for the farmer when hierarchy evidence is approved or rejected. */
+async function notifyFarmerOfHierarchyTaskReview(
+  task: { id?: string; farmer_id?: string; name?: string } | null,
+  outcome: 'approved' | 'rejected',
+  rejectionReason?: string
+): Promise<void> {
+  if (!task?.id || !task.farmer_id) return;
 
-  const taskName = task.name ?? 'Your task';
-  const reason = rejectionReason.trim() || 'Quality check did not pass';
-  const { createNotification } = await import('./notificationService');
+  const farmerUserId = await resolveFarmerAppUserId(task.farmer_id);
+  if (!farmerUserId) return;
+
+  const taskName = task.name ?? 'your task';
+  const title =
+    outcome === 'approved'
+      ? 'Task approved'
+      : 'Task QC Check Failed';
+  const message =
+    outcome === 'approved'
+      ? `Your field agent approved "${taskName}".`
+      : `Your task "${taskName}" failed its quality check. Reason: ${
+          rejectionReason?.trim() || 'Quality check did not pass'
+        }`;
 
   try {
+    const { createNotification } = await import('./notificationService');
     await createNotification({
-      userId: farmerUser.user_id,
-      title: 'Task QC Check Failed',
-      message: `Your task "${taskName}" failed its quality check. Reason: ${reason}`,
-      type: 'task_qc_failed',
-      contextType: 'task',
+      userId: farmerUserId,
+      title,
+      message,
+      type: outcome === 'approved' ? 'task_approved' : 'task_qc_failed',
+      contextType: outcome === 'approved' ? 'farmer_task' : 'task',
       contextId: task.id,
       actionUrl: `/tasks/${task.id}`,
       priority: 'high',
     });
   } catch {
-    // best-effort — SMS may still have been sent from route handler
+    // best-effort
   }
+}
+
+async function createPendingPaymentForApprovedTask(
+  task: { id?: string; farmer_id?: string; name?: string; payment_value_kes?: number } | null
+): Promise<void> {
+  if (!task?.id || !task.farmer_id) return;
+  const amount = Math.round(Number(task.payment_value_kes ?? 0));
+  if (amount <= 0) return;
+
+  const description = `Task:${task.id}`;
+  const existing = await queryOne<{ id: string }>(
+    'SELECT id FROM payments WHERE description = $1',
+    [description]
+  );
+  if (existing) return;
+
+  await query(
+    `INSERT INTO payments (id, farmer_id, description, amount, payment_status, payment_method)
+     VALUES ($1, $2, $3, $4, 'pending', 'M-Pesa')`,
+    [uuidv4(), task.farmer_id, description, amount]
+  );
+}
+
+/**
+ * Mark a pending payment transferred, notify farmer + field agents, and complete the linked task.
+ * If the payment is already transferred, still run notify/complete so a prior sim/webhook
+ * path cannot leave the farmer without a notification or the task stuck on Approved.
+ */
+export async function settleTransferredPayment(
+  paymentId: string,
+  reference: string
+): Promise<boolean> {
+  const row = await queryOne<{
+    id: string;
+    farmer_id: string;
+    amount: number;
+    description: string | null;
+    mpesa_reference: string | null;
+  }>(
+    `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
+     WHERE id = $2 AND lower(payment_status::text) NOT IN ('transferred', 'paid')
+     RETURNING id, farmer_id, amount, description, mpesa_reference`,
+    [reference, paymentId]
+  );
+  const payment =
+    row ??
+    (await queryOne<{
+      id: string;
+      farmer_id: string;
+      amount: number;
+      description: string | null;
+      mpesa_reference: string | null;
+    }>(
+      `SELECT id, farmer_id, amount, description, mpesa_reference
+       FROM payments
+       WHERE id = $1 AND lower(payment_status::text) IN ('transferred', 'paid')`,
+      [paymentId]
+    ));
+  if (!payment) return false;
+  try {
+    await fulfillPaymentSideEffects({
+      paymentId: payment.id,
+      farmerId: payment.farmer_id,
+      amount: Number(payment.amount ?? 0),
+      description: payment.description,
+      reference: reference || payment.mpesa_reference,
+    });
+  } catch (err) {
+    console.error('[settleTransferredPayment] side effects failed', paymentId, err);
+  }
+  return true;
+}
+
+/**
+ * After a payment is marked transferred: notify farmer + field agents, and mark the
+ * linked program task completed so the farmer sees Complete instead of Approved.
+ */
+export async function fulfillPaymentSideEffects(input: {
+  paymentId: string;
+  farmerId: string;
+  amount: number;
+  description?: string | null;
+  reference?: string | null;
+  /** When false, only complete a task linked in the payment description (no amount guess). */
+  allowAmountFallback?: boolean;
+}): Promise<void> {
+  let linked: { farmerTaskId?: string; taskName?: string } = {};
+  try {
+    linked = await completeFarmerTasksForTransferredPayment(input);
+  } catch (err) {
+    console.error('[fulfillPaymentSideEffects] complete task failed', input.paymentId, err);
+  }
+  const farmerUserId = await resolveFarmerAppUserId(input.farmerId);
+  const farmerName =
+    (
+      await queryOne<{ name: string | null }>(
+        'SELECT name FROM farmers WHERE farmer_id::text = $1::text',
+        [input.farmerId]
+      )
+    )?.name?.trim() || 'A farmer';
+  const taskLabel = linked.taskName ?? input.description ?? 'your task';
+  const amountLabel = Math.round(input.amount).toLocaleString();
+  const { createNotification } = await import('./notificationService');
+  const contextId = linked.farmerTaskId ?? input.paymentId;
+
+  try {
+    if (farmerUserId) {
+      const alreadyNotified = await queryOne<{ id: string }>(
+        `SELECT id FROM notifications
+         WHERE user_id::text = $1::text
+           AND type = 'payment_processed'
+           AND (
+             context_id::text = $2::text
+             OR context_id::text = $3::text
+           )
+         LIMIT 1`,
+        [farmerUserId, input.paymentId, contextId]
+      );
+      if (!alreadyNotified) {
+        await createNotification({
+          userId: farmerUserId,
+          title: 'Payment Processed',
+          message: `KES ${amountLabel} for "${taskLabel}" has been processed.${
+            input.reference ? ` Ref ${input.reference}.` : ''
+          }`,
+          type: 'payment_processed',
+          contextType: linked.farmerTaskId ? 'farmer_task' : 'payment',
+          contextId,
+          actionUrl: linked.farmerTaskId ? `/tasks/${linked.farmerTaskId}` : '/payments',
+          priority: 'high',
+        });
+      }
+    } else {
+      console.error(
+        '[fulfillPaymentSideEffects] farmer app user not found',
+        input.farmerId,
+        input.paymentId
+      );
+    }
+    for (const agentUserId of await resolveAgentUserIdsForFarmer(input.farmerId)) {
+      const agentAlready = await queryOne<{ id: string }>(
+        `SELECT id FROM notifications
+         WHERE user_id::text = $1::text
+           AND type = 'payment_processed'
+           AND (
+             context_id::text = $2::text
+             OR context_id::text = $3::text
+           )
+         LIMIT 1`,
+        [agentUserId, input.paymentId, contextId]
+      );
+      if (agentAlready) continue;
+      await createNotification({
+        userId: agentUserId,
+        title: 'Payment Processed',
+        message: `${farmerName} received KES ${amountLabel} for "${taskLabel}".`,
+        type: 'payment_processed',
+        contextType: linked.farmerTaskId ? 'farmer_task' : 'payment',
+        contextId,
+        priority: 'high',
+      });
+    }
+  } catch (err) {
+    console.error('[fulfillPaymentSideEffects] notify failed', input.paymentId, err);
+  }
+}
+
+/** Repair transferred payments that never completed the task or notified the farmer. */
+export async function fulfillTransferredPaymentsForFarmer(farmerId: string): Promise<void> {
+  const rows = await query<{
+    id: string;
+    farmer_id: string;
+    amount: number;
+    description: string | null;
+    mpesa_reference: string | null;
+  }>(
+    `SELECT id, farmer_id, amount, description, mpesa_reference
+     FROM payments
+     WHERE farmer_id::text = $1::text
+       AND lower(payment_status::text) IN ('transferred', 'paid')
+       AND (
+         description ILIKE 'Task:%'
+         OR description ILIKE 'QC:%'
+       )
+     ORDER BY paid_at DESC NULLS LAST, created_at DESC
+     LIMIT 50`,
+    [farmerId]
+  );
+  for (const row of rows) {
+    try {
+      await fulfillPaymentSideEffects({
+        paymentId: row.id,
+        farmerId: row.farmer_id,
+        amount: Number(row.amount ?? 0),
+        description: row.description,
+        reference: row.mpesa_reference,
+        allowAmountFallback: false,
+      });
+    } catch (err) {
+      console.error('[fulfillTransferredPaymentsForFarmer]', row.id, err);
+    }
+  }
+}
+
+async function completeFarmerTasksForTransferredPayment(input: {
+  paymentId: string;
+  farmerId: string;
+  amount: number;
+  description?: string | null;
+  allowAmountFallback?: boolean;
+}): Promise<{ farmerTaskId?: string; taskName?: string }> {
+  const description = input.description ?? '';
+  const taskRef =
+    /Task:([0-9a-fA-F-]{8,}|\S+)/.exec(description)?.[1] ??
+    /^Task:(.+)$/.exec(description)?.[1] ??
+    null;
+  const qcRef =
+    /QC:([0-9a-fA-F-]{8,}|\S+)/.exec(description)?.[1] ??
+    /^QC:(.+)$/.exec(description)?.[1] ??
+    null;
+
+  let farmerTaskId: string | null = null;
+
+  if (taskRef) {
+    const row = await queryOne<{ id: string }>(
+      `SELECT ft.id
+       FROM farmer_tasks ft
+       WHERE ft.farmer_id::text = $1::text
+         AND (ft.id::text = $2::text OR ft.task_id::text = $2::text)
+       LIMIT 1`,
+      [input.farmerId, taskRef]
+    );
+    farmerTaskId = row?.id ?? taskRef;
+  } else if (qcRef) {
+    const inventory = await queryOne<{ task_id: string | null }>(
+      'SELECT task_id FROM centre_inventory WHERE id::text = $1::text',
+      [qcRef]
+    );
+    if (inventory?.task_id) {
+      const row = await queryOne<{ id: string }>(
+        `SELECT id FROM farmer_tasks
+         WHERE farmer_id::text = $1::text AND task_id::text = $2::text
+         LIMIT 1`,
+        [input.farmerId, inventory.task_id]
+      );
+      farmerTaskId = row?.id ?? null;
+    }
+  }
+
+  if (!farmerTaskId && input.allowAmountFallback !== false) {
+    const matched = await queryOne<{ id: string }>(
+      `
+      SELECT ft.id
+      FROM farmer_tasks ft
+      JOIN tasks t ON t.id = ft.task_id
+      WHERE ft.farmer_id::text = $1::text
+        AND lower(ft.status::text) IN ('approved', 'submitted', 'in-progress', 'not-started')
+        AND ABS(COALESCE(t.payment_value_kes, 0) - $2) < 1
+      ORDER BY CASE lower(ft.status::text)
+        WHEN 'approved' THEN 0
+        WHEN 'submitted' THEN 1
+        ELSE 2
+      END, ft.approved_date DESC NULLS LAST
+      LIMIT 1
+      `,
+      [input.farmerId, input.amount]
+    );
+    farmerTaskId = matched?.id ?? null;
+  }
+
+  if (!farmerTaskId) return {};
+
+  const updated = await queryOne<{ id: string; name: string; program_project_id: string }>(
+    `
+    UPDATE farmer_tasks ft
+    SET status = 'completed', updated_at = NOW()
+    FROM tasks t
+    WHERE ft.task_id = t.id
+      AND lower(ft.status::text) <> 'completed'
+      AND ft.farmer_id::text = $2::text
+      AND (ft.id::text = $1::text OR ft.task_id::text = $1::text)
+    RETURNING ft.id, t.name, ft.program_project_id
+    `,
+    [farmerTaskId, input.farmerId]
+  );
+  if (updated?.program_project_id) {
+    await refreshProjectTaskCounts(updated.program_project_id);
+  }
+  const named = updated ?? (await getFarmerTask(farmerTaskId));
+  return {
+    farmerTaskId: updated?.id ?? farmerTaskId,
+    taskName: (named as { name?: string } | null)?.name,
+  };
 }
 
 export async function getHierarchyDashboardStats() {

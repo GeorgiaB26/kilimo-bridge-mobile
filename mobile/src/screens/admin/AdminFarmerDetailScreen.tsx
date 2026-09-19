@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Alert, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Text } from '@/components/ui/text';
-import { getFarmerById } from '../../api/client';
+import { approveFarmerForFieldVerification, getFarmerById } from '../../api/client';
 import { PENDING_LOCATION_LABEL } from '../../constants/regional';
 import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import type { AdminFarmersStackParamList } from '../../navigation/types';
 import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
 import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { extractApiError } from '../../utils/feedback';
+import { formatFarmerStatus } from '../../utils/farmerStatus';
 
 type Props = NativeStackScreenProps<AdminFarmersStackParamList, 'FarmerDetail'>;
 
@@ -62,6 +64,18 @@ export function AdminFarmerDetailScreen({ route }: Props) {
   const [farmer, setFarmer] = useState<FarmerDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+
+  const loadFarmer = async () => {
+    const result = await loadWithReadCache<{ farmer: FarmerDetail }>({
+      cacheKey: READ_CACHE_KEYS.adminFarmerDetail(farmerId),
+      userScope,
+      fetchLive: () => getFarmerById(farmerId),
+    });
+    setFarmer(result.data.farmer);
+    setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+    setError(null);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +102,40 @@ export function AdminFarmerDetailScreen({ route }: Props) {
     };
   }, [farmerId, userScope]);
 
+  const handleApproveForField = () => {
+    if (!farmer || approving) return;
+    Alert.alert(
+      'Approve for field verification?',
+      `This notifies field agents in ${farmer.district || 'this area'} that ${farmer.name} needs an in-person visit.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Approve',
+          onPress: () => {
+            void (async () => {
+              setApproving(true);
+              try {
+                const result = await approveFarmerForFieldVerification(farmerId);
+                await loadFarmer();
+                const notified = result.notifiedAgentCount ?? 0;
+                Alert.alert(
+                  'Approved',
+                  notified > 0
+                    ? `${farmer.name} is ready for field verification. ${notified} field agent${notified === 1 ? '' : 's'} notified.`
+                    : `${farmer.name} is ready for field verification. No field agents were found for this district yet.`
+                );
+              } catch (err) {
+                Alert.alert('Could not approve', extractApiError(err, 'Please try again.'));
+              } finally {
+                setApproving(false);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  };
+
   if (error && !farmer) {
     return (
       <View className="flex-1 items-center justify-center p-6">
@@ -105,6 +153,8 @@ export function AdminFarmerDetailScreen({ route }: Props) {
   }
 
   const projectNames = [farmer.project_1, farmer.project_2, farmer.project_3].filter(Boolean) as string[];
+  const statusInfo = formatFarmerStatus(farmer.status);
+  const canApproveForField = farmer.status === 'pending_review';
 
   return (
     <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-8">
@@ -115,12 +165,41 @@ export function AdminFarmerDetailScreen({ route }: Props) {
         {farmer.kb_farmer_id ? (
           <Text className="mt-1 text-[13px] text-[#C8E6D9]">ID: {farmer.kb_farmer_id}</Text>
         ) : null}
+        <Text className="mt-2 text-[13px] text-[#C8E6D9]">
+          {statusInfo.label} — {statusInfo.description}
+        </Text>
       </View>
+
+      {canApproveForField ? (
+        <View className="mb-3 rounded-lg border border-[#D4AF6A] bg-[#FFF8E7] p-3.5">
+          <Text className="mb-1 text-sm font-bold text-[#1A4D3E]">Awaiting your review</Text>
+          <Text className="mb-3 text-[13px] text-[#555555]">
+            Approve this member for field verification to notify field agents in their district.
+          </Text>
+          <Pressable
+            onPress={handleApproveForField}
+            disabled={approving}
+            accessibilityRole="button"
+            accessibilityLabel="Approve for field verification"
+            style={({ pressed }) => [
+              styles.approveBtn,
+              approving && styles.approveBtnDisabled,
+              pressed && !approving && styles.btnPressed,
+            ]}
+          >
+            {approving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.approveBtnText}>Approve for field verification</Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       <View className="mb-3 rounded-lg bg-[#F9F9F9] p-3.5">
         <Text className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[#1A4D3E]">Profile</Text>
         <DetailRow label="Gender" value={farmer.gender} />
-        <DetailRow label="Status" value={farmer.status} />
+        <DetailRow label="Status" value={statusInfo.label} />
         <DetailRow label="Cooperative" value={farmer.membership_group_name} />
         <DetailRow label="Membership" value={farmer.membership_type} />
         <DetailRow label="Occupation" value={farmer.occupation} />
@@ -163,3 +242,24 @@ export function AdminFarmerDetailScreen({ route }: Props) {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  approveBtn: {
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#1A4D3E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approveBtnDisabled: {
+    opacity: 0.65,
+  },
+  approveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  btnPressed: {
+    opacity: 0.9,
+  },
+});

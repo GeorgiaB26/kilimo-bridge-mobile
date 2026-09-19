@@ -4,6 +4,7 @@ import { query, queryOne } from './db/database';
 import { createUser } from './services/userService';
 import { ensureMembershipGroup } from './services/farmerService';
 import { encryptField, hashIdNumber } from './services/encryptionService';
+import { SUPPORT_DESK_PHONE } from '../../shared/src/supportDesk';
 import { backfillFarmerSupportLinks } from './services/farmerHelpRequestService';
 
 const DEMO_FARMER_PHONE = '+254712345678';
@@ -42,6 +43,7 @@ export async function ensureDemoFarmerPortal(): Promise<void> {
 
   await ensureDemoFarmerUser(farmerId);
   await ensureDemoStaffUsers();
+  await ensureKbSupportUser();
   await ensureDemoAgentRecord();
   await ensureTestSwitcherFieldAgent();
   await ensureDemoBankingUser();
@@ -165,6 +167,50 @@ async function ensureDemoStaffUsers(): Promise<void> {
       );
     }
   }
+}
+
+/** KB Support desk account — super_admin, allowlisted by phone for Support app routing. */
+async function ensureKbSupportUser(): Promise<void> {
+  const byPhone = await queryOne<{ user_id: string }>(
+    'SELECT user_id FROM users WHERE phone_number = $1',
+    [SUPPORT_DESK_PHONE]
+  );
+  if (byPhone) {
+    await query(
+      `UPDATE users SET
+         name = 'KB Support',
+         role = 'super_admin',
+         email = COALESCE(email, 'support@kilimobridge.org'),
+         status = 'active',
+         updated_at = NOW()
+       WHERE user_id = $1`,
+      [byPhone.user_id]
+    );
+    return;
+  }
+
+  const legacy = await queryOne<{ user_id: string }>(
+    `SELECT user_id FROM users WHERE name = 'KB Support' AND phone_number = '+25470000000'`
+  );
+  if (legacy) {
+    await query(
+      `UPDATE users SET phone_number = $1, role = 'super_admin', status = 'active',
+         email = COALESCE(email, 'support@kilimobridge.org'), updated_at = NOW()
+       WHERE user_id = $2`,
+      [SUPPORT_DESK_PHONE, legacy.user_id]
+    );
+    return;
+  }
+
+  await createUser({
+    phoneNumber: SUPPORT_DESK_PHONE,
+    name: 'KB Support',
+    role: 'super_admin',
+  });
+  await query(
+    `UPDATE users SET email = 'support@kilimobridge.org' WHERE phone_number = $1`,
+    [SUPPORT_DESK_PHONE]
+  );
 }
 
 /** Field agent row + scoping for Farmers / Centre tabs (always upserted for demo phone). */

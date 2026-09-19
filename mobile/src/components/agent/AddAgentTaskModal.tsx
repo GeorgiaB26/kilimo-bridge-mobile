@@ -1,19 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import {
   View,
-  Modal,
-  ScrollView,
   Pressable,
   Platform,
   TextInput as RNTextInput,
-  KeyboardAvoidingView,
   ActivityIndicator,
   StyleSheet,
+  Text as RNText,
 } from 'react-native';
 import { Square, SquareCheck, X } from 'lucide-react-native';
 import { TextInput } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
-import { maskDdMmYyyyInput, parseAgentTaskDueDateInput } from '../../utils/agentTaskDate';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
+import { maskDdMmYyyyInput, parseAgentTaskDueDateInput, DISPLAY_DATE_FORMAT } from '../../utils/agentTaskDate';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { useAuthStore } from '../../store/authStore';
 
@@ -100,7 +99,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       return;
     }
     if (!dueDate.trim()) {
-      const msg = 'Enter a due date as DD/MM/YYYY (e.g. 20/08/2026).';
+      const msg = `Enter a due date as ${DISPLAY_DATE_FORMAT} (e.g. 20-08-2026).`;
       setFormError(msg);
       showMessage('Due date required', msg);
       return;
@@ -110,7 +109,7 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
       : dueDate;
     const isoDue = parseAgentTaskDueDateInput(normalizedDue);
     if (!isoDue) {
-      const msg = 'Use DD/MM/YYYY format, e.g. 20/08/2026 for 20 August 2026.';
+      const msg = `Use ${DISPLAY_DATE_FORMAT} format, e.g. 20-08-2026 for 20 August 2026.`;
       setFormError(msg);
       showMessage('Invalid date', msg);
       return;
@@ -140,32 +139,59 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
   };
 
   return (
-    <Modal
+    <KeyboardBottomSheet
       visible={visible}
-      animationType="slide"
-      transparent
       onRequestClose={handleClose}
-      statusBarTranslucent
-    >
-      <KeyboardAvoidingView
-        className="flex-1 justify-end bg-black/40"
-        style={webOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View className="max-h-[90%] rounded-t-2xl bg-white">
-          <View className="flex-row items-center justify-between border-b border-[#E8E8E8] px-5 py-4">
-            <Text className="text-lg font-bold text-[#333333]">Create task</Text>
-            <Pressable onPress={handleClose} hitSlop={12} disabled={loading}>
-              <X size={24} color="#757575" />
+      scrollable
+      backdropPressDisabled={loading}
+      avoidingViewStyle={webOverlay}
+      scrollViewProps={{
+        keyboardShouldPersistTaps: 'handled',
+        contentContainerStyle: styles.scrollContent,
+      }}
+      header={
+        <View className="flex-row items-center justify-between border-b border-[#E8E8E8] px-5 py-4">
+          <Text className="text-lg font-bold text-[#333333]">Create task</Text>
+          <Pressable onPress={handleClose} hitSlop={12} disabled={loading}>
+            <X size={24} color="#757575" />
+          </Pressable>
+        </View>
+      }
+      footer={
+        <View style={styles.footerRow} collapsable={false}>
+          <View
+            collapsable={false}
+            style={[styles.createWrap, loading && styles.createWrapDisabled]}
+          >
+            <Pressable
+              onPress={handleSubmit}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Create task"
+              style={({ pressed }) => [
+                styles.createHit,
+                pressed && !loading && styles.createHitPressed,
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <RNText style={styles.createText}>Create task</RNText>
+              )}
             </Pressable>
           </View>
-
-          <ScrollView
-            className="px-5"
-            keyboardShouldPersistTaps="always"
-            contentContainerStyle={styles.scrollContent}
-            nestedScrollEnabled
+          <Pressable
+            onPress={handleClose}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
+            style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}
           >
+            <RNText style={styles.cancelText}>Cancel</RNText>
+          </Pressable>
+        </View>
+      }
+    >
             <Text className="mb-1 mt-3 text-sm font-semibold text-[#333333]">Task name *</Text>
             <TextInput
               value={name}
@@ -183,17 +209,17 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
               mode="outlined"
               style={{ marginBottom: 12, backgroundColor: '#fff' }}
             />
-            <Text className="mb-1 text-sm font-semibold text-[#333333]">Due date * (DD/MM/YYYY)</Text>
+            <Text className="mb-1 text-sm font-semibold text-[#333333]">Due date * ({DISPLAY_DATE_FORMAT})</Text>
             <TextInput
               value={dueDate}
               onChangeText={(text) => setDueDate(maskDdMmYyyyInput(text))}
-              placeholder="20/08/2026"
+              placeholder="20-08-2026"
               keyboardType={Platform.OS === 'web' ? 'default' : 'number-pad'}
               mode="outlined"
               style={{ marginBottom: 4, backgroundColor: '#fff' }}
             />
             <Text className="mb-3 text-xs text-[#757575]">
-              Example: 20/08/2026 for 20 August 2026
+              Example: 20-08-2026 for 20 August 2026
             </Text>
             <Text className="mb-2 text-sm font-semibold text-[#333333]">Priority</Text>
             <View className="mb-3 flex-row gap-2">
@@ -287,78 +313,87 @@ export function AddAgentTaskModal({ visible, farmers, loading, onClose, onSubmit
             {formError ? (
               <Text className="mb-2 text-sm text-[#D32F2F]">{formError}</Text>
             ) : null}
-          </ScrollView>
-
-          <View className="flex-row gap-2 border-t border-[#E8E8E8] bg-white px-5 py-4">
-            <Pressable
-              onPress={handleSubmit}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.submitBtn,
-                loading && styles.submitBtnDisabled,
-                pressed && !loading && styles.submitBtnPressed,
-              ]}
-              accessibilityRole="button"
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text className="font-semibold text-white">Create task</Text>
-              )}
-            </Pressable>
-            <Pressable
-              onPress={handleClose}
-              disabled={loading}
-              style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}
-              accessibilityRole="button"
-            >
-              <Text className="font-semibold text-[#333333]">Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </KeyboardBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 8,
+    paddingHorizontal: 20,
   },
-  submitBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: '#1A4D3E',
+  footerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    width: '100%',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
+    backgroundColor: '#FFFFFF',
+  },
+  createWrap: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    minHeight: 44,
+    marginRight: 8,
+    backgroundColor: '#1A4D3E',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#1A4D3E',
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  createWrapDisabled: {
+    opacity: 0.65,
+  },
+  createHit: {
+    width: '100%',
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
   },
-  submitBtnDisabled: {
-    opacity: 0.65,
-    ...Platform.select({
-      web: { cursor: 'default' as const },
-    }),
-  },
-  submitBtnPressed: {
+  createHitPressed: {
     opacity: 0.9,
   },
+  createText: {
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 14,
+    lineHeight: 18,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
   cancelBtn: {
-    height: 48,
-    minWidth: 96,
-    borderRadius: 8,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
     ...Platform.select({
       web: { cursor: 'pointer' as const },
     }),
   },
   cancelBtnPressed: {
     backgroundColor: '#F5F5F5',
+  },
+  cancelText: {
+    fontWeight: '600',
+    color: '#333333',
+    fontSize: 14,
+    lineHeight: 18,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 });

@@ -6,9 +6,10 @@ import { hashIdNumber } from '../services/encryptionService';
 import {
   createFarmer,
   generateFarmerKey,
+  getMembershipGroupNames,
+  getMembershipGroups,
   getAllFarmers,
   getFarmerCount,
-  getMembershipGroupNames,
   getExistingIdentifiers,
   recordFarmerRegistrationFollowUp,
   advanceFarmerForFieldVerification,
@@ -27,6 +28,7 @@ import {
   listPrograms,
   listProgramProjects,
 } from '../services/hierarchyService';
+import { listVerifiedVillages } from '../services/customLocationService';
 
 const router = Router();
 const upload = multer({
@@ -41,11 +43,22 @@ function asyncHandler(
   };
 }
 
+function postgresErrorFields(err: unknown): { code?: string; constraint?: string } {
+  if (!err || typeof err !== 'object') return {};
+  const e = err as { code?: unknown; constraint?: unknown };
+  return {
+    code: typeof e.code === 'string' ? e.code : undefined,
+    constraint: typeof e.constraint === 'string' ? e.constraint : undefined,
+  };
+}
+
 router.get('/reference', asyncHandler(async (_req, res) => {
+  const membershipGroupOptions = await getMembershipGroups();
   res.json({
     districts: DISTRICTS,
     subCounties: SUB_COUNTIES,
-    membershipGroups: await getMembershipGroupNames(),
+    membershipGroups: membershipGroupOptions.map((g) => g.name),
+    membershipGroupOptions,
     projects: PROJECTS,
     membershipTypes: MEMBERSHIP_TYPES,
     countries: COUNTRY_LIST.map((c) => ({
@@ -63,6 +76,22 @@ router.get('/reference', asyncHandler(async (_req, res) => {
     })),
   });
 }));
+
+router.get(
+  '/reference/custom-locations',
+  asyncHandler(async (req, res) => {
+    const country = typeof req.query.country === 'string' ? req.query.country : '';
+    const level1 = typeof req.query.level1 === 'string' ? req.query.level1 : '';
+    const level2 = typeof req.query.level2 === 'string' ? req.query.level2 : '';
+    const level3 = typeof req.query.level3 === 'string' ? req.query.level3 : undefined;
+    if (!country.trim() || !level1.trim() || !level2.trim()) {
+      res.status(400).json({ error: 'country, level1, and level2 are required' });
+      return;
+    }
+    const villages = await listVerifiedVillages({ country, level1, level2, level3 });
+    res.json({ villages });
+  })
+);
 
 router.get(
   '/reference/project-hierarchy',
@@ -324,9 +353,17 @@ router.post('/farmers/register', authenticate, requirePermission('farmers.write'
       kbFarmerId: result.normalized.kbFarmerId,
     });
   } catch (err) {
+    const pg = postgresErrorFields(err);
+    if (pg.code === '23505' && pg.constraint === 'idx_farmers_tax_pin') {
+      res.status(409).json({
+        success: false,
+        error: 'This tax PIN is already registered to another farmer',
+      });
+      return;
+    }
     res.status(500).json({
       success: false,
-      error: err instanceof Error ? err.message : 'Registration failed',
+      error: 'Registration failed. Please try again.',
     });
   }
 }));

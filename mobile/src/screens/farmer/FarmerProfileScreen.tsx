@@ -2,12 +2,12 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   ScrollView,
-  Alert,
   Pressable,
   Image,
   ActivityIndicator,
   Platform,
-  ActionSheetIOS,
+  StyleSheet,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
@@ -15,25 +15,29 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Divider, List, Switch } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { APP_BUILD } from '../../constants/build';
-import { getFarmerDashboard, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
-import { extractApiError } from '../../utils/feedback';
+import { getFarmerMyCentre, submitFarmerHelpRequest, updateFarmerProfilePhoto } from '../../api/client';
+import { extractApiError, showMessage } from '../../utils/feedback';
 import { FarmerOfflineBanner } from '../../components/farmer/FarmerOfflineBanner';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { FarmerHelpModal } from '../../components/farmer/FarmerHelpModal';
 import { useAuthStore } from '../../store/authStore';
-import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { ProfileAvatar, hasProfilePhoto } from '../../components/ProfileAvatar';
 import { FarmerVerificationStatusCard } from '../../components/farmer/FarmerVerificationStatusCard';
 import { FarmerStatusChip } from '../../components/agent/FarmerStatusChip';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
 import { taskStatusLabel, taskStatusVariant } from '../../utils/taskStatus';
-import { formatFarmerStatus } from '../../utils/farmerStatus';
-import { formatCleanDate, getLocalizedGreeting } from '../../utils/greeting';
+import { formatCleanDate } from '../../utils/greeting';
 import type { FarmerTabParamList } from '../../navigation/types';
+import { openFarmerTaskModule } from '../../utils/farmerNotificationNavigation';
 import { useCurrency } from '../../context/CurrencyContext';
 import { uploadPhotoToR2 } from '../../services/uploadToR2';
-import { MessagesNotificationsHeaderIcons } from '../../components/messaging/MessagesNotificationsHeaderIcons';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import { fetchFarmerDashboardForCache } from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
+
+const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
 
 type SupportContacts = {
   fieldAgent?: {
@@ -71,21 +75,46 @@ function profileTaskStatus(status?: string): string {
 
 type ProfileNav = BottomTabNavigationProp<FarmerTabParamList, 'Profile'>;
 
+type MyCentreState = {
+  name: string;
+  location: string;
+  managerName: string | null;
+  managerPhone: string | null;
+  country: string | null;
+};
+
+function centreFromDashboardContacts(contacts: SupportContacts | null): MyCentreState | null {
+  const agg = contacts?.aggregationCentre;
+  if (!agg?.name) return null;
+  return {
+    name: agg.name,
+    location: agg.location ?? '',
+    managerName: agg.managerName ?? null,
+    managerPhone: agg.managerPhone ?? null,
+    country: null,
+  };
+}
+
 export function FarmerProfileScreen() {
   const navigation = useNavigation<ProfileNav>();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { currency, currencyInfo, selectCountry } = useCurrency();
+  const { currencyInfo, selectCountry } = useCurrency();
+  const userScope = useReadCacheUserScope();
+  const scrollContentStyle = useTabScreenContentContainerStyle();
   const [farmer, setFarmer] = useState<{
     name: string;
     phone_number: string;
     country: string;
     district: string;
+    region?: string;
     sub_county: string;
     membership_group_name: string;
     aggregation_center: string | null;
     kb_farmer_id: string | null;
     picture_url: string | null;
+    pending_picture_url?: string | null;
+    photoUpdatePending?: boolean;
     status: string;
     registered_agent_name?: string | null;
     registered_agent_phone?: string | null;
@@ -96,6 +125,7 @@ export function FarmerProfileScreen() {
   const [contacts, setContacts] = useState<SupportContacts | null>(null);
   const [notifications, setNotifications] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpLoading, setHelpLoading] = useState(false);
   const [pendingUri, setPendingUri] = useState<string | null>(null);
@@ -105,34 +135,59 @@ export function FarmerProfileScreen() {
   const [assignedTasks, setAssignedTasks] = useState<ProfileTaskRow[]>([]);
   const [assignedTaskCount, setAssignedTaskCount] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(true);
+  const [myCentre, setMyCentre] = useState<MyCentreState | null>(null);
+  const [myCentreLoading, setMyCentreLoading] = useState(true);
 
-  const loadProfile = useCallback(() => {
-    getFarmerDashboard()
-      .then((d) => {
-        setFarmer(d.farmer);
-        setContacts(d.contacts ?? null);
-        setAssignedTasks((d.assignedTasks ?? d.recentTasks ?? []) as ProfileTaskRow[]);
-        setAssignedTaskCount(
-          typeof d.assignedTaskCount === 'number'
-            ? d.assignedTaskCount
-            : (d.assignedTasks ?? d.recentTasks ?? []).length
-        );
-        if (d.farmer?.country) selectCountry(d.farmer.country);
-        setError(null);
-        setTasksLoading(false);
-      })
-      .catch((err: unknown) => {
-        setError(extractApiError(err, 'Could not load profile'));
-        setAssignedTasks([]);
-        setTasksLoading(false);
+  const loadProfile = useCallback(async () => {
+    setTasksLoading(true);
+    setMyCentreLoading(true);
+
+    let centreFallback: MyCentreState | null = null;
+
+    try {
+      const result = await loadWithReadCache({
+        cacheKey: READ_CACHE_KEYS.farmerDashboard,
+        userScope,
+        fetchLive: fetchFarmerDashboardForCache,
       });
-  }, [selectCountry]);
+      const d = result.data;
+      setFarmer(d.farmer);
+      setContacts(d.contacts ?? null);
+      setAssignedTasks((d.assignedTasks ?? d.recentTasks ?? []) as ProfileTaskRow[]);
+      setAssignedTaskCount(
+        typeof d.assignedTaskCount === 'number'
+          ? d.assignedTaskCount
+          : (d.assignedTasks ?? d.recentTasks ?? []).length
+      );
+      if (d.farmer?.country) selectCountry(d.farmer.country);
+      centreFallback = centreFromDashboardContacts(d.contacts ?? null);
+      setCacheFetchedAt(result.fromCache ? result.fetchedAt : null);
+      setError(null);
+    } catch (err: unknown) {
+      setFarmer(null);
+      setContacts(null);
+      setAssignedTasks([]);
+      setAssignedTaskCount(0);
+      setCacheFetchedAt(null);
+      setError(extractApiError(err, 'Could not load profile'));
+    } finally {
+      setTasksLoading(false);
+    }
+
+    try {
+      const centreRes = await getFarmerMyCentre();
+      setMyCentre(centreRes.centre ?? null);
+    } catch {
+      setMyCentre(centreFallback);
+    } finally {
+      setMyCentreLoading(false);
+    }
+  }, [selectCountry, userScope]);
 
   useFocusEffect(
     useCallback(() => {
-      setTasksLoading(true);
-      loadProfile();
-      const interval = setInterval(loadProfile, 30000);
+      void loadProfile();
+      const interval = setInterval(() => void loadProfile(), 30000);
       return () => clearInterval(interval);
     }, [loadProfile])
   );
@@ -142,15 +197,20 @@ export function FarmerProfileScreen() {
     setPendingBase64(null);
   };
 
-  const pickImage = async (useCamera: boolean) => {
+  const pickProfilePhoto = async (useCamera: boolean) => {
+    if (picking || savingPhoto) return;
     setPicking(true);
     try {
       const permission = useCamera
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow camera/gallery access to update your photo.');
+        showMessage(
+          'Permission needed',
+          useCamera
+            ? 'Allow camera access so you can take your profile photo.'
+            : 'Allow gallery access so you can choose a profile photo.'
+        );
         return;
       }
 
@@ -160,48 +220,38 @@ export function FarmerProfileScreen() {
             aspect: [1, 1],
             quality: 0.8,
             base64: true,
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
           })
         : await ImagePicker.launchImageLibraryAsync({
             allowsEditing: true,
             aspect: [1, 1],
             quality: 0.8,
             base64: true,
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
           });
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         if (!asset.base64) {
-          Alert.alert('Photo error', 'Could not read image. Please try again.');
+          showMessage('Photo error', 'Could not read the image. Please try again.');
           return;
         }
         setPendingUri(asset.uri);
         setPendingBase64(asset.base64);
       }
+    } catch (err: unknown) {
+      showMessage(
+        useCamera ? 'Could not open camera' : 'Could not open gallery',
+        extractApiError(
+          err,
+          Platform.OS === 'web'
+            ? 'Allow camera or gallery access in the browser, then try again.'
+            : 'Please try again.'
+        )
+      );
     } finally {
       setPicking(false);
     }
-  };
-
-  const promptChangePhoto = () => {
-    if (picking || savingPhoto) return;
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Take Photo', 'Choose from Gallery'],
-          cancelButtonIndex: 0,
-        },
-        (index) => {
-          if (index === 1) void pickImage(true);
-          if (index === 2) void pickImage(false);
-        }
-      );
-      return;
-    }
-    Alert.alert('Change photo', 'Choose a source', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Take Photo', onPress: () => void pickImage(true) },
-      { text: 'Choose from Gallery', onPress: () => void pickImage(false) },
-    ]);
   };
 
   const handleSavePhoto = async () => {
@@ -217,9 +267,12 @@ export function FarmerProfileScreen() {
       setFarmer(data.farmer);
       setContacts(data.contacts ?? null);
       discardPendingPhoto();
-      Alert.alert('Photo saved', 'Your profile photo has been updated.');
+      showMessage(
+        'Sent for approval',
+        'Your field agent has been notified. Your current photo stays until they approve the new one.'
+      );
     } catch (err: unknown) {
-      Alert.alert('Could not save photo', extractApiError(err, 'Please try again.'));
+      showMessage('Could not send photo', extractApiError(err, 'Please try again.'));
     } finally {
       setSavingPhoto(false);
     }
@@ -229,31 +282,25 @@ export function FarmerProfileScreen() {
     contacts?.fieldAgent?.name ?? farmer?.registered_agent_name ?? null;
   const fieldAgentPhone =
     contacts?.fieldAgent?.phone ?? farmer?.registered_agent_phone ?? null;
-  const centreName =
-    farmer?.aggregation_center ?? contacts?.aggregationCentre?.name ?? null;
-  const centreLocation =
-    contacts?.aggregationCentre?.location ?? farmer?.centre_location ?? null;
-  const centreManager = contacts?.aggregationCentre?.managerName;
-  const centrePhone =
-    contacts?.aggregationCentre?.managerPhone ??
-    contacts?.fieldAgent?.phone ??
-    farmer?.registered_agent_phone;
+  const displayCentreName = myCentre?.name ?? null;
+  const displayCentreLocation = myCentre?.location || null;
+  const displayCentreManager = myCentre?.managerName ?? null;
+  const displayCentrePhone = myCentre?.managerPhone ?? null;
   const bankingName =
     contacts?.bankingAgent?.name ?? farmer?.banking_agent_name ?? 'Payments desk';
   const bankingPhone =
     contacts?.bankingAgent?.phone ?? farmer?.banking_agent_phone ?? null;
 
   const displayName = farmer?.name ?? user?.name ?? 'Farmer';
+  const location = farmer?.district || farmer?.region || farmer?.country || 'Kenya';
   const country = farmer?.country ?? 'Kenya';
-  const greeting = getLocalizedGreeting(country, displayName);
-  const statusInfo = formatFarmerStatus(farmer?.status);
   const isVerified = (farmer?.status ?? '').toLowerCase().replace(/\s+/g, '_') === 'verified';
 
   const handleHelpSubmit = async (message: string) => {
     setHelpLoading(true);
     try {
       await submitFarmerHelpRequest(message);
-      Alert.alert('Message sent', 'Your field agent will contact you soon.');
+      showMessage('Message sent', 'Your field agent will contact you soon.');
     } catch (err: unknown) {
       throw new Error(extractApiError(err, 'Could not send message'));
     } finally {
@@ -261,21 +308,38 @@ export function FarmerProfileScreen() {
     }
   };
 
+  const photoAwaitingApproval = Boolean(farmer?.pending_picture_url || farmer?.photoUpdatePending);
+  const hasPhoto = hasProfilePhoto(farmer?.picture_url);
+  const showPhotoGuidance = !pendingUri && !hasPhoto;
+  const photoPickerDisabled = picking || savingPhoto;
+
+  const openPhotoPickerMenu = () => {
+    if (photoPickerDisabled) return;
+    if (Platform.OS === 'web') {
+      void pickProfilePhoto(false);
+      return;
+    }
+    Alert.alert('Profile photo', 'Add a clear photo of your face for verification.', [
+      { text: 'Take photo', onPress: () => void pickProfilePhoto(true) },
+      { text: 'Choose from gallery', onPress: () => void pickProfilePhoto(false) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   return (
-    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4 pb-10">
-      {error ? <FarmerOfflineBanner message={error} /> : null}
-      <View className="mb-2 flex-row items-center justify-end">
-        <MessagesNotificationsHeaderIcons iconColor="#1A4D3E" />
-      </View>
-      <View className="mb-5 items-center rounded-[20px] bg-[#1A4D3E] p-6 pt-5">
+    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-4" contentContainerStyle={scrollContentStyle}>
+      {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
+      {error && !farmer ? <FarmerOfflineBanner message={error} /> : null}
+      <View className="mb-5 items-center overflow-hidden rounded-[20px] bg-[#1A4D3E] px-5 pb-5 pt-4">
         <Pressable
-          onPress={promptChangePhoto}
-          disabled={picking || savingPhoto}
+          onPress={openPhotoPickerMenu}
+          disabled={Boolean(pendingUri) || photoPickerDisabled}
+          style={styles.photoPressable}
           accessibilityRole="button"
-          accessibilityLabel="Change profile photo"
+          accessibilityLabel={hasPhoto ? 'Change profile photo' : 'Add profile photo'}
         >
           {pendingUri ? (
-            <View className="mb-1 items-center">
+            <View className="items-center">
               <Image
                 source={{ uri: pendingUri }}
                 style={{
@@ -286,64 +350,112 @@ export function FarmerProfileScreen() {
                   borderColor: '#D4AF6A',
                 }}
               />
-              <Text className="mt-2 text-center text-xs text-white/80">Preview — not saved yet</Text>
+              <Text className="mt-1 text-center text-xs text-white/80">Preview — not sent yet</Text>
             </View>
           ) : (
-            <ProfileAvatar name={displayName} pictureUrl={farmer?.picture_url} size="hero" />
+            <ProfileAvatar name={displayName} pictureUrl={farmer?.picture_url} size="hero" label="" />
           )}
         </Pressable>
-        {!pendingUri ? (
-          <Pressable onPress={promptChangePhoto} disabled={picking || savingPhoto} className="mb-1 mt-1">
-            <Text className="text-center text-xs font-semibold text-[#D4AF6A]">
-              {picking ? 'Opening camera…' : 'Tap photo to change'}
-            </Text>
-          </Pressable>
-        ) : null}
+
         {pendingUri ? (
-          <View className="mb-3 mt-3 w-full flex-row gap-2">
-            <Button
-              variant="outline"
-              className="h-11 flex-1 border-white/40"
-              onPress={discardPendingPhoto}
-              disabled={savingPhoto}
-            >
-              <Text className="text-white">Cancel</Text>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-11 flex-1 border-white/40"
-              onPress={() => void pickImage(true)}
-              disabled={savingPhoto || picking}
-            >
-              <Text className="text-white">Retake</Text>
-            </Button>
-            <Button
-              className="h-11 flex-1 bg-[#D4AF6A]"
-              onPress={() => void handleSavePhoto()}
-              disabled={savingPhoto || picking}
-            >
-              {savingPhoto ? (
-                <ActivityIndicator color="#1A4D3E" />
-              ) : (
-                <Text className="font-semibold text-[#1A4D3E]">Save photo</Text>
-              )}
-            </Button>
+          <View style={styles.actionRow}>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={discardPendingPhoto}
+                disabled={savingPhoto}
+                style={[styles.outlineAction, savingPhoto && styles.takePhotoBtnDisabled]}
+              >
+                <Text style={styles.outlineActionText}>Cancel</Text>
+              </Pressable>
+            </View>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={() => void pickProfilePhoto(true)}
+                disabled={savingPhoto || picking}
+                style={[styles.outlineAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
+              >
+                <Text style={styles.outlineActionText}>Retake</Text>
+              </Pressable>
+            </View>
+            <View style={styles.actionSlot}>
+              <Pressable
+                onPress={() => void handleSavePhoto()}
+                disabled={savingPhoto || picking}
+                style={[styles.submitAction, (savingPhoto || picking) && styles.takePhotoBtnDisabled]}
+              >
+                {savingPhoto ? (
+                  <ActivityIndicator color="#1A4D3E" />
+                ) : (
+                  <Text style={styles.submitActionText}>Send</Text>
+                )}
+              </Pressable>
+            </View>
           </View>
         ) : null}
-        <View className="mb-3 mt-3 w-full items-center rounded-xl bg-white/10 p-3.5">
-          <Text className="text-center text-[22px] font-bold leading-[30px] text-white">{greeting.primary}</Text>
-          <Text className="mt-1.5 text-center text-sm text-white/85">{greeting.secondary}</Text>
-          <Text className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-[#D4AF6A]">{greeting.languageName}</Text>
+
+        <Text style={styles.profileHeaderName}>{displayName}</Text>
+        <Text style={styles.profileHeaderLocation}>{location}</Text>
+        <View style={styles.profileHeaderStatus}>
+          <FarmerStatusChip status={farmer?.status} micro centered />
         </View>
-        <Text className="mt-1 text-2xl font-bold text-white">{displayName}</Text>
-        <Text className="mb-3 mt-1 text-center text-sm text-white/80">
-          {[farmer?.district, farmer?.sub_county, country].filter(Boolean).join(' · ')}
+        <Text style={styles.profileHeaderCurrency}>
+          {currencyInfo.name} ({currencyInfo.code})
         </Text>
-        <View className="mt-2 items-center">
-          <FarmerStatusChip status={farmer?.status} />
-          <Text className="mt-2 text-center text-xs text-white/85">{statusInfo.description}</Text>
-        </View>
-        <Text className="mt-2.5 text-xs font-semibold text-[#D4AF6A]">{currencyInfo.name} ({currency})</Text>
+
+        {!pendingUri && (showPhotoGuidance || photoAwaitingApproval) ? (
+          <View style={styles.photoActions}>
+            {showPhotoGuidance ? (
+              <Text style={styles.photoGuidanceText}>
+                Tap your photo or use Camera / Gallery. Your field agent must approve it before it replaces your current photo.
+              </Text>
+            ) : null}
+            {photoAwaitingApproval ? (
+              <View style={styles.pendingBanner}>
+                <Text className="text-center text-xs font-semibold text-[#1A4D3E]">
+                  New photo waiting for your field agent to approve. Your current photo stays until then.
+                </Text>
+              </View>
+            ) : null}
+            {showPhotoGuidance ? (
+              <View style={styles.pickRow}>
+                <View style={styles.pickSlot}>
+                  <Pressable
+                    onPress={() => void pickProfilePhoto(true)}
+                    disabled={photoPickerDisabled}
+                    style={({ pressed }) => [
+                      styles.takePhotoBtn,
+                      photoPickerDisabled && styles.takePhotoBtnDisabled,
+                      pressed && styles.takePhotoBtnPressed,
+                    ]}
+                  >
+                    {picking ? (
+                      <ActivityIndicator color="#1A4D3E" />
+                    ) : (
+                      <>
+                        <Ionicons name="camera" size={18} color="#1A4D3E" />
+                        <Text className="font-semibold text-[#1A4D3E]">Camera</Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+                <View style={styles.pickSlot}>
+                  <Pressable
+                    onPress={() => void pickProfilePhoto(false)}
+                    disabled={photoPickerDisabled}
+                    style={({ pressed }) => [
+                      styles.takePhotoBtn,
+                      photoPickerDisabled && styles.takePhotoBtnDisabled,
+                      pressed && styles.takePhotoBtnPressed,
+                    ]}
+                  >
+                    <Ionicons name="images" size={18} color="#1A4D3E" />
+                    <Text className="font-semibold text-[#1A4D3E]">Gallery</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       {farmer?.kb_farmer_id ? (
@@ -364,6 +476,40 @@ export function FarmerProfileScreen() {
         <ProfileRow icon="business" label="Membership group" value={farmer?.membership_group_name} />
       </View>
 
+      <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">My Centre</Text>
+      <View className="mb-5 overflow-hidden rounded-xl bg-white">
+        {myCentreLoading ? (
+          <View className="items-center p-6">
+            <ActivityIndicator color="#1A4D3E" />
+          </View>
+        ) : displayCentreName ? (
+          <>
+            <ProfileRow icon="storefront" label="Centre name" value={displayCentreName} />
+            {displayCentreLocation ? (
+              <>
+                <Divider />
+                <ProfileRow icon="map" label="Location" value={displayCentreLocation} />
+              </>
+            ) : null}
+            {displayCentreManager || displayCentrePhone ? (
+              <>
+                <Divider />
+                <ProfileRow
+                  icon="call"
+                  label="Contact"
+                  value={displayCentreManager ?? 'Centre manager'}
+                  subValue={displayCentrePhone}
+                />
+              </>
+            ) : null}
+          </>
+        ) : (
+          <Text className="p-4 text-sm text-[#757575]">
+            No aggregation centre is assigned to your profile yet.
+          </Text>
+        )}
+      </View>
+
       <Text className="mb-2 ml-1 text-sm font-semibold text-[#757575]">Your support team</Text>
       <View className="mb-5 overflow-hidden rounded-xl bg-white">
         <ProfileRow
@@ -378,26 +524,7 @@ export function FarmerProfileScreen() {
             <ProfileRow
               icon="storefront"
               label="Agent centre"
-              value={contacts?.fieldAgent?.aggregationCenter ?? centreName ?? '—'}
-            />
-          </>
-        ) : null}
-        <Divider />
-        <ProfileRow icon="location" label="Aggregation centre" value={centreName ?? 'Not set'} />
-        {centreLocation ? (
-          <>
-            <Divider />
-            <ProfileRow icon="map" label="Centre location" value={centreLocation} />
-          </>
-        ) : null}
-        {centreManager || centrePhone ? (
-          <>
-            <Divider />
-            <ProfileRow
-              icon="call"
-              label="Centre contact"
-              value={centreManager ?? 'Centre manager'}
-              subValue={centrePhone}
+              value={contacts?.fieldAgent?.aggregationCenter ?? displayCentreName ?? '—'}
             />
           </>
         ) : null}
@@ -425,12 +552,7 @@ export function FarmerProfileScreen() {
           assignedTasks.slice(0, 5).map((task, index) => (
             <Pressable
               key={task.id}
-              onPress={() =>
-                navigation.navigate('Tasks', {
-                  taskId: task.id,
-                  highlightTaskId: task.id,
-                })
-              }
+              onPress={() => openFarmerTaskModule(navigation, task.id)}
               className="p-4"
               style={
                 index < assignedTasks.slice(0, 5).length - 1
@@ -491,17 +613,22 @@ export function FarmerProfileScreen() {
         />
       </View>
 
-      <Button className="mb-3 h-12 bg-[#D4AF6A]" onPress={() => setHelpOpen(true)}>
-        <View className="flex-row items-center gap-2">
-          <Ionicons name="help-buoy-outline" size={20} color="#1A4D3E" />
-          <Text className="font-semibold text-[#1A4D3E]">Need help? Contact field agent</Text>
-        </View>
-      </Button>
+      <Pressable
+        style={[styles.profileFooterButton, styles.helpButton, webPressable]}
+        onPress={() => setHelpOpen(true)}
+        accessibilityRole="button"
+      >
+        <Ionicons name="help-buoy-outline" size={16} color="#1A4D3E" />
+        <Text style={styles.helpButtonText}>Need help? Contact field agent</Text>
+      </Pressable>
 
-      <Button variant="outline" className="mt-2 border-[#D32F2F]" onPress={logout}>
-        <Text className="text-[#D32F2F]">Sign Out</Text>
-      </Button>
-      <Text className="mt-4 text-center text-xs text-[#757575]">Kilimo Bridge {APP_BUILD}</Text>
+      <Pressable
+        style={[styles.profileFooterButton, styles.signOutButton, webPressable]}
+        onPress={logout}
+        accessibilityRole="button"
+      >
+        <Text style={styles.signOutButtonText}>Sign Out</Text>
+      </Pressable>
 
       <FarmerHelpModal
         visible={helpOpen}
@@ -544,3 +671,162 @@ function ProfileRow({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  profileHeaderName: {
+    marginTop: 4,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  profileHeaderLocation: {
+    marginTop: 4,
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.85)',
+    textAlign: 'center',
+  },
+  profileHeaderStatus: {
+    marginTop: 4,
+    alignItems: 'center',
+  },
+  profileHeaderCurrency: {
+    marginTop: 4,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  profileFooterButton: {
+    width: '100%',
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  helpButton: {
+    marginBottom: 12,
+    backgroundColor: '#D4AF6A',
+    borderColor: '#D4AF6A',
+  },
+  helpButtonText: {
+    color: '#1A4D3E',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  signOutButton: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D32F2F',
+  },
+  signOutButtonText: {
+    color: '#D32F2F',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  photoPressable: {
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  photoActions: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6,
+  },
+  photoGuidanceText: {
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 17,
+    color: 'rgba(255, 255, 255, 0.8)',
+    paddingHorizontal: 4,
+  },
+  takePhotoBtn: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#D4AF6A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
+  },
+  takePhotoBtnDisabled: {
+    opacity: 0.65,
+  },
+  takePhotoBtnPressed: {
+    opacity: 0.9,
+  },
+  pendingBanner: {
+    width: '100%',
+    marginTop: 4,
+    marginBottom: 4,
+    borderRadius: 8,
+    backgroundColor: '#D4AF6A',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 8,
+  },
+  pickSlot: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 120,
+    height: 44,
+    marginHorizontal: 4,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    width: '100%',
+    marginTop: 8,
+    gap: 8,
+  },
+  actionSlot: {
+    flex: 1,
+    minWidth: 0,
+    height: 40,
+  },
+  outlineAction: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  outlineActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1A4D3E',
+    textAlign: 'center',
+  },
+  submitAction: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#D4AF6A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  submitActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1A4D3E',
+    textAlign: 'center',
+  },
+});

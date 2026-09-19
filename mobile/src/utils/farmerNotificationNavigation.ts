@@ -1,5 +1,6 @@
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
+import { SUPPORT_TICKET_CONTEXT } from '../../shared/src/supportDesk';
 
 export type FarmerNotification = {
   id: string;
@@ -36,8 +37,18 @@ function notificationType(notification: FarmerNotification): string {
 
 function contextIdFromActionUrl(actionUrl?: string | null): string | undefined {
   if (!actionUrl?.trim()) return undefined;
-  const match = actionUrl.trim().match(/\/tasks\/([^/?#]+)/i);
-  return match?.[1];
+  const url = actionUrl.trim();
+  const patterns = [
+    /\/support\/tickets\/([^/?#]+)/i,
+    /\/messages\/([^/?#]+)/i,
+    /\/tasks\/([^/?#]+)/i,
+    /\/farmers\/([^/?#]+)/i,
+  ];
+  for (const re of patterns) {
+    const match = url.match(re);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
 }
 
 function contextId(notification: FarmerNotification): string | undefined {
@@ -60,6 +71,57 @@ function isTaskQcOrRejectedNotification(notification: FarmerNotification): boole
   );
 }
 
+function isSupportTicketNotification(notification: FarmerNotification): boolean {
+  const type = notificationType(notification);
+  const title = (notification.title ?? '').toLowerCase();
+  const contextType = (notification.context_type ?? '').toLowerCase();
+  const url = (notification.action_url ?? '').toLowerCase();
+  return (
+    contextType === SUPPORT_TICKET_CONTEXT ||
+    contextType === 'support_ticket' ||
+    type.includes('support_ticket') ||
+    type.includes('support') ||
+    url.includes('/support/tickets/') ||
+    title.includes('support ticket') ||
+    title.includes('support replied')
+  );
+}
+
+/** Resolve support ticket thread id from context or `/support/tickets/:id` action_url. */
+export function supportThreadIdFromNotification(
+  notification: FarmerNotification
+): string | undefined {
+  const url = notification.action_url ?? '';
+  const fromUrl = /\/support\/tickets\/([^/?#]+)/i.exec(url)?.[1];
+  const id = contextId(notification);
+  if (!isSupportTicketNotification(notification) && !fromUrl) {
+    return undefined;
+  }
+  return id ?? fromUrl;
+}
+
+/** Walk parents until a navigator actually owns this route, then navigate there. */
+function navigateToRoute(
+  start: NavigationProp<ParamListBase>,
+  routeName: string,
+  params?: object
+): boolean {
+  let nav: NavigationProp<ParamListBase> | undefined = start;
+  while (nav) {
+    const names = nav.getState()?.routeNames ?? [];
+    if (names.includes(routeName)) {
+      if (params) {
+        nav.dispatch(CommonActions.navigate({ name: routeName, params }));
+      } else {
+        nav.navigate(routeName);
+      }
+      return true;
+    }
+    nav = nav.getParent();
+  }
+  return false;
+}
+
 function navigateMainTab(
   root: NavigationProp<ParamListBase>,
   screen: string,
@@ -76,19 +138,29 @@ function navigateMainTab(
   );
 }
 
+/** Open the farmer task detail screen (same module as notification taps). */
+export function openFarmerTaskModule(
+  navigation: NavigationProp<ParamListBase>,
+  taskId: string,
+  opts?: { fromNotification?: boolean; openSubmitModal?: boolean }
+): boolean {
+  return navigateToRoute(navigation, 'TaskDetail', {
+    taskId,
+    fromNotification: opts?.fromNotification === true,
+    openSubmitModal: opts?.openSubmitModal === true,
+  });
+}
+
 function navigateToFarmerTask(
   root: NavigationProp<ParamListBase>,
   notification: FarmerNotification,
   contextIdValue: string | undefined
 ): void {
   if (contextIdValue) {
-    const fromNotification = true;
-    root.dispatch(
-      CommonActions.navigate({
-        name: 'TaskDetail',
-        params: { taskId: contextIdValue, fromNotification },
-      })
-    );
+    openFarmerTaskModule(root, contextIdValue, {
+      fromNotification: true,
+      openSubmitModal: isTaskQcOrRejectedNotification(notification),
+    });
     return;
   }
 
@@ -104,6 +176,61 @@ function navigateToFarmerTask(
   );
 }
 
+function navigateSupportTicketThread(
+  navigation: NavigationProp<ParamListBase>,
+  notification: FarmerNotification,
+  options?: { isSupportDesk?: boolean }
+): void {
+  const threadId = supportThreadIdFromNotification(notification);
+  const type = notificationType(notification);
+  const resolved = type.includes('resolved');
+
+  if (options?.isSupportDesk) {
+    if (threadId) {
+      navigateToRoute(navigation, 'MainTabs', {
+        screen: 'Messages',
+        params: {
+          screen: 'SupportTicketDetail',
+          params: {
+            threadId,
+            status: resolved ? 'resolved' : 'open',
+          },
+          initial: false,
+        },
+      });
+      return;
+    }
+    navigateToRoute(navigation, 'MainTabs', {
+      screen: 'Messages',
+      params: {
+        screen: 'SupportTicketsList',
+        params: { statusFilter: resolved ? 'resolved' : 'open' },
+        initial: false,
+      },
+    });
+    return;
+  }
+
+  if (threadId) {
+    const detailParams = {
+      threadId,
+      contextType: SUPPORT_TICKET_CONTEXT,
+      supportStatus: resolved ? 'resolved' : 'open',
+    };
+    const opened = navigateToRoute(navigation, 'MessagesFlow', {
+      screen: 'MessageDetail',
+      params: detailParams,
+      initial: false,
+    });
+    if (!opened) {
+      navigateToRoute(navigation, 'MessageDetail', detailParams);
+    }
+    return;
+  }
+
+  navigateToRoute(navigation, 'MessagesFlow', { screen: 'MessagesList' });
+}
+
 /** Navigate from a notification tap to the related screen (farmer or field agent app). */
 export function navigateFromFarmerNotification(
   navigation: NavigationProp<ParamListBase>,
@@ -114,6 +241,11 @@ export function navigateFromFarmerNotification(
   const contextIdValue = contextId(notification);
   const root = getRootNavigation(navigation);
 
+  if (isSupportTicketNotification(notification)) {
+    navigateSupportTicketThread(navigation, notification);
+    return;
+  }
+
   const isMessage =
     type === 'message' ||
     type === 'message_received' ||
@@ -122,15 +254,11 @@ export function navigateFromFarmerNotification(
     contextType === 'message_thread';
 
   if (isMessage) {
-    root.dispatch(
-      CommonActions.navigate({
-        name: 'MessagesFlow',
-        params: {
-          screen: contextIdValue ? 'MessageDetail' : 'MessagesList',
-          params: contextIdValue ? { threadId: contextIdValue } : undefined,
-        },
-      })
-    );
+    navigateToRoute(navigation, 'MessagesFlow', {
+      screen: contextIdValue ? 'MessageDetail' : 'MessagesList',
+      params: contextIdValue ? { threadId: contextIdValue } : undefined,
+      initial: false,
+    });
     return;
   }
 
@@ -167,6 +295,9 @@ export function navigateFromFarmerNotification(
     contextType === 'agent_task' ||
     contextType === 'farmer_task' ||
     type === 'task_assigned' ||
+    type === 'task_rejected' ||
+    type === 'task_qc_failed' ||
+    type === 'task_approved' ||
     isTaskQcOrRejectedNotification(notification)
   ) {
     navigateToFarmerTask(root, notification, contextIdValue);
@@ -176,6 +307,7 @@ export function navigateFromFarmerNotification(
   if (
     type.includes('verification') ||
     type.includes('registration') ||
+    type.includes('photo') ||
     type === 'help_request_resolved'
   ) {
     navigateMainTab(root, 'Profile');
@@ -187,12 +319,25 @@ export function navigateFromFarmerNotification(
   }
 }
 
-/** Agent app: payments/projects tabs may be missing — fall back to Profile/Dashboard. */
+/** Agent / support-desk apps: payments/projects tabs may be missing — fall back appropriately. */
 export function navigateFromNotification(
   navigation: NavigationProp<ParamListBase>,
   notification: FarmerNotification,
-  options?: { isAgent?: boolean }
+  options?: { isAgent?: boolean; isSupportDesk?: boolean }
 ): void {
+  if (options?.isSupportDesk) {
+    const root = getRootNavigation(navigation);
+    if (isSupportTicketNotification(notification)) {
+      navigateSupportTicketThread(navigation, notification, { isSupportDesk: true });
+      return;
+    }
+    navigateMainTab(root, 'Messages', {
+      screen: 'SupportTicketsList',
+      params: { statusFilter: 'open' },
+    });
+    return;
+  }
+
   if (!options?.isAgent) {
     navigateFromFarmerNotification(navigation, notification);
     return;
@@ -202,6 +347,11 @@ export function navigateFromNotification(
   const contextType = (notification.context_type ?? '').toLowerCase();
   const root = getRootNavigation(navigation);
 
+  if (isSupportTicketNotification(notification)) {
+    navigateSupportTicketThread(navigation, notification);
+    return;
+  }
+
   const isMessage =
     type === 'message' ||
     type === 'message_received' ||
@@ -210,15 +360,12 @@ export function navigateFromNotification(
     contextType === 'message_thread';
 
   if (isMessage) {
-    root.dispatch(
-      CommonActions.navigate({
-        name: 'MessagesFlow',
-        params: {
-          screen: contextId(notification) ? 'MessageDetail' : 'MessagesList',
-          params: contextId(notification) ? { threadId: contextId(notification) } : undefined,
-        },
-      })
-    );
+    const threadId = contextId(notification);
+    navigateToRoute(navigation, 'MessagesFlow', {
+      screen: threadId ? 'MessageDetail' : 'MessagesList',
+      params: threadId ? { threadId } : undefined,
+      initial: false,
+    });
     return;
   }
 
@@ -229,12 +376,42 @@ export function navigateFromNotification(
     contextType === 'farmer_task' ||
     type === 'task_assigned'
   ) {
-    const taskId = contextId(notification);
+    const id = contextId(notification);
     navigateMainTab(
       root,
       'Tasks',
-      taskId ? { filter: 'all', taskId, highlightTaskId: taskId } : { filter: 'all' }
+      id
+        ? { filter: 'all', taskId: id, highlightTaskId: id }
+        : { filter: 'all' }
     );
+    return;
+  }
+
+  const farmerId =
+    contextType === 'farmer' ||
+    type === 'farmer_photo_update' ||
+    type === 'field_verification_assigned' ||
+    type === 'farmer_registered' ||
+    type === 'registration_approved' ||
+    (type.includes('farmer') && !type.includes('help'))
+      ? contextId(notification)
+      : undefined;
+
+  if (farmerId) {
+    navigateMainTab(root, 'Farmers', {
+      screen: 'FarmerProfile',
+      params: { farmerId, name: notification.title || 'Member' },
+    });
+    return;
+  }
+
+  if (
+    type === 'farmer_photo_update' ||
+    contextType === 'farmer' ||
+    type === 'field_verification_assigned' ||
+    type.includes('farmer')
+  ) {
+    navigateMainTab(root, 'Farmers', { screen: 'FarmerList' });
     return;
   }
 
@@ -247,11 +424,6 @@ export function navigateFromNotification(
     type === 'help_request_resolved'
   ) {
     navigateMainTab(root, 'Profile');
-    return;
-  }
-
-  if (type.includes('farmer')) {
-    navigateMainTab(root, 'Farmers', { screen: 'FarmerList' });
     return;
   }
 

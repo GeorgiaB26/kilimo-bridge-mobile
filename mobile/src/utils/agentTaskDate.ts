@@ -1,6 +1,23 @@
 import { formatCleanDate } from './greeting';
 
-/** Parse DD/MM/YYYY or DD-MM-YYYY to ISO YYYY-MM-DD for API storage. */
+/** User-facing date format across the app. */
+export const DISPLAY_DATE_FORMAT = 'DD-MM-YYYY';
+
+/** Today's date as ISO YYYY-MM-DD (API / comparison). */
+export function todayIsoDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Today's date as DD-MM-YYYY for inputs. */
+export function todayDisplayDate(): string {
+  return formatCleanDate(todayIsoDate());
+}
+
+/** Parse DD/MM/YYYY, DD-MM-YYYY, or ISO YYYY-MM-DD to ISO for API storage. */
 export function parseAgentTaskDueDateInput(input: string): string | null {
   const trimmed = input.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
@@ -22,14 +39,17 @@ export function parseAgentTaskDueDateInput(input: string): string | null {
   return iso;
 }
 
+/** Format an ISO/date value for date inputs (empty when missing). */
 export function formatAgentTaskDueInput(value?: string | null): string {
-  return formatCleanDate(value);
+  if (!value) return '';
+  const formatted = formatCleanDate(value);
+  return formatted === 'N/A' ? '' : formatted;
 }
 
-/** Auto-format digits into DD/MM/YYYY while typing. */
+/** Auto-format digits into DD-MM-YYYY while typing. */
 export function maskDdMmYyyyInput(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 8);
   if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
 }

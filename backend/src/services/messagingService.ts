@@ -2,11 +2,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
 import { createNotification } from './notificationService';
 import { getProjectManagerUserForAgent } from './agentDashboardService';
-import { isAgentRole } from '../../../shared/src/roles';
+import { extractR2ObjectKey, isR2ObjectKey, resolveAttachmentPreviewUrl } from './r2StorageService';
 
 export interface MessageThreadSummary {
   id: string;
   title: string | null;
+  context_type?: string | null;
+  support_status?: string | null;
   last_message_at: string | null;
   other_user_id: string;
   other_user_name: string;
@@ -20,6 +22,8 @@ export interface ThreadMessage {
   thread_id: string;
   sender_id: string;
   content: string;
+  attachment_url?: string | null;
+  attachment_preview_url?: string | null;
   created_at: string;
   sender_name?: string;
   is_mine?: boolean;
@@ -129,6 +133,7 @@ export async function ensureMessagingTables(): Promise<void> {
   await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'normal'`);
   await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read BOOLEAN DEFAULT FALSE`);
   await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE`);
+  await query(`ALTER TABLE message_thread_messages ADD COLUMN IF NOT EXISTS attachment_url TEXT`);
 }
 
 async function findDirectThread(userId: string, otherUserId: string): Promise<string | null> {
@@ -202,16 +207,23 @@ export async function getOrCreateDirectThread(
   return threadId;
 }
 
+/**
+ * List every direct thread the user participates in.
+ * Agent "who can I message" allow-lists apply only when *starting* a new thread
+ * (see agentCanMessageRecipient / listAgentMessageableUsers) — never hide existing ones.
+ */
 export async function listThreadsForUser(
   userId: string,
   search?: string,
-  role?: string,
-  region?: string,
-  district?: string
+  _role?: string,
+  _region?: string,
+  _district?: string
 ): Promise<MessageThreadSummary[]> {
-  const rows = await query<{
+  return query<{
     id: string;
     title: string | null;
+    context_type: string | null;
+    support_status: string | null;
     last_message_at: string | null;
     other_user_id: string;
     other_user_name: string;
@@ -223,6 +235,8 @@ export async function listThreadsForUser(
     SELECT
       t.id,
       t.title,
+      t.context_type,
+      st.status AS support_status,
       t.last_message_at,
       ou.user_id AS other_user_id,
       ou.name AS other_user_name,
@@ -232,20 +246,21 @@ export async function listThreadsForUser(
         (
           SELECT COUNT(*)::int
           FROM message_thread_messages m
-          WHERE m.thread_id = t.id
+          WHERE m.thread_id::text = t.id::text
             AND m.sender_id::text <> $1::text
             AND NOT EXISTS (
               SELECT 1 FROM message_read_receipts r
-              WHERE r.message_id = m.id AND r.user_id::text = $1::text
+              WHERE r.message_id::text = m.id::text AND r.user_id::text = $1::text
             )
         ),
         0
       ) AS unread_count
     FROM message_threads t
-    JOIN message_thread_participants mp ON mp.thread_id = t.id AND mp.user_id::text = $1::text
+    JOIN message_thread_participants mp ON mp.thread_id::text = t.id::text AND mp.user_id::text = $1::text
     JOIN message_thread_participants op
-      ON op.thread_id = t.id AND op.user_id::text <> $1::text
+      ON op.thread_id::text = t.id::text AND op.user_id::text <> $1::text
     JOIN users ou ON ou.user_id::text = op.user_id::text
+    LEFT JOIN message_support_tickets st ON st.thread_id = t.id
     LEFT JOIN LATERAL (
       SELECT content, sender_id
       FROM message_thread_messages
@@ -258,25 +273,37 @@ export async function listThreadsForUser(
     `,
     [userId, search?.trim() || null]
   );
-
-  if (isAgentRole(role ?? '')) {
-    const allowed = await listAgentMessageableUsers(userId, region, district);
-    const allowedIds = new Set(allowed.map((u) => u.userId));
-    return rows.filter((r) => allowedIds.has(String(r.other_user_id)));
-  }
-
-  return rows;
 }
 
 export async function getThreadMessages(
   threadId: string,
   userId: string
-): Promise<{ messages: ThreadMessage[]; otherUser: { id: string; name: string } | null }> {
+): Promise<{
+  messages: ThreadMessage[];
+  otherUser: { id: string; name: string } | null;
+  title: string | null;
+  context_type: string | null;
+  support_status: string | null;
+}> {
   const participant = await queryOne<{ user_id: string }>(
     `SELECT user_id FROM message_thread_participants WHERE thread_id::text = $1::text AND user_id::text = $2::text`,
     [threadId, userId]
   );
   if (!participant) throw new Error('Thread not found');
+
+  const threadMeta = await queryOne<{
+    title: string | null;
+    context_type: string | null;
+    support_status: string | null;
+  }>(
+    `
+    SELECT t.title, t.context_type, st.status AS support_status
+    FROM message_threads t
+    LEFT JOIN message_support_tickets st ON st.thread_id = t.id
+    WHERE t.id::text = $1::text
+    `,
+    [threadId]
+  );
 
   const other = await queryOne<{ user_id: string; name: string }>(
     `
@@ -291,7 +318,7 @@ export async function getThreadMessages(
 
   const messages = await query<ThreadMessage>(
     `
-    SELECT m.id, m.thread_id, m.sender_id, m.content, m.created_at, u.name AS sender_name
+    SELECT m.id, m.thread_id, m.sender_id, m.content, m.attachment_url, m.created_at, u.name AS sender_name
     FROM message_thread_messages m
     JOIN users u ON u.user_id::text = m.sender_id::text
     WHERE m.thread_id::text = $1::text
@@ -300,12 +327,21 @@ export async function getThreadMessages(
     [threadId]
   );
 
-  return {
-    messages: messages.map((m) => ({
+  const withPreviews: ThreadMessage[] = [];
+  for (const m of messages) {
+    withPreviews.push({
       ...m,
       is_mine: String(m.sender_id) === String(userId),
-    })),
+      attachment_preview_url: await resolveAttachmentPreviewUrl(m.attachment_url),
+    });
+  }
+
+  return {
+    messages: withPreviews,
     otherUser: other ? { id: other.user_id, name: other.name } : null,
+    title: threadMeta?.title ?? null,
+    context_type: threadMeta?.context_type ?? null,
+    support_status: threadMeta?.support_status ?? null,
   };
 }
 
@@ -316,36 +352,38 @@ export async function markThreadRead(threadId: string, userId: string): Promise<
   );
   if (!participant) throw new Error('Thread not found');
 
-  const unread = await query<{ id: string }>(
+  await query(
     `
-    SELECT m.id
+    INSERT INTO message_read_receipts (message_id, user_id)
+    SELECT m.id, $2::text
     FROM message_thread_messages m
     WHERE m.thread_id::text = $1::text
       AND m.sender_id::text <> $2::text
-      AND NOT EXISTS (
-        SELECT 1 FROM message_read_receipts r
-        WHERE r.message_id = m.id AND r.user_id::text = $2::text
-      )
+    ON CONFLICT (message_id, user_id) DO NOTHING
     `,
     [threadId, userId]
   );
+}
 
-  for (const row of unread) {
-    await query(
-      `INSERT INTO message_read_receipts (message_id, user_id) VALUES ($1, $2)
-       ON CONFLICT (message_id, user_id) DO NOTHING`,
-      [row.id, userId]
-    );
-  }
+function assertMessageAttachment(url?: string | null): string | null {
+  const value = url?.trim() || null;
+  if (!value) return null;
+  const key = extractR2ObjectKey(value);
+  if (key) return key;
+  if (value.startsWith('https://') && value.length < 2048) return value;
+  if (isR2ObjectKey(value)) return value;
+  throw new Error('Invalid attachment');
 }
 
 export async function sendThreadMessage(
   threadId: string,
   senderId: string,
-  content: string
+  content: string,
+  attachmentUrl?: string | null
 ): Promise<ThreadMessage> {
   const trimmed = content.trim();
-  if (!trimmed) throw new Error('Message cannot be empty');
+  const attachment = assertMessageAttachment(attachmentUrl);
+  if (!trimmed && !attachment) throw new Error('Message cannot be empty');
   if (trimmed.length > 2000) throw new Error('Message must be 2000 characters or less');
 
   const participant = await queryOne<{ user_id: string }>(
@@ -354,6 +392,21 @@ export async function sendThreadMessage(
   );
   if (!participant) throw new Error('Thread not found');
 
+  const supportTicket = await queryOne<{ status: string }>(
+    `SELECT status FROM message_support_tickets WHERE thread_id::text = $1::text`,
+    [threadId]
+  );
+  if (supportTicket?.status === 'resolved') {
+    const { isSupportDeskUser } = await import('../../../shared/src/supportDesk');
+    const sender = await queryOne<{ phone_number: string }>(
+      `SELECT phone_number FROM users WHERE user_id::text = $1::text`,
+      [senderId]
+    );
+    if (!isSupportDeskUser({ userId: senderId, phoneNumber: sender?.phone_number })) {
+      throw new Error('This support ticket is resolved. Start a new ticket to contact support again.');
+    }
+  }
+
   const sender = await queryOne<{ name: string }>(
     'SELECT name FROM users WHERE user_id = $1',
     [senderId]
@@ -361,9 +414,9 @@ export async function sendThreadMessage(
 
   const messageId = uuidv4();
   await query(
-    `INSERT INTO message_thread_messages (id, thread_id, sender_id, content)
-     VALUES ($1, $2, $3, $4)`,
-    [messageId, threadId, senderId, trimmed]
+    `INSERT INTO message_thread_messages (id, thread_id, sender_id, content, attachment_url)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [messageId, threadId, senderId, trimmed || 'Photo attachment', attachment]
   );
   await query(
     `UPDATE message_threads SET last_message_at = NOW(), updated_at = NOW() WHERE id = $1`,
@@ -375,13 +428,42 @@ export async function sendThreadMessage(
     [threadId, senderId]
   );
 
+  const isSupportThread = Boolean(supportTicket);
+  let supportSenderIsDesk = false;
+  if (isSupportThread) {
+    const { isSupportDeskUser } = await import('../../../shared/src/supportDesk');
+    const phoneRow = await queryOne<{ phone_number: string }>(
+      `SELECT phone_number FROM users WHERE user_id::text = $1::text`,
+      [senderId]
+    );
+    supportSenderIsDesk = isSupportDeskUser({
+      userId: senderId,
+      phoneNumber: phoneRow?.phone_number,
+    });
+  }
+
   for (const recipient of recipients) {
+    if (isSupportThread) {
+      // Keep support-ticket replies on the same notification type / deep-link as /api/support replies
+      // so farmer↔desk taps open the ticket thread in each app shell.
+      await createNotification({
+        userId: recipient.user_id,
+        title: supportSenderIsDesk ? 'Support replied' : 'New reply on support ticket',
+        message: `${sender?.name ?? 'Someone'}: ${(trimmed || 'Photo').slice(0, 120)}`,
+        type: 'support_ticket_reply',
+        contextType: 'support_ticket',
+        contextId: threadId,
+        actionUrl: `/support/tickets/${threadId}`,
+      });
+      continue;
+    }
+
     const settings = await getNotificationSettings(recipient.user_id);
     if (settings.notify_messages && settings.messages_enabled) {
       await createNotification({
         userId: recipient.user_id,
         title: 'New message',
-        message: `${sender?.name ?? 'Someone'}: ${trimmed.slice(0, 120)}`,
+        message: `${sender?.name ?? 'Someone'}: ${(trimmed || 'Photo').slice(0, 120)}`,
         type: 'message_received',
         contextType: 'message_thread',
         contextId: threadId,
@@ -392,7 +474,7 @@ export async function sendThreadMessage(
 
   const row = await queryOne<ThreadMessage>(
   `
-    SELECT m.id, m.thread_id, m.sender_id, m.content, m.created_at, u.name AS sender_name
+    SELECT m.id, m.thread_id, m.sender_id, m.content, m.attachment_url, m.created_at, u.name AS sender_name
     FROM message_thread_messages m
     JOIN users u ON u.user_id::text = m.sender_id::text
     WHERE m.id::text = $1::text
@@ -400,10 +482,17 @@ export async function sendThreadMessage(
     [messageId]
   );
 
-  return { ...row!, is_mine: true };
+  return {
+    ...row!,
+    is_mine: true,
+    attachment_preview_url: await resolveAttachmentPreviewUrl(row?.attachment_url),
+  };
 }
 
-/** Field agents may only message their project manager and farmers they registered. */
+/**
+ * Contacts an agent may *start* a new conversation with (PM + farmers they registered).
+ * Does not restrict which existing participant threads appear in the inbox.
+ */
 export async function listAgentMessageableUsers(
   agentUserId: string,
   region?: string,
@@ -503,17 +592,33 @@ export async function listMessageableUsers(
   return all.map((r) => ({ userId: r.user_id, name: r.name, role: r.role }));
 }
 
+/**
+ * Unread messages across all threads the user participates in.
+ * Same visibility set as listThreadsForUser (participant threads only) so the
+ * header badge never exceeds what is reachable from the Messages list.
+ */
 export async function getUnreadMessageCount(userId: string): Promise<number> {
   const row = await queryOne<{ count: number }>(
     `
     SELECT COUNT(*)::int AS count
     FROM message_thread_messages m
-    JOIN message_thread_participants p
-      ON p.thread_id::text = m.thread_id::text AND p.user_id::text = $1::text
-    WHERE m.sender_id::text <> $1::text
+    WHERE EXISTS (
+          SELECT 1
+          FROM message_thread_participants p
+          WHERE p.thread_id::text = m.thread_id::text
+            AND p.user_id::text = $1::text
+        )
+      AND EXISTS (
+          SELECT 1
+          FROM message_thread_participants op
+          JOIN users ou ON ou.user_id::text = op.user_id::text
+          WHERE op.thread_id::text = m.thread_id::text
+            AND op.user_id::text <> $1::text
+        )
+      AND m.sender_id::text <> $1::text
       AND NOT EXISTS (
         SELECT 1 FROM message_read_receipts r
-        WHERE r.message_id = m.id AND r.user_id::text = $1::text
+        WHERE r.message_id::text = m.id::text AND r.user_id::text = $1::text
       )
     `,
     [userId]

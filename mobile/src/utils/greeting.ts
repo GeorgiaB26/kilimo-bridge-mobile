@@ -93,7 +93,7 @@ export function formatDueDate(dateStr?: string | null): string {
   return formatCleanDate(dateStr);
 }
 
-/** DD/MM/YYYY — no ISO timestamps (T00:00:00). */
+/** Platform display date: DD-MM-YYYY (no ISO timestamps). */
 export function formatCleanDate(dateStr?: string | null): string {
   if (!dateStr) return 'N/A';
   try {
@@ -105,7 +105,7 @@ export function formatCleanDate(dateStr?: string | null): string {
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
+    return `${day}-${month}-${year}`;
   } catch {
     return String(dateStr).split('T')[0] || 'N/A';
   }

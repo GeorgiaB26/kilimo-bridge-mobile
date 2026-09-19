@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requireRole } from '../middleware/auth';
+import { authenticate, requireRole, requirePermission } from '../middleware/auth';
 import {
   getFarmerDashboard,
   getFarmerProjects,
@@ -9,10 +9,9 @@ import {
   listAllFarmerAssignedTasks,
 } from '../services/farmerPortalService';
 import { getUserNotifications } from '../services/notificationService';
-import { updateFarmerLocation, updateFarmerPicture } from '../services/farmerService';
+import { updateFarmerLocation, submitFarmerPictureForApproval } from '../services/farmerService';
 import { logAudit } from '../services/auditService';
-import { createFarmerHelpRequest } from '../services/farmerHelpRequestService';
-import { startFarmerAgentTask } from '../services/agentDashboardService';
+import { createFarmerHelpRequest, getFarmerMyCentre } from '../services/farmerHelpRequestService';
 import hierarchyFarmerRoutes from './hierarchyFarmer';
 
 const router = Router();
@@ -59,6 +58,21 @@ router.get(
   })
 );
 
+/** View-only: farmer's own aggregation centre (name, location, contact). */
+router.get(
+  '/my-centre',
+  requirePermission('centres.read.own'),
+  asyncHandler(async (req, res) => {
+    if (!req.user?.farmerId) {
+      res.status(400).json({ error: 'No farmer profile linked to this account' });
+      return;
+    }
+    const data = await getFarmerMyCentre(req.user.farmerId);
+    logFarmerDataAccess(req, 'my_centre', req.user.farmerId);
+    res.json(data);
+  })
+);
+
 /** All tasks assigned to this farmer (program + field agent assignments). */
 router.get(
   '/assigned-tasks',
@@ -76,24 +90,6 @@ router.get(
     });
     logFarmerDataAccess(req, 'assigned_tasks', req.user.farmerId);
     res.json({ tasks, count: tasks.length });
-  })
-);
-
-/** Farmer starts a field-agent-assigned task (not_started → in_progress). */
-router.patch(
-  '/agent-tasks/:taskId/start',
-  asyncHandler(async (req, res) => {
-    if (!req.user?.farmerId) {
-      res.status(400).json({ error: 'No farmer profile linked to this account' });
-      return;
-    }
-    const task = await startFarmerAgentTask(req.params.taskId, req.user.farmerId);
-    if (!task) {
-      res.status(404).json({ error: 'Task not found or not assigned to you' });
-      return;
-    }
-    logFarmerDataAccess(req, 'agent_task_start', req.user.farmerId);
-    res.json({ task, message: 'Task started' });
   })
 );
 
@@ -164,12 +160,16 @@ router.patch(
       return;
     }
     try {
-      await updateFarmerLocation(req.user.farmerId, {
-        district: district.trim(),
-        subCounty: subCounty.trim(),
-        parish: parish?.trim(),
-        village: village?.trim(),
-      });
+      await updateFarmerLocation(
+        req.user.farmerId,
+        {
+          district: district.trim(),
+          subCounty: subCounty.trim(),
+          parish: parish?.trim(),
+          village: village?.trim(),
+        },
+        req.user.userId
+      );
       logFarmerDataAccess(req, 'profile', req.user.farmerId);
       const data = await getFarmerDashboard(req.user.farmerId);
       res.json(data);
@@ -193,12 +193,12 @@ router.patch(
       return;
     }
     try {
-      await updateFarmerPicture(req.user.farmerId, picture_url);
+      await submitFarmerPictureForApproval(req.user.farmerId, picture_url);
       logFarmerDataAccess(req, 'profile', req.user.farmerId);
       const data = await getFarmerDashboard(req.user.farmerId);
       res.json(data);
     } catch (err) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not update photo' });
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not submit photo' });
     }
   })
 );

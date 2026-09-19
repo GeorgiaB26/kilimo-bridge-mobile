@@ -1,18 +1,28 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants';
 import { useAuthStore } from '../store/authStore';
+import { useConnectivityOnline } from '../hooks/useConnectivityOnline';
 
+/**
+ * Top chrome under the status bar when GlobalOfflineBanner is hidden.
+ * When offline, the banner already consumes the top inset — skip double padding.
+ */
 export function AccountSwitcherBar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const insets = useSafeAreaInsets();
+  const online = useConnectivityOnline();
 
   if (!user) return null;
 
   const roleLabel = user.role.replace('_', ' ');
+  const offlineBannerVisible = online === false;
+  const topPad = offlineBannerVisible ? 0 : Math.max(insets.top, 0);
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, topPad > 0 ? { paddingTop: 8 + topPad } : null]}>
       <Text style={styles.text} numberOfLines={1}>
         Signed in as <Text style={styles.name}>{user.name}</Text> ({roleLabel})
       </Text>

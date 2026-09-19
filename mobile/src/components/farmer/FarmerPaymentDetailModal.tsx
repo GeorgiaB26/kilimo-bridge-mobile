@@ -6,18 +6,23 @@ import { formatCleanDate } from '../../utils/greeting';
 export type FarmerPaymentRow = {
   id: string;
   project_name: string;
+  /** Program task this payout is for. */
+  task_name?: string;
   amount: number;
   payment_status: string;
   payment_method: string;
   created_at: string;
   mpesa_reference?: string;
   description?: string;
+  /** True for assigned-task payouts that are not yet a payments-table row. */
+  is_expected?: boolean;
 };
 
 function statusColor(status: string): string {
   const lower = status.toLowerCase();
   if (lower === 'transferred' || lower === 'paid') return '#70AD47';
   if (lower === 'pending' || lower === 'processing') return '#FFC000';
+  if (lower === 'expected') return '#4472C4';
   return '#999999';
 }
 
@@ -40,9 +45,14 @@ export function FarmerPaymentDetailModal({ payment, onClose, formatAmount }: Pro
         </Pressable>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Project / task</Text>
+          <Text style={styles.sectionTitle}>Project</Text>
           <Text style={styles.value}>{payment.project_name}</Text>
-          {payment.description && payment.description !== payment.project_name ? (
+          {payment.task_name && payment.task_name !== payment.project_name ? (
+            <>
+              <Text style={styles.label}>Task</Text>
+              <Text style={styles.value}>{payment.task_name}</Text>
+            </>
+          ) : payment.description && payment.description !== payment.project_name ? (
             <Text style={styles.subValue}>{payment.description}</Text>
           ) : null}
 
@@ -58,7 +68,7 @@ export function FarmerPaymentDetailModal({ payment, onClose, formatAmount }: Pro
               <Text style={styles.reference}>{payment.mpesa_reference}</Text>
             </>
           ) : null}
-          <Text style={styles.label}>Date</Text>
+          <Text style={styles.label}>{payment.is_expected ? 'Due date' : 'Date'}</Text>
           <Text style={styles.value}>{formatCleanDate(payment.created_at)}</Text>
         </View>
       </View>

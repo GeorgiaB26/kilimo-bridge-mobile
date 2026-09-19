@@ -4,18 +4,21 @@ import { useIsFocused } from '@react-navigation/native';
 
 const TAB_SCENE_BG = '#F5F5F5';
 
-/** Web: hide inactive bottom-tab scenes and block pointer events on stacked layers. */
+/**
+ * Web: react-native-screens does not detach inactive bottom-tab scenes, so every
+ * tab stays painted (z-index stack). Hide inactive tabs so only one screen shows,
+ * but keep children mounted so dashboard KPI deep-links (filter params) apply
+ * without remounting into an empty loading race.
+ */
 export function AgentTabScene({ children }: { children: React.ReactNode }) {
   const isFocused = useIsFocused();
 
-  if (Platform.OS === 'web' && !isFocused) {
-    return <View style={styles.hidden} pointerEvents="none" />;
-  }
-
   return (
     <View
-      style={[styles.scene, Platform.OS === 'web' && isFocused && styles.sceneFocused]}
-      pointerEvents="box-none"
+      style={[styles.scene, Platform.OS === 'web' && !isFocused ? styles.hidden : null]}
+      pointerEvents={isFocused ? 'auto' : 'none'}
+      accessibilityElementsHidden={!isFocused}
+      importantForAccessibility={isFocused ? 'yes' : 'no-hide-descendants'}
     >
       {children}
     </View>
@@ -27,14 +30,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TAB_SCENE_BG,
   },
-  sceneFocused: {
-    zIndex: 10,
-    position: 'relative',
-  },
   hidden: {
-    flex: 1,
     display: 'none',
     opacity: 0,
-    pointerEvents: 'none',
   },
 });

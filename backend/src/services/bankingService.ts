@@ -54,6 +54,8 @@ export async function initiateH2HTransfer(req: H2HTransferRequest): Promise<H2HT
        WHERE id = $2`,
       [ref, txId]
     );
+    const { settleTransferredPayment } = await import('./hierarchyService');
+    await settleTransferredPayment(req.paymentId, ref);
     return { success: true, transactionId: txId, reference: ref, status: 'completed' };
   }
 
@@ -160,11 +162,8 @@ export async function handleEquityWebhook(payload: {
   );
 
   if (newStatus === 'completed' && tx.payment_id) {
-    await query(
-      `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
-       WHERE id = $2`,
-      [payload.reference, tx.payment_id]
-    );
+    const { settleTransferredPayment } = await import('./hierarchyService');
+    await settleTransferredPayment(tx.payment_id, payload.reference ?? '');
   }
 
   await logAudit({

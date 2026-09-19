@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, ActivityIndicator } from 'react-native';
+import { ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput, Menu, Button as PaperButton } from 'react-native-paper';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { FormKeyboardScroll } from '../../components/ui/FormKeyboardScroll';
 import { aggregationCentreLogin, getAggregationCentres, setAuthToken } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { extractApiError } from '../../utils/feedback';
@@ -60,7 +61,13 @@ export function AggregationCentreLoginScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-6">
+    <FormKeyboardScroll
+      className="flex-1 bg-[#F5F5F5]"
+      contentContainerClassName="p-6"
+      style={{ flex: 1, backgroundColor: '#F5F5F5' }}
+      contentContainerStyle={{ padding: 24 }}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text className="text-[26px] font-bold text-[#1A4D3E]">Aggregation Centre</Text>
       <Text className="mb-6 mt-1.5 text-sm text-[#757575]">Staff login for delivery intake and quality checks</Text>
 
@@ -96,6 +103,6 @@ export function AggregationCentreLoginScreen({ navigation }: Props) {
       <Text className="mt-4 text-xs leading-[18px] text-[#757575]">
         Demo: Kiambu Town Hall · {DEMO_AGENT_PHONE} · password {DEMO_PASSWORD}
       </Text>
-    </ScrollView>
+    </FormKeyboardScroll>
   );
 }

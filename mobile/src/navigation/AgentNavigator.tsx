@@ -1,24 +1,24 @@
 import React from 'react';
-import { Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants';
 import { AgentDashboardScreen } from '../screens/agent/AgentDashboardScreen';
 import { AgentTasksScreen } from '../screens/agent/AgentTasksScreen';
 import { AgentFarmersStackNavigator } from './AgentFarmersStackNavigator';
 import { AgentAuditScreen } from '../screens/agent/AgentAuditScreen';
 import { AgentProfileScreen } from '../screens/agent/AgentProfileScreen';
+import { AgentCentresScreen } from '../screens/agent/AgentCentresScreen';
 import { MessagesStackNavigator } from './MessagesStackNavigator';
 import { NotificationsStackNavigator } from './NotificationsStackNavigator';
-import { MessagesNotificationsHeaderIcons } from '../components/messaging/MessagesNotificationsHeaderIcons';
 import { AgentTabScene } from './AgentTabScene';
+import { FloatingTabBar, AGENT_TAB_ICONS, floatingTabBarNavigatorScreenOptions, useFloatingTabBarSceneStyle } from './FloatingTabBar';
 import type { AgentRootStackParamList, AgentTabParamList } from './types';
+import {
+  agentRootStackHeaderScreenOptions,
+  agentTabHeaderScreenOptions,
+} from './agentHeaderOptions';
 
 const Tab = createBottomTabNavigator<AgentTabParamList>();
 const RootStack = createNativeStackNavigator<AgentRootStackParamList>();
-
-const HEADER_TITLE = 'Field Agent Platform';
 
 function withAgentTabScene<P extends object>(Component: React.ComponentType<P>) {
   return function Wrapped(props: P) {
@@ -31,27 +31,17 @@ function withAgentTabScene<P extends object>(Component: React.ComponentType<P>) 
 }
 
 function AgentTabNavigator() {
+  const tabSceneStyle = useFloatingTabBarSceneStyle();
+
   return (
     <Tab.Navigator
+      tabBar={(props) => <FloatingTabBar {...props} icons={AGENT_TAB_ICONS} />}
       screenOptions={({ route }) => ({
-        headerShown: route.name === 'Farmers' || route.name === 'Profile' ? false : true,
-        headerStyle: { backgroundColor: COLORS.primary },
-        headerTintColor: '#fff',
-        headerTitle: HEADER_TITLE,
-        headerTitleStyle: { fontWeight: '600' },
-        headerRight: () => <MessagesNotificationsHeaderIcons iconColor="#fff" />,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarStyle: Platform.OS === 'web' ? { zIndex: 100, elevation: 100 } : undefined,
-        tabBarIcon: ({ color, size }) => {
-          const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-            Dashboard: 'stats-chart',
-            Farmers: 'people',
-            Tasks: 'checkmark-circle',
-            Audit: 'list',
-            Profile: 'person',
-          };
-          return <Ionicons name={icons[route.name] ?? 'ellipse'} size={size} color={color} />;
-        },
+        // Members tab renders its own matching header via AgentFarmersStackNavigator.
+        headerShown: route.name !== 'Farmers',
+        ...agentTabHeaderScreenOptions,
+        ...floatingTabBarNavigatorScreenOptions,
+        sceneStyle: tabSceneStyle,
       })}
     >
       <Tab.Screen
@@ -72,7 +62,7 @@ function AgentTabNavigator() {
       <Tab.Screen
         name="Audit"
         component={withAgentTabScene(AgentAuditScreen)}
-        options={{ title: 'Activity Log' }}
+        options={{ title: 'Activity Log', tabBarLabel: 'Activity' }}
       />
       <Tab.Screen
         name="Profile"
@@ -89,6 +79,15 @@ export function AgentNavigator() {
       <RootStack.Screen name="MainTabs" component={AgentTabNavigator} />
       <RootStack.Screen name="MessagesFlow" component={MessagesStackNavigator} />
       <RootStack.Screen name="NotificationsFlow" component={NotificationsStackNavigator} />
+      <RootStack.Screen
+        name="CentresList"
+        component={AgentCentresScreen}
+        options={{
+          headerShown: true,
+          title: 'Centres in my district',
+          ...agentRootStackHeaderScreenOptions,
+        }}
+      />
     </RootStack.Navigator>
   );
 }

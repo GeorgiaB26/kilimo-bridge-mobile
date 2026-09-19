@@ -108,3 +108,20 @@ export async function getCentreCountByCountry(): Promise<Record<string, number>>
   );
   return Object.fromEntries(rows.map((r) => [r.country, r.count]));
 }
+
+/** Active centres whose location_level_1 matches the agent's district (case-insensitive). */
+export async function listAggregationCentresByDistrict(
+  district: string
+): Promise<AggregationCentreRow[]> {
+  const d = district.trim();
+  if (!d) return [];
+  return query<AggregationCentreRow>(
+    `
+    SELECT centre_id, name, country, location_level_1, location_level_2, region, status
+    FROM aggregation_centres
+    WHERE status = 'Active' AND lower(location_level_1) = lower($1)
+    ORDER BY name
+    `,
+    [d]
+  );
+}

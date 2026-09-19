@@ -6,16 +6,22 @@ const TAB_SCENE_BG = '#F5F5F5';
 
 /**
  * Web: react-native-screens does not detach inactive bottom-tab scenes, so every
- * tab stays painted (z-index stack). Hide inactive tabs so only one screen shows.
+ * tab stays painted (z-index stack). Hide inactive tabs so only one screen shows,
+ * but keep children mounted so pending deep-link timers/state are not destroyed.
  */
 export function FarmerTabScene({ children }: { children: React.ReactNode }) {
   const isFocused = useIsFocused();
 
-  if (Platform.OS === 'web' && !isFocused) {
-    return <View style={styles.hidden} />;
-  }
-
-  return <View style={styles.scene}>{children}</View>;
+  return (
+    <View
+      style={[styles.scene, Platform.OS === 'web' && !isFocused ? styles.hidden : null]}
+      pointerEvents={isFocused ? 'auto' : 'none'}
+      accessibilityElementsHidden={!isFocused}
+      importantForAccessibility={isFocused ? 'yes' : 'no-hide-descendants'}
+    >
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -24,7 +30,7 @@ const styles = StyleSheet.create({
     backgroundColor: TAB_SCENE_BG,
   },
   hidden: {
-    flex: 1,
     display: 'none',
+    opacity: 0,
   },
 });

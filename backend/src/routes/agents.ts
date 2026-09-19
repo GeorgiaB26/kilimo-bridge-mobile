@@ -4,13 +4,20 @@ import {
   registerAgent,
   verifyAgent,
   getAgentsInRegion,
-  getFarmersInRegion,
   createPaymentVerification,
   approvePaymentVerification,
   getAgentByUserId,
   isFarmerVisibleToAgent,
 } from '../services/agentService';
-import { verifyFarmerByFieldAgent, getFarmerById } from '../services/farmerService';
+import {
+  verifyFarmerByFieldAgent,
+  getFarmerById,
+  reviewFarmerPicture,
+  listFarmers,
+  countFarmers,
+  farmerListScopeForViewer,
+  parseFarmerListFilters,
+} from '../services/farmerService';
 import { getAgentAuditLogs } from '../services/auditService';
 import { isAgentRole } from '../../../shared/src/roles';
 import {
@@ -18,11 +25,13 @@ import {
   resolveFarmerHelpRequest,
 } from '../services/farmerHelpRequestService';
 import {
+  approveAgentTaskByAgent,
   createAgentPersonalTask,
   getAgentDashboardSummary,
   getAgentPersonalTask,
   listAgentPersonalTasks,
   listRegionFarmerTasks,
+  rejectAgentTaskByAgent,
   updateAgentPersonalTask,
   updateAgentPersonalTaskReminder,
 } from '../services/agentDashboardService';
@@ -82,26 +91,39 @@ router.get(
   })
 );
 
-/** Farmers in agent's region only */
+/** Farmers in agent's region only. Optional country / cooperative / project / q filters AND with that scope. */
 router.get(
   '/farmers',
   requirePermission('farmers.read'),
   asyncHandler(async (req, res) => {
-    if (isAgentRole(req.user!.role)) {
-      const region = req.user!.region ?? '';
-      const district = req.user!.district;
-      const farmers = await getFarmersInRegion(region, district);
-      res.json({ farmers });
-      return;
+    const filters = parseFarmerListFilters(req.query);
+    const limitRaw = parseInt(req.query.limit as string, 10);
+    const offsetRaw = parseInt(req.query.offset as string, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
+
+    let scope = farmerListScopeForViewer({
+      role: req.user!.role,
+      district: req.user!.district,
+      region: req.user!.region,
+    });
+    if (!isAgentRole(req.user!.role)) {
+      const region = req.query.region as string;
+      const district = req.query.district as string | undefined;
+      if (!region && !district) {
+        res.status(400).json({ error: 'region required' });
+        return;
+      }
+      scope = district?.trim()
+        ? { kind: 'district', district: district.trim() }
+        : { kind: 'agent_region', region: region.trim() };
     }
-    const region = req.query.region as string;
-    const district = req.query.district as string | undefined;
-    if (!region) {
-      res.status(400).json({ error: 'region required' });
-      return;
-    }
-    const farmers = await getFarmersInRegion(region, district);
-    res.json({ farmers });
+
+    const [farmers, total] = await Promise.all([
+      listFarmers({ scope, filters, limit, offset, columns: 'agent' }),
+      countFarmers({ scope, filters }),
+    ]);
+    res.json({ farmers, total });
   })
 );
 
@@ -162,6 +184,29 @@ router.patch(
       res.json({ success: true, status: result.status });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Verification failed' });
+    }
+  })
+);
+
+/** Approve or reject a farmer-submitted profile photo. */
+router.patch(
+  '/farmers/:farmerId/photo-review',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    const region = req.user!.region ?? '';
+    const district = req.user!.district;
+    const visible = await isFarmerVisibleToAgent(req.params.farmerId, region, district);
+    if (!visible) {
+      res.status(403).json({ error: 'Farmer is outside your assigned region' });
+      return;
+    }
+    const raw = String(req.body?.decision ?? req.body?.status ?? '').toLowerCase();
+    const decision = raw === 'rejected' || raw === 'reject' ? 'rejected' : 'approved';
+    try {
+      const result = await reviewFarmerPicture(req.params.farmerId, req.user!.userId, decision);
+      res.json({ success: true, status: result.status });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not review photo' });
     }
   })
 );
@@ -227,8 +272,14 @@ router.get(
       res.status(403).json({ error: 'Agents only' });
       return;
     }
-    const requests = await listOpenHelpRequestsForAgent(req.user!.userId);
-    res.json({ requests });
+    try {
+      const requests = await listOpenHelpRequestsForAgent(req.user!.userId);
+      res.json({ requests });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Could not load help requests',
+      });
+    }
   })
 );
 
@@ -342,7 +393,7 @@ router.post(
       res.status(201).json({ task });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not create task';
-      if (message.includes('DD/MM/YYYY')) {
+      if (message.includes('DD-MM-YYYY') || message.includes('DD/MM/YYYY')) {
         res.status(400).json({ error: message });
         return;
       }
@@ -402,8 +453,95 @@ router.patch(
       res.json({ task });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not update task';
-      if (message.includes('DD/MM/YYYY') || message.includes('Invalid task status')) {
+      if (
+        message.includes('DD-MM-YYYY') ||
+        message.includes('DD/MM/YYYY') ||
+        message.includes('Invalid task status')
+      ) {
         res.status(400).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  '/tasks/:taskId/approve',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    try {
+      const notes = typeof req.body?.notes === 'string' ? req.body.notes : undefined;
+      const task = await approveAgentTaskByAgent(req.params.taskId, req.user!.userId, notes);
+      await logAudit({
+        userId: req.user!.userId,
+        userRole: req.user!.role,
+        action: 'agent.action',
+        category: 'agent',
+        resourceType: 'agent_task',
+        resourceId: task.id,
+        details: { activity_type: 'task_approved' },
+        success: true,
+      });
+      res.json({ task });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not approve task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  '/tasks/:taskId/reject',
+  requirePermission('farmers.write'),
+  asyncHandler(async (req, res) => {
+    if (!isAgentRole(req.user!.role)) {
+      res.status(403).json({ error: 'Agents only' });
+      return;
+    }
+    const rejection_reason =
+      typeof req.body?.rejection_reason === 'string'
+        ? req.body.rejection_reason
+        : typeof req.body?.reason === 'string'
+          ? req.body.reason
+          : '';
+    try {
+      const task = await rejectAgentTaskByAgent(
+        req.params.taskId,
+        req.user!.userId,
+        rejection_reason
+      );
+      await logAudit({
+        userId: req.user!.userId,
+        userRole: req.user!.role,
+        action: 'agent.action',
+        category: 'agent',
+        resourceType: 'agent_task',
+        resourceId: task.id,
+        details: { activity_type: 'task_rejected' },
+        success: true,
+      });
+      res.json({ task });
+    } catch (err: unknown) {
+      const statusCode =
+        typeof err === 'object' && err && 'statusCode' in err
+          ? Number((err as { statusCode: number }).statusCode)
+          : 500;
+      const message = err instanceof Error ? err.message : 'Could not reject task';
+      if (statusCode >= 400 && statusCode < 600) {
+        res.status(statusCode).json({ error: message });
         return;
       }
       throw err;

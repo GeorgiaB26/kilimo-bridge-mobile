@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import type { ComponentType } from 'react';
-import { View, ScrollView, ActivityIndicator, Pressable, Linking } from 'react-native';
-import { Briefcase, Globe, Sprout, UserRound } from 'lucide-react-native';
+import { View, ActivityIndicator, Pressable, Linking } from 'react-native';
+import { Briefcase, Globe, Headset, Sprout, UserRound } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { KilimoLogo } from '../../components/KilimoLogo';
+import { FormKeyboardScroll } from '../../components/ui/FormKeyboardScroll';
 import { API_BASE_URL, IS_HOSTED_API, IS_API_MISCONFIGURED } from '../../constants';
-import { APP_BUILD } from '../../constants/build';
 import { requestOtp, devTokenLogin, devQuickLogin, setAuthToken, checkBackendHealth } from '../../api/client';
 import { TestUserSwitcher } from '../../components/auth/TestUserSwitcher';
 import { SHOW_TEST_USER_SWITCHER, TEST_SWITCHER_USERS, type TestSwitcherRole } from '../../constants/testUsers';
@@ -18,6 +18,7 @@ import { useRegistrationStore } from '../../store/registrationStore';
 import { clearAllSessionData } from '../../utils/session';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import type { AuthStackParamList } from '../../navigation/types';
+import { SUPPORT_DESK_PHONE } from '../../../shared/src/supportDesk';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -44,28 +45,30 @@ function LoginTypeCard({
   subtitle: string;
   onPress: () => void;
   disabled?: boolean;
-  variant: 'farmer' | 'agent';
+  variant: 'farmer' | 'agent' | 'support';
 }) {
-  const iconColor = variant === 'farmer' ? '#FFFFFF' : '#1A4D3E';
+  const filled = variant === 'farmer' || variant === 'support';
+  const borderBg =
+    variant === 'farmer'
+      ? 'border-[#1A4D3E] bg-[#1A4D3E]'
+      : variant === 'support'
+        ? 'border-[#1F4E78] bg-[#1F4E78]'
+        : 'border-[#1A4D3E] bg-white';
+  const iconColor = filled ? '#FFFFFF' : '#1A4D3E';
+  const titleColor = filled ? 'text-white' : 'text-[#1A4D3E]';
+  const subtitleColor = filled ? 'text-white/85' : 'text-[#757575]';
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      className={`mb-3 rounded-xl border-2 p-4 ${
-        variant === 'farmer' ? 'border-[#1A4D3E] bg-[#1A4D3E]' : 'border-[#1A4D3E] bg-white'
-      } ${disabled ? 'opacity-60' : 'active:opacity-90'}`}
+      className={`mb-3 rounded-xl border-2 p-4 ${borderBg} ${disabled ? 'opacity-60' : 'active:opacity-90'}`}
     >
       <View className="flex-row items-center gap-1.5">
         <Icon size={18} color={iconColor} />
-        <Text
-          className={`text-base font-bold ${variant === 'farmer' ? 'text-white' : 'text-[#1A4D3E]'}`}
-        >
-          {title}
-        </Text>
+        <Text className={`text-base font-bold ${titleColor}`}>{title}</Text>
       </View>
-      <Text className={`mt-1 text-sm ${variant === 'farmer' ? 'text-white/85' : 'text-[#757575]'}`}>
-        Phone: {subtitle}
-      </Text>
+      <Text className={`mt-1 text-sm ${subtitleColor}`}>Phone: {subtitle}</Text>
     </Pressable>
   );
 }
@@ -150,9 +153,18 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView className="flex-1 bg-[#F5F5F5]" contentContainerClassName="p-5 pb-10">
+    <FormKeyboardScroll
+      className="flex-1 bg-[#F5F5F5]"
+      contentContainerClassName="p-5 pb-10"
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      bottomOffset={24}
+    >
       <View className="mb-6 mt-4 items-center">
-        <KilimoLogo width={240} height={66} />
+        <View className="items-center rounded-2xl bg-white p-3">
+          <KilimoLogo size={70} />
+        </View>
         <Text className="mt-3 text-lg font-bold text-[#1A4D3E]">Kilimo Bridge</Text>
         <View className="mt-1 flex-row items-center gap-1.5">
           <Globe size={16} color="#757575" />
@@ -185,13 +197,13 @@ export function LoginScreen({ navigation }: Props) {
           label="Phone number"
           value={phone}
           onChangeText={setPhone}
-          placeholder="+254712345678"
           keyboardType="phone-pad"
           mode="outlined"
-          style={{ marginBottom: 16, backgroundColor: '#FFFFFF' }}
+          style={{ marginBottom: 4, backgroundColor: '#FFFFFF' }}
           outlineColor="#E0E0E0"
           activeOutlineColor="#1A4D3E"
         />
+        <Text className="mb-4 text-xs text-[#757575]">Example: +254712345678</Text>
         <Button className="h-12 rounded-xl bg-[#1A4D3E]" disabled={loading} onPress={handleSendOtp}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Send OTP</Text>}
         </Button>
@@ -228,6 +240,14 @@ export function LoginScreen({ navigation }: Props) {
         disabled={loading}
         onPress={() => quickLogin(DEMO_AGENT, 'Field Agent')}
       />
+      <LoginTypeCard
+        Icon={Headset}
+        title="SUPPORT LOGIN"
+        subtitle={SUPPORT_DESK_PHONE}
+        variant="support"
+        disabled={loading}
+        onPress={() => quickLogin(SUPPORT_DESK_PHONE, 'Support')}
+      />
 
       <Pressable onPress={openPortal} className="mb-4 py-2">
         <View className="flex-row flex-wrap items-center justify-center gap-1.5">
@@ -249,7 +269,11 @@ export function LoginScreen({ navigation }: Props) {
       >
         <Text className="text-[#757575]">Clear saved login</Text>
       </Button>
-      <Text className="mt-2 text-center text-[11px] text-[#757575]">Build {APP_BUILD}</Text>
-    </ScrollView>
+    </FormKeyboardScroll>
   );
 }
+
+const styles = {
+  scroll: { flex: 1, backgroundColor: '#F5F5F5' },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+};

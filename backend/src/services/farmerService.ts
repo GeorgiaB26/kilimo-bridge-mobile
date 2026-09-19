@@ -16,6 +16,15 @@ import {
 } from './farmerProgramService';
 import { isOwnFarmerProfilePhotoKey, resolvePhotoUrlForDisplay } from './r2StorageService';
 import { validateFarmerPhotoRequired } from '../../../shared/src/farmerPhoto';
+import { resolveFarmerAppUserId } from './farmerAppUser';
+import { upsertVillageFromRegistration } from './customLocationService';
+import {
+  buildFarmerListWhere,
+  farmerListScopeForViewer,
+  parseFarmerListFilters,
+  type FarmerListFilters,
+  type FarmerListScope,
+} from './farmerListQuery';
 
 /** Postgres farmer_status enum — agent field registrations await PM review. */
 function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean): string {
@@ -23,8 +32,14 @@ function mapFarmerStatus(_membershipType?: string, registeredByAgent?: boolean):
   return 'verified';
 }
 
+export async function getMembershipGroups(): Promise<Array<{ id: string; name: string }>> {
+  return query<{ id: string; name: string }>(
+    'SELECT id, name FROM membership_groups ORDER BY name'
+  );
+}
+
 export async function getMembershipGroupNames(): Promise<string[]> {
-  const rows = await query<{ name: string }>('SELECT name FROM membership_groups ORDER BY name');
+  const rows = await getMembershipGroups();
   return rows.map((r) => r.name);
 }
 
@@ -102,6 +117,7 @@ export {
 
 /**
  * Create farmer profile, login account, and project enrollments from CSV import.
+ * Login is created inside createFarmer (same as app registration).
  */
 export async function importFarmerFromCsv(
   input: FarmerInput & { key: string; phone: string; kbFarmerId?: string; locationPath?: string },
@@ -109,7 +125,6 @@ export async function importFarmerFromCsv(
 ): Promise<{ farmerId: string; projectsEnrolled: number }> {
   await ensureMembershipGroup(input.membershipGroup);
   const farmerId = await createFarmer(input, registeredBy);
-  await linkFarmerToUser(farmerId, input.phone, input.name);
   const projectsEnrolled = await enrollFarmerInProjects(farmerId, [input.project1, input.project2, input.project3]);
 
   await logAudit({
@@ -260,7 +275,7 @@ export async function createFarmer(
       input.projectEnrolmentProjectId ?? null,
       input.organizationName ?? null,
       input.organizationRegistrationNumber ?? null,
-      input.taxPin ?? null,
+      input.taxPin?.trim() || null,
       input.contactPersonName ?? null,
       input.contactPersonRole ?? null,
       input.contactPersonEmail ?? null,
@@ -276,6 +291,17 @@ export async function createFarmer(
       registeredByAgentId,
     ]
   );
+
+  // New farmers can log in immediately via OTP (users.status defaults to active), matching CSV import.
+  try {
+    await linkFarmerToUser(farmerId, input.phone, input.name, {
+      district: input.district,
+      aggregationCenter,
+    });
+  } catch (err) {
+    await query('DELETE FROM farmers WHERE farmer_id = $1', [farmerId]).catch(() => undefined);
+    throw err instanceof Error ? err : new Error('Could not create farmer login');
+  }
 
   if (
     registrationCategory === 'individual' &&
@@ -294,6 +320,19 @@ export async function createFarmer(
     details: { district: input.district, key: input.key, kbFarmerId, country, aggregationCenter },
     success: true,
   });
+
+  try {
+    await upsertVillageFromRegistration({
+      country,
+      level1: input.district,
+      level2: input.subCounty,
+      level3: parish,
+      village: input.village,
+      createdByUserId: registeredBy ?? null,
+    });
+  } catch (err) {
+    console.error('[custom_locations] upsert after register failed:', err);
+  }
 
   return farmerId;
 }
@@ -332,8 +371,11 @@ export async function getFarmerById(farmerId: string) {
   const picture_url = await resolvePhotoUrlForDisplay(
     typeof farmer.picture_url === 'string' ? farmer.picture_url : null
   );
+  const pending_picture_url = await resolvePhotoUrlForDisplay(
+    typeof farmer.pending_picture_url === 'string' ? farmer.pending_picture_url : null
+  );
 
-  return { ...farmer, picture_url, projects };
+  return { ...farmer, picture_url, pending_picture_url, projects };
 }
 
 /** Audit + PM review queue entry after agent registers a farmer. */
@@ -365,7 +407,7 @@ export async function recordFarmerRegistrationFollowUp(
 export async function advanceFarmerForFieldVerification(
   farmerId: string,
   reviewedByUserId: string
-): Promise<{ status: string }> {
+): Promise<{ status: string; notifiedAgentCount: number }> {
   const farmer = await queryOne<{ status: string; name: string }>(
     'SELECT status, name FROM farmers WHERE farmer_id = $1',
     [farmerId]
@@ -378,16 +420,57 @@ export async function advanceFarmerForFieldVerification(
     `UPDATE farmers SET status = 'pending_field_verification', updated_at = NOW() WHERE farmer_id = $1`,
     [farmerId]
   );
+
+  const notifiedAgentCount = await notifyAgentsOfFieldVerificationAssignment(
+    farmerId,
+    farmer.name
+  );
+
   await logAudit({
     userId: reviewedByUserId,
     action: 'farmer.pm_approved_for_field',
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: { farmer_name: farmer.name, farmer_status: 'pending_field_verification' },
+    details: {
+      farmer_name: farmer.name,
+      farmer_status: 'pending_field_verification',
+      notified_agent_count: notifiedAgentCount,
+    },
     success: true,
   });
-  return { status: 'pending_field_verification' };
+  return { status: 'pending_field_verification', notifiedAgentCount };
+}
+
+/** In-app notify field agents that a member is ready for in-person verification. */
+async function notifyAgentsOfFieldVerificationAssignment(
+  farmerId: string,
+  farmerName: string
+): Promise<number> {
+  try {
+    const { resolveAgentUserIdsForFarmer } = await import('./hierarchyService');
+    const { createNotification } = await import('./notificationService');
+    const agentUserIds = await resolveAgentUserIdsForFarmer(farmerId);
+    if (agentUserIds.length === 0) return 0;
+
+    const name = farmerName.trim() || 'A member';
+    for (const agentUserId of agentUserIds) {
+      await createNotification({
+        userId: agentUserId,
+        title: 'Member needs field verification',
+        message: `${name} was approved by a project manager. Open their profile to complete the field visit.`,
+        type: 'field_verification_assigned',
+        contextType: 'farmer',
+        contextId: farmerId,
+        actionUrl: `/farmers/${farmerId}`,
+        priority: 'high',
+      });
+    }
+    return agentUserIds.length;
+  } catch (err) {
+    console.error('[notifications] field verification assignment failed:', err);
+    return 0;
+  }
 }
 
 export async function verifyFarmerByFieldAgent(
@@ -436,107 +519,71 @@ export async function verifyFarmerByFieldAgent(
   return { status: newStatus };
 }
 
-function farmerSearchClause(search?: string, startParam = 1): { sql: string; params: string[] } {
-  const term = search?.trim();
-  if (!term) return { sql: '', params: [] };
+const FARMER_LIST_FROM = `FROM farmers f
+       JOIN membership_groups mg ON f.membership_group_id = mg.id`;
 
-  const pattern = `%${term}%`;
-  const phoneDigits = term.replace(/\D/g, '');
-  const clauses: string[] = [];
-  const params: string[] = [];
-  let idx = startParam;
+const AGENT_FARMER_COLUMNS = `f.farmer_id, f.key, f.name, f.phone_number, f.district, f.sub_county, f.status,
+              f.pending_picture_url, mg.name as membership_group_name`;
 
-  const addClause = (sql: string, value: string) => {
-    clauses.push(sql.replace('?', `$${idx}`));
-    params.push(value);
-    idx++;
-  };
-
-  addClause('f.name ILIKE ?', pattern);
-  addClause('f.district ILIKE ?', pattern);
-  addClause('mg.name ILIKE ?', pattern);
-
-  if (phoneDigits.length >= 3) {
-    addClause('f.phone_number LIKE ?', `%${phoneDigits}%`);
+export async function listFarmers(opts: {
+  scope: FarmerListScope;
+  filters?: FarmerListFilters;
+  limit?: number;
+  offset?: number;
+  columns?: 'full' | 'agent';
+}): Promise<Record<string, unknown>[]> {
+  const { sql: whereSql, params } = buildFarmerListWhere(opts.scope, opts.filters ?? {});
+  const select =
+    opts.columns === 'agent' ? AGENT_FARMER_COLUMNS : 'f.*, mg.name as membership_group_name';
+  const limit = opts.limit != null && opts.limit > 0 ? Math.min(opts.limit, 500) : undefined;
+  const offset = opts.offset != null && opts.offset > 0 ? opts.offset : 0;
+  const paging: unknown[] = [];
+  let pagingSql = '';
+  if (limit != null) {
+    pagingSql = ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    paging.push(limit, offset);
   }
-
-  for (const part of term.split(/\s+/).filter((p) => p.length >= 2)) {
-    if (part.toLowerCase() === term.toLowerCase()) continue;
-    addClause('f.name ILIKE ?', `%${part}%`);
-  }
-
-  return {
-    sql: ` AND (${clauses.join(' OR ')})`,
-    params,
-  };
-}
-
-/** When searching, ignore country filter so names are found across all countries */
-function resolveCountryFilter(country?: string, search?: string): string | undefined {
-  if (search?.trim()) return undefined;
-  return country;
-}
-
-export async function getAllFarmers(limit = 100, offset = 0, country?: string, search?: string) {
-  const effectiveCountry = resolveCountryFilter(country, search);
-  const { sql: searchSql, params: searchParams } = farmerSearchClause(search, effectiveCountry ? 2 : 1);
-
-  if (effectiveCountry) {
-    const limitIdx = searchParams.length + 2;
-    const offsetIdx = searchParams.length + 3;
-    return query(
-      `SELECT f.*, mg.name as membership_group_name
-       FROM farmers f
-       JOIN membership_groups mg ON f.membership_group_id = mg.id
-       WHERE f.country = $1${searchSql}
-       ORDER BY LOWER(f.name)
-       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      [effectiveCountry, ...searchParams, limit, offset]
-    );
-  }
-
-  const whereSearch = searchSql ? `WHERE 1=1${searchSql}` : '';
-  const limitIdx = searchParams.length + 1;
-  const offsetIdx = searchParams.length + 2;
   return query(
-    `SELECT f.*, mg.name as membership_group_name
-     FROM farmers f
-     JOIN membership_groups mg ON f.membership_group_id = mg.id
-     ${whereSearch}
+    `SELECT ${select}
+     ${FARMER_LIST_FROM}
+     ${whereSql}
      ORDER BY LOWER(f.name)
-     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-    [...searchParams, limit, offset]
+     ${pagingSql}`,
+    [...params, ...paging]
   );
 }
 
-export async function getFarmerCount(country?: string, search?: string): Promise<number> {
-  const effectiveCountry = resolveCountryFilter(country, search);
-  const { sql: searchSql, params: searchParams } = farmerSearchClause(search, effectiveCountry ? 2 : 1);
-
-  if (effectiveCountry) {
-    const row = await queryOne<{ count: number }>(
-      `SELECT COUNT(*)::int AS count
-       FROM farmers f
-       JOIN membership_groups mg ON f.membership_group_id = mg.id
-       WHERE f.country = $1${searchSql}`,
-      [effectiveCountry, ...searchParams]
-    );
-    return row?.count ?? 0;
-  }
-
-  if (searchSql) {
-    const row = await queryOne<{ count: number }>(
-      `SELECT COUNT(*)::int AS count
-       FROM farmers f
-       JOIN membership_groups mg ON f.membership_group_id = mg.id
-       WHERE 1=1${searchSql}`,
-      searchParams
-    );
-    return row?.count ?? 0;
-  }
-
-  const row = await queryOne<{ count: number }>('SELECT COUNT(*)::int AS count FROM farmers');
+export async function countFarmers(opts: {
+  scope: FarmerListScope;
+  filters?: FarmerListFilters;
+}): Promise<number> {
+  const { sql: whereSql, params } = buildFarmerListWhere(opts.scope, opts.filters ?? {});
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(*)::int AS count
+     ${FARMER_LIST_FROM}
+     ${whereSql}`,
+    params
+  );
   return row?.count ?? 0;
+}
+
+export { farmerListScopeForViewer, parseFarmerListFilters };
+
+/** Unscoped paginated list — prefer listFarmers with a viewer scope for product routes. */
+export async function getAllFarmers(limit = 100, offset = 0, country?: string, search?: string) {
+  return listFarmers({
+    scope: { kind: 'unrestricted' },
+    filters: { country, q: search },
+    limit,
+    offset,
+  });
+}
+
+export async function getFarmerCount(country?: string, search?: string): Promise<number> {
+  return countFarmers({
+    scope: { kind: 'unrestricted' },
+    filters: { country, q: search },
+  });
 }
 
 export async function getFarmerCountByCountry(): Promise<Record<string, number>> {
@@ -555,7 +602,8 @@ export function isLocationPending(farmer: { district?: string; sub_county?: stri
 
 export async function updateFarmerLocation(
   farmerId: string,
-  input: { district: string; subCounty: string; parish?: string; village?: string }
+  input: { district: string; subCounty: string; parish?: string; village?: string },
+  createdByUserId?: string
 ): Promise<void> {
   const farmer = await queryOne<{
     country: string;
@@ -601,9 +649,55 @@ export async function updateFarmerLocation(
     details: { district: l1, subCounty: l2, parish, village },
     success: true,
   });
+
+  try {
+    await upsertVillageFromRegistration({
+      country,
+      level1: l1,
+      level2: l2,
+      level3: parish,
+      village,
+      createdByUserId: createdByUserId ?? null,
+    });
+  } catch (err) {
+    console.error('[custom_locations] upsert after location update failed:', err);
+  }
 }
 
-export async function updateFarmerPicture(farmerId: string, pictureUrl: string): Promise<void> {
+export async function ensurePendingPictureColumn(): Promise<void> {
+  await query(`ALTER TABLE farmers ADD COLUMN IF NOT EXISTS pending_picture_url TEXT`);
+}
+
+async function notifyFarmerPhotoDecision(
+  farmerId: string,
+  decision: 'approved' | 'rejected'
+): Promise<void> {
+  const farmerUserId = await resolveFarmerAppUserId(farmerId);
+  if (!farmerUserId) {
+    throw new Error('Farmer app account not found — they would not receive a notification');
+  }
+  const { createNotification } = await import('./notificationService');
+  await createNotification({
+    userId: farmerUserId,
+    title:
+      decision === 'approved' ? 'Profile image has been approved' : 'Profile image is rejected',
+    message:
+      decision === 'approved'
+        ? 'Your field agent approved your new profile image. It is now on your profile.'
+        : 'Your field agent rejected your new profile image. Your current photo is unchanged. You can submit another one.',
+    type: decision === 'approved' ? 'farmer_photo_approved' : 'farmer_photo_rejected',
+    contextType: 'farmer',
+    contextId: farmerId,
+    actionUrl: '/profile',
+  });
+}
+
+/** Farmer submits a new photo; it stays pending until the field agent approves. */
+export async function submitFarmerPictureForApproval(
+  farmerId: string,
+  pictureUrl: string
+): Promise<void> {
+  await ensurePendingPictureColumn();
   const photoError = validateFarmerPhotoRequired(pictureUrl);
   if (photoError) throw new Error(photoError);
 
@@ -612,25 +706,89 @@ export async function updateFarmerPicture(farmerId: string, pictureUrl: string):
     throw new Error('Invalid profile photo key for this farmer');
   }
 
-  const exists = await queryOne<{ farmer_id: string }>(
-    'SELECT farmer_id FROM farmers WHERE farmer_id = $1',
+  const farmer = await queryOne<{ farmer_id: string; name: string }>(
+    'SELECT farmer_id, name FROM farmers WHERE farmer_id = $1',
     [farmerId]
   );
-  if (!exists) throw new Error('Farmer not found');
+  if (!farmer) throw new Error('Farmer not found');
 
   await query(
-    `UPDATE farmers SET picture_url = $1, updated_at = NOW() WHERE farmer_id = $2`,
+    `UPDATE farmers SET pending_picture_url = $1, updated_at = NOW() WHERE farmer_id = $2`,
     [key, farmerId]
   );
 
+  const { getFarmerSupportContacts } = await import('./farmerHelpRequestService');
+  const contacts = await getFarmerSupportContacts(farmerId);
+  const agentUserId = contacts.fieldAgent?.userId?.trim();
+  if (agentUserId) {
+    const { createNotification } = await import('./notificationService');
+    await createNotification({
+      userId: agentUserId,
+      title: 'Profile photo update',
+      message: `${farmer.name} submitted a new profile photo. Open their profile to review and approve it.`,
+      type: 'farmer_photo_update',
+      contextType: 'farmer',
+      contextId: farmerId,
+      actionUrl: `/farmers/${farmerId}`,
+      priority: 'high',
+    });
+  }
+
   await logAudit({
-    action: 'farmer.update',
+    action: 'farmer.photo_submitted',
     category: 'farmer_data',
     resourceType: 'farmer',
     resourceId: farmerId,
-    details: { field: 'picture_url', objectKey: key },
+    details: { field: 'pending_picture_url', objectKey: key, notifiedAgent: Boolean(agentUserId) },
     success: true,
   });
+}
+
+export async function reviewFarmerPicture(
+  farmerId: string,
+  agentUserId: string,
+  decision: 'approved' | 'rejected'
+): Promise<{ status: 'approved' | 'rejected' }> {
+  await ensurePendingPictureColumn();
+  const farmer = await queryOne<{ name: string; pending_picture_url: string | null }>(
+    'SELECT name, pending_picture_url FROM farmers WHERE farmer_id = $1',
+    [farmerId]
+  );
+  if (!farmer) throw new Error('Farmer not found');
+  if (!farmer.pending_picture_url?.trim()) {
+    throw new Error('No photo update is waiting for approval');
+  }
+  if (!(await resolveFarmerAppUserId(farmerId))) {
+    throw new Error('Farmer app account not found — they would not receive a notification');
+  }
+
+  if (decision === 'approved') {
+    await query(
+      `UPDATE farmers
+       SET picture_url = pending_picture_url, pending_picture_url = NULL, updated_at = NOW()
+       WHERE farmer_id = $1`,
+      [farmerId]
+    );
+  } else {
+    await query(
+      `UPDATE farmers SET pending_picture_url = NULL, updated_at = NOW() WHERE farmer_id = $1`,
+      [farmerId]
+    );
+  }
+
+  await notifyFarmerPhotoDecision(farmerId, decision);
+
+  await logAudit({
+    userId: agentUserId,
+    action: decision === 'approved' ? 'farmer.photo_approved' : 'farmer.photo_rejected',
+    category: 'farmer_data',
+    resourceType: 'farmer',
+    resourceId: farmerId,
+    details: { farmer_name: farmer.name, decision },
+    success: true,
+  });
+
+  return { status: decision };
 }
 
 export { PENDING_LOCATION_LABEL };

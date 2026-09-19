@@ -1,33 +1,21 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { getUnreadMessageCount, getUnreadNotificationCount } from '../api/client';
+import { useInboxCountsStore } from '../store/inboxCountsStore';
 
 const POLL_MS = 15000;
 
 export function useUnreadInboxCounts() {
-  const [messageCount, setMessageCount] = useState(0);
-  const [notificationCount, setNotificationCount] = useState(0);
-
-  const load = useCallback(async () => {
-    try {
-      const [messages, notifications] = await Promise.all([
-        getUnreadMessageCount(),
-        getUnreadNotificationCount(),
-      ]);
-      setMessageCount(messages.count ?? 0);
-      setNotificationCount(notifications.count ?? 0);
-    } catch {
-      // API may be offline — keep previous counts
-    }
-  }, []);
+  const messageCount = useInboxCountsStore((s) => s.messageCount);
+  const notificationCount = useInboxCountsStore((s) => s.notificationCount);
+  const refresh = useInboxCountsStore((s) => s.refresh);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-      const timer = setInterval(load, POLL_MS);
+      void refresh();
+      const timer = setInterval(() => void refresh(), POLL_MS);
       return () => clearInterval(timer);
-    }, [load])
+    }, [refresh])
   );
 
-  return { messageCount, notificationCount, refresh: load };
+  return { messageCount, notificationCount, refresh };
 }

@@ -1,16 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
-  Image,
   Pressable,
+  Platform,
   StyleSheet,
-  Linking,
+  Image,
+  useWindowDimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { useNavigation, CommonActions } from '@react-navigation/native';
+import { ChevronRight, LogOut, MessageCircle, UserRoundPen } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
-import { COLORS } from '../../constants';
 import { formatProjectDate } from '../../utils/greeting';
 import type { FarmerProject } from '../../types/farmerProject';
+import { FarmerProfilePhoto } from '../FarmerProfilePhoto';
+import { FarmerStatusChip } from '../agent/FarmerStatusChip';
+import { ContactSupportModal } from '../ContactSupportModal';
+import { KBCard } from '../ui/KBCard';
+import {
+  TaskStatusKpiRow,
+  type TaskStatusKpiKey,
+} from '../TaskStatusKpiRow';
 
 type FarmerProfile = {
   name?: string;
@@ -19,6 +29,8 @@ type FarmerProfile = {
   region?: string;
   status?: string;
   picture_url?: string | null;
+  pending_picture_url?: string | null;
+  photoUpdatePending?: boolean;
 };
 
 type PaymentSummary = {
@@ -33,6 +45,8 @@ type TaskStats = {
   overdue: number;
   in_progress?: number;
   not_started?: number;
+  submitted_for_approval?: number;
+  rejected?: number;
   completed?: number;
   total?: number;
 };
@@ -49,10 +63,20 @@ type RecentTaskRow = {
 type PaymentRow = {
   id: string;
   project_name?: string;
+  task_name?: string;
   amount: number;
   payment_status: string;
   created_at?: string;
 };
+
+const webPressable = Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : undefined;
+
+const PROFILE_BODY_BG = '#F5F5F5';
+const PROFILE_COVER_HEIGHT = 168;
+const PROFILE_AVATAR_SIZE = 100;
+const PROFILE_AVATAR_OVERLAP = PROFILE_AVATAR_SIZE / 2;
+/** Pull profile details up over the cover fade without moving the cover image. */
+const PROFILE_BODY_LIFT = 53;
 
 type Props = {
   farmer?: FarmerProfile | null;
@@ -69,11 +93,6 @@ type Props = {
   onProjectPress: (project: FarmerProject) => void;
 };
 
-function isVerified(status?: string): boolean {
-  const s = (status ?? '').toLowerCase().replace(/\s+/g, '_');
-  return s === 'verified' || s === 'active';
-}
-
 export function FarmerDashboardProfileCard({
   farmer,
   currencyLabel,
@@ -82,37 +101,105 @@ export function FarmerDashboardProfileCard({
 }: Pick<Props, 'farmer' | 'currencyLabel' | 'onEditProfile' | 'onLogout'>) {
   const name = farmer?.name ?? 'Farmer';
   const location = farmer?.district || farmer?.region || farmer?.country || 'Kenya';
-  const verified = isVerified(farmer?.status);
+  const { width: coverWidth } = useWindowDimensions();
 
   return (
-    <View style={styles.profileContainer}>
-      <View style={styles.photoContainer}>
-        {farmer?.picture_url ? (
-          <Image source={{ uri: farmer.picture_url }} style={styles.profilePhoto} />
-        ) : (
-          <View style={styles.photoPlaceholder}>
-            <Text style={styles.photoInitials}>{name.charAt(0).toUpperCase()}</Text>
-          </View>
-        )}
+    <View style={styles.profileSection}>
+      <View style={styles.profileCover} accessibilityLabel="Profile cover">
+        <Image
+          source={require('../../../assets/farmer-profile-cover.jpg')}
+          style={styles.profileCoverImage}
+          resizeMode="cover"
+          accessibilityIgnoresInvertColors
+        />
+        <Svg
+          width={coverWidth}
+          height={PROFILE_COVER_HEIGHT}
+          style={styles.profileCoverFade}
+          pointerEvents="none"
+        >
+          <Defs>
+            <LinearGradient id="farmerProfileCoverTopDim" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#000000" stopOpacity={0.4} />
+              <Stop offset="0.35" stopColor="#000000" stopOpacity={0.32} />
+              <Stop offset="0.55" stopColor="#000000" stopOpacity={0.14} />
+              <Stop offset="0.72" stopColor="#000000" stopOpacity={0} />
+            </LinearGradient>
+            <LinearGradient id="farmerProfileCoverFade" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={PROFILE_BODY_BG} stopOpacity={0} />
+              <Stop offset="0.5" stopColor={PROFILE_BODY_BG} stopOpacity={0} />
+              <Stop offset="1" stopColor={PROFILE_BODY_BG} stopOpacity={1} />
+            </LinearGradient>
+          </Defs>
+          <Rect
+            x={0}
+            y={0}
+            width={coverWidth}
+            height={PROFILE_COVER_HEIGHT}
+            fill="url(#farmerProfileCoverTopDim)"
+          />
+          <Rect
+            x={0}
+            y={0}
+            width={coverWidth}
+            height={PROFILE_COVER_HEIGHT}
+            fill="url(#farmerProfileCoverFade)"
+          />
+        </Svg>
       </View>
-      <Text style={styles.profileName}>{name}</Text>
-      <Text style={styles.profileLocation}>{location}</Text>
-      {verified ? (
-        <View style={styles.verificationBadge}>
-          <Text style={styles.verificationText}>✓ Verified</Text>
+      <View style={styles.profileBody}>
+        <View style={[styles.profileBodyContent, { marginTop: -PROFILE_BODY_LIFT }]}>
+          <View style={[styles.profileAvatarWrap, { marginTop: -PROFILE_AVATAR_OVERLAP }]}>
+            <View style={styles.profileAvatarRing}>
+              <View style={styles.profileAvatarClip}>
+                <FarmerProfilePhoto
+                  name={name}
+                  pictureUrl={farmer?.picture_url}
+                  size="large"
+                  variant="header"
+                />
+              </View>
+            </View>
+          </View>
+
+          <Text style={styles.profileName}>{name}</Text>
+          <Text style={styles.profileLocation}>{location}</Text>
+
+          <View style={styles.statusBlock}>
+            <FarmerStatusChip status={farmer?.status} micro centered />
+          </View>
+
+          <Text style={styles.currencyText}>
+            {currencyLabel ?? 'Kenyan Shilling (KES)'}
+          </Text>
+
+          <View style={styles.profileActions}>
+            <Pressable
+              style={[styles.profileActionButton, webPressable]}
+              onPress={onEditProfile}
+              accessibilityRole="button"
+            >
+              <UserRoundPen size={16} color="#333333" strokeWidth={2.25} />
+              <Text style={styles.profileActionButtonText}>Edit Profile</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.profileActionButton, styles.profileLogoutButton, webPressable]}
+              onPress={onLogout}
+              accessibilityRole="button"
+            >
+              <LogOut size={16} color="#FFFFFF" strokeWidth={2.25} />
+              <Text style={[styles.profileActionButtonText, styles.profileLogoutButtonText]}>
+                Logout
+              </Text>
+            </Pressable>
+          </View>
+
+          {farmer?.pending_picture_url || farmer?.photoUpdatePending ? (
+            <Text style={styles.pendingPhotoNote}>
+              New photo sent — waiting for your field agent to approve it.
+            </Text>
+          ) : null}
         </View>
-      ) : null}
-      <Text style={styles.statusText}>
-        {verified ? 'Verified and approved' : 'Profile under review'}
-      </Text>
-      <Text style={styles.currencyText}>{currencyLabel ?? 'Kenyan Shilling (KES)'}</Text>
-      <View style={styles.profileActions}>
-        <Pressable style={styles.editButton} onPress={onEditProfile}>
-          <Text style={styles.buttonText}>Edit Profile</Text>
-        </Pressable>
-        <Pressable style={styles.logoutButton} onPress={onLogout}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -155,67 +242,26 @@ export function FarmerDashboardTaskSnapshots({
   onTasksPress,
 }: {
   taskStats?: TaskStats | null;
-  onTasksPress: (filter?: 'overdue' | 'in_progress' | 'not_started' | 'completed') => void;
+  onTasksPress: (filter?: TaskStatusKpiKey) => void;
 }) {
-  const overdue = taskStats?.overdue ?? 0;
-  const inProgress = taskStats?.in_progress ?? 0;
-  const notStarted = taskStats?.not_started ?? 0;
-  const completed = taskStats?.completed ?? 0;
-
-  const snapshots: Array<{
-    key: 'overdue' | 'in_progress' | 'not_started' | 'completed';
-    label: string;
-    count: number;
-    cardStyle: object;
-    countColor?: string;
-  }> = [
-    {
-      key: 'overdue',
-      label: 'Overdue',
-      count: overdue,
-      cardStyle: styles.overdueCard,
-      countColor: '#E74C3C',
-    },
-    {
-      key: 'in_progress',
-      label: 'In progress',
-      count: inProgress,
-      cardStyle: styles.inProgressCard,
-      countColor: '#2563EB',
-    },
-    {
-      key: 'not_started',
-      label: 'Not started',
-      count: notStarted,
-      cardStyle: styles.notStartedCard,
-    },
-    {
-      key: 'completed',
-      label: 'Completed',
-      count: completed,
-      cardStyle: styles.completedCard,
-      countColor: '#10B981',
-    },
-  ];
+  const counts: Record<TaskStatusKpiKey, number> = {
+    overdue: taskStats?.overdue ?? 0,
+    in_progress: taskStats?.in_progress ?? 0,
+    not_started: taskStats?.not_started ?? 0,
+    submitted_for_approval: taskStats?.submitted_for_approval ?? 0,
+    rejected: taskStats?.rejected ?? 0,
+    completed: taskStats?.completed ?? 0,
+  };
 
   return (
     <View style={styles.snapshotsContainer}>
       <Text style={styles.snapshotsTitle}>Task summary</Text>
 
-      <View style={styles.snapshotGrid}>
-        {snapshots.map((item) => (
-          <Pressable
-            key={item.key}
-            style={[styles.snapshotGridItem, item.cardStyle]}
-            onPress={() => onTasksPress(item.key)}
-          >
-            <Text style={[styles.snapshotGridCount, item.countColor ? { color: item.countColor } : null]}>
-              {item.count}
-            </Text>
-            <Text style={styles.snapshotGridLabel}>{item.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <TaskStatusKpiRow
+        counts={counts}
+        selected={null}
+        onSelect={(key) => onTasksPress(key)}
+      />
 
       <Pressable style={styles.viewAllTasks} onPress={() => onTasksPress()}>
         <Text style={styles.viewAllTasksText}>View all tasks →</Text>
@@ -233,42 +279,40 @@ export function FarmerDashboardRecentTasks({
   onTasksPress: () => void;
   onTaskPress?: (taskId: string) => void;
 }) {
-  const recent = tasks ?? [];
-  if (!recent.length) {
-    return (
-      <View style={styles.snapshotsContainer}>
-        <Text style={styles.snapshotsTitle}>Recent tasks</Text>
-        <Text style={styles.emptyText}>No tasks assigned yet.</Text>
-        <Pressable style={styles.viewAllTasks} onPress={onTasksPress}>
-          <Text style={styles.viewAllTasksText}>View tasks →</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const recent = (tasks ?? []).slice(0, 5);
 
   return (
-    <View style={styles.snapshotsContainer}>
-      <Text style={styles.snapshotsTitle}>Recent tasks</Text>
-      {recent.map((task) => (
-        <Pressable
-          key={task.id}
-          style={styles.recentCard}
-          onPress={() => (onTaskPress ? onTaskPress(task.id) : onTasksPress())}
-        >
-          <Text style={styles.recentTitle}>{task.name}</Text>
-          <Text style={styles.recentMeta}>
-            {task.assigned_by_name ?? 'Program team'}
-            {task.due_date ? ` · Due ${formatProjectDate(task.due_date)}` : ''}
-          </Text>
-          {task.program_project_name ? (
-            <Text style={styles.recentMeta}>{task.program_project_name}</Text>
-          ) : null}
-        </Pressable>
-      ))}
-      <Pressable style={styles.viewAllTasks} onPress={onTasksPress}>
-        <Text style={styles.viewAllTasksText}>View all tasks →</Text>
+    <KBCard style={{ marginHorizontal: 12 }}>
+      <Pressable
+        onPress={onTasksPress}
+        className="flex-row items-center justify-between"
+        style={webPressable}
+      >
+        <Text className="text-sm font-bold text-[#333333]">Recent tasks</Text>
+        <ChevronRight size={16} color="#1A4D3E" />
       </Pressable>
-    </View>
+      {recent.length > 0 ? (
+        recent.map((task) => (
+          <Pressable
+            key={task.id}
+            onPress={() => (onTaskPress ? onTaskPress(task.id) : onTasksPress())}
+            className="mt-2 border-t border-[#EEE] pt-2"
+            style={webPressable}
+          >
+            <Text className="text-sm font-semibold text-[#333333]">{task.name}</Text>
+            <Text className="text-xs text-[#757575]">
+              {task.assigned_by_name ?? 'Program team'}
+              {task.due_date ? ` · Due ${formatProjectDate(task.due_date)}` : ''}
+            </Text>
+            {task.program_project_name ? (
+              <Text className="text-xs text-[#757575]">{task.program_project_name}</Text>
+            ) : null}
+          </Pressable>
+        ))
+      ) : (
+        <Text className="mt-2 text-sm text-[#757575]">No tasks assigned yet.</Text>
+      )}
+    </KBCard>
   );
 }
 
@@ -276,38 +320,52 @@ export function FarmerDashboardRecentProjects({
   projects,
   formatAmount,
   onProjectPress,
+  onProjectsPress,
 }: {
   projects: FarmerProject[];
   formatAmount: (n: number) => string;
   onProjectPress: (project: FarmerProject) => void;
+  onProjectsPress: () => void;
 }) {
-  if (projects.length === 0) {
-    return <Text style={styles.emptyText}>No active projects yet.</Text>;
-  }
+  const recent = projects.slice(0, 5);
 
   return (
-    <>
-      {projects.slice(0, 3).map((p, i) => (
-        <Pressable
-          key={p.id ?? `${p.project_name}-${i}`}
-          style={styles.recentCard}
-          onPress={() => onProjectPress(p)}
-        >
-          <View style={styles.recentRow}>
-            <Text style={styles.recentTitle} numberOfLines={2}>{p.project_name}</Text>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-          </View>
-          {p.start_date || p.due_date ? (
-            <Text style={styles.recentMeta}>
-              {p.start_date ? `Start: ${formatProjectDate(p.start_date)}` : ''}
-              {p.start_date && p.due_date ? ' · ' : ''}
-              {p.due_date ? `End: ${formatProjectDate(p.due_date)}` : ''}
+    <KBCard style={{ marginHorizontal: 12 }}>
+      <Pressable
+        onPress={onProjectsPress}
+        className="flex-row items-center justify-between"
+        style={webPressable}
+      >
+        <Text className="text-sm font-bold text-[#333333]">
+          Recent projects ({projects.length})
+        </Text>
+        <ChevronRight size={16} color="#1A4D3E" />
+      </Pressable>
+      {recent.length > 0 ? (
+        recent.map((p, i) => (
+          <Pressable
+            key={p.id ?? `${p.project_name}-${i}`}
+            onPress={() => onProjectPress(p)}
+            className="mt-2 border-t border-[#EEE] pt-2"
+            style={webPressable}
+          >
+            <Text className="text-sm font-semibold text-[#333333]" numberOfLines={2}>
+              {p.project_name}
             </Text>
-          ) : null}
-          <Text style={styles.recentAmount}>{formatAmount(p.payment_amount)}</Text>
-        </Pressable>
-      ))}
-    </>
+            <Text className="text-xs text-[#757575]">
+              {p.start_date || p.due_date
+                ? `${p.start_date ? `Start ${formatProjectDate(p.start_date)}` : ''}${
+                    p.start_date && p.due_date ? ' · ' : ''
+                  }${p.due_date ? `End ${formatProjectDate(p.due_date)}` : ''}`
+                : p.status ?? 'Active'}
+              {` · ${formatAmount(p.payment_amount)}`}
+            </Text>
+          </Pressable>
+        ))
+      ) : (
+        <Text className="mt-2 text-sm text-[#757575]">No active projects yet.</Text>
+      )}
+    </KBCard>
   );
 }
 
@@ -334,156 +392,214 @@ export function FarmerDashboardRecentPayments({
             </Text>
             <Text style={styles.recentAmount}>{formatAmount(p.amount)}</Text>
           </View>
-          <Text style={styles.recentMeta}>{p.payment_status}</Text>
+          <Text style={styles.recentMeta}>
+            {p.task_name && p.task_name !== p.project_name ? `${p.task_name} · ` : ''}
+            {p.payment_status}
+          </Text>
         </Pressable>
       ))}
     </>
   );
 }
 
-export function FarmerDashboardSupportSection({
-  farmerName,
-  farmerPhone,
-}: {
+export function FarmerDashboardSupportSection(_props: {
   farmerName?: string;
   farmerPhone?: string;
 } = {}) {
-  const handleContactSupport = () => {
-    const email = 'support@kilimobridge.org';
-    const subject = 'Kilimo Bridge Farmer Support Request';
-    const body = `Farmer: ${farmerName ?? 'Farmer'}\nPhone: ${farmerPhone ?? 'Not provided'}\n\nIssue: `;
-    Linking.openURL(
-      `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  const navigation = useNavigation();
+  const [supportOpen, setSupportOpen] = useState(false);
+
+  const openCreatedTicket = (threadId: string) => {
+    // Stay on the farmer shell — open Messages with list under the new thread
+    // so Back returns to the inbox (not a different account / tab).
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'MessagesFlow',
+        params: {
+          state: {
+            routes: [
+              { name: 'MessagesList' },
+              {
+                name: 'MessageDetail',
+                params: {
+                  threadId,
+                  contextType: 'support_ticket',
+                  supportStatus: 'open',
+                },
+              },
+            ],
+            index: 1,
+          },
+        },
+      })
     );
   };
 
   return (
     <View style={styles.supportSection}>
-      <Pressable style={styles.supportButton} onPress={handleContactSupport}>
+      <Pressable
+        style={[styles.supportButton, webPressable]}
+        onPress={() => setSupportOpen(true)}
+        accessibilityRole="button"
+      >
+        <MessageCircle size={16} color="#333333" strokeWidth={2.25} />
         <Text style={styles.supportButtonText}>Contact Support</Text>
       </Pressable>
+      <ContactSupportModal
+        visible={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        onCreated={openCreatedTicket}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  profileContainer: {
+  profileSection: {
+    marginBottom: 4,
+    backgroundColor: PROFILE_BODY_BG,
+  },
+  profileCover: {
+    height: PROFILE_COVER_HEIGHT,
+    width: '100%',
+    overflow: 'hidden',
+    backgroundColor: PROFILE_BODY_BG,
+  },
+  profileCoverImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  profileCoverFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: 0,
+  },
+  profileBody: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    backgroundColor: '#2d5a4a',
-    marginHorizontal: 12,
-    marginVertical: 16,
-    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    backgroundColor: PROFILE_BODY_BG,
+  },
+  profileBodyContent: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  profileAvatarWrap: {
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  profileAvatarRing: {
+    width: PROFILE_AVATAR_SIZE + 8,
+    height: PROFILE_AVATAR_SIZE + 8,
+    borderRadius: (PROFILE_AVATAR_SIZE + 8) / 2,
+    padding: 4,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 4,
   },
-  photoContainer: { marginBottom: 16 },
-  profilePhoto: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: '#fff',
+  profileAvatarClip: {
+    width: PROFILE_AVATAR_SIZE,
+    height: PROFILE_AVATAR_SIZE,
+    borderRadius: PROFILE_AVATAR_SIZE / 2,
+    overflow: 'hidden',
+    backgroundColor: PROFILE_BODY_BG,
   },
-  photoPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  photoInitials: { fontSize: 40, fontWeight: 'bold', color: '#fff' },
   profileName: {
+    marginTop: 10,
     fontSize: 24,
     fontWeight: '700',
-    color: '#fff',
-    marginBottom: 4,
+    color: '#1A1A1A',
     textAlign: 'center',
   },
   profileLocation: {
-    fontSize: 14,
-    color: '#e0e0e0',
-    marginBottom: 12,
+    marginTop: 4,
+    fontSize: 15,
+    color: '#757575',
     textAlign: 'center',
   },
-  verificationBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 12,
-  },
-  verificationText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  statusText: {
-    fontSize: 14,
-    color: '#e0e0e0',
-    marginBottom: 4,
-    textAlign: 'center',
+  statusBlock: {
+    marginTop: 4,
+    alignItems: 'center',
   },
   currencyText: {
-    fontSize: 14,
-    color: '#FFB800',
-    fontWeight: '600',
-    marginBottom: 16,
+    marginTop: 4,
+    marginBottom: 18,
+    fontSize: 13,
+    color: '#757575',
+    fontWeight: '500',
     textAlign: 'center',
   },
   profileActions: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
+    gap: 10,
     width: '100%',
+    maxWidth: 360,
   },
-  editButton: {
-    flex: 1,
-    backgroundColor: '#4CAF50',
-    paddingVertical: 10,
-    borderRadius: 6,
-    alignItems: 'center',
+  pendingPhotoNote: {
+    marginTop: 14,
+    fontSize: 12,
+    textAlign: 'center',
+    color: '#B45309',
+    fontWeight: '600',
+    paddingHorizontal: 8,
   },
-  logoutButton: {
+  profileActionButton: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 10,
-    borderRadius: 6,
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F5F5F5',
     borderWidth: 1,
-    borderColor: '#fff',
+    borderColor: '#D0D0D0',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
-  logoutButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  profileActionButtonText: {
+    color: '#333333',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  profileLogoutButton: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#1A1A1A',
+  },
+  profileLogoutButtonText: {
+    color: '#FFFFFF',
+  },
   earningsCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     marginHorizontal: 12,
-    marginVertical: 8,
+    marginTop: 4,
+    marginBottom: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
   },
   earningsLabel: {
     fontSize: 12,
     color: '#999',
     marginBottom: 4,
     fontWeight: '500',
+    textAlign: 'center',
   },
   earningsAmount: {
     fontSize: 24,
     fontWeight: '700',
     color: '#1F4E78',
     marginBottom: 12,
+    textAlign: 'center',
   },
   earningsBreakdown: {
     flexDirection: 'row',
@@ -516,7 +632,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1F4E78',
-    marginBottom: 12,
+    marginBottom: 0,
   },
   snapshotCard: {
     borderRadius: 12,
@@ -646,17 +762,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   supportButton: {
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
+    width: '100%',
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#D0D0D0',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   supportButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1F4E78',
+    color: '#333333',
   },
 });

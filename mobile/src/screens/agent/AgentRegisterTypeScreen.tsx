@@ -58,8 +58,8 @@ export function AgentRegisterTypeScreen({ navigation }: Props) {
         </View>
       </Pressable>
 
-      <Button variant="outline" onPress={() => navigation.goBack()}>
-        <Text>Cancel</Text>
+      <Button variant="outline" size="pill" onPress={() => navigation.goBack()}>
+        <Text className="font-semibold">Cancel</Text>
       </Button>
     </View>
   );

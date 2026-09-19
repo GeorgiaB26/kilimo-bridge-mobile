@@ -14,6 +14,9 @@ export type AuditAction =
   | 'farmer.pm_approved_for_field'
   | 'farmer.field_verified'
   | 'farmer.field_rejected'
+  | 'farmer.photo_submitted'
+  | 'farmer.photo_approved'
+  | 'farmer.photo_rejected'
   | 'agent.register'
   | 'agent.action'
   | 'payment.claim'
@@ -25,7 +28,9 @@ export type AuditAction =
   | 'banking.verify_farmer_id'
   | 'data.access'
   | 'user.create'
-  | 'permission.denied';
+  | 'permission.denied'
+  | 'support.ticket_created'
+  | 'support.ticket_resolved';
 
 export type AuditCategory = 'auth' | 'financial' | 'agent' | 'farmer_data' | 'system';
 

@@ -6,6 +6,7 @@ import { Text } from '@/components/ui/text';
 import { FormField } from '../../components/FormField';
 import { PickerField } from '../../components/PickerField';
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { VillagePickerField } from '../../components/VillagePickerField';
 import { useRegistrationStore } from '../../store/registrationStore';
 import {
   getCountryConfig,
@@ -44,13 +45,13 @@ export function LocationScreen({ navigation }: Props) {
 
   useEffect(() => {
     if (formData.district && formData.subCounty && !level2Options.includes(formData.subCounty)) {
-      updateForm({ subCounty: '', parish: '' });
+      updateForm({ subCounty: '', parish: '', village: '' });
     }
   }, [formData.district, level2Options]);
 
   useEffect(() => {
     if (formData.subCounty && formData.parish && level3Options.length > 0 && !level3Options.includes(formData.parish)) {
-      updateForm({ parish: '' });
+      updateForm({ parish: '', village: '' });
     }
   }, [formData.subCounty, level3Options]);
 
@@ -64,34 +65,37 @@ export function LocationScreen({ navigation }: Props) {
   };
 
   return (
-    <View className="flex-1">
+    <View>
       <ScreenHeader title="Location" subtitle={`Where are you based in ${formData.country}?`} />
       <PickerField
         label={labels[0]}
         value={formData.district}
         options={level1Options}
-        onSelect={(district) => updateForm({ district, subCounty: '', parish: '' })}
+        onSelect={(district) => updateForm({ district, subCounty: '', parish: '', village: '' })}
         required
         error={errors.district}
+        searchable
       />
       <PickerField
         label={labels[1]}
         value={formData.subCounty}
         options={level2Options}
-        onSelect={(subCounty) => updateForm({ subCounty, parish: '' })}
+        onSelect={(subCounty) => updateForm({ subCounty, parish: '', village: '' })}
         required
         error={errors.subCounty}
         placeholder={formData.district ? `Select ${labels[1].toLowerCase()}` : `Select ${labels[0].toLowerCase()} first`}
+        searchable
       />
       {level3Options.length > 0 ? (
         <PickerField
           label={labels[2]}
           value={formData.parish ?? ''}
           options={level3Options}
-          onSelect={(parish) => updateForm({ parish, ward: parish })}
+          onSelect={(parish) => updateForm({ parish, ward: parish, village: '' })}
           required
           error={errors.parish}
           placeholder={formData.subCounty ? `Select ${labels[2].toLowerCase()}` : `Select ${labels[1].toLowerCase()} first`}
+          searchable
         />
       ) : (
         <FormField
@@ -101,11 +105,16 @@ export function LocationScreen({ navigation }: Props) {
           placeholder="Optional"
         />
       )}
-      <FormField
-        label={labels[3]}
-        value={formData.village ?? ''}
-        onChangeText={(village) => updateForm({ village })}
-        placeholder="Optional"
+      <VillagePickerField
+        country={formData.country}
+        district={formData.district}
+        subCounty={formData.subCounty}
+        parish={formData.parish}
+        village={formData.village}
+        labels={labels}
+        level3Required={level3Options.length > 0}
+        persistHint="it is saved when you register."
+        onChange={(village) => updateForm({ village })}
       />
       <View className="mt-2 flex-row gap-3">
         <Button variant="outline" className="h-12 flex-1" onPress={() => navigation.goBack()}>

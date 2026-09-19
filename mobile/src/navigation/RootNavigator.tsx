@@ -9,10 +9,12 @@ import { FarmerNavigator } from './FarmerNavigator';
 import { AdminPlatformNavigator } from './AdminPlatformNavigator';
 import { AgentNavigator } from './AgentNavigator';
 import { BankingNavigator } from './BankingNavigator';
+import { SupportNavigator } from './SupportNavigator';
 import { AccountSwitcherBar } from '../components/AccountSwitcherBar';
 import { SplashScreen } from '../screens/splash/SplashScreen';
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { COLORS } from '../constants';
+import { isSupportDeskUser } from '../../shared/src/supportDesk';
 
 const ONBOARDING_KEY = 'kilimo_onboarding_done';
 
@@ -67,6 +69,10 @@ export function RootNavigator() {
   if (!isAuthenticated || !user) return <AuthNavigator />;
 
   const role = user.role;
+  const supportDesk = isSupportDeskUser({
+    userId: user.userId,
+    phoneNumber: user.phoneNumber,
+  });
 
   return (
     <View style={styles.root}>
@@ -74,6 +80,7 @@ export function RootNavigator() {
       {role === 'farmer' ? <FarmerNavigator />
         : isBankingRole(role) ? <BankingNavigator />
         : isAgentRole(role) ? <AgentNavigator />
+        : supportDesk ? <SupportNavigator />
         : isAdminRole(role) ? <AdminPlatformNavigator />
         : <AuthNavigator />}
     </View>

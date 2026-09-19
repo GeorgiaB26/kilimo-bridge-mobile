@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db/database';
-import { normalizePhone } from '../../../shared/src/validation';
+import { normalizePhoneAnyCountry } from '../../../shared/src/farmerId';
 import { normalizeRole, type UserRole } from '../../../shared/src/roles';
 import { verifyPassword } from './encryptionService';
 import { logAudit } from './auditService';
@@ -47,7 +47,7 @@ function rowToUser(row: UserRow): AuthUser {
 }
 
 export async function requestOtp(phone: string): Promise<{ success: boolean; message: string; devCode?: string }> {
-  const normalized = normalizePhone(phone);
+  const normalized = normalizePhoneAnyCountry(phone);
   if (!normalized) {
     return { success: false, message: 'Invalid phone number format' };
   }
@@ -85,7 +85,7 @@ export async function verifyOtp(
   code: string,
   ipAddress?: string
 ): Promise<{ success: boolean; token?: string; user?: AuthUser; error?: string }> {
-  const normalized = normalizePhone(phone);
+  const normalized = normalizePhoneAnyCountry(phone);
   if (!normalized) return { success: false, error: 'Invalid phone number' };
 
   const otp = await queryOne<{ code: string; expires_at: string; id: string }>(
@@ -133,7 +133,7 @@ export async function loginWithPassword(
   password: string,
   ipAddress?: string
 ): Promise<{ success: boolean; token?: string; user?: AuthUser; error?: string }> {
-  const normalized = normalizePhone(phone);
+  const normalized = normalizePhoneAnyCountry(phone);
   if (!normalized) return { success: false, error: 'Invalid phone number' };
 
   const row = await queryOne<UserRow>(
@@ -190,7 +190,7 @@ export async function devQuickLogin(
     return { success: false, error: 'Not available' };
   }
 
-  const normalized = normalizePhone(phone);
+  const normalized = normalizePhoneAnyCountry(phone);
   if (!normalized) return { success: false, error: 'Invalid phone number' };
 
   const row = await queryOne<UserRow>(

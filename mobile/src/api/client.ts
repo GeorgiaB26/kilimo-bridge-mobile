@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
-import type { RegistrationFormData } from '../types';
+import type { FarmerRegistrationPayload } from '../types';
 import type { AuthUser } from '../store/authStore';
 
 export const api = axios.create({
@@ -46,6 +46,7 @@ export interface ReferenceData {
   districts: string[];
   subCounties: Record<string, string[]>;
   membershipGroups: string[];
+  membershipGroupOptions?: Array<{ id: string; name: string }>;
   projects: string[];
   membershipTypes: string[];
 }
@@ -146,7 +147,24 @@ export async function fetchProjectHierarchy(): Promise<{
   return data;
 }
 
-export async function registerFarmer(farmerData: RegistrationFormData) {
+export async function fetchVerifiedVillages(params: {
+  country: string;
+  level1: string;
+  level2: string;
+  level3?: string;
+}): Promise<string[]> {
+  const { data } = await api.get<{ villages?: string[] }>('/reference/custom-locations', {
+    params: {
+      country: params.country,
+      level1: params.level1,
+      level2: params.level2,
+      ...(params.level3?.trim() ? { level3: params.level3.trim() } : {}),
+    },
+  });
+  return Array.isArray(data?.villages) ? data.villages : [];
+}
+
+export async function registerFarmer(farmerData: FarmerRegistrationPayload) {
   const { data } = await api.post('/farmers/register', farmerData);
   return data;
 }
@@ -198,24 +216,61 @@ export async function getImportErrorsCsv(sessionId: string): Promise<string> {
   return res.text();
 }
 
-export async function getFarmers(limit = 50, offset = 0, country?: string, q?: string) {
+export type FarmerListQuery = {
+  country?: string;
+  q?: string;
+  membership_group_id?: string;
+  program_project_id?: string;
+};
+
+function farmerListParams(limit: number, offset: number, filters?: FarmerListQuery) {
   const params: Record<string, string | number> = { limit, offset };
-  if (country) params.country = country;
-  if (q?.trim()) params.q = q.trim();
-  const { data } = await api.get('/admin/farmers', { params });
+  if (filters?.country) params.country = filters.country;
+  if (filters?.q?.trim()) params.q = filters.q.trim();
+  if (filters?.membership_group_id) params.membership_group_id = filters.membership_group_id;
+  if (filters?.program_project_id) params.program_project_id = filters.program_project_id;
+  return params;
+}
+
+export async function getFarmers(
+  limit = 50,
+  offset = 0,
+  countryOrFilters?: string | FarmerListQuery,
+  q?: string
+) {
+  const filters: FarmerListQuery =
+    typeof countryOrFilters === 'object' && countryOrFilters
+      ? countryOrFilters
+      : { country: typeof countryOrFilters === 'string' ? countryOrFilters : undefined, q };
+  const { data } = await api.get('/admin/farmers', {
+    params: farmerListParams(limit, offset, filters),
+  });
   return data;
 }
 
-export async function searchFarmers(query: string, limit = 200) {
-  const { data } = await api.get('/admin/farmers', {
-    params: { limit, offset: 0, q: query.trim() },
-  });
-  return data;
+export async function searchFarmers(query: string, limit = 200, extra?: Omit<FarmerListQuery, 'q'>) {
+  return getFarmers(limit, 0, { ...extra, q: query });
+}
+
+export async function getAgentFarmers<T = Record<string, unknown>>(filters?: FarmerListQuery) {
+  const params: Record<string, string> = {};
+  if (filters?.country) params.country = filters.country;
+  if (filters?.q?.trim()) params.q = filters.q.trim();
+  if (filters?.membership_group_id) params.membership_group_id = filters.membership_group_id;
+  if (filters?.program_project_id) params.program_project_id = filters.program_project_id;
+  const { data } = await api.get('/agents/farmers', { params });
+  return data as { farmers?: T[]; total?: number };
 }
 
 export async function getFarmerById(farmerId: string) {
   const { data } = await api.get(`/admin/farmers/${farmerId}`);
   return data;
+}
+
+/** Project manager / admin: approve pending_review → pending_field_verification (notifies field agents). */
+export async function approveFarmerForFieldVerification(farmerId: string) {
+  const { data } = await api.patch(`/admin/farmers/${farmerId}/approve-field-verification`);
+  return data as { success: boolean; status: string; notifiedAgentCount?: number };
 }
 
 /** Field agent farmer profile — uses agent-scoped endpoint (avoids region/district scope mismatch). */
@@ -236,6 +291,20 @@ export async function getUsers(q?: string) {
 
 export async function getFarmerDashboard() {
   const { data } = await api.get('/farmer/dashboard');
+  return data;
+}
+
+/** View-only: farmer's own aggregation centre (name, location, contact). */
+export async function getFarmerMyCentre(): Promise<{
+  centre: {
+    name: string;
+    location: string;
+    managerName: string | null;
+    managerPhone: string | null;
+    country: string | null;
+  } | null;
+}> {
+  const { data } = await api.get('/farmer/my-centre');
   return data;
 }
 
@@ -268,6 +337,95 @@ export async function submitFarmerHelpRequest(message: string) {
   return data;
 }
 
+export async function createSupportTicket(body: {
+  subject: string;
+  description: string;
+  attachmentKeys?: string[];
+}) {
+  const { data } = await api.post<{
+    threadId: string;
+    ticket: SupportTicketSummary;
+  }>('/support/tickets', body);
+  return data;
+}
+
+export type SupportTicketStatus = 'open' | 'resolved';
+
+export type SupportTicketSummary = {
+  thread_id: string;
+  subject: string;
+  status: SupportTicketStatus;
+  created_by_user_id: string;
+  requester_role: string | null;
+  requester_name: string | null;
+  requester_phone: string | null;
+  resolved_at: string | null;
+  resolved_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+  last_message_content: string | null;
+  unread_count: number;
+};
+
+export type SupportTicketMessage = {
+  id: string;
+  thread_id: string;
+  sender_id: string;
+  content: string;
+  attachment_url: string | null;
+  attachment_preview_url?: string | null;
+  created_at: string;
+  sender_name?: string;
+  is_mine?: boolean;
+};
+
+export type SupportTicketStats = {
+  open: number;
+  resolved: number;
+  total: number;
+  unread_open: number;
+};
+
+export async function getSupportStats() {
+  const { data } = await api.get<{ stats: SupportTicketStats }>('/support/stats');
+  return data;
+}
+
+export async function listSupportTickets(status?: SupportTicketStatus) {
+  const { data } = await api.get<{ tickets: SupportTicketSummary[] }>('/support/tickets', {
+    params: status ? { status } : undefined,
+  });
+  return data;
+}
+
+export async function getSupportTicket(threadId: string) {
+  const { data } = await api.get<{
+    ticket: SupportTicketSummary;
+    messages: SupportTicketMessage[];
+    can_reply: boolean;
+  }>(`/support/tickets/${threadId}`);
+  return data;
+}
+
+export async function replySupportTicket(
+  threadId: string,
+  body: { content: string; attachmentKeys?: string[] }
+) {
+  const { data } = await api.post<{ message: SupportTicketMessage }>(
+    `/support/tickets/${threadId}/messages`,
+    body
+  );
+  return data;
+}
+
+export async function resolveSupportTicket(threadId: string) {
+  const { data } = await api.post<{ ticket: SupportTicketSummary }>(
+    `/support/tickets/${threadId}/resolve`
+  );
+  return data;
+}
+
 export async function getAgentHelpRequests() {
   const { data } = await api.get('/agents/help-requests');
   return data;
@@ -278,8 +436,61 @@ export async function resolveAgentHelpRequest(requestId: string) {
   return data;
 }
 
-export async function getAgentDashboard() {
-  const { data } = await api.get('/agents/dashboard');
+export type AgentDashboardRecentTask = {
+  id: string;
+  name: string;
+  status: string;
+  due_date?: string | null;
+  farmer_name?: string;
+  source?: 'farmer' | 'personal';
+};
+
+export type AgentDashboardOverdueHighlight = {
+  id: string;
+  name: string;
+  daysOverdue: number;
+};
+
+export type AgentDashboardSummary = {
+  agent: {
+    region: string;
+    district?: string;
+  };
+  farmers: {
+    total: number;
+    pending_review: number;
+    pending_field_verification: number;
+    pending_verification: number;
+    verified: number;
+    inactive: number;
+    rejected: number;
+  };
+  tasks: {
+    overdue_count: number;
+    in_progress_count: number;
+    not_started_count: number;
+    submitted_for_approval_count: number;
+    completed_count: number;
+    rejected_count: number;
+    total_count: number;
+    overdue: AgentDashboardOverdueHighlight[];
+    recent: AgentDashboardRecentTask[];
+    /** Legacy cached payloads before in_progress_count existed. */
+    upcoming_count?: number;
+  };
+  recent_farmers: Array<{
+    farmer_id: string;
+    name: string;
+    phone_number?: string;
+    district?: string;
+    sub_county?: string;
+    status?: string;
+  }>;
+  project_manager: { name: string; phone: string } | null;
+};
+
+export async function getAgentDashboard(): Promise<AgentDashboardSummary> {
+  const { data } = await api.get<AgentDashboardSummary>('/agents/dashboard');
   return data;
 }
 
@@ -324,6 +535,18 @@ export async function setAgentTaskReminder(taskId: string, reminder_type: string
   return data;
 }
 
+/** Field agent approves farmer evidence on an agent-assigned (personal) task. */
+export async function approveAgentPersonalTask(taskId: string, notes?: string) {
+  const { data } = await api.post(`/agents/tasks/${taskId}/approve`, notes ? { notes } : {});
+  return data;
+}
+
+/** Field agent rejects farmer evidence on an agent-assigned (personal) task. */
+export async function rejectAgentPersonalTask(taskId: string, rejection_reason: string) {
+  const { data } = await api.post(`/agents/tasks/${taskId}/reject`, { rejection_reason });
+  return data;
+}
+
 export async function updateFarmerLocation(body: {
   district: string;
   subCounty: string;
@@ -350,12 +573,14 @@ export async function getFarmerPayments() {
     payments: Array<{
       id: string;
       project_name: string;
+      task_name?: string;
       amount: number;
       payment_status: string;
       payment_method: string;
       created_at: string;
       mpesa_reference?: string;
       description?: string;
+      is_expected?: boolean;
     }>;
     summary?: {
       transferred: number;
@@ -377,11 +602,22 @@ export async function getFarmerNotifications() {
 }
 
 // Messaging & notifications (unified API)
+export type MessageThreadRow = {
+  id: string;
+  title?: string | null;
+  context_type?: string | null;
+  support_status?: string | null;
+  other_user_name: string;
+  last_message_content: string | null;
+  last_message_at: string | null;
+  unread_count: number;
+};
+
 export async function getMessageThreads(search?: string) {
   const { data } = await api.get('/messages/threads', {
     params: search ? { search } : undefined,
   });
-  return data as { threads: Array<Record<string, unknown>> };
+  return data as { threads: MessageThreadRow[] };
 }
 
 export async function getMessageContacts() {
@@ -403,13 +639,25 @@ export async function getThreadMessages(threadId: string) {
       created_at: string;
       sender_name?: string;
       is_mine?: boolean;
+      attachment_url?: string | null;
+      attachment_preview_url?: string | null;
     }>;
     otherUser: { id: string; name: string } | null;
+    title?: string | null;
+    context_type?: string | null;
+    support_status?: string | null;
   };
 }
 
-export async function sendThreadMessage(threadId: string, content: string) {
-  const { data } = await api.post(`/messages/threads/${threadId}/messages`, { content });
+export async function sendThreadMessage(
+  threadId: string,
+  content: string,
+  attachmentUrl?: string | null
+) {
+  const { data } = await api.post(`/messages/threads/${threadId}/messages`, {
+    content,
+    attachment_url: attachmentUrl || undefined,
+  });
   return data;
 }
 
@@ -673,6 +921,65 @@ export async function submitFarmerHierarchyTask(farmerTaskId: string, body: { ph
   return data;
 }
 
+/** Farmer submits evidence on a field-agent-assigned agent_tasks row. */
+export async function submitAgentAssignedTask(
+  taskId: string,
+  body: { photo_url?: string; notes?: string }
+) {
+  const { data } = await api.post(`/farmer/agent-tasks/${taskId}/submit`, body);
+  return data;
+}
+
+export async function getFarmerAgentAssignedTask(taskId: string) {
+  const { data } = await api.get(`/farmer/agent-tasks/${taskId}`);
+  return data;
+}
+
+/** Farmer recalls a hierarchy submission (status → in-progress, evidence kept). */
+export async function recallFarmerHierarchyTask(farmerTaskId: string) {
+  const { data } = await api.post(`/farmer/hierarchy/tasks/${farmerTaskId}/recall`);
+  return data;
+}
+
+/** Spec alias: POST /api/farmer/tasks/:id/recall */
+export async function recallFarmerTaskCompletion(farmerTaskId: string) {
+  const { data } = await api.post(`/farmer/tasks/${farmerTaskId}/recall`);
+  return data;
+}
+
+/** Farmer recalls an agent-assigned submission (status → in_progress, evidence kept). */
+export async function recallAgentAssignedTask(taskId: string) {
+  const { data } = await api.post(`/farmer/agent-tasks/${taskId}/recall`);
+  return data;
+}
+
+/** Farmer starts a hierarchy task (not-started → in-progress + farmer_started_at). */
+export async function startFarmerHierarchyTask(
+  farmerTaskId: string,
+  body: { start_date: string }
+) {
+  const { data } = await api.post(`/farmer/hierarchy/tasks/${farmerTaskId}/start`, body);
+  return data;
+}
+
+/** Spec alias: POST /api/farmer/tasks/:id/start */
+export async function startFarmerTaskCompletion(
+  farmerTaskId: string,
+  body: { start_date: string }
+) {
+  const { data } = await api.post(`/farmer/tasks/${farmerTaskId}/start`, body);
+  return data;
+}
+
+/** Farmer starts an agent-assigned task (not-started → in-progress + farmer_started_at). */
+export async function startAgentAssignedTask(
+  taskId: string,
+  body: { start_date: string }
+) {
+  const { data } = await api.post(`/farmer/agent-tasks/${taskId}/start`, body);
+  return data;
+}
+
 export async function getFarmerPaymentPending() {
   const { data } = await api.get('/farmer/hierarchy/payment-pending');
   return data;
@@ -681,6 +988,14 @@ export async function getFarmerPaymentPending() {
 export async function getCentreDashboard(centreId?: string) {
   const path = centreId ? `/aggregation/centre/${centreId}/dashboard` : '/aggregation/centre/dashboard';
   const { data } = await api.get(path);
+  return data;
+}
+
+/** View-only: aggregation centres in the logged-in agent's district. */
+export async function getAgentCentresInDistrict(): Promise<{
+  centres: Array<{ centre_id: string; name: string; location: string }>;
+}> {
+  const { data } = await api.get('/aggregation/centres/in-district');
   return data;
 }
 
@@ -772,6 +1087,14 @@ export async function verifyFarmerField(
     verification_notes,
   });
   return data;
+}
+
+export async function reviewFarmerProfilePhoto(
+  farmerId: string,
+  decision: 'approved' | 'rejected'
+) {
+  const { data } = await api.patch(`/agents/farmers/${farmerId}/photo-review`, { decision });
+  return data as { success: boolean; status: 'approved' | 'rejected' };
 }
 
 export async function getPendingDeliveries(centreId?: string) {

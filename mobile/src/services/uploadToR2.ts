@@ -5,7 +5,8 @@ export type UploadPurpose =
   | 'farmer_registration'
   | 'task_evidence'
   | 'farmer_profile'
-  | 'refugee_document';
+  | 'refugee_document'
+  | 'support_attachment';
 export type UploadContentType = 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
 
 export interface PresignUploadResult {
@@ -14,6 +15,44 @@ export interface PresignUploadResult {
   contentType: UploadContentType;
   expiresIn: number;
   previewUrl: string;
+}
+
+const R2_KEY_IN_PATH = /(?:^|\/)((?:farmers|tasks|support)\/[A-Za-z0-9/_\-.]+)/;
+
+/** Pull a stored R2 key out of a key, a leading-slash key, or a presigned HTTPS URL. */
+export function objectKeyFromUploadValue(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  const value = raw.trim();
+  const withoutQuery = value.split(/[?#]/)[0].replace(/^\/+/, '');
+  if (/^(farmers|tasks|support)\//.test(withoutQuery) && !withoutQuery.includes('://')) {
+    return withoutQuery;
+  }
+  try {
+    const path = decodeURIComponent(new URL(value).pathname);
+    const fromUrl = path.match(R2_KEY_IN_PATH)?.[1];
+    if (fromUrl) return fromUrl;
+  } catch {
+    // not a URL
+  }
+  const loose = value.match(R2_KEY_IN_PATH)?.[1];
+  return loose ?? null;
+}
+
+function objectKeyFromUploadPayload(data: Record<string, unknown>): string {
+  const candidates = [
+    data.objectKey,
+    data.object_key,
+    data.previewUrl,
+    data.preview_url,
+    data.uploadUrl,
+    data.upload_url,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const key = objectKeyFromUploadValue(candidate);
+    if (key) return key;
+  }
+  throw new Error('Photo upload did not return a storage key');
 }
 
 /** Reject empty / placeholder uploads (the 70-byte smoke-test PNG was this small). */
@@ -137,8 +176,25 @@ export async function requestUploadPresign(params: {
   farmerTaskId?: string;
   contentLength?: number;
 }): Promise<PresignUploadResult> {
-  const { data } = await api.post<PresignUploadResult>('/uploads/presign', params);
-  return data;
+  const { data } = await api.post<PresignUploadResult & Record<string, unknown>>(
+    '/uploads/presign',
+    params
+  );
+  const payload = data as Record<string, unknown>;
+  const uploadUrl =
+    (typeof data.uploadUrl === 'string' && data.uploadUrl) ||
+    (typeof payload.upload_url === 'string' && payload.upload_url) ||
+    '';
+  const previewUrl =
+    (typeof data.previewUrl === 'string' && data.previewUrl) ||
+    (typeof payload.preview_url === 'string' && payload.preview_url) ||
+    '';
+  return {
+    ...data,
+    uploadUrl,
+    previewUrl,
+    objectKey: objectKeyFromUploadPayload(payload),
+  };
 }
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
@@ -196,21 +252,19 @@ async function putBytesToR2(
   // break when Expo picks a new port or a new host is added without updating R2 CORS
   // (API token can't manage CORS — dashboard only).
   if (Platform.OS === 'web') {
-    const { data } = await api.post<{
-      objectKey: string;
-      previewUrl: string;
-      contentType: UploadContentType;
-      size: number;
-    }>('/uploads/direct', {
+    const { data } = await api.post<Record<string, unknown>>('/uploads/direct', {
       purpose,
       contentType,
       farmerTaskId,
       base64: uint8ArrayToBase64(bytes),
     });
     return {
-      objectKey: data.objectKey,
-      previewUrl: data.previewUrl,
-      contentType: data.contentType ?? contentType,
+      objectKey: objectKeyFromUploadPayload(data),
+      previewUrl:
+        (typeof data.previewUrl === 'string' && data.previewUrl) ||
+        (typeof data.preview_url === 'string' && data.preview_url) ||
+        '',
+      contentType,
     };
   }
 
@@ -237,7 +291,7 @@ async function putBytesToR2(
   }
 
   return {
-    objectKey: presign.objectKey,
+    objectKey: objectKeyFromUploadPayload(presign as unknown as Record<string, unknown>),
     previewUrl: presign.previewUrl,
     contentType,
   };
@@ -262,6 +316,46 @@ export async function uploadPhotoToR2(params: {
   const contentType = guessContentType(params.localUri, params.mimeType);
   const { bytes } = await uriToBytes(params.localUri, contentType);
   return putBytesToR2(params.purpose, bytes, contentType, params.farmerTaskId);
+}
+
+function isUnsupportedUploadPurposeError(err: unknown): boolean {
+  const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
+  const message = typeof data?.error === 'string' ? data.error : '';
+  return message.startsWith('purpose must be one of');
+}
+
+/**
+ * Support photos: prefer `support_attachment`. Older APIs (production main) reject
+ * that purpose, so fall back to a purpose the signed-in role is already allowed to use.
+ */
+export async function uploadSupportPhotoToR2(params: {
+  localUri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+}): Promise<{ objectKey: string; previewUrl: string; contentType: UploadContentType }> {
+  const uploaded = await uploadSupportPhotoBytes(params);
+  const objectKey = objectKeyFromUploadValue(uploaded.objectKey);
+  if (!objectKey) {
+    throw new Error('Photo upload did not return a storage key');
+  }
+  return { ...uploaded, objectKey };
+}
+
+async function uploadSupportPhotoBytes(params: {
+  localUri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+}): Promise<{ objectKey: string; previewUrl: string; contentType: UploadContentType }> {
+  try {
+    return await uploadPhotoToR2({ ...params, purpose: 'support_attachment' });
+  } catch (err) {
+    if (!isUnsupportedUploadPurposeError(err)) throw err;
+    const { useAuthStore } = await import('../store/authStore');
+    const user = useAuthStore.getState().user;
+    const fallbackPurpose: UploadPurpose =
+      user?.role === 'farmer' || Boolean(user?.farmerId) ? 'farmer_profile' : 'farmer_registration';
+    return uploadPhotoToR2({ ...params, purpose: fallbackPurpose });
+  }
 }
 
 export async function uploadBase64PhotoToR2(params: {

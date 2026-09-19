@@ -1,6 +1,6 @@
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RegistrationFormData } from '../types';
+import { getOfflineSqliteDb } from './offlineSqlite';
 
 export interface PendingRegistration {
   id: string;
@@ -11,41 +11,6 @@ export interface PendingRegistration {
 }
 
 const ASYNC_KEY = 'kilimo_pending_registrations_v1';
-const DB_NAME = 'kilimo_offline.db';
-
-type OfflineSqliteDb = {
-  execAsync: (sql: string) => Promise<void>;
-  getAllAsync: <T>(sql: string) => Promise<T[]>;
-  runAsync: (sql: string, params?: (string | number | null)[]) => Promise<unknown>;
-};
-
-let dbReady = false;
-let sqliteDb: OfflineSqliteDb | null = null;
-
-async function initDb(): Promise<void> {
-  if (dbReady) return;
-  if (Platform.OS === 'web') {
-    dbReady = true;
-    return;
-  }
-  try {
-    const { openDatabaseAsync } = await import('expo-sqlite');
-    const database = await openDatabaseAsync(DB_NAME);
-    sqliteDb = database as unknown as OfflineSqliteDb;
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS pending_registrations (
-        id TEXT PRIMARY KEY NOT NULL,
-        form_json TEXT NOT NULL,
-        picture_base64 TEXT,
-        created_at TEXT NOT NULL,
-        sync_error TEXT
-      );
-    `);
-  } catch {
-    sqliteDb = null;
-  }
-  dbReady = true;
-}
 
 async function listFromAsync(): Promise<PendingRegistration[]> {
   const raw = await AsyncStorage.getItem(ASYNC_KEY);
@@ -58,7 +23,7 @@ async function saveToAsync(items: PendingRegistration[]): Promise<void> {
 }
 
 export async function listPendingRegistrations(): Promise<PendingRegistration[]> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   if (!sqliteDb) return listFromAsync();
   const rows = await sqliteDb.getAllAsync<{
     id: string;
@@ -83,7 +48,7 @@ export async function savePendingRegistration(
     ...entry,
     createdAt: entry.createdAt ?? new Date().toISOString(),
   };
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   if (!sqliteDb) {
     const items = await listFromAsync();
     items.unshift(item);
@@ -104,7 +69,7 @@ export async function savePendingRegistration(
 }
 
 export async function removePendingRegistration(id: string): Promise<void> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   if (!sqliteDb) {
     const items = await listFromAsync();
     await saveToAsync(items.filter((i) => i.id !== id));
@@ -114,7 +79,7 @@ export async function removePendingRegistration(id: string): Promise<void> {
 }
 
 export async function updatePendingSyncError(id: string, error: string): Promise<void> {
-  await initDb();
+  const sqliteDb = await getOfflineSqliteDb();
   if (!sqliteDb) {
     const items = await listFromAsync();
     await saveToAsync(items.map((i) => (i.id === id ? { ...i, syncError: error } : i)));

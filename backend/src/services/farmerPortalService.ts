@@ -9,7 +9,7 @@ import {
 import { getFarmerSupportContacts } from './farmerHelpRequestService';
 import { resolvePhotoUrlForDisplay } from './r2StorageService';
 import { countTaskCategories, compareDueDates } from '../utils/taskCategorization';
-import { listFarmerTasks } from './hierarchyService';
+import { fulfillTransferredPaymentsForFarmer, listFarmerTasks } from './hierarchyService';
 import { listAgentTasksAssignedToFarmer } from './agentDashboardService';
 
 export type FarmerPortalTaskRow = {
@@ -27,7 +27,11 @@ export type FarmerPortalTaskRow = {
   task_order?: number;
   notes?: string | null;
   photo_evidence_url?: string | null;
+  /** Unresolved storage key / data URL for resubmit without re-upload. */
+  photo_evidence_key?: string | null;
   rejection_reason?: string | null;
+  /** Farmer-picked start date (YYYY-MM-DD) after Start Task. */
+  farmer_started_at?: string | null;
 };
 
 function mapAgentStatusToFarmer(status: string): string {
@@ -49,6 +53,12 @@ function mapAgentTaskToFarmerRow(
     assigned_by_name: row.assigned_by_name ?? 'Your field agent',
     source: 'agent_assignment',
     task_order: 0,
+    notes: row.notes ?? null,
+    photo_evidence_url: row.photo_evidence_url ?? null,
+    rejection_reason: row.rejection_reason ?? null,
+    farmer_started_at: row.farmer_started_at
+      ? String(row.farmer_started_at).slice(0, 10)
+      : null,
   };
 }
 
@@ -69,6 +79,9 @@ function mapHierarchyTaskToFarmerRow(row: Record<string, unknown>): FarmerPortal
     notes: row.notes as string | null | undefined,
     photo_evidence_url: row.photo_evidence_url as string | null | undefined,
     rejection_reason: row.rejection_reason as string | null | undefined,
+    farmer_started_at: row.farmer_started_at
+      ? String(row.farmer_started_at).slice(0, 10)
+      : null,
   };
 }
 
@@ -84,11 +97,21 @@ export async function listAllFarmerAssignedTasks(
   farmerId: string,
   filters?: { status?: string; program_project_id?: string; outstanding?: boolean }
 ): Promise<FarmerPortalTaskRow[]> {
+  await fulfillTransferredPaymentsForFarmer(farmerId);
   const hierarchyRows = (await listFarmerTasks(farmerId, filters)) as Record<string, unknown>[];
   const hierarchyTasks = hierarchyRows.map(mapHierarchyTaskToFarmerRow);
 
   if (filters?.program_project_id) {
-    return sortFarmerPortalTasks(hierarchyTasks);
+    return Promise.all(
+      sortFarmerPortalTasks(hierarchyTasks).map(async (task) => {
+        const stored = task.photo_evidence_url ?? null;
+        return {
+          ...task,
+          photo_evidence_key: stored,
+          photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+        };
+      })
+    );
   }
 
   const agentRows = await listAgentTasksAssignedToFarmer(farmerId).catch(() => []);
@@ -104,7 +127,17 @@ export async function listAllFarmerAssignedTasks(
     );
   }
 
-  return sortFarmerPortalTasks([...hierarchyTasks, ...agentTasks]);
+  const merged = sortFarmerPortalTasks([...hierarchyTasks, ...agentTasks]);
+  return Promise.all(
+    merged.map(async (task) => {
+      const stored = task.photo_evidence_url ?? null;
+      return {
+        ...task,
+        photo_evidence_key: stored,
+        photo_evidence_url: await resolvePhotoUrlForDisplay(stored),
+      };
+    })
+  );
 }
 
 export async function getFarmerDashboard(farmerId: string) {
@@ -145,10 +178,14 @@ export async function getFarmerDashboard(farmerId: string) {
     district: string;
     sub_county: string;
     picture_url?: string | null;
+    pending_picture_url?: string | null;
   };
 
   const picture_url = await resolvePhotoUrlForDisplay(
     typeof farmerRecord.picture_url === 'string' ? farmerRecord.picture_url : null
+  );
+  const pending_picture_url = await resolvePhotoUrlForDisplay(
+    typeof farmerRecord.pending_picture_url === 'string' ? farmerRecord.pending_picture_url : null
   );
 
   const allAssignedTasks = await listAllFarmerAssignedTasks(farmerId);
@@ -163,6 +200,8 @@ export async function getFarmerDashboard(farmerId: string) {
     farmer: {
       ...farmerRecord,
       picture_url,
+      pending_picture_url,
+      photoUpdatePending: Boolean(farmerRecord.pending_picture_url),
       profileLocationPending: isLocationPending(farmer as { district: string; sub_county: string }),
       aggregation_center:
         farmerRecord.aggregation_center ??
@@ -183,6 +222,8 @@ export async function getFarmerDashboard(farmerId: string) {
       overdue: categoryCounts.overdue,
       in_progress: categoryCounts.inProgress,
       not_started: categoryCounts.notStarted,
+      submitted_for_approval: categoryCounts.submittedForApproval,
+      rejected: categoryCounts.rejected,
       completed: categoryCounts.completed,
       total: categoryCounts.total,
     },
@@ -198,21 +239,139 @@ export async function getFarmerProjects(farmerId: string) {
   return getFarmerProjectSummaries(farmerId);
 }
 
+function isInternalPaymentRef(value?: string | null): boolean {
+  return /^(Task|QC):/i.test((value ?? '').trim());
+}
+
+function paymentDisplayNames(row: {
+  program_project_name?: string | null;
+  task_name?: string | null;
+  description?: string | null;
+}): { project_name: string; task_name: string; description: string } {
+  const project = (row.program_project_name ?? '').trim();
+  const task = (row.task_name ?? '').trim();
+  const raw = (row.description ?? '').trim();
+  const rawHuman = raw && !isInternalPaymentRef(raw) ? raw : '';
+  const taskName = task || rawHuman || 'Payment';
+  const projectName = project || (rawHuman && rawHuman !== taskName ? rawHuman : '');
+  return {
+    project_name: projectName || taskName,
+    task_name: taskName,
+    description: projectName && projectName !== taskName ? projectName : rawHuman,
+  };
+}
+
 export async function getFarmerPayments(farmerId: string) {
+  await fulfillTransferredPaymentsForFarmer(farmerId);
+  const [rows, expectedItems] = await Promise.all([
+    query<Record<string, unknown>>(
+      `
+      SELECT *
+      FROM (
+        SELECT DISTINCT ON (p.id)
+          p.id,
+          p.amount,
+          p.payment_status,
+          p.payment_method,
+          p.created_at,
+          p.mpesa_reference,
+          p.description,
+          COALESCE(pp.name, pp_qc.name) AS program_project_name,
+          COALESCE(t.name, t_qc.name) AS task_name
+        FROM payments p
+        LEFT JOIN farmer_tasks ft
+          ON ft.farmer_id::text = p.farmer_id::text
+         AND (
+           trim(p.description) = 'Task:' || ft.id::text
+           OR trim(p.description) = 'Task:' || ft.task_id::text
+         )
+        LEFT JOIN tasks t ON t.id = ft.task_id
+        LEFT JOIN program_projects pp ON pp.id = COALESCE(ft.program_project_id, t.program_project_id)
+        LEFT JOIN centre_inventory ci
+          ON trim(p.description) = 'QC:' || ci.id::text
+        LEFT JOIN farmer_tasks ft_qc
+          ON ft_qc.farmer_id::text = p.farmer_id::text
+         AND ft_qc.task_id::text = ci.task_id::text
+        LEFT JOIN tasks t_qc ON t_qc.id = ft_qc.task_id
+        LEFT JOIN program_projects pp_qc
+          ON pp_qc.id = COALESCE(ft_qc.program_project_id, t_qc.program_project_id)
+        WHERE p.farmer_id::text = $1::text
+        ORDER BY p.id
+      ) pay
+      ORDER BY pay.created_at DESC
+      `,
+      [farmerId]
+    ),
+    getFarmerExpectedPaymentItems(farmerId),
+  ]);
+
+  const payments = rows.map((row) => {
+    const names = paymentDisplayNames({
+      program_project_name: row.program_project_name as string | null,
+      task_name: row.task_name as string | null,
+      description: row.description as string | null,
+    });
+    return {
+      ...row,
+      id: String(row.id),
+      project_name: names.project_name,
+      task_name: names.task_name,
+      description: names.description,
+      payment_status: normalizePaymentStatusLabel(String(row.payment_status ?? '')),
+      amount: Number(row.amount ?? 0),
+      created_at: row.created_at ? String(row.created_at) : '',
+      mpesa_reference: row.mpesa_reference ? String(row.mpesa_reference) : undefined,
+      payment_method: row.payment_method ? String(row.payment_method) : 'M-Pesa',
+      is_expected: false,
+    };
+  });
+
+  // Expected assigned-task payouts first so they appear with Pending/Transferred cards.
+  return [...expectedItems, ...payments];
+}
+
+/** Assigned tasks that still count toward the Expected summary total. */
+export async function getFarmerExpectedPaymentItems(farmerId: string) {
   const rows = await query<Record<string, unknown>>(
-    `SELECT * FROM payments WHERE farmer_id = $1 ORDER BY created_at DESC`,
+    `
+    SELECT
+      ft.id AS farmer_task_id,
+      t.name AS task_name,
+      pp.name AS project_name,
+      COALESCE(t.payment_value_kes, 0)::float AS amount,
+      ft.status,
+      t.due_date AS due_date,
+      ft.created_at
+    FROM farmer_tasks ft
+    JOIN tasks t ON t.id = ft.task_id
+    LEFT JOIN program_projects pp ON pp.id = ft.program_project_id
+    WHERE ft.farmer_id = $1
+      AND ft.status NOT IN ('approved', 'completed')
+      AND COALESCE(t.payment_value_kes, 0) > 0
+    ORDER BY t.due_date ASC NULLS LAST, ft.created_at DESC
+    `,
     [farmerId]
   );
-  return rows.map((row) => ({
-    ...row,
-    id: String(row.id),
-    project_name: String(row.description ?? row.project_name ?? 'Payment'),
-    payment_status: normalizePaymentStatusLabel(String(row.payment_status ?? '')),
-    amount: Number(row.amount ?? 0),
-    created_at: row.created_at ? String(row.created_at) : '',
-    mpesa_reference: row.mpesa_reference ? String(row.mpesa_reference) : undefined,
-    payment_method: row.payment_method ? String(row.payment_method) : 'M-Pesa',
-  }));
+
+  return rows.map((row) => {
+    const projectName = String(row.project_name ?? '').trim() || 'Program project';
+    const taskName = String(row.task_name ?? '').trim() || 'Assigned task';
+    return {
+      id: `expected-${String(row.farmer_task_id)}`,
+      project_name: projectName,
+      task_name: taskName,
+      description: projectName,
+      amount: Number(row.amount ?? 0),
+      payment_status: 'Expected',
+      payment_method: 'Upcoming',
+      created_at: row.due_date
+        ? String(row.due_date)
+        : row.created_at
+          ? String(row.created_at)
+          : '',
+      is_expected: true,
+    };
+  });
 }
 
 function normalizePaymentStatusLabel(status: string): string {
@@ -220,6 +379,7 @@ function normalizePaymentStatusLabel(status: string): string {
   if (lower === 'transferred' || lower === 'paid') return 'Transferred';
   if (lower === 'pending') return 'Pending';
   if (lower === 'processing') return 'Processing';
+  if (lower === 'expected') return 'Expected';
   return status || 'Pending';
 }
 
@@ -247,7 +407,7 @@ export async function getFarmerPaymentSummary(farmerId: string) {
     FROM farmer_tasks ft
     JOIN tasks t ON t.id = ft.task_id
     WHERE ft.farmer_id = $1
-      AND ft.status NOT IN ('approved', 'completed', 'submitted')
+      AND ft.status NOT IN ('approved', 'completed')
     `,
     [farmerId]
   );
@@ -280,6 +440,8 @@ export async function getFarmerTaskSnapshotStats(farmerId: string) {
     overdue: counts.overdue,
     in_progress: counts.inProgress,
     not_started: counts.notStarted,
+    submitted_for_approval: counts.submittedForApproval,
+    rejected: counts.rejected,
     completed: counts.completed,
     total: counts.total,
   };
@@ -319,11 +481,8 @@ export async function claimPayment(farmerId: string, paymentId: string, initiate
   }
 
   const ref = `MPX${Date.now()}`;
-  await query(
-    `UPDATE payments SET payment_status = 'transferred', mpesa_reference = $1, paid_at = NOW()
-     WHERE id = $2`,
-    [ref, paymentId]
-  );
+  const { settleTransferredPayment } = await import('./hierarchyService');
+  await settleTransferredPayment(paymentId, ref);
 
   await logAudit({
     userId: farmerId,

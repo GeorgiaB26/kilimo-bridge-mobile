@@ -49,20 +49,20 @@ export function OutboxFarmerVerificationCard({ item, pushing, onPush, onDismiss 
 
       <View className="mt-3 flex-row flex-wrap gap-2">
         {needsReview ? (
-          <Button variant="outline" className="h-10" onPress={onDismiss}>
-            <Text className="text-[#D32F2F]">Dismiss</Text>
+          <Button variant="outline" size="pill" className="border-[#D32F2F]" onPress={onDismiss}>
+            <Text className="font-semibold text-[#D32F2F]">Dismiss</Text>
           </Button>
         ) : (
           <>
-            <Button className="h-10 bg-[#1A4D3E]" disabled={pushing} onPress={onPush}>
+            <Button size="pill" className="bg-[#1A4D3E]" disabled={pushing} onPress={onPush}>
               {pushing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text className="text-white">Push {decisionLabel}</Text>
+                <Text className="font-semibold text-white">Push {decisionLabel}</Text>
               )}
             </Button>
-            <Button variant="outline" className="h-10" onPress={onDismiss} disabled={pushing}>
-              <Text className="text-[#757575]">Discard</Text>
+            <Button variant="outline" size="pill" onPress={onDismiss} disabled={pushing}>
+              <Text className="font-semibold text-[#757575]">Discard</Text>
             </Button>
           </>
         )}

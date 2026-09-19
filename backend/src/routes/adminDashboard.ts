@@ -1,7 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { getAllUsers, getAdminStats, createUser } from '../services/userService';
-import { getAllFarmers, getFarmerCount, getFarmerById, advanceFarmerForFieldVerification } from '../services/farmerService';
+import { getFarmerById, advanceFarmerForFieldVerification, listFarmers, countFarmers, farmerListScopeForViewer, parseFarmerListFilters } from '../services/farmerService';
+import {
+  listAdminCustomLocations,
+  reviewCustomLocation,
+  type CustomLocationStatus,
+} from '../services/customLocationService';
 import { isFarmerVisibleToAgent } from '../services/agentService';
 import { logAudit } from '../services/auditService';
 import {
@@ -11,6 +16,7 @@ import {
   isRegionScopedRole,
   canCreateUserRole,
   normalizeRole,
+  isAdminRole,
 } from '../../../shared/src/roles';
 import type { UserRole } from '../../../shared/src/roles';
 
@@ -141,32 +147,37 @@ router.get(
   '/farmers',
   requirePermission('farmers.read'),
   asyncHandler(async (req, res) => {
-    const limit = parseInt(req.query.limit as string) || 100;
-    const offset = parseInt(req.query.offset as string) || 0;
-    const country = (req.query.country as string) || undefined;
-    const q = (req.query.q as string) || undefined;
-    let farmers = await getAllFarmers(limit, offset, country, q);
-
-    if (isRegionScopedRole(req.user!.role)) {
-      const scope = req.user!.region ?? req.user!.district;
-      if (scope) {
-        farmers = (farmers as { district: string; region?: string }[]).filter(
-          (f) => f.district === scope || f.region === scope
-        );
-      }
-    }
+    const limit = parseInt(req.query.limit as string, 10) || 100;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+    const filters = parseFarmerListFilters(req.query);
+    const scope = farmerListScopeForViewer({
+      role: req.user!.role,
+      district: req.user!.district,
+      region: req.user!.region,
+    });
+    const [farmers, total] = await Promise.all([
+      listFarmers({ scope, filters, limit, offset }),
+      countFarmers({ scope, filters }),
+    ]);
 
     void logAudit({
       userId: req.user?.userId,
       userRole: req.user?.role,
       action: 'farmer.read',
       category: 'farmer_data',
-      details: { count: (farmers as unknown[]).length, country, search: q },
+      details: {
+        count: farmers.length,
+        total,
+        country: filters.country,
+        search: filters.q,
+        membership_group_id: filters.membershipGroupId,
+        program_project_id: filters.programProjectId,
+      },
       ipAddress: req.ip,
       success: true,
     });
 
-    res.json({ farmers, total: (farmers as unknown[]).length });
+    res.json({ farmers, total });
   })
 );
 
@@ -217,9 +228,68 @@ router.patch(
   asyncHandler(async (req, res) => {
     try {
       const result = await advanceFarmerForFieldVerification(req.params.farmerId, req.user!.userId);
-      res.json({ success: true, status: result.status });
+      res.json({
+        success: true,
+        status: result.status,
+        notifiedAgentCount: result.notifiedAgentCount,
+      });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Approval failed' });
+    }
+  })
+);
+
+router.get(
+  '/custom-locations',
+  asyncHandler(async (req, res) => {
+    if (!isAdminRole(req.user!.role)) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+    const statusRaw = typeof req.query.status === 'string' ? req.query.status : 'pending';
+    const status =
+      statusRaw === 'pending' || statusRaw === 'verified' || statusRaw === 'rejected'
+        ? (statusRaw as CustomLocationStatus)
+        : 'pending';
+    try {
+      const locations = await listAdminCustomLocations({
+        status,
+        role: req.user!.role,
+        district: req.user!.district,
+      });
+      res.json({ locations });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Could not list villages' });
+    }
+  })
+);
+
+router.patch(
+  '/custom-locations/:id',
+  asyncHandler(async (req, res) => {
+    if (!isAdminRole(req.user!.role)) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+    const status = req.body?.status as string | undefined;
+    if (status !== 'verified' && status !== 'rejected') {
+      res.status(400).json({ error: 'status must be verified or rejected' });
+      return;
+    }
+    try {
+      const location = await reviewCustomLocation({
+        id: req.params.id,
+        status,
+        rejectionReason: typeof req.body?.rejection_reason === 'string' ? req.body.rejection_reason : null,
+        reviewerUserId: req.user!.userId,
+        reviewerRole: req.user!.role,
+        reviewerDistrict: req.user!.district,
+      });
+      res.json({ location });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not review village';
+      const code = message.includes('outside') || message.includes('Insufficient') ? 403 : 400;
+      res.status(code).json({ error: message });
     }
   })
 );

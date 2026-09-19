@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, Image, StyleSheet, Modal, TextInput, Pressable, ScrollView, Platform,
+  View, Text, Image, StyleSheet, TextInput, Pressable, Platform,
 } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardBottomSheet } from '@/components/ui/KeyboardBottomSheet';
 import { COLORS } from '../../constants';
 import { extractApiError, showMessage } from '../../utils/feedback';
 import { submitFarmerTaskWithOutbox } from '../../services/submitFarmerTaskOutbox';
 
-/** Client-only quality check — backend does not enforce a notes minimum. */
+/** Client-side quality check — agent_assignment also enforces ≥50 on the API. */
 const MIN_NOTES_LENGTH = 50;
 
 export interface FarmerTaskSubmitTarget {
@@ -18,6 +19,14 @@ export interface FarmerTaskSubmitTarget {
   name: string;
   description?: string;
   payment_value_kes?: number;
+  source?: 'hierarchy' | 'agent_assignment';
+  /** Prefill after recall / resubmit — display URL or local URI. */
+  initialPhotoUri?: string | null;
+  /** Storage key / data URL for resubmit without re-upload when photo unchanged. */
+  initialPhotoKey?: string | null;
+  initialNotes?: string | null;
+  /** Agent rejection feedback shown when resubmitting a rejected task. */
+  rejectionReason?: string | null;
 }
 
 interface Props {
@@ -31,6 +40,9 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  /** When true, photoUri is a new camera/gallery pick (needs upload). */
+  const [photoReplaced, setPhotoReplaced] = useState(false);
+  const [keptPhotoKey, setKeptPhotoKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [picking, setPicking] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -40,9 +52,25 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
     setNotes('');
     setPhotoUri(null);
     setPhotoBase64(null);
+    setPhotoReplaced(false);
+    setKeptPhotoKey(null);
     setPhotoError('');
     setNotesError('');
   };
+
+  useEffect(() => {
+    if (!visible || !task) return;
+    const prefillNotes = task.initialNotes?.trim() ?? '';
+    const displayPhoto = task.initialPhotoUri?.trim() || null;
+    const key = task.initialPhotoKey?.trim() || null;
+    setNotes(prefillNotes);
+    setPhotoUri(displayPhoto);
+    setPhotoBase64(null);
+    setPhotoReplaced(false);
+    setKeptPhotoKey(key || displayPhoto);
+    setPhotoError('');
+    setNotesError('');
+  }, [visible, task?.id, task?.initialNotes, task?.initialPhotoUri, task?.initialPhotoKey]);
 
   const close = () => {
     reset();
@@ -78,6 +106,8 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
       if (!result.canceled && result.assets[0]) {
         setPhotoUri(result.assets[0].uri);
         setPhotoBase64(result.assets[0].base64 ?? null);
+        setPhotoReplaced(true);
+        setKeptPhotoKey(null);
       }
     } finally {
       setPicking(false);
@@ -87,7 +117,7 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
   const submit = async () => {
     if (!task) return;
     let valid = true;
-    if (!photoUri) {
+    if (!photoUri && !keptPhotoKey) {
       setPhotoError('Please upload a photo (JPEG or PNG) of your completed work.');
       valid = false;
     } else {
@@ -106,12 +136,15 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
     setSubmitting(true);
     try {
+      const useExistingKey = !photoReplaced && Boolean(keptPhotoKey);
+      const photoLocalUri = useExistingKey ? keptPhotoKey! : photoUri!;
       const result = await submitFarmerTaskWithOutbox({
         farmerTaskId: task.id,
         taskName: task.name,
         notes: notes.trim(),
-        photoLocalUri: photoUri!,
-        photoBase64,
+        photoLocalUri,
+        photoBase64: useExistingKey ? null : photoBase64,
+        source: task.source ?? 'hierarchy',
       });
       reset();
       onSubmitted({ offline: result.mode === 'offline' });
@@ -132,11 +165,17 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
 
   const noteLen = notes.trim().length;
   const notesTooShort = noteLen < MIN_NOTES_LENGTH;
+  const hasPrefill = Boolean(task?.initialNotes?.trim() || task?.initialPhotoUri);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <View style={styles.overlay}>
-        <ScrollView style={styles.card} contentContainerStyle={styles.content}>
+    <KeyboardBottomSheet
+      visible={visible}
+      onRequestClose={close}
+      scrollable
+      backdropPressDisabled={submitting || picking}
+      sheetStyle={styles.card}
+      scrollViewProps={{ contentContainerStyle: styles.content }}
+    >
           <Pressable onPress={close} style={styles.closeRow}>
             <View style={styles.closeContent}>
               <X size={16} color={COLORS.muted} />
@@ -145,7 +184,21 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
           </Pressable>
           {task ? (
             <>
-              <Text style={styles.title}>Submit Task: {task.name}</Text>
+              <Text style={styles.title}>
+                {hasPrefill ? 'Update & submit: ' : 'Submit Task: '}
+                {task.name}
+              </Text>
+              {task.rejectionReason?.trim() ? (
+                <View style={styles.rejectionBox}>
+                  <Text style={styles.rejectionTitle}>Rejected — reason from your field agent</Text>
+                  <Text style={styles.rejectionBody}>{task.rejectionReason.trim()}</Text>
+                </View>
+              ) : null}
+              {hasPrefill ? (
+                <Text style={styles.prefillHint}>
+                  Your previous photo and notes are loaded — edit anything, then submit again.
+                </Text>
+              ) : null}
               {task.description ? (
                 <Text style={styles.description}>{task.description}</Text>
               ) : null}
@@ -208,20 +261,37 @@ export function FarmerTaskSubmitModal({ task, visible, onClose, onSubmitted }: P
               </Button>
             </>
           ) : null}
-        </ScrollView>
-      </View>
-    </Modal>
+    </KeyboardBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   card: { maxHeight: '92%', backgroundColor: COLORS.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { padding: 20 },
   closeRow: { alignSelf: 'flex-end', marginBottom: 4 },
   closeContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   close: { color: COLORS.muted, fontSize: 16 },
   title: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
+  rejectionBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+    backgroundColor: '#FFEBEE',
+  },
+  rejectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.alert,
+    marginBottom: 4,
+  },
+  rejectionBody: {
+    fontSize: 14,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+  prefillHint: { fontSize: 13, color: COLORS.muted, marginTop: 8, lineHeight: 18 },
   description: { fontSize: 14, color: COLORS.text, marginTop: 8, lineHeight: 20 },
   pay: { fontSize: 16, fontWeight: '700', color: COLORS.accent, marginTop: 8, marginBottom: 16 },
   label: { fontSize: 13, fontWeight: '600', color: COLORS.muted, marginTop: 12, marginBottom: 6 },

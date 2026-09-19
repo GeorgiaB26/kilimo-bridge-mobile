@@ -10,10 +10,13 @@ import { ensureFarmerHelpRequestsTable } from './services/farmerHelpRequestServi
 import { ensureAgentTasksTable } from './services/agentDashboardService';
 import { ensureTaskActivityLogTable } from './services/taskActivityService';
 import { ensureMessagingTables } from './services/messagingService';
+import { ensureSupportTicketTables } from './services/supportTicketService';
+import { ensureCustomLocationsTable } from './services/customLocationService';
 import { ensureFarmerTaskAssignerColumn } from './services/hierarchyService';
 import messagesRoutes from './routes/messages';
+import supportRoutes from './routes/support';
 import notificationsRoutes from './routes/notifications';
-import { backfillLegacyIdNumberHashes } from './services/farmerService';
+import { backfillLegacyIdNumberHashes, ensurePendingPictureColumn } from './services/farmerService';
 import { validateProductionEnv } from './validateEnv';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
@@ -51,7 +54,7 @@ function healthPayload() {
     status: bootstrapError ? 'error' : appReady ? 'ok' : 'starting',
     error: bootstrapError,
     timestamp: new Date().toISOString(),
-    api_build: 'v2.11.24-due-date-normalize-fix',
+    api_build: 'v2.11.26-otp-any-country-phone',
     field_agent_features: {
       messaging_restricted: true,
       notification_settings_legacy_sync: true,
@@ -93,7 +96,10 @@ async function runSchemaEnsures(): Promise<void> {
   await ensureAgentTasksTable();
   await ensureTaskActivityLogTable();
   await ensureMessagingTables();
+  await ensureSupportTicketTables();
+  await ensureCustomLocationsTable();
   await ensureFarmerTaskAssignerColumn();
+  await ensurePendingPictureColumn();
 }
 
 async function runSeedAndCounts(): Promise<number> {
@@ -151,6 +157,7 @@ function mountApiRoutes(): void {
   app.use('/api/banking', bankingRoutes);
   app.use('/api/agents', agentRoutes);
   app.use('/api/messages', messagesRoutes);
+  app.use('/api/support', supportRoutes);
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/webhooks', equityWebhookRouter);

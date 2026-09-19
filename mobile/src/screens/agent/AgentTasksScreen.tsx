@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   View,
@@ -9,6 +9,8 @@ import {
   TextInput,
   Pressable,
   Platform,
+  StyleSheet,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
@@ -17,50 +19,183 @@ import {
   Ban,
   Bell,
   CircleCheck,
+  CircleX,
   Hourglass,
+  Plus,
   TriangleAlert,
 } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { pillButtonBase, pillButtonTextBase } from '@/components/ui/pillButtonStyles';
 import {
-  approveFarmerTask,
-  createAgentPersonalTask,
   getAgentHelpRequests,
-  getAgentTasks,
-  rejectFarmerTask,
   resolveAgentHelpRequest,
   setAgentTaskReminder,
-  updateAgentPersonalTask,
 } from '../../api/client';
-import { api } from '../../api/client';
 import { extractApiError, showMessage } from '../../utils/feedback';
-import { isTaskOverdue } from '../../utils/taskCategorization';
-import { categorizeTasks, pickCategorizedTasks } from '../../utils/taskCategorization';
+import { isTaskOverdue, categorizeTasks, countOverlappingStatusKpis, isTaskCompletedStatus } from '../../utils/taskCategorization';
+import type { CategorizedTasks } from '../../utils/taskCategorization';
 import { formatCleanDate } from '../../utils/greeting';
+import { isSubmittedForApprovalStatus } from '../../utils/taskStatus';
 import type { AgentTabParamList } from '../../navigation/types';
+import { useTabScreenContentContainerStyle } from '../../navigation/FloatingTabBar';
 import { KBCard } from '../../components/ui/KBCard';
 import { KBStatusChip } from '../../components/ui/KBStatusChip';
+import { OfflineCachedDataBanner } from '../../components/OfflineCachedDataBanner';
 import { AddAgentTaskModal } from '../../components/agent/AddAgentTaskModal';
+import { loadWithReadCache, READ_CACHE_KEYS } from '../../services/offlineReadCache';
+import {
+  fetchAgentFarmersForCache,
+  fetchAgentTasksForCache,
+} from '../../services/readCacheFetchers';
+import { useReadCacheUserScope } from '../../hooks/useReadCacheUserScope';
+import { scheduleAgentTaskPhotoWarm } from '../../services/offlineTaskPhotoCache';
 import { AgentTaskDetailModal, type AgentTaskDetail } from '../../components/agent/AgentTaskDetailModal';
+import { TaskEvidenceImage } from '../../components/TaskEvidenceImage';
+import { OutboxAgentTaskApprovalCard } from '../../components/OutboxAgentTaskApprovalCard';
+import { OutboxAgentPersonalTaskCard } from '../../components/OutboxAgentPersonalTaskCard';
+import { OutboxTaskApprovalCard } from '../../components/OutboxTaskApprovalCard';
+import {
+  TaskStatusKpiRow,
+  type TaskStatusKpiKey,
+} from '../../components/TaskStatusKpiRow';
 import { checkAndShowTaskReminders, setTaskReminder, type ReminderType } from '../../utils/taskReminders';
+import {
+  dismissAgentTaskApprovalOutbox,
+  listPendingAgentTaskApprovals,
+  pushPendingAgentTaskApproval,
+  submitAgentTaskDecisionWithOutbox,
+  syncAllPendingAgentTaskApprovals,
+  type PendingAgentTaskApprovalView,
+} from '../../services/submitAgentTaskApprovalOutbox';
+import {
+  dismissTaskApprovalOutbox,
+  listPendingTaskApprovals,
+  pushPendingTaskApproval,
+  submitTaskDecisionWithOutbox,
+  syncAllPendingTaskApprovals,
+  type PendingTaskApprovalView,
+} from '../../services/submitTaskApprovalOutbox';
+import {
+  createAgentPersonalTaskWithOutbox,
+  dismissAgentPersonalTaskOutbox,
+  listPendingAgentPersonalTasks,
+  pushPendingAgentPersonalTask,
+  syncAllPendingAgentPersonalTasks,
+  updateAgentPersonalTaskStatusWithOutbox,
+  type PendingAgentPersonalTaskView,
+} from '../../services/submitAgentPersonalTaskOutbox';
 
 type UnifiedTask = {
   id: string;
   name: string;
   status: string;
   due_date?: string | null;
+  farmer_id?: string;
   farmer_name?: string;
   program_project_name?: string;
   source: 'farmer' | 'personal';
   payment_value_kes?: number;
   notes?: string;
   photo_evidence_url?: string;
+  rejection_reason?: string;
   priority?: string;
   description?: string | null;
   assigned_farmer_names?: string[];
+  assigned_farmer_ids?: string[];
 };
 
-type FilterKey = 'all' | 'overdue' | 'not_started' | 'in_progress' | 'completed';
+/** Status / KPI filter — includes overdue for KPI sync; raw statuses for the Filters dropdown. */
+type StatusFilterKey =
+  | 'all'
+  | 'overdue'
+  | 'not_started'
+  | 'in_progress'
+  | 'submitted_for_approval'
+  | 'approved'
+  | 'rejected'
+  | 'completed';
+
+const STATUS_FILTER_OPTIONS: Array<{ key: StatusFilterKey; label: string }> = [
+  { key: 'all', label: 'All statuses' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'not_started', label: 'Not started' },
+  { key: 'in_progress', label: 'In progress' },
+  { key: 'submitted_for_approval', label: 'Submitted for approval' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'completed', label: 'Completed' },
+];
+
+function normalizeTaskStatus(status: string): string {
+  const s = status.toLowerCase().replace(/_/g, '-');
+  if (s === 'submitted') return 'submitted-for-approval';
+  return s;
+}
+
+function isRejectedStatus(status: string): boolean {
+  return normalizeTaskStatus(status) === 'rejected';
+}
+
+function parseAssignedFarmerIds(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) {
+    return raw.map(String).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      return raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return undefined;
+}
+
+function firstNameKey(name: string): string {
+  return (name.trim().split(/\s+/)[0] || name).toLowerCase();
+}
+
+function taskMatchesFarmer(task: UnifiedTask, farmerId: string, farmerName: string): boolean {
+  if (task.farmer_id && task.farmer_id === farmerId) return true;
+  if (task.assigned_farmer_ids?.includes(farmerId)) return true;
+  const name = farmerName.trim().toLowerCase();
+  if (!name) return false;
+  if (task.farmer_name?.toLowerCase().includes(name)) return true;
+  if (task.assigned_farmer_names?.some((n) => n.toLowerCase().includes(name))) return true;
+  return false;
+}
+
+function taskMatchesStatusFilter(task: UnifiedTask, filter: StatusFilterKey): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'overdue') return isTaskOverdue(task.due_date, task.status);
+  const s = normalizeTaskStatus(task.status);
+  switch (filter) {
+    case 'not_started':
+      return s === 'not-started';
+    case 'in_progress':
+      return s === 'in-progress';
+    case 'submitted_for_approval':
+      return s === 'submitted-for-approval';
+    case 'approved':
+      return s === 'approved';
+    case 'rejected':
+      return s === 'rejected';
+    case 'completed':
+      // Match KPI / categorizeTasks: approved counts as completed.
+      return isTaskCompletedStatus(task.status);
+    default:
+      return true;
+  }
+}
+
+function statusFilterToKpiKey(filter: StatusFilterKey): TaskStatusKpiKey | null {
+  if (filter === 'all' || filter === 'approved') return null;
+  return filter;
+}
 
 function formatDue(value?: string | null): string {
   if (!value) return 'No due date';
@@ -80,6 +215,8 @@ function TaskSection({
   onTaskPress,
   onExpandApproval,
   expandedId,
+  highlightTaskId,
+  onTaskLayout,
   rejectReason,
   setRejectReason,
   acting,
@@ -92,18 +229,27 @@ function TaskSection({
   tasks: UnifiedTask[];
   onReminder: (task: UnifiedTask, type: ReminderType) => void;
   onTaskPress: (task: UnifiedTask) => void;
-  onExpandApproval?: (id: string) => void;
+  onExpandApproval?: (id: string | null) => void;
   expandedId?: string | null;
+  highlightTaskId?: string | null;
+  /** Y of card within the tasks list container (section offset + card offset). */
+  onTaskLayout?: (taskId: string, yWithinList: number) => void;
   rejectReason?: string;
   setRejectReason?: (v: string) => void;
   acting?: string | null;
-  approve?: (id: string) => void;
-  reject?: (id: string) => void;
+  approve?: (id: string) => void | Promise<void>;
+  reject?: (id: string) => void | Promise<void>;
 }) {
+  const sectionOffsetRef = useRef(0);
   if (!tasks.length) return null;
   const titleColor = color ?? '#757575';
   return (
-    <View className="mb-5">
+    <View
+      className="mb-5"
+      onLayout={(e) => {
+        sectionOffsetRef.current = e.nativeEvent.layout.y;
+      }}
+    >
       <View className="mb-2 flex-row items-center gap-1.5">
         {TitleIcon ? <TitleIcon size={16} color={titleColor} /> : null}
         <Text className="text-sm font-bold uppercase tracking-wide" style={{ color: titleColor }}>
@@ -111,14 +257,27 @@ function TaskSection({
         </Text>
       </View>
       {tasks.map((item) => {
-        const isApproval = item.status === 'submitted-for-approval' || item.status === 'submitted';
+        const isApproval = isSubmittedForApprovalStatus(item.status);
         const expanded = expandedId === item.id;
+        const highlighted = highlightTaskId === item.id;
+        const photoUrl = item.photo_evidence_url?.trim() || '';
         return (
-          <KBCard
+          <View
             key={`${item.source}-${item.id}`}
-            style={{ marginBottom: 8 }}
-            onPress={() => onTaskPress(item)}
+            collapsable={false}
+            onLayout={(e) => {
+              onTaskLayout?.(item.id, sectionOffsetRef.current + e.nativeEvent.layout.y);
+            }}
           >
+            <KBCard
+              style={{
+                marginBottom: 8,
+                ...(highlighted
+                  ? { borderWidth: 2, borderColor: '#1A4D3E' }
+                  : null),
+              }}
+              onPress={() => onTaskPress(item)}
+            >
             <Text className="text-base font-bold text-[#333333]">{item.name}</Text>
             <Text className="mt-1 text-[13px] text-[#757575]">
               Due: {formatDue(item.due_date)}
@@ -130,7 +289,17 @@ function TaskSection({
             {item.program_project_name ? (
               <Text className="text-[13px] text-[#757575]">{item.program_project_name}</Text>
             ) : null}
-            {item.source === 'personal' ? (
+            {isRejectedStatus(item.status) ? (
+              <View className="mt-2">
+                <KBStatusChip label="Rejected" variant="danger" />
+                {item.rejection_reason ? (
+                  <Text className="mt-1 text-sm leading-5 text-[#D32F2F]">
+                    Reason: {item.rejection_reason}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            {item.source === 'personal' && !isApproval && !isRejectedStatus(item.status) ? (
               <View className="mt-2 flex-row flex-wrap gap-2">
                 <Pressable
                   onPress={() => onReminder(item, '1_day_before')}
@@ -162,15 +331,40 @@ function TaskSection({
               </View>
             ) : null}
             {isApproval && onExpandApproval ? (
-              <Pressable onPress={() => onExpandApproval(item.id)} className="mt-2">
+              <Pressable
+                onPress={() => onExpandApproval(expanded ? null : item.id)}
+                className="mt-2"
+              >
                 <KBStatusChip label="Submitted for approval" variant="pending" />
               </Pressable>
             ) : null}
             {expanded && isApproval && approve && reject ? (
               <View className="mt-3 gap-2">
-                {item.notes ? <Text className="text-sm">Notes: {item.notes}</Text> : null}
-                <Button className="h-11 bg-[#2E7D5E]" onPress={() => approve(item.id)} disabled={acting === item.id}>
-                  <Text className="text-white">Approve</Text>
+                {item.notes ? (
+                  <Text className="text-sm leading-5 text-[#333333]">Notes: {item.notes}</Text>
+                ) : (
+                  <Text className="text-sm text-[#757575]">No notes provided.</Text>
+                )}
+                {photoUrl ? (
+                  <TaskEvidenceImage
+                    taskId={item.id}
+                    remoteUrl={photoUrl}
+                    className="h-40 w-full rounded-xl bg-[#F0F0F0]"
+                    resizeMode="cover"
+                    accessibilityLabel="Task photo evidence"
+                  />
+                ) : (
+                  <Text className="text-sm font-semibold text-[#D32F2F]">Photo required</Text>
+                )}
+                <Button
+                  size="pill"
+                  className="bg-[#2E7D5E]"
+                  onPress={() => {
+                    void Promise.resolve(approve(item.id)).catch(() => undefined);
+                  }}
+                  disabled={acting === item.id}
+                >
+                  <Text className="font-semibold text-white">Approve</Text>
                 </Button>
                 {setRejectReason ? (
                   <TextInput
@@ -180,14 +374,23 @@ function TaskSection({
                     onChangeText={setRejectReason}
                   />
                 ) : null}
-                <Button variant="outline" className="h-11" onPress={() => reject(item.id)} disabled={acting === item.id}>
-                  <Text className="text-[#D32F2F]">Reject</Text>
+                <Button
+                  variant="outline"
+                  size="pill"
+                  className="border-[#D32F2F]"
+                  onPress={() => {
+                    void Promise.resolve(reject(item.id)).catch(() => undefined);
+                  }}
+                  disabled={acting === item.id}
+                >
+                  <Text className="font-semibold text-[#D32F2F]">Reject</Text>
                 </Button>
               </View>
             ) : (
               <Text className="mt-2 text-xs font-semibold text-[#1A4D3E]">Tap to view details</Text>
             )}
           </KBCard>
+          </View>
         );
       })}
     </View>
@@ -197,6 +400,7 @@ function TaskSection({
 export function AgentTasksScreen() {
   const route = useRoute<RouteProp<AgentTabParamList, 'Tasks'>>();
   const navigation = useNavigation<NavigationProp<AgentTabParamList>>();
+  const userScope = useReadCacheUserScope();
   const [farmerTasks, setFarmerTasks] = useState<UnifiedTask[]>([]);
   const [personalTasks, setPersonalTasks] = useState<UnifiedTask[]>([]);
   const [helpRequests, setHelpRequests] = useState<
@@ -205,30 +409,69 @@ export function AgentTasksScreen() {
   const [farmers, setFarmers] = useState<Array<{ farmer_id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('all');
-  const [showFilter, setShowFilter] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
+  const [farmerFilterId, setFarmerFilterId] = useState<string | null>(null);
+  const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [farmerMenuOpen, setFarmerMenuOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedTask, setSelectedTask] = useState<AgentTaskDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [updatingTask, setUpdatingTask] = useState(false);
-
-  const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => ({
-    id: String(t.id),
-    name: String(t.name ?? ''),
-    status: String(t.status ?? 'not_started'),
-    due_date: t.due_date as string | null,
-    priority: t.priority as string | undefined,
-    description: t.description as string | null | undefined,
-    assigned_farmer_names: Array.isArray(t.assigned_farmer_names)
-      ? (t.assigned_farmer_names as string[])
-      : undefined,
-    source: 'personal' as const,
+  const [pendingAgentApprovals, setPendingAgentApprovals] = useState<
+    PendingAgentTaskApprovalView[]
+  >([]);
+  const [pendingFarmerApprovals, setPendingFarmerApprovals] = useState<PendingTaskApprovalView[]>(
+    []
+  );
+  const [pendingPersonalTasks, setPendingPersonalTasks] = useState<PendingAgentPersonalTaskView[]>(
+    []
+  );
+  const [pushingId, setPushingId] = useState<string | null>(null);
+  const [deepLinkHighlightId, setDeepLinkHighlightId] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
+  const appliedDeepLinkTaskIdRef = useRef<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollContentStyle = useTabScreenContentContainerStyle({
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 40,
   });
+  const cardListOffsetRef = useRef(0);
+  const cardOffsetsRef = useRef<Record<string, number>>({});
+  const pendingScrollTaskIdRef = useRef<string | null>(null);
+  const pendingOpenDetailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mapPersonalTask = (t: Record<string, unknown>): UnifiedTask => {
+    const assignedNames = Array.isArray(t.assigned_farmer_names)
+      ? (t.assigned_farmer_names as string[])
+      : undefined;
+    const assignedIds = parseAssignedFarmerIds(t.assigned_farmer_ids);
+    return {
+      id: String(t.id),
+      name: String(t.name ?? ''),
+      status: String(t.status ?? 'not_started'),
+      due_date: t.due_date as string | null,
+      priority: t.priority as string | undefined,
+      description: t.description as string | null | undefined,
+      assigned_farmer_names: assignedNames,
+      assigned_farmer_ids: assignedIds,
+      farmer_name: assignedNames?.length
+        ? assignedNames.join(', ')
+        : (t.farmer_name as string | undefined),
+      notes: t.notes as string | undefined,
+      photo_evidence_url: t.photo_evidence_url as string | undefined,
+      rejection_reason: t.rejection_reason as string | undefined,
+      source: 'personal' as const,
+    };
+  };
 
   const toTaskDetail = (task: UnifiedTask): AgentTaskDetail => ({
     id: task.id,
@@ -241,87 +484,254 @@ export function AgentTasksScreen() {
     payment_value_kes: task.payment_value_kes,
     notes: task.notes,
     photo_evidence_url: task.photo_evidence_url,
+    rejection_reason: task.rejection_reason,
     priority: task.priority,
     source: task.source,
     assigned_farmer_names: task.assigned_farmer_names,
   });
 
   const openTaskDetail = (task: UnifiedTask) => {
+    setDeepLinkHighlightId(null);
     setSelectedTask(toTaskDetail(task));
     setDetailOpen(true);
   };
 
-  const load = useCallback(async () => {
-    try {
-      const tasksData = await getAgentTasks();
-      const ft = (tasksData.farmer_tasks ?? []).map((t: Record<string, unknown>) => ({
-        id: String(t.id),
-        name: String(t.name ?? ''),
-        status: String(t.status ?? 'not_started'),
-        due_date: t.due_date as string | null,
-        farmer_name: t.farmer_name as string | undefined,
-        program_project_name: t.program_project_name as string | undefined,
-        payment_value_kes: t.payment_value_kes as number | undefined,
-        notes: t.notes as string | undefined,
-        photo_evidence_url: t.photo_evidence_url as string | undefined,
-        description: t.description as string | null | undefined,
-        source: 'farmer' as const,
-      }));
-      const pt = (tasksData.personal_tasks ?? []).map((t: Record<string, unknown>) =>
-        mapPersonalTask(t)
-      );
-      setFarmerTasks(ft);
-      setPersonalTasks(pt);
-    } catch {
-      /* keep existing task lists on partial failure */
-    }
+  const scrollToTaskCard = useCallback((taskId: string) => {
+    const yWithinList = cardOffsetsRef.current[taskId];
+    if (yWithinList == null || !scrollRef.current) return false;
+    const y = cardListOffsetRef.current + yWithinList;
+    scrollRef.current.scrollTo({ y: Math.max(0, y - 16), animated: true });
+    return true;
+  }, []);
 
-    try {
-      const helpData = await getAgentHelpRequests();
-      setHelpRequests(helpData.requests ?? []);
-    } catch {
-      /* keep existing help requests */
-    }
+  const scheduleScrollToTask = useCallback(
+    (taskId: string) => {
+      pendingScrollTaskIdRef.current = taskId;
+      const attempt = () => {
+        if (pendingScrollTaskIdRef.current !== taskId) return;
+        if (scrollToTaskCard(taskId)) {
+          pendingScrollTaskIdRef.current = null;
+        }
+      };
+      requestAnimationFrame(attempt);
+      setTimeout(attempt, 120);
+      setTimeout(attempt, 350);
+      setTimeout(attempt, 700);
+    },
+    [scrollToTaskCard]
+  );
 
+  const onCardListLayout = useCallback((e: LayoutChangeEvent) => {
+    cardListOffsetRef.current = e.nativeEvent.layout.y;
+    const pendingId = pendingScrollTaskIdRef.current;
+    if (pendingId) {
+      scrollToTaskCard(pendingId);
+    }
+  }, [scrollToTaskCard]);
+
+  const onTaskLayoutInList = useCallback(
+    (taskId: string, yWithinList: number) => {
+      cardOffsetsRef.current[taskId] = yWithinList;
+      if (pendingScrollTaskIdRef.current === taskId) {
+        if (scrollToTaskCard(taskId)) {
+          pendingScrollTaskIdRef.current = null;
+        }
+      }
+    },
+    [scrollToTaskCard]
+  );
+
+  const loadPending = useCallback(async () => {
     try {
-      const farmersRes = await api.get('/agents/farmers');
-      setFarmers((farmersRes.data.farmers ?? []).map((f: { farmer_id: string; name: string }) => ({
-        farmer_id: f.farmer_id,
-        name: f.name,
-      })));
+      const [agentPending, farmerPending, personalPending] = await Promise.all([
+        listPendingAgentTaskApprovals(),
+        listPendingTaskApprovals(),
+        listPendingAgentPersonalTasks(),
+      ]);
+      setPendingAgentApprovals(agentPending);
+      setPendingFarmerApprovals(farmerPending);
+      setPendingPersonalTasks(personalPending);
     } catch {
-      /* keep existing farmers list */
-    } finally {
-      setLoading(false);
+      /* keep existing pending lists */
     }
   }, []);
 
+  const load = useCallback(async () => {
+    try {
+      const [tasksResult, helpResult, farmersResult] = await Promise.all([
+        loadWithReadCache({
+          cacheKey: READ_CACHE_KEYS.agentTasks,
+          userScope,
+          fetchLive: fetchAgentTasksForCache,
+        })
+          .then((result) => ({ ok: true as const, result }))
+          .catch(() => ({ ok: false as const })),
+        getAgentHelpRequests()
+          .then((helpData) => ({ ok: true as const, helpData }))
+          .catch(() => ({ ok: false as const })),
+        loadWithReadCache<{ farmers?: Array<{ farmer_id: string; name: string }> }>({
+          cacheKey: READ_CACHE_KEYS.agentFarmers,
+          userScope,
+          fetchLive: fetchAgentFarmersForCache,
+        })
+          .then((result) => ({ ok: true as const, result }))
+          .catch(() => ({ ok: false as const })),
+      ]);
+
+      if (tasksResult.ok) {
+        const tasksData = tasksResult.result.data;
+        const ft = (tasksData.farmer_tasks ?? []).map((t: Record<string, unknown>) => ({
+          id: String(t.id),
+          name: String(t.name ?? ''),
+          status: String(t.status ?? 'not_started'),
+          due_date: t.due_date as string | null,
+          farmer_id: t.farmer_id ? String(t.farmer_id) : undefined,
+          farmer_name: t.farmer_name as string | undefined,
+          program_project_name: t.program_project_name as string | undefined,
+          payment_value_kes: t.payment_value_kes as number | undefined,
+          notes: t.notes as string | undefined,
+          photo_evidence_url: t.photo_evidence_url as string | undefined,
+          rejection_reason: t.rejection_reason as string | undefined,
+          description: t.description as string | null | undefined,
+          source: 'farmer' as const,
+        }));
+        const pt = (tasksData.personal_tasks ?? []).map((t: Record<string, unknown>) =>
+          mapPersonalTask(t)
+        );
+        setFarmerTasks(ft);
+        setPersonalTasks(pt);
+        setCacheFetchedAt(
+          tasksResult.result.fromCache ? tasksResult.result.fetchedAt : null
+        );
+        if (!tasksResult.result.fromCache) {
+          scheduleAgentTaskPhotoWarm(userScope);
+        }
+        hasLoadedRef.current = true;
+      } else if (!hasLoadedRef.current) {
+        setCacheFetchedAt(null);
+      }
+
+      if (helpResult.ok) {
+        setHelpRequests(helpResult.helpData.requests ?? []);
+      }
+
+      if (farmersResult.ok) {
+        setFarmers(
+          (farmersResult.result.data.farmers ?? []).map(
+            (f: { farmer_id: string; name: string }) => ({
+              farmer_id: f.farmer_id,
+              name: f.name,
+            })
+          )
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [userScope]);
+
   useFocusEffect(
     useCallback(() => {
-      const routeFilter = route.params?.filter;
-      if (routeFilter) {
-        setFilter(routeFilter);
-        setShowFilter(false);
-        navigation.setParams({ filter: undefined });
-      }
-      if (route.params?.openAdd) {
-        setAddModalOpen(true);
-        navigation.setParams({ openAdd: undefined });
-      }
-      load();
-      checkAndShowTaskReminders();
-    }, [load, navigation, route.params?.filter, route.params?.openAdd])
+      let cancelled = false;
+      void (async () => {
+        // Paint the list ASAP — do not wait on outbox sync before fetching.
+        await Promise.all([load(), loadPending()]);
+        if (cancelled) return;
+        await Promise.all([
+          syncAllPendingAgentTaskApprovals(),
+          syncAllPendingTaskApprovals(),
+          syncAllPendingAgentPersonalTasks(),
+        ]);
+        if (cancelled) return;
+        await Promise.all([load(), loadPending()]);
+        checkAndShowTaskReminders();
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [load, loadPending])
   );
+
+  // Dashboard KPI / notification deep-links: apply filter (and openAdd) from route params.
+  useEffect(() => {
+    const routeFilter = route.params?.filter;
+    if (routeFilter) {
+      setStatusFilter(routeFilter as StatusFilterKey);
+      setShowFiltersPanel(false);
+      navigation.setParams({ filter: undefined });
+    }
+    if (route.params?.openAdd) {
+      setAddModalOpen(true);
+      navigation.setParams({ openAdd: undefined });
+    }
+  }, [navigation, route.params?.filter, route.params?.openAdd]);
+
+  // Open task detail as soon as the target exists — scroll first, then open modal.
+  useEffect(() => {
+    const deepLinkTaskId = route.params?.taskId ?? route.params?.highlightTaskId;
+    if (!deepLinkTaskId) {
+      appliedDeepLinkTaskIdRef.current = null;
+      return;
+    }
+    if (appliedDeepLinkTaskIdRef.current === deepLinkTaskId) return;
+    const match = [...farmerTasks, ...personalTasks].find((t) => t.id === deepLinkTaskId);
+    if (!match) return;
+    appliedDeepLinkTaskIdRef.current = deepLinkTaskId;
+    setStatusFilter('all');
+    setFarmerFilterId(null);
+    setMyTasksOnly(false);
+    setShowFiltersPanel(false);
+    setExpandedId(match.id);
+    setDeepLinkHighlightId(match.id);
+    scheduleScrollToTask(match.id);
+    navigation.setParams({ taskId: undefined, highlightTaskId: undefined });
+
+    if (pendingOpenDetailTimerRef.current) {
+      clearTimeout(pendingOpenDetailTimerRef.current);
+    }
+    pendingOpenDetailTimerRef.current = setTimeout(() => {
+      pendingOpenDetailTimerRef.current = null;
+      setSelectedTask(toTaskDetail(match));
+      setDetailOpen(true);
+    }, 500);
+  }, [
+    route.params?.taskId,
+    route.params?.highlightTaskId,
+    farmerTasks,
+    personalTasks,
+    navigation,
+    scheduleScrollToTask,
+  ]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await Promise.all([
+      syncAllPendingAgentTaskApprovals(),
+      syncAllPendingTaskApprovals(),
+      syncAllPendingAgentPersonalTasks(),
+    ]);
+    await Promise.all([load(), loadPending()]);
     setRefreshing(false);
   };
 
   const allTasks = useMemo(() => [...farmerTasks, ...personalTasks], [farmerTasks, personalTasks]);
 
-  const searchFiltered = useMemo(() => {
+  const farmersSorted = useMemo(
+    () =>
+      [...farmers].sort((a, b) => {
+        const byFirst = firstNameKey(a.name).localeCompare(firstNameKey(b.name));
+        return byFirst !== 0 ? byFirst : a.name.localeCompare(b.name);
+      }),
+    [farmers]
+  );
+
+  const selectedFarmer = useMemo(
+    () => (farmerFilterId ? farmers.find((f) => f.farmer_id === farmerFilterId) : null),
+    [farmerFilterId, farmers]
+  );
+
+  /** Search → farmer → My Tasks (status applied after KPI counts). */
+  const scopedTasks = useMemo(() => {
     let list = allTasks;
     const q = search.trim().toLowerCase();
     if (q) {
@@ -331,23 +741,111 @@ export function AgentTasksScreen() {
           (t.farmer_name?.toLowerCase().includes(q) ?? false)
       );
     }
+    if (farmerFilterId && selectedFarmer) {
+      list = list.filter((t) =>
+        taskMatchesFarmer(t, selectedFarmer.farmer_id, selectedFarmer.name)
+      );
+    }
+    if (myTasksOnly) {
+      list = list.filter((t) => t.source === 'personal');
+    }
     return list;
-  }, [allTasks, search]);
+  }, [allTasks, search, farmerFilterId, selectedFarmer, myTasksOnly]);
 
-  const categorized = useMemo(() => categorizeTasks(searchFiltered), [searchFiltered]);
-  const displayCategories = useMemo(
-    () => pickCategorizedTasks(categorized, filter),
-    [categorized, filter]
+  const statusFilteredTasks = useMemo(
+    () => scopedTasks.filter((t) => taskMatchesStatusFilter(t, statusFilter)),
+    [scopedTasks, statusFilter]
   );
+
+  const categoryCounts = useMemo(
+    () => countOverlappingStatusKpis(scopedTasks),
+    [scopedTasks]
+  );
+
+  /**
+   * KPI filters use overlapping counts (In Progress includes overdue in-progress tasks).
+   * When a status KPI is selected, keep those tasks in that section — do not re-bucket
+   * them into Overdue via categorizeTasks (that caused overdue to leak into other filters).
+   */
+  const displayCategories = useMemo((): CategorizedTasks<UnifiedTask> => {
+    if (statusFilter === 'all') {
+      return categorizeTasks(scopedTasks);
+    }
+    const empty: CategorizedTasks<UnifiedTask> = {
+      overdue: [],
+      inProgress: [],
+      notStarted: [],
+      submittedForApproval: [],
+      rejected: [],
+      completed: [],
+    };
+    switch (statusFilter) {
+      case 'overdue':
+        return { ...empty, overdue: statusFilteredTasks };
+      case 'in_progress':
+        return { ...empty, inProgress: statusFilteredTasks };
+      case 'not_started':
+        return { ...empty, notStarted: statusFilteredTasks };
+      case 'submitted_for_approval':
+        return { ...empty, submittedForApproval: statusFilteredTasks };
+      case 'rejected':
+        return { ...empty, rejected: statusFilteredTasks };
+      case 'completed':
+      case 'approved':
+        return { ...empty, completed: statusFilteredTasks };
+      default:
+        return categorizeTasks(statusFilteredTasks);
+    }
+  }, [scopedTasks, statusFilteredTasks, statusFilter]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (statusFilter === 'rejected' && categoryCounts.rejected === 0) {
+      setStatusFilter('all');
+    }
+    if (
+      statusFilter === 'submitted_for_approval' &&
+      categoryCounts.submitted_for_approval === 0
+    ) {
+      setStatusFilter('all');
+    }
+  }, [
+    loading,
+    statusFilter,
+    categoryCounts.rejected,
+    categoryCounts.submitted_for_approval,
+  ]);
+
+  const toggleKpiFilter = (key: TaskStatusKpiKey) => {
+    setStatusFilter((prev) => (prev === key ? 'all' : key));
+  };
+
+  const resetFilters = () => {
+    setStatusFilter('all');
+    setFarmerFilterId(null);
+    setMyTasksOnly(false);
+    setStatusMenuOpen(false);
+    setFarmerMenuOpen(false);
+  };
+
+  const activeFilterCount =
+    (statusFilter !== 'all' ? 1 : 0) + (farmerFilterId ? 1 : 0) + (myTasksOnly ? 1 : 0);
+
+  const statusFilterLabel =
+    STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)?.label ?? 'All statuses';
 
   const overdue = displayCategories.overdue;
   const inProgress = displayCategories.inProgress;
   const notStarted = displayCategories.notStarted;
+  const submittedForApproval = displayCategories.submittedForApproval;
+  const rejected = displayCategories.rejected;
   const completed = displayCategories.completed;
   const hasVisibleTasks =
     overdue.length +
       inProgress.length +
       notStarted.length +
+      submittedForApproval.length +
+      rejected.length +
       completed.length >
     0;
 
@@ -364,34 +862,147 @@ export function AgentTasksScreen() {
     }
   };
 
+  const findTask = (id: string): UnifiedTask | undefined =>
+    allTasks.find((t) => t.id === id);
+
+  const handleDecisionResult = async (
+    result:
+      | Awaited<ReturnType<typeof submitAgentTaskDecisionWithOutbox>>
+      | Awaited<ReturnType<typeof submitTaskDecisionWithOutbox>>,
+    decision: 'approve' | 'reject'
+  ) => {
+    await loadPending();
+    if (result.mode === 'online') {
+      setRejectReason('');
+      setExpandedId(null);
+      await load();
+      Alert.alert(
+        decision === 'approve' ? 'Approved' : 'Rejected',
+        decision === 'approve'
+          ? 'Task approved.'
+          : 'Farmer can resubmit after rework.'
+      );
+      return;
+    }
+    if (result.mode === 'offline') {
+      setRejectReason('');
+      setExpandedId(null);
+      Alert.alert(
+        'Saved offline',
+        `${decision === 'approve' ? 'Approval' : 'Rejection'} queued for sync.`
+      );
+      return;
+    }
+    Alert.alert('Needs your review', result.error);
+  };
+
   const approve = async (id: string) => {
+    const task = findTask(id) ?? (selectedTask?.id === id ? selectedTask : undefined);
+    if (!task) {
+      Alert.alert('Error', 'Task not found');
+      throw new Error('Task not found');
+    }
     setActing(id);
     try {
-      await approveFarmerTask(id);
-      await load();
-      Alert.alert('Approved', 'Task approved.');
+      if (task.source === 'personal') {
+        const result = await submitAgentTaskDecisionWithOutbox({
+          agentTaskId: id,
+          taskName: task.name,
+          decision: 'approve',
+          expectedStatus: task.status || 'submitted-for-approval',
+        });
+        await handleDecisionResult(result, 'approve');
+      } else {
+        const result = await submitTaskDecisionWithOutbox({
+          farmerTaskId: id,
+          taskName: task.name,
+          decision: 'approve',
+          expectedStatus: task.status || 'submitted-for-approval',
+        });
+        await handleDecisionResult(result, 'approve');
+      }
     } catch (err: unknown) {
       Alert.alert('Error', extractApiError(err, 'Could not approve'));
+      throw err;
     } finally {
       setActing(null);
     }
   };
 
-  const reject = async (id: string) => {
-    if (!rejectReason.trim()) {
+  const reject = async (id: string, reasonOverride?: string) => {
+    const reason = (reasonOverride ?? rejectReason).trim();
+    if (!reason) {
       Alert.alert('Reason required', 'Enter a rejection reason.');
-      return;
+      throw new Error('Rejection reason required');
+    }
+    const task = findTask(id) ?? (selectedTask?.id === id ? selectedTask : undefined);
+    if (!task) {
+      Alert.alert('Error', 'Task not found');
+      throw new Error('Task not found');
     }
     setActing(id);
     try {
-      await rejectFarmerTask(id, rejectReason.trim());
-      setRejectReason('');
-      setExpandedId(null);
-      await load();
+      if (task.source === 'personal') {
+        const result = await submitAgentTaskDecisionWithOutbox({
+          agentTaskId: id,
+          taskName: task.name,
+          decision: 'reject',
+          expectedStatus: task.status || 'submitted-for-approval',
+          rejectionReason: reason,
+        });
+        await handleDecisionResult(result, 'reject');
+      } else {
+        const result = await submitTaskDecisionWithOutbox({
+          farmerTaskId: id,
+          taskName: task.name,
+          decision: 'reject',
+          expectedStatus: task.status || 'submitted-for-approval',
+          rejectionReason: reason,
+        });
+        await handleDecisionResult(result, 'reject');
+      }
     } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'Rejection reason required') throw err;
       Alert.alert('Error', extractApiError(err, 'Could not reject'));
+      throw err;
     } finally {
       setActing(null);
+    }
+  };
+
+  const handlePushAgentApproval = async (item: PendingAgentTaskApprovalView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingAgentTaskApproval(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.taskName} updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error || 'Conflict detected');
+      } else {
+        Alert.alert('Sync failed', result.error || 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
+    }
+  };
+
+  const handlePushFarmerApproval = async (item: PendingTaskApprovalView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingTaskApproval(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        Alert.alert('Synced', `${item.taskName} updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error || 'Conflict detected');
+      } else {
+        Alert.alert('Sync failed', result.error || 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -410,17 +1021,60 @@ export function AgentTasksScreen() {
     }
   };
 
+  const handlePushPersonalTask = async (item: PendingAgentPersonalTaskView) => {
+    setPushingId(item.id);
+    try {
+      const result = await pushPendingAgentPersonalTask(item.id);
+      await loadPending();
+      if (result.success) {
+        await load();
+        const label = item.kind === 'create' ? item.name : item.taskName;
+        Alert.alert('Synced', `${label} updated.`);
+      } else if (result.needsReview) {
+        Alert.alert('Needs your review', result.error || 'Conflict detected');
+      } else {
+        Alert.alert('Sync failed', result.error || 'Could not sync');
+      }
+    } finally {
+      setPushingId(null);
+    }
+  };
+
   const handleUpdatePersonalStatus = async (taskId: string, status: string) => {
+    const task = findTask(taskId) ?? (selectedTask?.id === taskId ? selectedTask : undefined);
+    if (!task) {
+      throw new Error('Task not found');
+    }
     setUpdatingTask(true);
     try {
-      const result = await updateAgentPersonalTask(taskId, { status });
-      const updated = result?.task as Record<string, unknown> | undefined;
-      if (updated) {
-        const mapped = mapPersonalTask(updated);
-        setPersonalTasks((prev) => prev.map((t) => (t.id === taskId ? mapped : t)));
-        setSelectedTask(toTaskDetail(mapped));
+      const result = await updateAgentPersonalTaskStatusWithOutbox({
+        agentTaskId: taskId,
+        taskName: task.name,
+        status,
+        expectedStatus: task.status || 'not_started',
+      });
+      if (result.mode === 'online') {
+        if (result.task) {
+          const mapped = mapPersonalTask(result.task);
+          setPersonalTasks((prev) => prev.map((t) => (t.id === taskId ? mapped : t)));
+          setSelectedTask(toTaskDetail(mapped));
+        }
+        await load();
+        Alert.alert('Updated', 'Task status saved.');
+        return;
       }
-      await load();
+      if (result.mode === 'offline') {
+        const patch = (t: UnifiedTask): UnifiedTask =>
+          t.id === taskId ? { ...t, status } : t;
+        setPersonalTasks((prev) => prev.map(patch));
+        if (selectedTask?.id === taskId) {
+          setSelectedTask((prev) => (prev ? { ...prev, status } : prev));
+        }
+        await loadPending();
+        Alert.alert('Saved offline', 'Status will sync when you are back online.');
+        return;
+      }
+      Alert.alert('Needs your review', result.error);
     } finally {
       setUpdatingTask(false);
     }
@@ -435,22 +1089,31 @@ export function AgentTasksScreen() {
   }) => {
     setCreating(true);
     try {
-      const result = await createAgentPersonalTask(data);
-      const created = result?.task as Record<string, unknown> | undefined;
-      if (created?.id) {
-        const mapped = mapPersonalTask(created);
-        setPersonalTasks((prev) => {
-          if (prev.some((t) => t.id === mapped.id)) return prev;
-          return [...prev, mapped];
-        });
+      const result = await createAgentPersonalTaskWithOutbox(data);
+      if (result.mode === 'online') {
+        const created = result.task;
+        if (created?.id) {
+          const mapped = mapPersonalTask(created);
+          setPersonalTasks((prev) => {
+            if (prev.some((t) => t.id === mapped.id)) return prev;
+            return [...prev, mapped];
+          });
+        }
+        resetFilters();
+        setSearch('');
+        navigation.setParams({ filter: undefined });
+        await load();
+        setAddModalOpen(false);
+        showMessage('Task created', 'Your task is now in the Tasks list.');
+        return;
       }
-      setFilter('all');
-      setShowFilter(false);
-      setSearch('');
-      navigation.setParams({ filter: undefined });
-      await load();
-      setAddModalOpen(false);
-      showMessage('Task created', 'Your task is now in the Tasks list.');
+      if (result.mode === 'offline') {
+        setAddModalOpen(false);
+        await loadPending();
+        showMessage('Saved offline', 'Task will sync when you are back online.');
+        return;
+      }
+      showMessage('Needs your review', result.error);
     } catch (err: unknown) {
       const msg = extractApiError(err, 'Could not create task');
       showMessage('Could not create task', msg);
@@ -460,41 +1123,80 @@ export function AgentTasksScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && !hasLoadedRef.current) {
     return (
-      <View className="flex-1 items-center justify-center">
+      <View className="flex-1 items-center justify-center bg-[#F5F5F5]">
         <ActivityIndicator size="large" color="#1A4D3E" />
+        <Text className="mt-3 text-sm text-[#757575]">Loading tasks...</Text>
       </View>
     );
   }
 
-  const filterLabels: Record<FilterKey, string> = {
-    all: 'All tasks',
-    overdue: 'Overdue',
-    not_started: 'Not started',
-    in_progress: 'In progress',
-    completed: 'Completed',
-  };
-
   return (
     <>
       <ScrollView
+        ref={scrollRef}
         className="flex-1 bg-[#F5F5F5]"
-        contentContainerClassName="p-4 pb-10"
+        contentContainerStyle={scrollContentStyle}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        {cacheFetchedAt ? <OfflineCachedDataBanner fetchedAt={cacheFetchedAt} /> : null}
         <Pressable
           onPress={() => setAddModalOpen(true)}
-          className="mb-3 h-12 items-center justify-center rounded-lg bg-[#FFD700]"
-          style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+          style={[styles.createTaskButton, Platform.OS === 'web' ? { cursor: 'pointer' } : null]}
+          accessibilityRole="button"
+          accessibilityLabel="Create task"
         >
-          <Text className="font-bold text-black">+ Create task</Text>
+          <Plus size={16} color="#1A1A1A" strokeWidth={2.25} />
+          <Text style={styles.createTaskButtonText}>Create task</Text>
         </Pressable>
 
+        <Text className="text-2xl font-bold text-[#333333]">Tasks</Text>
+        <TaskStatusKpiRow
+          counts={categoryCounts}
+          selected={statusFilterToKpiKey(statusFilter)}
+          onSelect={toggleKpiFilter}
+        />
+        {statusFilter !== 'all' ? (
+          <Text className="mb-3 mt-2 text-xs text-[#757575]">
+            Tap the selected card again to clear status filter
+          </Text>
+        ) : (
+          <Text className="mb-3 mt-2 text-xs text-[#757575]">Tap a card to filter by status</Text>
+        )}
+
         <View className="mb-3 flex-row items-center gap-2">
-          <Pressable onPress={() => setShowFilter(!showFilter)} className="flex-row items-center gap-1 rounded-lg bg-white px-3 py-2">
-            <Text className="text-sm">Filter ▼</Text>
-            <Text className="text-xs text-[#757575]">{filterLabels[filter]}</Text>
+          <Pressable
+            onPress={() => {
+              setShowFiltersPanel((open) => !open);
+              setStatusMenuOpen(false);
+              setFarmerMenuOpen(false);
+            }}
+            className={`flex-row items-center gap-1 rounded-lg px-3 py-2 ${
+              showFiltersPanel || activeFilterCount > 0 ? 'bg-[#1A4D3E]' : 'bg-white'
+            }`}
+            style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+          >
+            <Text
+              className={`text-sm font-semibold ${
+                showFiltersPanel || activeFilterCount > 0 ? 'text-white' : 'text-[#333333]'
+              }`}
+            >
+              Filters
+            </Text>
+            {activeFilterCount > 0 ? (
+              <View className="min-w-[18px] items-center rounded-full bg-[#FFD700] px-1.5">
+                <Text className="text-[11px] font-bold text-[#1A1A1A]">{activeFilterCount}</Text>
+              </View>
+            ) : (
+              <Text
+                className={`text-xs ${
+                  showFiltersPanel || activeFilterCount > 0 ? 'text-white/80' : 'text-[#757575]'
+                }`}
+              >
+                ▼
+              </Text>
+            )}
           </Pressable>
           <View className="flex-1 flex-row items-center rounded-lg bg-white px-3">
             <Ionicons name="search" size={18} color="#757575" />
@@ -506,25 +1208,182 @@ export function AgentTasksScreen() {
             />
           </View>
         </View>
-        {showFilter ? (
-          <View className="mb-3 flex-row flex-wrap gap-2">
-            {(Object.keys(filterLabels) as FilterKey[]).map((key) => (
+
+        {showFiltersPanel ? (
+          <View className="mb-4 rounded-xl border border-[#E5E5E5] bg-white p-3">
+            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#757575]">
+              Status
+            </Text>
+            <Pressable
+              onPress={() => {
+                setStatusMenuOpen((o) => !o);
+                setFarmerMenuOpen(false);
+              }}
+              className="mb-2 flex-row items-center justify-between rounded-lg border border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2.5"
+            >
+              <Text className="text-sm text-[#333333]">{statusFilterLabel}</Text>
+              <Text className="text-xs text-[#757575]">{statusMenuOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+            {statusMenuOpen ? (
+              <View className="mb-3 max-h-48 overflow-hidden rounded-lg border border-[#EEEEEE]">
+                <ScrollView nestedScrollEnabled>
+                  {STATUS_FILTER_OPTIONS.filter(
+                    (opt) =>
+                      (opt.key !== 'rejected' || categoryCounts.rejected > 0 || statusFilter === 'rejected') &&
+                      (opt.key !== 'submitted_for_approval' ||
+                        categoryCounts.submitted_for_approval > 0 ||
+                        statusFilter === 'submitted_for_approval')
+                  ).map((opt) => (
+                    <Pressable
+                      key={opt.key}
+                      onPress={() => {
+                        setStatusFilter(opt.key);
+                        setStatusMenuOpen(false);
+                      }}
+                      className={`px-3 py-2.5 ${
+                        statusFilter === opt.key ? 'bg-[#E8F5F0]' : 'bg-white'
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm ${
+                          statusFilter === opt.key
+                            ? 'font-semibold text-[#1A4D3E]'
+                            : 'text-[#333333]'
+                        }`}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#757575]">
+              Farmer
+            </Text>
+            <Pressable
+              onPress={() => {
+                setFarmerMenuOpen((o) => !o);
+                setStatusMenuOpen(false);
+              }}
+              className="mb-2 flex-row items-center justify-between rounded-lg border border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2.5"
+            >
+              <Text className="flex-1 text-sm text-[#333333]" numberOfLines={1}>
+                {selectedFarmer?.name ?? 'All farmers'}
+              </Text>
+              <Text className="text-xs text-[#757575]">{farmerMenuOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+            {farmerMenuOpen ? (
+              <View className="mb-3 max-h-48 overflow-hidden rounded-lg border border-[#EEEEEE]">
+                <ScrollView nestedScrollEnabled>
+                  <Pressable
+                    onPress={() => {
+                      setFarmerFilterId(null);
+                      setFarmerMenuOpen(false);
+                    }}
+                    className={`px-3 py-2.5 ${!farmerFilterId ? 'bg-[#E8F5F0]' : 'bg-white'}`}
+                  >
+                    <Text
+                      className={`text-sm ${
+                        !farmerFilterId ? 'font-semibold text-[#1A4D3E]' : 'text-[#333333]'
+                      }`}
+                    >
+                      All farmers
+                    </Text>
+                  </Pressable>
+                  {farmersSorted.map((f) => (
+                    <Pressable
+                      key={f.farmer_id}
+                      onPress={() => {
+                        setFarmerFilterId(f.farmer_id);
+                        setFarmerMenuOpen(false);
+                      }}
+                      className={`px-3 py-2.5 ${
+                        farmerFilterId === f.farmer_id ? 'bg-[#E8F5F0]' : 'bg-white'
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm ${
+                          farmerFilterId === f.farmer_id
+                            ? 'font-semibold text-[#1A4D3E]'
+                            : 'text-[#333333]'
+                        }`}
+                      >
+                        {f.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <View className="mt-1 flex-row flex-wrap gap-2">
               <Pressable
-                key={key}
-                onPress={() => {
-                  setFilter(key);
-                  setShowFilter(false);
-                }}
-                className={`rounded-lg px-3 py-2 ${filter === key ? 'bg-[#1A4D3E]' : 'bg-white'}`}
+                onPress={() => setMyTasksOnly((v) => !v)}
+                className={`rounded-lg px-3 py-2.5 ${
+                  myTasksOnly ? 'bg-[#1A4D3E]' : 'border border-[#E0E0E0] bg-[#FAFAFA]'
+                }`}
+                style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
               >
-                <Text className={filter === key ? 'text-white' : 'text-[#333333]'}>
-                  {filterLabels[key]}
+                <Text
+                  className={`text-sm font-semibold ${
+                    myTasksOnly ? 'text-white' : 'text-[#333333]'
+                  }`}
+                >
+                  My Tasks
                 </Text>
               </Pressable>
+              <Pressable
+                onPress={resetFilters}
+                className="rounded-lg border border-[#E0E0E0] bg-white px-3 py-2.5"
+                style={Platform.OS === 'web' ? { cursor: 'pointer' } : undefined}
+              >
+                <Text className="text-sm font-semibold text-[#757575]">Reset</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {pendingAgentApprovals.length +
+        pendingFarmerApprovals.length +
+        pendingPersonalTasks.length >
+        0 ? (
+          <View className="mb-5">
+            <Text className="mb-2 text-sm font-bold uppercase tracking-wide text-[#757575]">
+              Queued decisions
+            </Text>
+            {pendingPersonalTasks.map((item) => (
+              <OutboxAgentPersonalTaskCard
+                key={item.id}
+                item={item}
+                pushing={pushingId === item.id}
+                onPush={() => handlePushPersonalTask(item)}
+                onDismiss={() => dismissAgentPersonalTaskOutbox(item.id).then(loadPending)}
+              />
+            ))}
+            {pendingAgentApprovals.map((item) => (
+              <OutboxAgentTaskApprovalCard
+                key={item.id}
+                item={item}
+                pushing={pushingId === item.id}
+                onPush={() => handlePushAgentApproval(item)}
+                onDismiss={() => dismissAgentTaskApprovalOutbox(item.id).then(loadPending)}
+              />
+            ))}
+            {pendingFarmerApprovals.map((item) => (
+              <OutboxTaskApprovalCard
+                key={item.id}
+                item={item}
+                pushing={pushingId === item.id}
+                onPush={() => handlePushFarmerApproval(item)}
+                onDismiss={() => dismissTaskApprovalOutbox(item.id).then(loadPending)}
+              />
             ))}
           </View>
         ) : null}
 
+        <View onLayout={onCardListLayout} collapsable={false}>
         <TaskSection
           TitleIcon={TriangleAlert}
           title={`Overdue (${overdue.length})`}
@@ -534,6 +1393,8 @@ export function AgentTasksScreen() {
           onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
           rejectReason={rejectReason}
           setRejectReason={setRejectReason}
           acting={acting}
@@ -550,8 +1411,8 @@ export function AgentTasksScreen() {
               <KBCard key={item.id} style={{ marginBottom: 8 }}>
                 <Text className="font-bold text-[#333333]">{item.farmer_name}</Text>
                 <Text className="text-sm text-[#757575]">{item.message}</Text>
-                <Button className="mt-2 h-10 bg-[#1A4D3E]" onPress={() => markContacted(item.id)} disabled={acting === item.id}>
-                  <Text className="text-white">Mark contacted</Text>
+                <Button size="pill" className="mt-2 bg-[#1A4D3E]" onPress={() => markContacted(item.id)} disabled={acting === item.id}>
+                  <Text className="font-semibold text-white">Mark contacted</Text>
                 </Button>
               </KBCard>
             ))}
@@ -567,6 +1428,8 @@ export function AgentTasksScreen() {
           onTaskPress={openTaskDetail}
           onExpandApproval={setExpandedId}
           expandedId={expandedId}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
           rejectReason={rejectReason}
           setRejectReason={setRejectReason}
           acting={acting}
@@ -580,6 +1443,35 @@ export function AgentTasksScreen() {
           tasks={notStarted}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
+        />
+        <TaskSection
+          TitleIcon={Bell}
+          title={`Submitted for approval (${submittedForApproval.length})`}
+          color="#2563EB"
+          tasks={submittedForApproval}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+          onExpandApproval={setExpandedId}
+          expandedId={expandedId}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
+          rejectReason={rejectReason}
+          setRejectReason={setRejectReason}
+          acting={acting}
+          approve={approve}
+          reject={reject}
+        />
+        <TaskSection
+          TitleIcon={CircleX}
+          title={`Rejected (${rejected.length})`}
+          color="#D32F2F"
+          tasks={rejected}
+          onReminder={handleReminder}
+          onTaskPress={openTaskDetail}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
         />
         <TaskSection
           TitleIcon={CircleCheck}
@@ -588,7 +1480,10 @@ export function AgentTasksScreen() {
           tasks={completed}
           onReminder={handleReminder}
           onTaskPress={openTaskDetail}
+          highlightTaskId={deepLinkHighlightId}
+          onTaskLayout={onTaskLayoutInList}
         />
+        </View>
 
         {!hasVisibleTasks && helpRequests.length === 0 ? (
           <View className="items-center rounded-xl bg-white p-6">
@@ -605,27 +1500,20 @@ export function AgentTasksScreen() {
         onClose={() => {
           setDetailOpen(false);
           setSelectedTask(null);
+          setDeepLinkHighlightId(null);
         }}
         onUpdateStatus={handleUpdatePersonalStatus}
         onApprove={async (id) => {
           await approve(id);
           setDetailOpen(false);
           setSelectedTask(null);
+          setDeepLinkHighlightId(null);
         }}
         onReject={async (id, reason) => {
-          setActing(id);
-          try {
-            await rejectFarmerTask(id, reason);
-            await load();
-            Alert.alert('Rejected', 'Farmer can resubmit after rework.');
-            setDetailOpen(false);
-            setSelectedTask(null);
-          } catch (err: unknown) {
-            Alert.alert('Error', extractApiError(err, 'Could not reject'));
-            throw err;
-          } finally {
-            setActing(null);
-          }
+          await reject(id, reason);
+          setDetailOpen(false);
+          setSelectedTask(null);
+          setDeepLinkHighlightId(null);
         }}
       />
 
@@ -639,3 +1527,17 @@ export function AgentTasksScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  createTaskButton: {
+    ...pillButtonBase,
+    width: '100%',
+    marginBottom: 12,
+    backgroundColor: '#FFD700',
+    borderColor: '#FFD700',
+  },
+  createTaskButtonText: {
+    ...pillButtonTextBase,
+    color: '#1A1A1A',
+  },
+});
