@@ -58,6 +58,8 @@ export function splitSqlStatements(sql: string): string[] {
   return statements;
 }
 
+const RLS_MIGRATION_FILE = path.resolve(__dirname, '../../migrations/019_equity_batches_rls.sql');
+
 export async function ensureEquityBatchTables(): Promise<void> {
   if (!fs.existsSync(MIGRATION_FILE)) {
     throw new Error(`Missing migration file: ${MIGRATION_FILE}`);
@@ -65,6 +67,18 @@ export async function ensureEquityBatchTables(): Promise<void> {
   const sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
   const statements = splitSqlStatements(sql);
   for (const statement of statements) {
+    await query(statement);
+  }
+  await ensureEquityBatchRls();
+}
+
+/** Enable RLS + banking/platform policies (idempotent). */
+export async function ensureEquityBatchRls(): Promise<void> {
+  if (!fs.existsSync(RLS_MIGRATION_FILE)) {
+    throw new Error(`Missing migration file: ${RLS_MIGRATION_FILE}`);
+  }
+  const sql = fs.readFileSync(RLS_MIGRATION_FILE, 'utf8');
+  for (const statement of splitSqlStatements(sql)) {
     await query(statement);
   }
 }
