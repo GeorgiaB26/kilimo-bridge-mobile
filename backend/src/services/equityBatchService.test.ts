@@ -9,6 +9,7 @@ import {
   planUgandaBatches,
   shouldWriteBuildAudit,
   UGANDA_CANDIDATES_SQL,
+  ugandaCandidatesSql,
   type UgandaPaymentCandidate,
 } from './equityBatchService';
 
@@ -344,4 +345,59 @@ test('shouldWriteBuildAudit: not for empty runs, yes when batches, skipped or de
   assert.equal(shouldWriteBuildAudit({ batchCount: 1, skippedCount: 0, deferredCount: 0 }), true);
   assert.equal(shouldWriteBuildAudit({ batchCount: 0, skippedCount: 2, deferredCount: 0 }), true);
   assert.equal(shouldWriteBuildAudit({ batchCount: 0, skippedCount: 0, deferredCount: 3 }), true);
+});
+
+test('candidate SQL: unverified payments excluded only when verification is required', () => {
+  const off = ugandaCandidatesSql(false).replace(/\s+/g, ' ');
+  assert.doesNotMatch(off, /verification_status/);
+  assert.equal(UGANDA_CANDIDATES_SQL, ugandaCandidatesSql(false));
+
+  const on = ugandaCandidatesSql(true).replace(/\s+/g, ' ');
+  assert.match(on, /AND p\.verification_status::text IS DISTINCT FROM 'unverified'/);
+  // The rest of the selection rules are unchanged.
+  assert.match(on, /payment_status = 'pending'/);
+  assert.match(on, /NOT EXISTS/);
+  assert.match(on, /FOR UPDATE OF p SKIP LOCKED/);
+});
+
+test('buildUgandaBatches (dry run) applies REQUIRE_PAYMENT_VERIFICATION to the candidate query', async () => {
+  const { Pool } = await import('pg');
+  const { buildUgandaBatches } = await import('./equityBatchService');
+
+  const originalConnect = Pool.prototype.connect;
+  const seenSql: string[] = [];
+  (Pool.prototype as unknown as { connect: unknown }).connect = async function () {
+    return {
+      query: async (text: string) => {
+        seenSql.push(text);
+        if (text.includes('pg_try_advisory_xact_lock')) return { rows: [{ locked: true }] };
+        return { rows: [] };
+      },
+      release: () => undefined,
+    };
+  };
+
+  const saved = { ...process.env };
+  process.env.DATABASE_URL = 'postgres://stub:stub@127.0.0.1:1/stub';
+  process.env.EQUITY_SFTP_CUSTOMER_ID = '56010646936';
+  process.env.EQUITY_UG_DEBIT_ACCOUNT = '1003200930075';
+  process.env.EQUITY_AUTO_SEND_MAX_TOTAL = '1000000';
+  try {
+    delete process.env.REQUIRE_PAYMENT_VERIFICATION;
+    await buildUgandaBatches({ dryRun: true });
+    process.env.REQUIRE_PAYMENT_VERIFICATION = 'true';
+    await buildUgandaBatches({ dryRun: true });
+    process.env.REQUIRE_PAYMENT_VERIFICATION = 'false';
+    await buildUgandaBatches({ dryRun: true });
+  } finally {
+    (Pool.prototype as unknown as { connect: unknown }).connect = originalConnect;
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+
+  const candidateSql = seenSql.filter((t) => t.includes('FROM payments p'));
+  assert.equal(candidateSql.length, 3);
+  assert.doesNotMatch(candidateSql[0], /verification_status/);
+  assert.match(candidateSql[1], /verification_status::text IS DISTINCT FROM 'unverified'/);
+  assert.doesNotMatch(candidateSql[2], /verification_status/);
 });

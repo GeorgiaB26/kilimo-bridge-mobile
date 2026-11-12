@@ -5,7 +5,6 @@ import {
   getFarmerProjects,
   getFarmerPayments,
   getFarmerPaymentSummary,
-  claimPayment,
   listAllFarmerAssignedTasks,
 } from '../services/farmerPortalService';
 import { getUserNotifications } from '../services/notificationService';
@@ -123,22 +122,6 @@ router.get(
   '/notifications',
   asyncHandler(async (req, res) => {
     res.json({ notifications: await getUserNotifications(req.user!.userId) });
-  })
-);
-
-router.post(
-  '/payments/:paymentId/claim',
-  asyncHandler(async (req, res) => {
-    if (!req.user?.farmerId) {
-      res.status(400).json({ error: 'No farmer profile' });
-      return;
-    }
-    const result = await claimPayment(req.user.farmerId, req.params.paymentId, req.user.userId);
-    if (!result.success) {
-      res.status(400).json(result);
-      return;
-    }
-    res.json(result);
   })
 );
 

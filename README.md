@@ -7,7 +7,7 @@ React Native (Expo) mobile app with Node.js backend for farmer registration and 
 ### Two platforms, one app
 
 **Farmer platform** (after login as farmer):
-- Dashboard with pending payments and "Claim Payment"
+- Dashboard with pending payments (sent to the farmer's mobile wallet automatically)
 - Projects (active + completed, progress bars)
 - Payment history and lifetime earnings
 - Profile (own data only — cannot see other farmers)
@@ -41,7 +41,6 @@ React Native (Expo) mobile app with Node.js backend for farmer registration and 
 | View payments | ✓ | ✓ | — | ✓ | Own only |
 | Payment verification | ✓ | ✓ | ✓ | ✓ | — |
 | Audit logs | ✓ | ✓ | Own + region | Financial | — |
-| Claim M-Pesa | — | — | — | — | ✓ |
 
 ### Farmer Registration (7-screen flow)
 1. **Basic Info** — Name, gender, phone, national ID

@@ -395,11 +395,22 @@ function readFarmerMobile(stored: string | null): string {
  * `bt.status` is a Postgres enum (bank_transaction_status), so it is cast to text for the
  * comparison. Exported so tests can assert on the selection rules without a database.
  */
-export const UGANDA_CANDIDATES_SQL = `SELECT p.id AS payment_id, p.farmer_id, f.name AS farmer_name, f.phone_number, p.amount
+export const UGANDA_CANDIDATES_SQL = ugandaCandidatesSql(false);
+
+/**
+ * Same rule the removed farmer "claim" flow used: when REQUIRE_PAYMENT_VERIFICATION is 'true',
+ * payments whose verification_status is 'unverified' are not selected.
+ */
+export function ugandaCandidatesSql(requireVerification: boolean): string {
+  const verificationClause = requireVerification
+    ? `
+        AND p.verification_status::text IS DISTINCT FROM 'unverified'`
+    : '';
+  return `SELECT p.id AS payment_id, p.farmer_id, f.name AS farmer_name, f.phone_number, p.amount
        FROM payments p
        JOIN farmers f ON f.farmer_id = p.farmer_id
       WHERE p.payment_status = 'pending'
-        AND LOWER(TRIM(f.country)) = 'uganda'
+        AND LOWER(TRIM(f.country)) = 'uganda'${verificationClause}
         AND NOT EXISTS (
           SELECT 1 FROM bank_transactions bt
            WHERE bt.payment_id = p.id
@@ -407,9 +418,13 @@ export const UGANDA_CANDIDATES_SQL = `SELECT p.id AS payment_id, p.farmer_id, f.
         )
       ORDER BY p.created_at ASC, p.id ASC
       FOR UPDATE OF p SKIP LOCKED`;
+}
 
 async function selectCandidates(client: PoolClient): Promise<UgandaPaymentCandidate[]> {
-  const res = await client.query<CandidateRow>(UGANDA_CANDIDATES_SQL, [[...BLOCKING_TX_STATUSES]]);
+  const res = await client.query<CandidateRow>(
+    ugandaCandidatesSql(process.env.REQUIRE_PAYMENT_VERIFICATION === 'true'),
+    [[...BLOCKING_TX_STATUSES]]
+  );
   return res.rows.map((r) => ({
     paymentId: String(r.payment_id),
     farmerId: String(r.farmer_id),
