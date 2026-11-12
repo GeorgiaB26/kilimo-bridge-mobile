@@ -27,9 +27,8 @@ React Native (Expo) mobile app with Node.js backend for farmer registration and 
 
 **Banking platform** (Equity Bank officers):
 - View all payment transactions
-- Process M-Pesa via Equity H2H API
+- View payment status (payments are sent to Equity automatically via SFTP batch files)
 - Financial audit trail
-- Webhook receiver for bank confirmations
 
 ### Roles & permissions
 
@@ -40,7 +39,6 @@ React Native (Expo) mobile app with Node.js backend for farmer registration and 
 | CSV import | ✓ | ✓ | — | — | — |
 | Manage users | ✓ | — | — | — | — |
 | View payments | ✓ | ✓ | — | ✓ | Own only |
-| Process M-Pesa (H2H) | ✓ | ✓ | — | ✓ | — |
 | Payment verification | ✓ | ✓ | ✓ | ✓ | — |
 | Audit logs | ✓ | ✓ | Own + region | Financial | — |
 | Claim M-Pesa | — | — | — | — | ✓ |
@@ -90,7 +88,7 @@ The app now has **two platforms in one**:
 |------|-------|-------|---------------|
 | **Admin** | `+254700000002` | OTP `123456` | Dashboard, all farmers, CSV import, users |
 | **Agent** | `+254700000003` | OTP `123456` | Regional farmers, register, audit log |
-| **Banking** | `+254700000004` | Password `Banking@2026` | Transactions, M-Pesa H2H processing |
+| **Banking** | `+254700000004` | Password `Banking@2026` | Transactions (read-only), payment status |
 | **Farmer** | `+254712345678` | OTP `123456` | Own dashboard, projects, payments, profile only |
 | **Super Admin** | `+254700000001` | OTP `123456` | Full access including user management |
 
@@ -156,9 +154,7 @@ Uses `backend/data/test-farmers.csv` (5 test rows from spec).
 | GET | `/api/admin/farmers/import/:sessionId/complete` | Import completion report |
 | POST | `/api/auth/login` | Password login (banking role, bcrypt) |
 | GET | `/api/banking/payments` | List payment transactions |
-| POST | `/api/banking/payments/:id/process` | Process M-Pesa via Equity H2H |
 | GET | `/api/banking/audit` | Financial audit trail |
-| POST | `/api/webhooks/equity` | Equity Bank transaction webhook |
 | POST | `/api/agents/register` | Register agent with government ID |
 | GET | `/api/agents/farmers` | Farmers in agent's region |
 | GET | `/api/agents/audit` | Agent activity log |
@@ -176,18 +172,15 @@ Uses `backend/data/test-farmers.csv` (5 test rows from spec).
 ### Audit trails
 Every financial transaction, agent action, and farmer data access is logged with timestamp and user ID in `audit_logs`.
 
-### Equity Bank H2H
-Configure in `backend/.env` (see `.env.example`):
-- `EQUITY_H2H_URL`, `EQUITY_API_KEY`, `EQUITY_WEBHOOK_SECRET`
-- Rate limiting on banking and webhook endpoints
-- 30s timeout with graceful fallback (dev mode simulates success when no API key)
+### Equity Bank payments
+Real payments are sent to Equity only as PGP-encrypted SFTP batch files (`EQUITY_SFTP_*` and `EQUITY_BANK_*` settings in `backend/.env.example`). The old H2H REST API and webhook have been removed.
 
 ### Environment variables
 Copy `backend/.env.example` to `backend/.env` and set:
 
 - `DATABASE_URL` — Supabase Postgres connection string (required)
 - `JWT_SECRET`, `ENCRYPTION_KEY` — generate with `openssl rand -hex 32`
-- Equity credentials when enabling H2H (`EQUITY_H2H_URL`, `EQUITY_API_KEY`, etc.)
+- Equity SFTP batch settings (`EQUITY_SFTP_*`, `EQUITY_BANK_*`) when enabling bank payments
 
 See [DEPLOY.md](./DEPLOY.md) for Render + Netlify + Supabase production setup.
 

@@ -1,6 +1,5 @@
 import { query, queryOne } from '../db/database';
 import { logAudit } from './auditService';
-import { processPaymentViaBanking } from './bankingService';
 import { isLocationPending } from './farmerService';
 import {
   getFarmerActiveProjectSummaries,
@@ -464,20 +463,6 @@ export async function claimPayment(farmerId: string, paymentId: string, initiate
 
   if (payment.verification_status === 'unverified' && process.env.REQUIRE_PAYMENT_VERIFICATION === 'true') {
     return { success: false, error: 'Payment pending agent verification' };
-  }
-
-  if (process.env.USE_EQUITY_H2H === 'true' && initiatedBy) {
-    const result = await processPaymentViaBanking(paymentId, initiatedBy);
-    await logAudit({
-      userId: initiatedBy,
-      action: 'payment.claim',
-      category: 'financial',
-      resourceType: 'payment',
-      resourceId: paymentId,
-      details: { amount: payment.amount, via: 'h2h' },
-      success: result.success,
-    });
-    return result;
   }
 
   const ref = `MPX${Date.now()}`;

@@ -6,9 +6,8 @@ import { api, verifyFarmerId } from '../../api/client';
 import { useCurrency } from '../../context/CurrencyContext';
 
 export function BankingPaymentsScreen() {
-  const { formatAmount, formatPayment } = useCurrency();
+  const { formatAmount } = useCurrency();
   const [payments, setPayments] = useState<Array<{ id: string; farmer_name: string; amount: number; payment_status: string }>>([]);
-  const [processing, setProcessing] = useState<string | null>(null);
   const [idNumber, setIdNumber] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<{ verified: boolean; name?: string; farmer_id?: string } | null>(null);
@@ -41,19 +40,6 @@ export function BankingPaymentsScreen() {
     }
   };
 
-  const processPayment = async (paymentId: string) => {
-    setProcessing(paymentId);
-    try {
-      const { data } = await api.post(`/banking/payments/${paymentId}/process`);
-      Alert.alert('Payment Processed', `Reference: ${data.reference ?? 'Pending'}`);
-      setPayments((prev) => prev.filter((p) => p.id !== paymentId));
-    } catch {
-      Alert.alert('Error', 'Payment processing failed');
-    } finally {
-      setProcessing(null);
-    }
-  };
-
   return (
     <FlatList
       className="flex-1 p-4"
@@ -61,7 +47,7 @@ export function BankingPaymentsScreen() {
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
         <View>
-          <Text className="mb-4 text-[22px] font-bold text-[#1A4D3E]">Process M-Pesa Payments</Text>
+          <Text className="mb-4 text-[22px] font-bold text-[#1A4D3E]">Pending Payments</Text>
           <View className="mb-4 rounded-lg bg-[#F9F9F9] p-3.5">
             <Text className="mb-2 text-base font-semibold text-[#333333]">Verify farmer ID</Text>
             <TextInput
@@ -86,17 +72,7 @@ export function BankingPaymentsScreen() {
         <View className="mb-2.5 rounded-lg bg-[#F9F9F9] p-3.5">
           <Text className="text-base font-semibold text-[#333333]">{item.farmer_name}</Text>
           <Text className="my-2 text-lg font-bold text-[#D4AF6A]">{formatAmount(item.amount)}</Text>
-          <Button
-            className="mt-1 h-12 bg-[#1A4D3E]"
-            disabled={processing === item.id}
-            onPress={() => processPayment(item.id)}
-          >
-            {processing === item.id ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-white">Process {formatPayment(item.amount)}</Text>
-            )}
-          </Button>
+          <Text className="text-sm text-[#757575]">Payments are sent to Equity automatically.</Text>
         </View>
       )}
       ListEmptyComponent={
