@@ -59,7 +59,8 @@ const FARMER_PROJECTS_SQL = `
               WHERE p.farmer_id = ft.farmer_id
                 AND lower(p.payment_status::text) IN ('transferred', 'paid')
                 AND (
-                  p.description = 'Task:' || ft.id
+                  p.farmer_task_id::text = ft.id::text
+                  OR p.description = 'Task:' || ft.id
                   OR ABS(COALESCE(p.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
                 )
             )
