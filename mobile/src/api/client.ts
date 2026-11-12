@@ -591,11 +591,6 @@ export async function getFarmerPayments() {
   };
 }
 
-export async function claimPayment(paymentId: string) {
-  const { data } = await api.post(`/farmer/payments/${paymentId}/claim`);
-  return data;
-}
-
 export async function getFarmerNotifications() {
   const { data } = await api.get('/farmer/notifications');
   return data;

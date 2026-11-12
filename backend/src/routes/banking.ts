@@ -1,11 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, requirePermission } from '../middleware/auth';
-import { bankingRateLimiter, webhookRateLimiter } from '../middleware/security';
+import { bankingRateLimiter } from '../middleware/security';
 import {
   getBankTransactions,
   getPaymentsWithFarmers,
-  processPaymentViaBanking,
-  handleEquityWebhook,
   verifyFarmerIdForBanking,
 } from '../services/bankingService';
 import { getFinancialAuditLogs } from '../services/auditService';
@@ -48,7 +46,7 @@ router.get(
   })
 );
 
-/** Process M-Pesa payment via Equity H2H — banking_agent & platform_admin */
+/** Verify a farmer's national ID — banking roles & platform_admin */
 router.post(
   '/verify-farmer-id',
   requirePermission('payments.read'),
@@ -68,19 +66,6 @@ router.post(
       ipAddress: req.ip,
       success: result.verified,
     });
-    res.json(result);
-  })
-);
-
-router.post(
-  '/payments/:paymentId/process',
-  requirePermission('payments.process'),
-  asyncHandler(async (req, res) => {
-    const result = await processPaymentViaBanking(req.params.paymentId, req.user!.userId);
-    if (!result.success) {
-      res.status(400).json(result);
-      return;
-    }
     res.json(result);
   })
 );
@@ -145,27 +130,3 @@ router.post(
 );
 
 export default router;
-
-/** Webhook router — mounted separately without JWT auth */
-export const equityWebhookRouter = Router();
-equityWebhookRouter.use(webhookRateLimiter);
-
-equityWebhookRouter.post(
-  '/equity',
-  asyncHandler(async (req, res) => {
-    const webhookSecret = process.env.EQUITY_WEBHOOK_SECRET;
-    if (webhookSecret && req.headers['x-equity-signature'] !== webhookSecret) {
-      res.status(401).json({ error: 'Invalid webhook signature' });
-      return;
-    }
-
-    const { reference, status, transactionId, message } = req.body;
-    if (!reference || !status) {
-      res.status(400).json({ error: 'reference and status required' });
-      return;
-    }
-
-    const result = await handleEquityWebhook({ reference, status, transactionId, message });
-    res.json(result);
-  })
-);

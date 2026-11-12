@@ -1,6 +1,4 @@
 import { query, queryOne } from '../db/database';
-import { logAudit } from './auditService';
-import { processPaymentViaBanking } from './bankingService';
 import { isLocationPending } from './farmerService';
 import {
   getFarmerActiveProjectSummaries,
@@ -452,47 +450,4 @@ export async function getFarmerNotifications(userId: string) {
     `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
     [userId]
   );
-}
-
-export async function claimPayment(farmerId: string, paymentId: string, initiatedBy?: string) {
-  const payment = await queryOne<{ id: string; amount: number; verification_status: string }>(
-    `SELECT * FROM payments WHERE id = $1 AND farmer_id = $2 AND payment_status = 'pending'`,
-    [paymentId, farmerId]
-  );
-
-  if (!payment) return { success: false, error: 'Payment not found or already claimed' };
-
-  if (payment.verification_status === 'unverified' && process.env.REQUIRE_PAYMENT_VERIFICATION === 'true') {
-    return { success: false, error: 'Payment pending agent verification' };
-  }
-
-  if (process.env.USE_EQUITY_H2H === 'true' && initiatedBy) {
-    const result = await processPaymentViaBanking(paymentId, initiatedBy);
-    await logAudit({
-      userId: initiatedBy,
-      action: 'payment.claim',
-      category: 'financial',
-      resourceType: 'payment',
-      resourceId: paymentId,
-      details: { amount: payment.amount, via: 'h2h' },
-      success: result.success,
-    });
-    return result;
-  }
-
-  const ref = `MPX${Date.now()}`;
-  const { settleTransferredPayment } = await import('./hierarchyService');
-  await settleTransferredPayment(paymentId, ref);
-
-  await logAudit({
-    userId: farmerId,
-    action: 'payment.claim',
-    category: 'financial',
-    resourceType: 'payment',
-    resourceId: paymentId,
-    details: { amount: payment.amount, reference: ref },
-    success: true,
-  });
-
-  return { success: true, reference: ref, amount: payment.amount };
 }
