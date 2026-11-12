@@ -280,7 +280,8 @@ export async function getFarmerPayments(farmerId: string) {
         LEFT JOIN farmer_tasks ft
           ON ft.farmer_id::text = p.farmer_id::text
          AND (
-           trim(p.description) = 'Task:' || ft.id::text
+           p.farmer_task_id::text = ft.id::text
+           OR trim(p.description) = 'Task:' || ft.id::text
            OR trim(p.description) = 'Task:' || ft.task_id::text
          )
         LEFT JOIN tasks t ON t.id = ft.task_id
