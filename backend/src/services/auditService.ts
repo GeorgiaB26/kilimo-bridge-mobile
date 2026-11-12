@@ -26,6 +26,7 @@ export type AuditAction =
   | 'payment.h2h_webhook'
   | 'banking.transaction'
   | 'banking.verify_farmer_id'
+  | 'banking.batch_built'
   | 'data.access'
   | 'user.create'
   | 'permission.denied'
