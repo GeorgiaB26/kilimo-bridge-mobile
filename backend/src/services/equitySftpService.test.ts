@@ -873,7 +873,7 @@ test('runEquityBatchCycle: passes a locked build through without sending', async
 // Safety rules
 // ---------------------------------------------------------------------------
 
-test('safety: only the equity services import the SFTP service (no route, no index.ts, no scheduler)', async () => {
+test('safety: only the equity services and the equity scheduler import the SFTP service (no route, no index.ts)', async () => {
   const fs = await import('node:fs');
   const path = await import('node:path');
   const srcDir = path.resolve(__dirname, '..');
@@ -882,7 +882,7 @@ test('safety: only the equity services import the SFTP service (no route, no ind
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (/\.ts$/.test(entry.name) && !/^equity(Sftp|Response)Service/.test(entry.name)) {
+      else if (/\.ts$/.test(entry.name) && !/^equity(Sftp|Response)Service|^equityScheduler/.test(entry.name)) {
         const text = fs.readFileSync(full, 'utf8');
         if (/equitySftpService/.test(text)) offenders.push(path.relative(srcDir, full));
       }

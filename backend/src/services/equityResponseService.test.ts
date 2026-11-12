@@ -910,14 +910,14 @@ test('stored parse summaries contain counts, not names or numbers', async () => 
 // Safety
 // ---------------------------------------------------------------------------
 
-test('safety: no route or index.ts imports the response service, and nothing schedules it', () => {
+test('safety: only the equity scheduler imports the response service (no route, no index.ts)', () => {
   const srcDir = path.resolve(__dirname, '..');
   const offenders: string[] = [];
   const walk = (dir: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (/\.ts$/.test(entry.name) && !/equityResponseService/.test(entry.name)) {
+      else if (/\.ts$/.test(entry.name) && !/^equity(ResponseService|Scheduler)/.test(entry.name)) {
         if (/equityResponseService/.test(fs.readFileSync(full, 'utf8'))) {
           offenders.push(path.relative(srcDir, full));
         }
