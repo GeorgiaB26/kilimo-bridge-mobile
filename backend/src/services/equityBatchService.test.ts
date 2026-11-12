@@ -7,6 +7,8 @@ import {
   generateUgandaBatchFile,
   maskMobile,
   planUgandaBatches,
+  shouldWriteBuildAudit,
+  UGANDA_CANDIDATES_SQL,
   type UgandaPaymentCandidate,
 } from './equityBatchService';
 
@@ -322,4 +324,24 @@ test('maskMobile: keeps only the last 3 digits', () => {
   assert.equal(maskMobile('+256751000123'), '*********123');
   assert.equal(maskMobile('12'), '***');
   assert.equal(maskMobile(null), '***');
+});
+
+// ---------------------------------------------------------------------------
+// Selection rules and audit rule (no database: assert on the SQL text / pure helpers)
+// ---------------------------------------------------------------------------
+
+test('candidate SQL excludes live bank transactions on ANY channel', () => {
+  const sql = UGANDA_CANDIDATES_SQL.replace(/\s+/g, ' ');
+  assert.match(sql, /NOT EXISTS \( SELECT 1 FROM bank_transactions bt WHERE bt\.payment_id = p\.id AND bt\.status::text = ANY\(\$1::text\[\]\) \)/);
+  assert.doesNotMatch(sql, /channel/);
+  assert.match(sql, /payment_status = 'pending'/);
+  assert.match(sql, /LOWER\(TRIM\(f\.country\)\) = 'uganda'/);
+  assert.match(sql, /FOR UPDATE OF p SKIP LOCKED/);
+});
+
+test('shouldWriteBuildAudit: not for empty runs, yes when batches, skipped or deferred', () => {
+  assert.equal(shouldWriteBuildAudit({ batchCount: 0, skippedCount: 0, deferredCount: 0 }), false);
+  assert.equal(shouldWriteBuildAudit({ batchCount: 1, skippedCount: 0, deferredCount: 0 }), true);
+  assert.equal(shouldWriteBuildAudit({ batchCount: 0, skippedCount: 2, deferredCount: 0 }), true);
+  assert.equal(shouldWriteBuildAudit({ batchCount: 0, skippedCount: 0, deferredCount: 3 }), true);
 });

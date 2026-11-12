@@ -237,6 +237,17 @@ export async function processPaymentViaBanking(
   paymentId: string,
   initiatedBy: string
 ): Promise<H2HTransferResult> {
+  const inEquityBatch = await queryOne<{ id: string }>(
+    `SELECT id FROM bank_transactions
+     WHERE payment_id = $1 AND channel = 'sftp_file'
+       AND status::text IN ('pending', 'processing', 'completed')
+     LIMIT 1`,
+    [paymentId]
+  );
+  if (inEquityBatch) {
+    return { success: false, error: 'Payment is already in an Equity batch', status: 'failed' };
+  }
+
   const payment = await queryOne<{
     id: string;
     farmer_id: string;

@@ -47,7 +47,7 @@ export const EQUITY_UG_DEFAULT_FILENAME_MD = 'MD';
 export const EQUITY_AUTO_SEND_DEFAULT_MAX_PAYMENTS = 500;
 
 const SFTP_CHANNEL = 'sftp_file';
-/** A payment with a bank_transactions row in one of these states is never selected again. */
+/** A payment with a bank_transactions row in one of these states (any channel) is never selected. */
 const BLOCKING_TX_STATUSES = ['pending', 'processing', 'completed'] as const;
 /** Cap on skipped entries copied into the audit log details. */
 const AUDIT_SKIPPED_SAMPLE_LIMIT = 50;
@@ -390,9 +390,12 @@ function readFarmerMobile(stored: string | null): string {
   }
 }
 
-async function selectCandidates(client: PoolClient): Promise<UgandaPaymentCandidate[]> {
-  const res = await client.query<CandidateRow>(
-    `SELECT p.id AS payment_id, p.farmer_id, f.name AS farmer_name, f.phone_number, p.amount
+/**
+ * Pending Uganda payments with no live bank transaction on ANY channel (h2h_api or sftp_file).
+ * `bt.status` is a Postgres enum (bank_transaction_status), so it is cast to text for the
+ * comparison. Exported so tests can assert on the selection rules without a database.
+ */
+export const UGANDA_CANDIDATES_SQL = `SELECT p.id AS payment_id, p.farmer_id, f.name AS farmer_name, f.phone_number, p.amount
        FROM payments p
        JOIN farmers f ON f.farmer_id = p.farmer_id
       WHERE p.payment_status = 'pending'
@@ -400,13 +403,13 @@ async function selectCandidates(client: PoolClient): Promise<UgandaPaymentCandid
         AND NOT EXISTS (
           SELECT 1 FROM bank_transactions bt
            WHERE bt.payment_id = p.id
-             AND bt.channel = $1
-             AND bt.status = ANY($2::text[])
+             AND bt.status::text = ANY($1::text[])
         )
       ORDER BY p.created_at ASC, p.id ASC
-      FOR UPDATE OF p SKIP LOCKED`,
-    [SFTP_CHANNEL, [...BLOCKING_TX_STATUSES]]
-  );
+      FOR UPDATE OF p SKIP LOCKED`;
+
+async function selectCandidates(client: PoolClient): Promise<UgandaPaymentCandidate[]> {
+  const res = await client.query<CandidateRow>(UGANDA_CANDIDATES_SQL, [[...BLOCKING_TX_STATUSES]]);
   return res.rows.map((r) => ({
     paymentId: String(r.payment_id),
     farmerId: String(r.farmer_id),
@@ -414,6 +417,15 @@ async function selectCandidates(client: PoolClient): Promise<UgandaPaymentCandid
     mobile: readFarmerMobile(r.phone_number),
     amount: r.amount === null ? NaN : Number(r.amount),
   }));
+}
+
+/** A run that found nothing (no batches, nothing skipped or deferred) is not audited. */
+export function shouldWriteBuildAudit(counts: {
+  batchCount: number;
+  skippedCount: number;
+  deferredCount: number;
+}): boolean {
+  return counts.batchCount > 0 || counts.skippedCount > 0 || counts.deferredCount > 0;
 }
 
 function countByReason(skipped: SkippedPayment[]): Partial<Record<SkipReason, number>> {
@@ -533,9 +545,9 @@ export async function buildUgandaBatches(params: {
         const p = chunk[i];
         await client.query(
           `INSERT INTO bank_transactions (
-             id, payment_id, farmer_id, amount, recipient_phone, status, initiated_by,
+             id, payment_id, farmer_id, amount, currency, recipient_phone, status, initiated_by,
              batch_id, customer_reference, channel
-           ) VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9)`,
+           ) VALUES ($1, $2, $3, $4, 'UGX', $5, 'pending', $6, $7, $8, $9)`,
           [
             txIds[i],
             p.paymentId,
@@ -610,6 +622,16 @@ export async function buildUgandaBatches(params: {
     throw new Error(
       `Equity batches were saved (batch ids: ${ids}) but encryption failed: ${reason}. Use rebuildBatchFile(batchId) to regenerate each file.`
     );
+  }
+
+  if (
+    !shouldWriteBuildAudit({
+      batchCount: batches.length,
+      skippedCount: skipped.length,
+      deferredCount,
+    })
+  ) {
+    return { ...summaryBase, batches };
   }
 
   try {
