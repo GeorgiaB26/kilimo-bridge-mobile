@@ -334,7 +334,9 @@ test('maskMobile: keeps only the last 3 digits', () => {
 test('candidate SQL excludes live bank transactions on ANY channel', () => {
   const sql = UGANDA_CANDIDATES_SQL.replace(/\s+/g, ' ');
   assert.match(sql, /NOT EXISTS \( SELECT 1 FROM bank_transactions bt WHERE bt\.payment_id = p\.id AND bt\.status::text = ANY\(\$1::text\[\]\) \)/);
-  assert.doesNotMatch(sql, /channel/);
+  // The first (live transaction) clause has no channel filter; the second (bank-rejected) does.
+  const firstClause = sql.slice(sql.indexOf('NOT EXISTS'), sql.indexOf('NOT EXISTS', sql.indexOf('NOT EXISTS') + 1));
+  assert.doesNotMatch(firstClause, /channel/);
   assert.match(sql, /payment_status = 'pending'/);
   assert.match(sql, /LOWER\(TRIM\(f\.country\)\) = 'uganda'/);
   assert.match(sql, /FOR UPDATE OF p SKIP LOCKED/);
@@ -400,4 +402,18 @@ test('buildUgandaBatches (dry run) applies REQUIRE_PAYMENT_VERIFICATION to the c
   assert.doesNotMatch(candidateSql[0], /verification_status/);
   assert.match(candidateSql[1], /verification_status::text IS DISTINCT FROM 'unverified'/);
   assert.doesNotMatch(candidateSql[2], /verification_status/);
+});
+
+test('candidate SQL excludes payments the bank rejected (failed sftp_file row, any code but UPLOAD_FAILED)', () => {
+  for (const sql of [ugandaCandidatesSql(false), ugandaCandidatesSql(true)]) {
+    const flat = sql.replace(/\s+/g, ' ');
+    assert.match(
+      flat,
+      /AND NOT EXISTS \( SELECT 1 FROM bank_transactions bf WHERE bf\.payment_id = p\.id AND bf\.channel = 'sftp_file' AND bf\.status::text = 'failed' AND bf\.equity_error_code IS DISTINCT FROM 'UPLOAD_FAILED' \)/
+    );
+    // Our own upload failures stay selectable: the exclusion is only for other codes.
+    assert.doesNotMatch(flat, /equity_error_code <> 'UPLOAD_FAILED'/);
+    // The blocking-status rule is still there.
+    assert.match(flat, /bt\.status::text = ANY\(\$1::text\[\]\)/);
+  }
 });

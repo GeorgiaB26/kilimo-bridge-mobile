@@ -28,6 +28,7 @@ export type AuditAction =
   | 'banking.verify_farmer_id'
   | 'banking.batch_built'
   | 'banking.batch_sent'
+  | 'banking.responses_processed'
   | 'data.access'
   | 'user.create'
   | 'permission.denied'

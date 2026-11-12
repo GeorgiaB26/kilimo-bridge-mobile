@@ -94,6 +94,10 @@ class FakeClient implements SftpClientLike {
     return { size };
   }
 
+  async get(): Promise<Buffer> {
+    throw new Error('get is not used by the upload service');
+  }
+
   async delete(remotePath: string): Promise<void> {
     this.deleteCalls.push(remotePath);
     if (this.opts.deleteError) throw this.opts.deleteError;
@@ -869,7 +873,7 @@ test('runEquityBatchCycle: passes a locked build through without sending', async
 // Safety rules
 // ---------------------------------------------------------------------------
 
-test('safety: no route or index.ts imports the SFTP service, and nothing schedules it', async () => {
+test('safety: only the equity services import the SFTP service (no route, no index.ts, no scheduler)', async () => {
   const fs = await import('node:fs');
   const path = await import('node:path');
   const srcDir = path.resolve(__dirname, '..');
@@ -878,7 +882,7 @@ test('safety: no route or index.ts imports the SFTP service, and nothing schedul
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (/\.ts$/.test(entry.name) && !/equitySftpService/.test(entry.name)) {
+      else if (/\.ts$/.test(entry.name) && !/^equity(Sftp|Response)Service/.test(entry.name)) {
         const text = fs.readFileSync(full, 'utf8');
         if (/equitySftpService/.test(text)) offenders.push(path.relative(srcDir, full));
       }

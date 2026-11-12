@@ -391,7 +391,9 @@ function readFarmerMobile(stored: string | null): string {
 }
 
 /**
- * Pending Uganda payments with no live bank transaction on ANY channel (h2h_api or sftp_file).
+ * Pending Uganda payments with no live bank transaction on ANY channel (h2h_api or sftp_file),
+ * and no sftp_file transaction that the BANK rejected (status 'failed' with any error code
+ * other than our own 'UPLOAD_FAILED'): those need a human, they are never re-sent automatically.
  * `bt.status` is a Postgres enum (bank_transaction_status), so it is cast to text for the
  * comparison. Exported so tests can assert on the selection rules without a database.
  */
@@ -415,6 +417,13 @@ export function ugandaCandidatesSql(requireVerification: boolean): string {
           SELECT 1 FROM bank_transactions bt
            WHERE bt.payment_id = p.id
              AND bt.status::text = ANY($1::text[])
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM bank_transactions bf
+           WHERE bf.payment_id = p.id
+             AND bf.channel = 'sftp_file'
+             AND bf.status::text = 'failed'
+             AND bf.equity_error_code IS DISTINCT FROM 'UPLOAD_FAILED'
         )
       ORDER BY p.created_at ASC, p.id ASC
       FOR UPDATE OF p SKIP LOCKED`;
