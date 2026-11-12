@@ -30,6 +30,7 @@ import aggregationRoutes from './routes/aggregation';
 import aggregationCentresRoutes from './routes/aggregationCentres';
 import uploadsRoutes from './routes/uploads';
 import { getR2ConfigStatus } from './services/r2StorageService';
+import { startEquityScheduler } from './services/equityScheduler';
 import { apiRateLimiter } from './middleware/security';
 import { getAdminStats } from './services/userService';
 import { getFarmerCount } from './db/database';
@@ -84,6 +85,13 @@ app.get('/health', (_req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Kilimo Bridge API listening on ${HOST}:${PORT}`);
+  try {
+    // No-op unless EQUITY_AUTO_SEND_ENABLED / EQUITY_RESPONSE_POLL_ENABLED are exactly 'true'.
+    // First checks run ~60s from now, which leaves time for bootstrap below.
+    startEquityScheduler();
+  } catch (err) {
+    console.error('[equity-scheduler] failed to start:', err instanceof Error ? err.name : 'UnknownError');
+  }
   bootstrap().catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
     bootstrapError = message;
