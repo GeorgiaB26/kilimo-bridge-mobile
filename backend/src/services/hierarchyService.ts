@@ -706,7 +706,8 @@ export async function listFarmerProgramProjects(farmerId: string) {
               WHERE p.farmer_id = ft.farmer_id
                 AND lower(p.payment_status::text) IN ('transferred', 'paid')
                 AND (
-                  p.description = 'Task:' || ft.id
+                  p.farmer_task_id::text = ft.id::text
+                  OR p.description = 'Task:' || ft.id
                   OR ABS(COALESCE(p.amount, 0) - COALESCE(t.payment_value_kes, 0)) < 1
                 )
             )
@@ -990,7 +991,16 @@ async function notifyFarmerOfHierarchyTaskReview(
   }
 }
 
-async function createPendingPaymentForApprovedTask(
+/**
+ * Create the pending payment for an approved farmer task, unless one already exists.
+ *
+ * The Lovable-owned DB trigger `trg_create_payment_on_approval` also inserts a payment when
+ * `farmer_tasks.status` becomes 'approved' (description = task name, farmer_task_id set). A
+ * second row would double pay the farmer, so we skip when a payment is already linked by
+ * `farmer_task_id` or by the legacy `Task:<id>` description. When we do insert, we set
+ * `farmer_task_id` so the partial unique index `payments_farmer_task_id_key` guards races.
+ */
+export async function createPendingPaymentForApprovedTask(
   task: { id?: string; farmer_id?: string; name?: string; payment_value_kes?: number } | null
 ): Promise<void> {
   if (!task?.id || !task.farmer_id) return;
@@ -999,15 +1009,18 @@ async function createPendingPaymentForApprovedTask(
 
   const description = `Task:${task.id}`;
   const existing = await queryOne<{ id: string }>(
-    'SELECT id FROM payments WHERE description = $1',
-    [description]
+    `SELECT id FROM payments
+     WHERE farmer_task_id::text = $1::text OR description = $2
+     LIMIT 1`,
+    [task.id, description]
   );
   if (existing) return;
 
   await query(
-    `INSERT INTO payments (id, farmer_id, description, amount, payment_status, payment_method)
-     VALUES ($1, $2, $3, $4, 'pending', 'M-Pesa')`,
-    [uuidv4(), task.farmer_id, description, amount]
+    `INSERT INTO payments (id, farmer_id, farmer_task_id, description, amount, payment_status, payment_method)
+     VALUES ($1, $2, $3, $4, $5, 'pending', 'M-Pesa')
+     ON CONFLICT (farmer_task_id) WHERE farmer_task_id IS NOT NULL DO NOTHING`,
+    [uuidv4(), task.farmer_id, task.id, description, amount]
   );
 }
 
@@ -1169,7 +1182,8 @@ export async function fulfillTransferredPaymentsForFarmer(farmerId: string): Pro
      WHERE farmer_id::text = $1::text
        AND lower(payment_status::text) IN ('transferred', 'paid')
        AND (
-         description ILIKE 'Task:%'
+         farmer_task_id IS NOT NULL
+         OR description ILIKE 'Task:%'
          OR description ILIKE 'QC:%'
        )
      ORDER BY paid_at DESC NULLS LAST, created_at DESC
@@ -1200,7 +1214,15 @@ async function completeFarmerTasksForTransferredPayment(input: {
   allowAmountFallback?: boolean;
 }): Promise<{ farmerTaskId?: string; taskName?: string }> {
   const description = input.description ?? '';
+  // Prefer the explicit link (set by the approval trigger and our own inserts); fall back to
+  // the legacy 'Task:<id>' description convention.
+  const linkedRow = await queryOne<{ farmer_task_id: string | null }>(
+    'SELECT farmer_task_id FROM payments WHERE id::text = $1::text',
+    [input.paymentId]
+  );
+  const linkedFarmerTaskId = linkedRow?.farmer_task_id ? String(linkedRow.farmer_task_id) : null;
   const taskRef =
+    linkedFarmerTaskId ??
     /Task:([0-9a-fA-F-]{8,}|\S+)/.exec(description)?.[1] ??
     /^Task:(.+)$/.exec(description)?.[1] ??
     null;
