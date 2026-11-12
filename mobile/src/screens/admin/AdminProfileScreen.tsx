@@ -60,7 +60,7 @@ function getPermissions(role?: string): string[] {
     case 'banking_admin':
       return ['View payment processing status', 'Manage banking agent accounts', 'Financial audit trail'];
     case 'banking_agent':
-      return ['View assigned payment transactions', 'Process M-Pesa via Equity H2H', 'Financial audit trail'];
+      return ['View assigned payment transactions', 'Payments are sent to Equity automatically', 'Financial audit trail'];
     case 'farmer':
       return ['View own profile', 'View own projects', 'View own payments'];
     default:

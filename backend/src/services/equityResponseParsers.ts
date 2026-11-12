@@ -49,7 +49,7 @@ export type EquityNackParseResult = {
   records: EquityNackRecord[];
 };
 
-export type EquityPsrStatus = 'success' | 'verification_failure' | 'unknown';
+export type EquityPsrStatus = 'success' | 'failed' | 'verification_failure' | 'unknown';
 
 export type EquityPsrRecord = {
   equityTransactionId: string;
@@ -144,6 +144,7 @@ function nonEmptyLines(text: string): string[] {
 export function mapPsrStatus(raw: string): EquityPsrStatus {
   const t = raw.trim().toLowerCase();
   if (t === 'success') return 'success';
+  if (t === 'failed') return 'failed';
   if (t === 'verification failure') return 'verification_failure';
   return 'unknown';
 }

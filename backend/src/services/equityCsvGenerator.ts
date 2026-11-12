@@ -8,6 +8,17 @@
  */
 
 import { createHash, randomBytes } from 'crypto';
+import {
+  getEastAfricaTimeParts,
+  getEquityCountryConfig,
+  getUgandaServiceProvider,
+  normalizeUgandaMobile,
+  type EastAfricaTimeParts,
+  type EquityCountry,
+} from './equityCountryConfig';
+
+/** Uganda Customer Reference No uses a two-digit line number, so one file holds at most 99 lines. */
+export const EQUITY_UG_MAX_LINES_PER_FILE = 99;
 
 /** Exact header order from Equity's sample outbound file. */
 export const EQUITY_CSV_HEADERS = [
@@ -38,15 +49,31 @@ export const EQUITY_SERVICE_PROVIDER_MPESA = 'MPESA';
 export const EQUITY_CHARGE_TYPE_OUR = 'OUR';
 
 export type EquityBatchFileConfig = {
+  /** Defaults to 'KE' so existing callers behave exactly as before. */
+  country?: EquityCountry;
   templateId: string;
   customerId: string;
-  entityCode: string;
+  /**
+   * Required for Kenya. Ignored for Uganda (taken from EQUITY_UG_ENTITY_CODE,
+   * default DRAPIUSUG) so a Kenya entity code can never leak into a Uganda file.
+   */
+  entityCode?: string;
   /** Fixed segment in sample filenames (`MD`) — meaning pending Equity confirmation. */
   filenameMiddleSegment?: string;
   debitAccountNo: string;
-  /** Calendar date used for Value Date and filename (local business date). */
-  valueDate: Date;
-  sequenceNo: number;
+  /**
+   * Kenya: calendar date used for Value Date and filename (server-local business date).
+   * Ignored for Uganda — see `generatedAt`.
+   */
+  valueDate?: Date;
+  /** Kenya: required, used in the file name. Not used for Uganda. */
+  sequenceNo?: number;
+  /**
+   * Uganda: the instant the batch is generated (defaults to now). Value Date, file name
+   * date and timestamp, and Customer References are all derived from it in Africa/Kampala
+   * time. Settable so tests can fix the time.
+   */
+  generatedAt?: Date;
   currency?: string;
   serviceProvider?: string;
   chargeType?: string;
@@ -84,7 +111,8 @@ export type EquityGeneratedBatchFile = {
   content: string;
   sha256: string;
   valueDateFormatted: string;
-  sequenceNo: number;
+  /** Kenya file sequence number; `null` for Uganda (timestamp-named files). */
+  sequenceNo: number | null;
   rows: EquityCsvRow[];
   /** customer_reference per input line, same order as `lines`. */
   customerReferences: string[];
@@ -130,9 +158,50 @@ export function escapeCsvField(value: string): string {
   return value;
 }
 
+/** Uganda: DD-MM-YYYY in Africa/Kampala. */
+export function formatEquityUgandaValueDate(t: EastAfricaTimeParts): string {
+  return `${pad2(t.day)}-${pad2(t.month)}-${t.year}`;
+}
+
+/** Uganda: DDMMYYYY in Africa/Kampala. */
+export function formatEquityUgandaFilenameDate(t: EastAfricaTimeParts): string {
+  return `${pad2(t.day)}${pad2(t.month)}${t.year}`;
+}
+
+/** Uganda: YYYYMMDDHHMMSS in Africa/Kampala. */
+export function formatEquityUgandaTimestamp(t: EastAfricaTimeParts): string {
+  return `${t.year}${pad2(t.month)}${pad2(t.day)}${pad2(t.hour)}${pad2(t.minute)}${pad2(t.second)}`;
+}
+
+function isUganda(config: EquityBatchFileConfig): boolean {
+  return (config.country ?? 'KE') === 'UG';
+}
+
+function ugandaBatchTime(config: EquityBatchFileConfig): EastAfricaTimeParts {
+  return getEastAfricaTimeParts(config.generatedAt ?? new Date());
+}
+
+function requireKenyaValueDate(config: EquityBatchFileConfig): Date {
+  if (!config.valueDate) {
+    throw new Error('valueDate is required for Kenya Equity batches');
+  }
+  return config.valueDate;
+}
+
 export function buildEquityBatchFilename(config: EquityBatchFileConfig): string {
   const mid = config.filenameMiddleSegment ?? 'MD';
-  const datePart = formatEquityFilenameDate(config.valueDate);
+
+  if (isUganda(config)) {
+    const t = ugandaBatchTime(config);
+    const { entityCode } = getEquityCountryConfig('UG');
+    // TMP224_<customerId>_<customerId>_MD_<DDMMYYYY>_DRAPIUSUG_ALL<YYYYMMDDHHMMSS>.csv
+    return `${config.templateId}_${config.customerId}_${config.customerId}_${mid}_${formatEquityUgandaFilenameDate(t)}_${entityCode}_ALL${formatEquityUgandaTimestamp(t)}.csv`;
+  }
+
+  if (!config.entityCode) {
+    throw new Error('entityCode is required for Kenya Equity batches');
+  }
+  const datePart = formatEquityFilenameDate(requireKenyaValueDate(config));
   const seq = String(config.sequenceNo).padStart(3, '0');
   // Sample: TMP224_56010646936_56010646936_MD_17092026_DRAPIUS_001.csv
   return `${config.templateId}_${config.customerId}_${config.customerId}_${mid}_${datePart}_${config.entityCode}_${seq}.csv`;
@@ -168,6 +237,10 @@ export function buildMwCsvRow(
   line: EquityMwPaymentLine,
   customerReference: string
 ): EquityCsvRow {
+  if (isUganda(config)) {
+    return buildUgandaMwCsvRow(config, line, customerReference);
+  }
+
   const mobile = digitsOnlyMobile(line.beneficiaryMobileNo);
   if (mobile.length < 9) {
     throw new Error(`Beneficiary mobile looks too short after normalisation: ${mobile}`);
@@ -189,7 +262,38 @@ export function buildMwCsvRow(
     'Beneficiary Mobile No': mobile,
     'Service Provider': config.serviceProvider ?? EQUITY_SERVICE_PROVIDER_MPESA,
     'Charge Type': config.chargeType ?? EQUITY_CHARGE_TYPE_OUR,
-    'Value Date': formatEquityValueDate(config.valueDate),
+    'Value Date': formatEquityValueDate(requireKenyaValueDate(config)),
+    'Customer Reference No': customerReference,
+    'Deal Reference No': '',
+  };
+}
+
+/**
+ * Uganda MW row (format accepted by Equity in UAT). Currency, provider, charge type
+ * and purpose fields are fixed by country/network, not by per-batch overrides.
+ */
+function buildUgandaMwCsvRow(
+  config: EquityBatchFileConfig,
+  line: EquityMwPaymentLine,
+  customerReference: string
+): EquityCsvRow {
+  const country = getEquityCountryConfig('UG');
+  const mobile = normalizeUgandaMobile(line.beneficiaryMobileNo);
+  return {
+    'Transaction Type Code': EQUITY_TX_TYPE_MOBILE_WALLET,
+    'Debit Account No.': config.debitAccountNo,
+    'Beneficiary Account No.': '',
+    'Beneficiary Name': line.beneficiaryName.trim(),
+    'Beneficiary Bank Swift Code / Local Bank Code': '',
+    'Purpose Code': '',
+    'Purpose Of Payment': '',
+    'Transaction Currency': country.currency,
+    'Payment Amount': formatPaymentAmount(line.amount),
+    'Payment Type': '',
+    'Beneficiary Mobile No': mobile,
+    'Service Provider': getUgandaServiceProvider(mobile),
+    'Charge Type': EQUITY_CHARGE_TYPE_OUR,
+    'Value Date': formatEquityUgandaValueDate(ugandaBatchTime(config)),
     'Customer Reference No': customerReference,
     'Deal Reference No': '',
   };
@@ -211,7 +315,16 @@ export function generateEquityMwBatchFile(
   if (lines.length === 0) {
     throw new Error('Cannot generate an Equity batch with zero payment lines');
   }
-  if (!Number.isInteger(config.sequenceNo) || config.sequenceNo < 1) {
+
+  if (isUganda(config)) {
+    return generateUgandaMwBatchFile(config, lines);
+  }
+
+  if (
+    config.sequenceNo === undefined ||
+    !Number.isInteger(config.sequenceNo) ||
+    config.sequenceNo < 1
+  ) {
     throw new Error(`sequenceNo must be a positive integer (got ${config.sequenceNo})`);
   }
 
@@ -237,8 +350,43 @@ export function generateEquityMwBatchFile(
     filename,
     content,
     sha256,
-    valueDateFormatted: formatEquityValueDate(config.valueDate),
+    valueDateFormatted: formatEquityValueDate(requireKenyaValueDate(config)),
     sequenceNo: config.sequenceNo,
+    rows,
+    customerReferences,
+  };
+}
+
+function generateUgandaMwBatchFile(
+  config: EquityBatchFileConfig,
+  lines: EquityMwPaymentLine[]
+): EquityGeneratedBatchFile {
+  if (lines.length > EQUITY_UG_MAX_LINES_PER_FILE) {
+    throw new Error(
+      `A Uganda Equity file can hold at most ${EQUITY_UG_MAX_LINES_PER_FILE} lines (got ${lines.length}); splitting into several files is not supported yet`
+    );
+  }
+
+  // Fix the instant once so every line and the file name share one timestamp.
+  const fixed: EquityBatchFileConfig = { ...config, generatedAt: config.generatedAt ?? new Date() };
+  const time = ugandaBatchTime(fixed);
+  const { referencePrefix } = getEquityCountryConfig('UG');
+  const timestamp = formatEquityUgandaTimestamp(time);
+
+  // Uganda references are always generated; a per-line customerReference is ignored.
+  const customerReferences = lines.map((_, i) => `${referencePrefix}${timestamp}${pad2(i + 1)}`);
+  const rows = lines.map((line, i) => buildMwCsvRow(fixed, line, customerReferences[i]));
+
+  const filename = buildEquityBatchFilename(fixed);
+  const content = serializeEquityCsv(rows);
+  const sha256 = createHash('sha256').update(content, 'utf8').digest('hex');
+
+  return {
+    filename,
+    content,
+    sha256,
+    valueDateFormatted: formatEquityUgandaValueDate(time),
+    sequenceNo: null,
     rows,
     customerReferences,
   };
@@ -246,7 +394,7 @@ export function generateEquityMwBatchFile(
 
 /** Load batch file settings from environment (Render / local). */
 export function equityBatchConfigFromEnv(
-  overrides: Partial<EquityBatchFileConfig> & Pick<EquityBatchFileConfig, 'valueDate' | 'sequenceNo'>
+  overrides: Partial<EquityBatchFileConfig> & Required<Pick<EquityBatchFileConfig, 'valueDate' | 'sequenceNo'>>
 ): EquityBatchFileConfig {
   const templateId = process.env.EQUITY_SFTP_TEMPLATE_ID?.trim();
   const customerId = process.env.EQUITY_SFTP_CUSTOMER_ID?.trim();

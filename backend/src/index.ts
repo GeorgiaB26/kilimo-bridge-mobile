@@ -22,7 +22,7 @@ import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
 import farmerRoutes from './routes/farmer';
 import adminDashboardRoutes from './routes/adminDashboard';
-import bankingRoutes, { equityWebhookRouter } from './routes/banking';
+import bankingRoutes from './routes/banking';
 import agentRoutes from './routes/agents';
 import auditRoutes from './routes/audit';
 import hierarchyAdminRoutes from './routes/hierarchyAdmin';
@@ -160,7 +160,6 @@ function mountApiRoutes(): void {
   app.use('/api/support', supportRoutes);
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/audit', auditRoutes);
-  app.use('/api/webhooks', equityWebhookRouter);
   app.use('/api/uploads', uploadsRoutes);
   app.use('/api', apiRoutes);
 

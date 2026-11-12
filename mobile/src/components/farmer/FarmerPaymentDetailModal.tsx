@@ -60,6 +60,11 @@ export function FarmerPaymentDetailModal({ payment, onClose, formatAmount }: Pro
           <Text style={styles.amount}>{formatAmount(payment.amount)}</Text>
           <Text style={styles.label}>Status</Text>
           <Text style={[styles.value, { color }]}>{payment.payment_status}</Text>
+          {['pending', 'processing'].includes(payment.payment_status.toLowerCase()) ? (
+            <Text style={styles.subValue}>
+              Your payment will be sent to your mobile wallet automatically.
+            </Text>
+          ) : null}
           <Text style={styles.label}>Method</Text>
           <Text style={styles.value}>{payment.payment_method}</Text>
           {payment.mpesa_reference ? (
