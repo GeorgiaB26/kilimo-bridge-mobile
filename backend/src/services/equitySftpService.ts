@@ -155,6 +155,8 @@ export interface SftpClientLike {
   put(input: Buffer, remotePath: string): Promise<unknown>;
   stat(remotePath: string): Promise<{ size: number }>;
   list(remotePath: string): Promise<RemoteFileInfo[]>;
+  /** Download a remote file into memory. */
+  get(remotePath: string): Promise<unknown>;
   delete(remotePath: string): Promise<unknown>;
   end(): Promise<unknown>;
   on(event: string, listener: (...args: any[]) => void): unknown;
@@ -258,7 +260,7 @@ export class OperationTimeoutError extends Error {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new OperationTimeoutError(what, ms)), ms);
@@ -266,7 +268,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-function remoteFilePath(dir: string, filename: string): string {
+export function remoteFilePath(dir: string, filename: string): string {
   if (!filename || filename.includes('/') || filename.includes('\\') || filename === '.' || filename === '..') {
     throw new Error('Invalid batch file name');
   }

@@ -1,5 +1,6 @@
 /**
- * Equity Bank PGP helpers — encrypt outbound files to Equity's public key.
+ * Equity Bank PGP helpers — encrypt outbound files to Equity's public key, and decrypt
+ * response files (ACK / NACK / PSR) with our own private key.
  *
  * Policy (agreed with product/security for this integration):
  * - allowMissingKeyFlags is scoped ONLY to encrypting with Equity's known key
@@ -208,4 +209,69 @@ export async function encryptPayloadForEquity(
   }
 
   return { armoredMessage, keyInfo: info };
+}
+
+// ---------------------------------------------------------------------------
+// Decrypt (inbound response files)
+// ---------------------------------------------------------------------------
+
+const ARMOR_HEADER = '-----BEGIN PGP MESSAGE-----';
+
+function looksArmored(bytes: Uint8Array): boolean {
+  // Skip leading whitespace / BOM, then look for the armour header.
+  const head = Buffer.from(bytes.subarray(0, 256)).toString('latin1').replace(/^[\s\uFEFF]+/, '');
+  return head.startsWith(ARMOR_HEADER);
+}
+
+/**
+ * Decrypt a response file from Equity (ASCII-armoured or binary OpenPGP message) with our
+ * private key: EQUITY_PGP_PRIVATE_KEY_PATH (armoured or binary key file) and, when the key is
+ * protected, EQUITY_PGP_PASSPHRASE. Returns the plaintext bytes.
+ *
+ * The key material and the passphrase are never logged and never put in an error message.
+ * Signatures are not checked (we hold no key for Equity's signing identity here).
+ */
+export async function decryptEquityResponse(input: Buffer | Uint8Array): Promise<Buffer> {
+  const keyPath = process.env.EQUITY_PGP_PRIVATE_KEY_PATH?.trim();
+  if (!keyPath) {
+    throw new Error('EQUITY_PGP_PRIVATE_KEY_PATH is not set');
+  }
+  const passphrase = process.env.EQUITY_PGP_PASSPHRASE;
+
+  let keyBytes: Buffer;
+  try {
+    keyBytes = fs.readFileSync(keyPath);
+  } catch {
+    throw new Error('Could not read the file at EQUITY_PGP_PRIVATE_KEY_PATH');
+  }
+
+  try {
+    let privateKey = keyBytes.toString('latin1').includes('BEGIN PGP PRIVATE KEY BLOCK')
+      ? await openpgp.readPrivateKey({ armoredKey: keyBytes.toString('utf8') })
+      : await openpgp.readPrivateKey({ binaryKey: new Uint8Array(keyBytes) });
+
+    if (!privateKey.isDecrypted()) {
+      if (!passphrase) {
+        throw new Error('EQUITY_PGP_PASSPHRASE is not set but the private key is protected');
+      }
+      privateKey = await openpgp.decryptKey({ privateKey, passphrase });
+    }
+
+    const bytes = new Uint8Array(input);
+    const message = looksArmored(bytes)
+      ? await openpgp.readMessage({ armoredMessage: Buffer.from(bytes).toString('utf8') })
+      : await openpgp.readMessage({ binaryMessage: bytes });
+
+    const { data } = await openpgp.decrypt({
+      message,
+      decryptionKeys: privateKey,
+      format: 'binary',
+    });
+    return Buffer.from(data as Uint8Array);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'unknown error';
+    // Defence in depth: the passphrase must never appear in an error.
+    const safe = passphrase ? reason.split(passphrase).join('[redacted]') : reason;
+    throw new Error(`Equity response decryption failed: ${safe}`);
+  }
 }
