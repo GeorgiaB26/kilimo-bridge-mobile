@@ -308,6 +308,57 @@ test('portal PSR Success: record_result paid with the bank transaction id; trans
   assert.equal(await batchStatus(file.equityBatchId), 'settled');
 });
 
+test('portal PSR Success when the portal returns null (line not at sent): transaction completed, counted needsReview, logged', async () => {
+  const file = await sentFile(2);
+  // The portal moved line 0 out of 'sent' (e.g. someone reset it): record_result returns NULL.
+  await db.query(`UPDATE payment_lines SET stage = 'payment_approved' WHERE id = $1`, [file.lineIds[0]]);
+  const text = psrText([
+    { txId: 'BT-AAA-1', ref: file.customerReferences[0], status: 'Success', desc: 'Success' },
+    { txId: 'BT-BBB-2', ref: file.customerReferences[1], status: 'Success', desc: 'Success' },
+  ]);
+  const { counts, settled, logs } = await poll(new FakeSftp().add(psrName(file), text));
+
+  assert.equal(counts.errors, 0);
+  assert.equal(counts.filesProcessed, 1);
+  assert.equal(counts.success, 2, 'both payments were made by the bank');
+  assert.equal(counts.needsReview, 1, 'only the line the portal did not accept needs a human');
+  assert.deepEqual(settled, []);
+
+  // Both transactions are completed: the money moved.
+  assert.equal((await tx(file.txIds[0])).status, 'completed');
+  assert.equal((await tx(file.txIds[0])).equity_transaction_id, 'BT-AAA-1');
+  assert.equal((await tx(file.txIds[1])).status, 'completed');
+  // The portal was asked for both; it returned NULL for the first and left that line alone.
+  const calls = await recordCalls();
+  assert.equal(calls.length, 2);
+  const byLine = new Map(calls.map((c) => [c.args.line, c.result]));
+  assert.equal(byLine.get(file.lineIds[0]), null);
+  assert.equal(byLine.get(file.lineIds[1]), 'paid');
+  assert.equal((await line(file.lineIds[0])).stage, 'payment_approved');
+  assert.equal((await line(file.lineIds[1])).stage, 'paid');
+  assert.equal(await batchStatus(file.equityBatchId), 'settled');
+
+  const review = logs.filter((l) => l.includes('needs review'));
+  assert.equal(review.length, 1);
+  assert.ok(review[0].includes(file.lineIds[0]));
+  assert.ok(!review[0].includes(file.lineIds[1]));
+  assert.ok(!review[0].includes(ENV.EQUITY_SFTP_PASSWORD!));
+
+  // Next poll: the file is already stored, nothing is counted twice.
+  const again = await poll(new FakeSftp().add(psrName(file), text));
+  assert.equal(again.counts.needsReview, 0);
+});
+
+test('portal PSR Success: a NULL from the portal on a Failed row is not flagged (no money moved)', async () => {
+  const file = await sentFile(1);
+  await db.query(`UPDATE payment_lines SET stage = 'payment_approved' WHERE id = $1`, [file.lineIds[0]]);
+  const text = psrText([{ txId: 'BT-1', ref: file.customerReferences[0], status: 'Failed', desc: 'Insufficient funds' }]);
+  const { counts, logs } = await poll(new FakeSftp().add(psrName(file), text));
+  assert.equal(counts.failed, 1);
+  assert.equal(counts.needsReview, 0);
+  assert.equal(logs.filter((l) => l.includes('needs review')).length, 0);
+});
+
 test('portal PSR Failed: record_result failed with the bank reason, fallback when there is none', async () => {
   const file = await sentFile(2);
   const text = psrText([

@@ -5,8 +5,10 @@
  * directory and records the result in `equity_payment_batches` / `bank_transactions`.
  *
  * SAFETY:
- * - Not imported from any route or from index.ts, and there is no scheduler. It is only
- *   reachable from scripts until it has been reviewed.
+ * - Not imported from any route or from index.ts. It is reachable from scripts and from the
+ *   Equity scheduler (equityScheduler.ts) only. The portal cycle (runEquityPortalBatchCycle)
+ *   needs EQUITY_AUTO_SEND_ENABLED; the old payments-table cycle (runEquityBatchCycle) also
+ *   needs EQUITY_TASK_PAYMENTS_SEND_ENABLED.
  * - ONE connection attempt per call, never a retry: repeated failed logins can lock the
  *   Equity account.
  * - Payments are only released (batch 'failed') when it is CERTAIN the file did not reach the
@@ -28,6 +30,7 @@ import { query as dbQuery } from '../db/database';
 import { logAudit } from './auditService';
 import {
   buildUgandaBatches,
+  buildUgandaPortalBatches,
   type BuiltUgandaBatch,
   type BuildUgandaBatchesResult,
 } from './equityBatchService';
@@ -174,6 +177,8 @@ export type EquitySftpDeps = {
   audit?: typeof logAudit;
   env?: NodeJS.ProcessEnv;
   build?: typeof buildUgandaBatches;
+  /** Portal payment-line builder, used by runEquityPortalBatchCycle. */
+  buildPortal?: typeof buildUgandaPortalBatches;
 };
 
 function defaultCreateClient(): SftpClientLike {
@@ -843,16 +848,50 @@ export type EquityBatchCycleResult =
   | ({ status: 'ok'; unrecorded: number } & EquityBatchCycleSummary);
 
 /**
- * Build the Uganda batches and upload them. Refuses unless EQUITY_AUTO_SEND_ENABLED is exactly
- * 'true'. A dry run is always allowed, writes nothing and never connects to SFTP.
- * Returns counts only. Not wired to any route or scheduler.
+ * Build the Uganda batches from the payments table and upload them. This is the OLD route: it
+ * refuses unless BOTH EQUITY_AUTO_SEND_ENABLED and EQUITY_TASK_PAYMENTS_SEND_ENABLED are exactly
+ * 'true' (the second is a separate, default-off switch). A dry run is always allowed, writes
+ * nothing and never connects to SFTP. Returns counts only.
  */
 export async function runEquityBatchCycle(
   params: { dryRun: boolean; initiatedBy?: string | null },
   deps: EquitySftpDeps = {}
 ): Promise<EquityBatchCycleResult> {
   const env = deps.env ?? process.env;
-  const build = deps.build ?? buildUgandaBatches;
+  return runCycle(
+    params,
+    deps,
+    deps.build ?? buildUgandaBatches,
+    env.EQUITY_AUTO_SEND_ENABLED === 'true' && env.EQUITY_TASK_PAYMENTS_SEND_ENABLED === 'true'
+  );
+}
+
+/**
+ * Build the Uganda batches from portal payment lines released by a Banking Agent
+ * (buildUgandaPortalBatches) and upload them. Refuses unless EQUITY_AUTO_SEND_ENABLED is exactly
+ * 'true'. A dry run is always allowed, writes nothing and never connects to SFTP. When no line
+ * is eligible no SFTP connection is opened. Returns counts only.
+ */
+export async function runEquityPortalBatchCycle(
+  params: { dryRun: boolean; initiatedBy?: string | null },
+  deps: EquitySftpDeps = {}
+): Promise<EquityBatchCycleResult> {
+  const env = deps.env ?? process.env;
+  return runCycle(
+    params,
+    deps,
+    deps.buildPortal ?? buildUgandaPortalBatches,
+    env.EQUITY_AUTO_SEND_ENABLED === 'true'
+  );
+}
+
+async function runCycle(
+  params: { dryRun: boolean; initiatedBy?: string | null },
+  deps: EquitySftpDeps,
+  build: typeof buildUgandaBatches,
+  enabled: boolean
+): Promise<EquityBatchCycleResult> {
+  const env = deps.env ?? process.env;
   const audit = deps.audit ?? logAudit;
   const initiatedBy = params.initiatedBy ?? null;
 
@@ -865,7 +904,7 @@ export async function runEquityBatchCycle(
     };
   }
 
-  if (env.EQUITY_AUTO_SEND_ENABLED !== 'true') return { status: 'disabled' };
+  if (!enabled) return { status: 'disabled' };
 
   // Fail before creating any batch if we could not upload it afterwards.
   loadEquitySftpConfig(env);
@@ -873,6 +912,7 @@ export async function runEquityBatchCycle(
   const built = await build({ dryRun: false, initiatedBy });
   if (built.status === 'locked') return { status: 'locked' };
 
+  // sendBuiltBatches returns before connecting when there are no batches.
   const sent = await sendBuiltBatches(built.batches, deps);
   const summary = cycleSummary(built, sent);
 

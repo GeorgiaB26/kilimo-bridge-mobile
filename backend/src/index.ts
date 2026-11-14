@@ -86,7 +86,8 @@ app.get('/health', (_req, res) => {
 app.listen(PORT, HOST, () => {
   console.log(`Kilimo Bridge API listening on ${HOST}:${PORT}`);
   try {
-    // No-op unless EQUITY_AUTO_SEND_ENABLED / EQUITY_RESPONSE_POLL_ENABLED are exactly 'true'.
+    // No-op unless EQUITY_AUTO_SEND_ENABLED / EQUITY_RESPONSE_POLL_ENABLED are exactly 'true'
+    // (the daily payments job also needs EQUITY_TASK_PAYMENTS_SEND_ENABLED).
     // First checks run ~60s from now, which leaves time for bootstrap below.
     startEquityScheduler();
   } catch (err) {
