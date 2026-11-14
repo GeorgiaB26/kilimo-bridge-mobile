@@ -1,7 +1,8 @@
 /**
  * Equity Bank (Uganda) payment batch builder.
  *
- * Selects pending Uganda payments, plans one or more files of at most 99 lines each,
+ * Selects pending Uganda payments (buildUgandaBatches) or payment lines released in the portal
+ * (buildUgandaPortalBatches), plans one or more files of at most 99 lines each,
  * generates the CSVs, records them in `equity_payment_batches` / `bank_transactions`
  * and PGP-encrypts them for Equity.
  *
@@ -107,7 +108,13 @@ export type PlannedUgandaPayment = {
   amount: number;
 };
 
-export type SkipReason = 'INVALID_MOBILE' | 'UNKNOWN_NETWORK' | 'INVALID_AMOUNT' | 'INVALID_NAME';
+export type SkipReason =
+  | 'INVALID_MOBILE'
+  | 'UNKNOWN_NETWORK'
+  | 'INVALID_AMOUNT'
+  | 'INVALID_NAME'
+  /** Portal source only: the payment line's own currency is not UGX. */
+  | 'INVALID_CURRENCY';
 
 export type SkippedPayment = {
   paymentId: string;
@@ -678,6 +685,395 @@ export async function buildUgandaBatches(params: {
           paymentId: s.paymentId,
           reason: s.reason,
           mobile: s.mobileMasked,
+        })),
+        deferredCount,
+      },
+      success: true,
+    });
+  } catch (err) {
+    // Do not lose the encrypted files because the audit insert failed; the batch rows exist.
+    console.error(
+      '[equityBatchService] audit log write failed:',
+      err instanceof Error ? err.message : 'unknown error'
+    );
+  }
+
+  return { ...summaryBase, batches };
+}
+
+// ---------------------------------------------------------------------------
+// Build — second source: payment lines released in the portal
+// ---------------------------------------------------------------------------
+
+/**
+ * Portal payment lines (payment_lines / payment_batches) that a Banking Agent released to the
+ * bank (`payment_batches.released_at`) and that we have not sent yet. Releasing leaves the batch
+ * 'approved' and the lines at stage 'payment_approved' until a later task marks them sent, so
+ * "not sent yet" is decided here by the absence of a live bank_transactions row for the line.
+ *
+ * Same exclusions as the payments query: no live bank transaction on any channel, and no
+ * sftp_file transaction the BANK rejected (status 'failed', any error code but our own
+ * 'UPLOAD_FAILED'). Ordered by release time, then portal batch, so each portal batch's lines are
+ * contiguous. Line currency is deliberately NOT filtered here: a non-UGX line in a UGX batch is
+ * skipped with a counted reason instead of silently ignored.
+ *
+ * Beneficiary name and mobile come from `farmers` (like the payments path), which is also what
+ * rebuildBatchFile() reads, so a rebuilt file is byte-identical.
+ *
+ * This query only locks (`FOR UPDATE OF pl SKIP LOCKED`); nothing here writes to
+ * payment_lines or payment_batches.
+ */
+export const UGANDA_PORTAL_CANDIDATES_SQL = `SELECT pl.id AS line_id, pl.batch_id AS portal_batch_id, pl.farmer_id,
+            f.name AS farmer_name, f.phone_number, pl.amount, pl.currency AS line_currency
+       FROM payment_lines pl
+       JOIN payment_batches pb ON pb.id = pl.batch_id
+       LEFT JOIN farmers f ON f.farmer_id = pl.farmer_id
+      WHERE pb.released_at IS NOT NULL
+        AND pb.status IN ('approved', 'sent')
+        AND LOWER(TRIM(pb.country)) = 'uganda'
+        AND pb.currency = 'UGX'
+        AND pl.stage = 'payment_approved'
+        AND pl.hold_kind IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM bank_transactions bt
+           WHERE bt.payment_line_id = pl.id
+             AND bt.status::text = ANY($1::text[])
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM bank_transactions bf
+           WHERE bf.payment_line_id = pl.id
+             AND bf.channel = 'sftp_file'
+             AND bf.status::text = 'failed'
+             AND bf.equity_error_code IS DISTINCT FROM 'UPLOAD_FAILED'
+        )
+      ORDER BY pb.released_at ASC, pb.id ASC, pl.created_at ASC, pl.id ASC
+      FOR UPDATE OF pl SKIP LOCKED`;
+
+type PortalCandidateRow = {
+  line_id: string;
+  portal_batch_id: string;
+  farmer_id: string | null;
+  farmer_name: string | null;
+  phone_number: string | null;
+  amount: number | string | null;
+  line_currency: string | null;
+};
+
+/**
+ * `numeric` columns arrive as strings. Accept only whole UGX amounts ("1000" or "1000.00") and
+ * map everything else to NaN so the planner skips it as INVALID_AMOUNT. Parsed from the text,
+ * not via Number(), so "1000.0000000000001" can never be rounded into a valid-looking 1000.
+ */
+export function parsePortalAmount(raw: number | string | null | undefined): number {
+  if (typeof raw === 'number') return raw;
+  if (typeof raw !== 'string') return NaN;
+  const m = /^(\d+)(?:\.0*)?$/.exec(raw.trim());
+  return m ? Number(m[1]) : NaN;
+}
+
+export type PortalPlannedFile = {
+  portalBatchId: string;
+  payments: PlannedUgandaPayment[];
+};
+
+/**
+ * Turn the planner's chunks into files that each contain lines of ONE portal batch, so every
+ * equity_payment_batches row can carry a single portal_batch_id. A portal batch of 100 lines
+ * becomes 99 + 1; two small portal batches never share a file. Order is preserved.
+ */
+export function splitPlanByPortalBatch(
+  chunks: readonly (readonly PlannedUgandaPayment[])[],
+  portalBatchByLine: ReadonlyMap<string, string>
+): PortalPlannedFile[] {
+  const groups = new Map<string, PlannedUgandaPayment[]>();
+  for (const chunk of chunks) {
+    for (const p of chunk) {
+      const portalBatchId = portalBatchByLine.get(p.paymentId);
+      if (!portalBatchId) throw new Error(`No portal batch recorded for payment line ${p.paymentId}`);
+      const group = groups.get(portalBatchId);
+      if (group) group.push(p);
+      else groups.set(portalBatchId, [p]);
+    }
+  }
+  const files: PortalPlannedFile[] = [];
+  for (const [portalBatchId, payments] of groups) {
+    for (let i = 0; i < payments.length; i += EQUITY_UG_MAX_LINES_PER_FILE) {
+      files.push({ portalBatchId, payments: payments.slice(i, i + EQUITY_UG_MAX_LINES_PER_FILE) });
+    }
+  }
+  return files;
+}
+
+async function selectPortalCandidates(client: PoolClient): Promise<{
+  candidates: UgandaPaymentCandidate[];
+  currencySkipped: SkippedPayment[];
+  portalBatchByLine: Map<string, string>;
+}> {
+  const res = await client.query<PortalCandidateRow>(UGANDA_PORTAL_CANDIDATES_SQL, [
+    [...BLOCKING_TX_STATUSES],
+  ]);
+  const candidates: UgandaPaymentCandidate[] = [];
+  const currencySkipped: SkippedPayment[] = [];
+  const portalBatchByLine = new Map<string, string>();
+
+  for (const r of res.rows) {
+    const paymentId = String(r.line_id);
+    const farmerId = r.farmer_id ? String(r.farmer_id) : '';
+    const mobile = readFarmerMobile(r.phone_number);
+    if (r.line_currency !== 'UGX') {
+      currencySkipped.push({
+        paymentId,
+        farmerId,
+        reason: 'INVALID_CURRENCY',
+        mobileMasked: maskMobile(mobile),
+      });
+      continue;
+    }
+    portalBatchByLine.set(paymentId, String(r.portal_batch_id));
+    candidates.push({
+      paymentId,
+      farmerId,
+      farmerName: r.farmer_name ?? '',
+      mobile,
+      amount: parsePortalAmount(r.amount),
+    });
+  }
+  return { candidates, currencySkipped, portalBatchByLine };
+}
+
+/**
+ * Build Equity files from portal payment lines released to the bank. Mirrors
+ * buildUgandaBatches (same advisory lock, caps, file naming, 99-line files, PGP encryption) and
+ * records `equity_payment_batches` (with portal_batch_id) and `bank_transactions`
+ * (status 'pending', payment_line_id set, currency UGX).
+ *
+ * NEVER writes to payment_lines or payment_batches: marking lines sent / recording results is a
+ * later step. A dry run rolls back and writes nothing at all. Does not upload anything.
+ * Logs and audit entries contain ids and counts only — no names or phone numbers.
+ */
+export async function buildUgandaPortalBatches(params: {
+  dryRun: boolean;
+  now?: Date;
+  initiatedBy?: string | null;
+}): Promise<BuildUgandaBatchesResult> {
+  const config = equityUgandaBatchConfigFromEnv();
+  const now = params.now ?? new Date();
+  const initiatedBy = params.initiatedBy ?? null;
+  const { dryRun } = params;
+
+  // Fail before touching the database if we could not encrypt afterwards.
+  if (!dryRun) {
+    await loadEquityPublicKeyFromEnv();
+  }
+
+  const client = await getPool().connect();
+
+  type GeneratedBatch = {
+    batchId: string | null;
+    portalBatchId: string;
+    file: EquityGeneratedBatchFile;
+    totalAmount: number;
+  };
+  const generated: GeneratedBatch[] = [];
+  let candidateCount = 0;
+  let skipped: SkippedPayment[] = [];
+  let deferredCount = 0;
+
+  try {
+    await client.query('BEGIN');
+
+    const lockRes = await client.query<{ locked: boolean }>(
+      'SELECT pg_try_advisory_xact_lock($1::bigint) AS locked',
+      [EQUITY_BATCH_BUILD_LOCK_KEY]
+    );
+    if (!lockRes.rows[0]?.locked) {
+      await client.query('ROLLBACK');
+      return { status: 'locked' };
+    }
+
+    const { candidates, currencySkipped, portalBatchByLine } = await selectPortalCandidates(client);
+    candidateCount = candidates.length + currencySkipped.length;
+
+    const plan = planUgandaBatches(candidates, {
+      maxPayments: config.maxPayments,
+      maxTotalAmount: config.maxTotalAmount,
+    });
+    skipped = [...currencySkipped, ...plan.skipped];
+    deferredCount = plan.deferred.length;
+
+    const files = splitPlanByPortalBatch(plan.chunks, portalBatchByLine);
+
+    for (let index = 0; index < files.length; index++) {
+      const { portalBatchId, payments: chunk } = files[index];
+      const generatedAt = chunkGeneratedAt(now, index);
+      const txIds = chunk.map(() => uuidv4());
+      const file = generateUgandaBatchFile(
+        config,
+        generatedAt,
+        chunk.map((p, i) => ({
+          bankTransactionId: txIds[i],
+          beneficiaryName: p.farmerName,
+          beneficiaryMobileNo: p.mobile,
+          amount: p.amount,
+        }))
+      );
+      const totalAmount = sumAmounts(chunk);
+
+      if (dryRun) {
+        generated.push({ batchId: null, portalBatchId, file, totalAmount });
+        continue;
+      }
+
+      const valueDate = eastAfricaValueDateIso(generatedAt);
+      // Daily counter per customer/value date. Safe: we hold the run-level advisory lock
+      // (shared with buildUgandaBatches, which uses the same counter).
+      const seqRes = await client.query<{ next_seq: number }>(
+        `SELECT COALESCE(MAX(sequence_no), 0) + 1 AS next_seq
+           FROM equity_payment_batches
+          WHERE customer_id = $1 AND value_date = $2::date`,
+        [config.customerId, valueDate]
+      );
+      const sequenceNo = Number(seqRes.rows[0].next_seq);
+
+      const batchId = uuidv4();
+      await client.query(
+        `INSERT INTO equity_payment_batches (
+           id, customer_id, template_id, entity_code, filename, sequence_no, value_date,
+           debit_account_no, status, row_count, outbound_sha256, generated_at, created_by,
+           portal_batch_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, 'generated', $9, $10, $11, $12, $13)`,
+        [
+          batchId,
+          config.customerId,
+          config.templateId,
+          config.entityCode,
+          file.filename,
+          sequenceNo,
+          valueDate,
+          config.debitAccountNo,
+          chunk.length,
+          file.sha256,
+          generatedAt,
+          initiatedBy,
+          portalBatchId,
+        ]
+      );
+
+      for (let i = 0; i < chunk.length; i++) {
+        const p = chunk[i];
+        await client.query(
+          `INSERT INTO bank_transactions (
+             id, payment_line_id, farmer_id, amount, currency, recipient_phone, status,
+             initiated_by, batch_id, customer_reference, channel
+           ) VALUES ($1, $2, $3, $4, 'UGX', $5, 'pending', $6, $7, $8, $9)`,
+          [
+            txIds[i],
+            p.paymentId,
+            p.farmerId,
+            p.amount,
+            p.mobile,
+            initiatedBy,
+            batchId,
+            file.customerReferences[i],
+            SFTP_CHANNEL,
+          ]
+        );
+      }
+
+      generated.push({ batchId, portalBatchId, file, totalAmount });
+    }
+
+    if (dryRun) {
+      await client.query('ROLLBACK');
+    } else {
+      await client.query('COMMIT');
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  const totalAmount = generated.reduce((acc, g) => acc + g.totalAmount, 0);
+  const summaryBase = {
+    status: 'ok' as const,
+    dryRun,
+    candidateCount,
+    totalAmount,
+    skippedCount: skipped.length,
+    skippedByReason: countByReason(skipped),
+    deferredCount,
+  };
+
+  if (dryRun) {
+    return {
+      ...summaryBase,
+      batches: generated.map((g) => ({
+        batchId: null,
+        filename: `${g.file.filename}.pgp`,
+        rowCount: g.file.rows.length,
+        totalAmount: g.totalAmount,
+      })),
+    };
+  }
+
+  // The transaction is committed. Encrypt now; if this fails the batches still exist and
+  // can be recreated with rebuildBatchFile().
+  const batches: BuiltUgandaBatch[] = [];
+  try {
+    for (const g of generated) {
+      const { armoredMessage } = await encryptPayloadForEquity(g.file.content, {
+        filename: g.file.filename,
+      });
+      batches.push({
+        batchId: g.batchId,
+        filename: `${g.file.filename}.pgp`,
+        rowCount: g.file.rows.length,
+        totalAmount: g.totalAmount,
+        encrypted: armoredMessage,
+      });
+    }
+  } catch (err) {
+    const ids = generated.map((g) => g.batchId).join(', ');
+    const reason = err instanceof Error ? err.message : 'unknown error';
+    throw new Error(
+      `Equity batches were saved (batch ids: ${ids}) but encryption failed: ${reason}. Use rebuildBatchFile(batchId) to regenerate each file.`
+    );
+  }
+
+  if (
+    !shouldWriteBuildAudit({
+      batchCount: batches.length,
+      skippedCount: skipped.length,
+      deferredCount,
+    })
+  ) {
+    return { ...summaryBase, batches };
+  }
+
+  try {
+    await logAudit({
+      userId: initiatedBy ?? undefined,
+      action: 'banking.batch_built',
+      category: 'financial',
+      resourceType: 'equity_payment_batch',
+      resourceId: batches[0]?.batchId ?? undefined,
+      details: {
+        country: 'UG',
+        source: 'portal',
+        candidateCount,
+        batchCount: batches.length,
+        batchIds: batches.map((b) => b.batchId),
+        portalBatchIds: [...new Set(generated.map((g) => g.portalBatchId))],
+        rowCounts: batches.map((b) => b.rowCount),
+        totalAmount,
+        skippedCount: skipped.length,
+        skippedByReason: summaryBase.skippedByReason,
+        // Line ids and reasons only: no names, no phone numbers (not even masked).
+        skippedSample: skipped.slice(0, AUDIT_SKIPPED_SAMPLE_LIMIT).map((s) => ({
+          paymentLineId: s.paymentId,
+          reason: s.reason,
         })),
         deferredCount,
       },
