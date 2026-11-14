@@ -14,6 +14,7 @@ import {
   MARK_BATCH_UPLOADED_SQL,
   OperationTimeoutError,
   runEquityBatchCycle,
+  runEquityPortalBatchCycle,
   sendBuiltBatches,
   uploadBatchFile,
   type EquitySftpConfig,
@@ -653,14 +654,20 @@ const BUILT_OK = {
   deferredCount: 4,
 };
 
-test('runEquityBatchCycle: refused unless EQUITY_AUTO_SEND_ENABLED is exactly "true"', async () => {
-  for (const value of [undefined, '', 'TRUE', '1', 'yes', 'false']) {
+test('runEquityBatchCycle: refused unless BOTH switches are exactly "true"', async () => {
+  const values = [undefined, '', 'TRUE', '1', 'yes', 'false'];
+  const cases: NodeJS.ProcessEnv[] = [];
+  // Task-payments switch not exactly 'true' (auto-send on, and even when it is on).
+  for (const v of values) cases.push({ ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: v });
+  // Auto-send switch not exactly 'true' (task-payments on).
+  for (const v of values) cases.push({ ...ENV, EQUITY_AUTO_SEND_ENABLED: v, EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' });
+  for (const env of cases) {
     let built = 0;
     let created = 0;
     const result = await runEquityBatchCycle(
       { dryRun: false },
       {
-        env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: value },
+        env,
         build: async () => {
           built++;
           return BUILT_OK;
@@ -671,7 +678,7 @@ test('runEquityBatchCycle: refused unless EQUITY_AUTO_SEND_ENABLED is exactly "t
         },
       }
     );
-    assert.deepEqual(result, { status: 'disabled' }, String(value));
+    assert.deepEqual(result, { status: 'disabled' }, JSON.stringify(env));
     assert.equal(built, 0);
     assert.equal(created, 0);
   }
@@ -723,7 +730,7 @@ test('runEquityBatchCycle: builds, sends, returns counts only and writes one aud
   const result = await runEquityBatchCycle(
     { dryRun: false, initiatedBy: 'user-1' },
     {
-      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true' },
+      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
       build: async () => BUILT_OK,
       createClient: () => client,
       query: db.query,
@@ -769,7 +776,7 @@ test('runEquityBatchCycle: failed uploads are counted, audited as unsuccessful, 
   const result = await runEquityBatchCycle(
     { dryRun: false },
     {
-      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true' },
+      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
       build: async () => BUILT_OK,
       createClient: () => client,
       query: db.query,
@@ -794,7 +801,7 @@ test('runEquityBatchCycle: uncertain batches are counted in the summary and the 
   const result = await runEquityBatchCycle(
     { dryRun: false },
     {
-      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true' },
+      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
       build: async () => ({ ...BUILT_OK, batches: [batch(1), batch(2), batch(3)] }),
       createClient: () => client,
       query: db.query,
@@ -821,7 +828,7 @@ test('runEquityBatchCycle: no batches means no connection and no audit entry', a
   const result = await runEquityBatchCycle(
     { dryRun: false },
     {
-      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true' },
+      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
       build: async () => ({ ...BUILT_OK, batches: [], totalAmount: 0, skippedCount: 0, deferredCount: 0 }),
       createClient: () => {
         created++;
@@ -846,7 +853,7 @@ test('runEquityBatchCycle: missing SFTP configuration stops before any batch is 
       runEquityBatchCycle(
         { dryRun: false },
         {
-          env: { EQUITY_AUTO_SEND_ENABLED: 'true' },
+          env: { EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
           build: async () => {
             built++;
             return BUILT_OK;
@@ -862,11 +869,188 @@ test('runEquityBatchCycle: passes a locked build through without sending', async
   const result = await runEquityBatchCycle(
     { dryRun: false },
     {
-      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true' },
+      env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
       build: async () => ({ status: 'locked' as const }),
     }
   );
   assert.deepEqual(result, { status: 'locked' });
+});
+
+// ---------------------------------------------------------------------------
+// runEquityPortalBatchCycle
+// ---------------------------------------------------------------------------
+
+const PORTAL_ENV = { ...ENV, EQUITY_AUTO_SEND_ENABLED: 'true' };
+
+test('runEquityPortalBatchCycle: refused unless EQUITY_AUTO_SEND_ENABLED is exactly "true" (the old-route switch is irrelevant)', async () => {
+  for (const value of [undefined, '', 'TRUE', '1', 'yes', 'false']) {
+    for (const taskSwitch of [undefined, 'true']) {
+      let built = 0;
+      let created = 0;
+      const result = await runEquityPortalBatchCycle(
+        { dryRun: false },
+        {
+          env: { ...ENV, EQUITY_AUTO_SEND_ENABLED: value, EQUITY_TASK_PAYMENTS_SEND_ENABLED: taskSwitch },
+          buildPortal: async () => {
+            built++;
+            return BUILT_OK;
+          },
+          createClient: () => {
+            created++;
+            return new FakeClient();
+          },
+        }
+      );
+      assert.deepEqual(result, { status: 'disabled' }, String(value));
+      assert.equal(built, 0);
+      assert.equal(created, 0);
+    }
+  }
+});
+
+test('runEquityPortalBatchCycle: runs with only EQUITY_AUTO_SEND_ENABLED, uses the portal builder, sends and audits counts', async () => {
+  const client = new FakeClient({ presentKey: HOST_KEY });
+  const db = fakeDb();
+  const audits: any[] = [];
+  let portalBuilds = 0;
+  let oldBuilds = 0;
+  const result = await runEquityPortalBatchCycle(
+    { dryRun: false, initiatedBy: 'scheduler' },
+    {
+      env: PORTAL_ENV,
+      buildPortal: async (p) => {
+        portalBuilds++;
+        assert.equal(p.dryRun, false);
+        assert.equal(p.initiatedBy, 'scheduler');
+        return BUILT_OK;
+      },
+      build: async () => {
+        oldBuilds++;
+        return BUILT_OK;
+      },
+      createClient: () => client,
+      query: db.query,
+      audit: async (entry) => {
+        audits.push(entry);
+        return 'audit-id';
+      },
+    }
+  );
+  assert.equal(portalBuilds, 1);
+  assert.equal(oldBuilds, 0);
+  assert.deepEqual(result, {
+    status: 'ok',
+    unrecorded: 0,
+    batches: 2,
+    rows: 8,
+    totalAmount: 10_000,
+    uploaded: 2,
+    failed: 0,
+    uncertain: 0,
+    skipped: 2,
+    deferred: 4,
+  });
+  assert.equal(client.connectCalls, 1);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].action, 'banking.batch_sent');
+  assert.equal(audits[0].success, true);
+  assert.ok(!JSON.stringify(audits[0]).includes(PASSWORD));
+  for (const v of Object.values(audits[0].details)) {
+    assert.ok(typeof v === 'number' || typeof v === 'string', 'counts only');
+  }
+});
+
+test('runEquityPortalBatchCycle: no eligible lines means no SFTP connection, no client and no audit entry', async () => {
+  let created = 0;
+  let audited = 0;
+  const client = new FakeClient();
+  const result = await runEquityPortalBatchCycle(
+    { dryRun: false },
+    {
+      env: PORTAL_ENV,
+      buildPortal: async () => ({
+        ...BUILT_OK,
+        candidateCount: 0,
+        batches: [],
+        totalAmount: 0,
+        skippedCount: 0,
+        deferredCount: 0,
+      }),
+      createClient: () => {
+        created++;
+        return client;
+      },
+      query: async () => {
+        throw new Error('nothing to record: the database must not be touched');
+      },
+      audit: async () => {
+        audited++;
+        return 'id';
+      },
+    }
+  );
+  assert.equal(created, 0);
+  assert.equal(client.connectCalls, 0);
+  assert.equal(audited, 0);
+  assert.equal(result.status, 'ok');
+  assert.equal((result as { batches: number }).batches, 0);
+  assert.equal((result as { uploaded: number }).uploaded, 0);
+});
+
+test('runEquityPortalBatchCycle: missing SFTP configuration stops before any batch is built', async () => {
+  let built = 0;
+  await assert.rejects(
+    () =>
+      runEquityPortalBatchCycle(
+        { dryRun: false },
+        {
+          env: { EQUITY_AUTO_SEND_ENABLED: 'true' },
+          buildPortal: async () => {
+            built++;
+            return BUILT_OK;
+          },
+        }
+      ),
+    /Invalid Equity SFTP configuration/
+  );
+  assert.equal(built, 0);
+});
+
+test('runEquityPortalBatchCycle: passes a locked build through without sending', async () => {
+  let created = 0;
+  const result = await runEquityPortalBatchCycle(
+    { dryRun: false },
+    {
+      env: PORTAL_ENV,
+      buildPortal: async () => ({ status: 'locked' as const }),
+      createClient: () => {
+        created++;
+        return new FakeClient();
+      },
+    }
+  );
+  assert.deepEqual(result, { status: 'locked' });
+  assert.equal(created, 0);
+});
+
+test('runEquityPortalBatchCycle: a dry run is allowed while disabled and never connects', async () => {
+  let created = 0;
+  const result = await runEquityPortalBatchCycle(
+    { dryRun: true },
+    {
+      env: { EQUITY_AUTO_SEND_ENABLED: 'false' },
+      buildPortal: async (p) => {
+        assert.equal(p.dryRun, true);
+        return { ...BUILT_OK, dryRun: true };
+      },
+      createClient: () => {
+        created++;
+        return new FakeClient();
+      },
+    }
+  );
+  assert.equal(created, 0);
+  assert.equal(result.status, 'dry_run');
 });
 
 // ---------------------------------------------------------------------------

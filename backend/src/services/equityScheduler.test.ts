@@ -6,6 +6,7 @@ import {
   startEquityScheduler,
   stopEquityScheduler,
   INITIAL_POLL_DELAY_MS,
+  INITIAL_RELEASE_DELAY_MS,
   SEND_CHECK_INTERVAL_MS,
   type EquitySchedulerDeps,
   type EquitySchedulerTimers,
@@ -22,6 +23,7 @@ const SUN = '2026-11-15';
 
 const BOTH_ON: NodeJS.ProcessEnv = {
   EQUITY_AUTO_SEND_ENABLED: 'true',
+  EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true',
   EQUITY_RESPONSE_POLL_ENABLED: 'true',
 };
 
@@ -79,11 +81,13 @@ function fakeTimers() {
 type Harness = {
   clock: { now: Date };
   sendCalls: number;
+  releaseCalls: number;
   pollCalls: number;
   logs: string[];
   errors: string[];
   timers: FakeTimer[];
   sendTick: () => Promise<void>;
+  releaseTick: () => Promise<void>;
   pollTick: () => Promise<void>;
   stop: () => void;
 };
@@ -98,11 +102,13 @@ function start(
   const h: Harness = {
     clock: { now: at },
     sendCalls: 0,
+    releaseCalls: 0,
     pollCalls: 0,
     logs: [],
     errors: [],
     timers,
     sendTick: async () => {},
+    releaseTick: async () => {},
     pollTick: async () => {},
     stop: () => {},
   };
@@ -116,6 +122,10 @@ function start(
       h.sendCalls += 1;
       return OK_SEND;
     },
+    runRelease: async () => {
+      h.releaseCalls += 1;
+      return OK_SEND;
+    },
     runPoll: async () => {
       h.pollCalls += 1;
       return OK_POLL;
@@ -124,6 +134,7 @@ function start(
   });
   if (handle) {
     h.sendTick = handle.sendTick;
+    h.releaseTick = handle.releaseTick;
     h.pollTick = handle.pollTick;
     h.stop = handle.stop;
   }
@@ -132,7 +143,13 @@ function start(
 
 afterEach(() => stopEquityScheduler());
 
-const SEND_ONLY: NodeJS.ProcessEnv = { EQUITY_AUTO_SEND_ENABLED: 'true' };
+/** Daily payments job (and the release job): both switches on, poll off. */
+const SEND_ONLY: NodeJS.ProcessEnv = {
+  EQUITY_AUTO_SEND_ENABLED: 'true',
+  EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true',
+};
+/** Release job only: the old payments route stays off. */
+const RELEASE_ONLY: NodeJS.ProcessEnv = { EQUITY_AUTO_SEND_ENABLED: 'true' };
 
 // ---------------------------------------------------------------------------
 // Send job
@@ -150,11 +167,11 @@ test('send: does not run before the send time, runs at it', async () => {
 
 test('send: the once-a-minute timer drives the run', async () => {
   const h = start(SEND_ONLY, eat(THU, '09:00'));
-  const interval = h.timers.find((t) => t.kind === 'interval');
+  const interval = h.timers.find((t) => t.kind === 'interval' && t.ms === SEND_CHECK_INTERVAL_MS);
   assert.ok(interval);
-  assert.equal(interval.ms, SEND_CHECK_INTERVAL_MS);
   await interval.fn();
   assert.equal(h.sendCalls, 1);
+  assert.equal(h.releaseCalls, 0);
 });
 
 test('send: uses EAT, not UTC (06:00 UTC is 09:00 EAT)', async () => {
@@ -315,6 +332,218 @@ test('send: log lines carry counts only', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Release job
+// ---------------------------------------------------------------------------
+
+test('release: first run ~60s after startup, then every 5 minutes by default, only when AUTO_SEND is on', async () => {
+  const h = start(RELEASE_ONLY, eat(THU, '03:00')); // time of day does not matter
+  const first = h.timers.find((t) => t.kind === 'timeout');
+  const repeat = h.timers.find((t) => t.kind === 'interval');
+  assert.ok(first && repeat);
+  assert.equal(first.ms, 60_000);
+  assert.equal(repeat.ms, 5 * 60_000);
+  assert.equal(h.releaseCalls, 0);
+  await first.fn();
+  assert.equal(h.releaseCalls, 1);
+  await repeat.fn();
+  await repeat.fn();
+  assert.equal(h.releaseCalls, 3);
+  assert.equal(h.sendCalls, 0, 'the daily payments job does not run');
+  assert.equal(h.pollCalls, 0);
+  assert.match(h.logs.join('\n'), /\[equity-scheduler\] release status=ok batches=1 rows=3 uploaded=1/);
+});
+
+test('release: without EQUITY_AUTO_SEND_ENABLED there is no release job, and a tick does nothing', async () => {
+  for (const env of [
+    { EQUITY_RESPONSE_POLL_ENABLED: 'true' },
+    { EQUITY_RESPONSE_POLL_ENABLED: 'true', EQUITY_AUTO_SEND_ENABLED: 'false', EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
+  ] as NodeJS.ProcessEnv[]) {
+    const h = start(env, eat(THU, '09:00'));
+    assert.deepEqual(h.timers.map((t) => t.ms), [INITIAL_POLL_DELAY_MS, 15 * 60_000]);
+    await h.releaseTick();
+    assert.equal(h.releaseCalls, 0);
+  }
+});
+
+test('release: custom interval is used; invalid values fall back to 5; minimum 1', () => {
+  const ms = (raw: string) =>
+    start({ ...RELEASE_ONLY, EQUITY_RELEASE_POLL_INTERVAL_MINUTES: raw }, eat(THU, '09:00')).timers.find(
+      (t) => t.kind === 'interval'
+    )!.ms;
+  assert.equal(ms('2'), 2 * 60_000);
+  assert.equal(ms('0'), 60_000);
+  assert.equal(ms('soon'), 5 * 60_000);
+  assert.equal(ms('-3'), 5 * 60_000);
+});
+
+test('release: an overlapping release is skipped', async () => {
+  let release: () => void = () => {};
+  let calls = 0;
+  const h = start(RELEASE_ONLY, eat(THU, '09:00'), {
+    runRelease: () => {
+      calls += 1;
+      if (calls > 1) return Promise.resolve(OK_SEND);
+      return new Promise<EquityBatchCycleResult>((resolve) => {
+        release = () => resolve(OK_SEND);
+      });
+    },
+  });
+  const first = h.releaseTick();
+  await h.releaseTick();
+  assert.equal(calls, 1);
+  assert.match(h.logs.join('\n'), /release status=skipped_in_flight/);
+  release();
+  await first;
+  await h.releaseTick();
+  assert.equal(calls, 2);
+});
+
+test('release and daily never run at the same time: a running daily run blocks the release tick', async () => {
+  let finishDaily: () => void = () => {};
+  const h = start(SEND_ONLY, eat(THU, '09:00'), {
+    runSend: () =>
+      new Promise<EquityBatchCycleResult>((resolve) => {
+        finishDaily = () => resolve(OK_SEND);
+      }),
+  });
+  const daily = h.sendTick();
+  await h.releaseTick();
+  assert.equal(h.releaseCalls, 0);
+  assert.match(h.logs.join('\n'), /release status=skipped_in_flight/);
+  finishDaily();
+  await daily;
+  await h.releaseTick();
+  assert.equal(h.releaseCalls, 1);
+});
+
+test('release and daily never run at the same time: a running release blocks the daily run, which then goes ahead', async () => {
+  let finishRelease: () => void = () => {};
+  const h = start(SEND_ONLY, eat(THU, '09:00'), {
+    runRelease: () => {
+      h.releaseCalls += 1;
+      return new Promise<EquityBatchCycleResult>((resolve) => {
+        finishRelease = () => resolve(OK_SEND);
+      });
+    },
+  });
+  const release = h.releaseTick();
+  await h.sendTick();
+  assert.equal(h.sendCalls, 0);
+  assert.match(h.logs.join('\n'), /send status=skipped_in_flight/);
+  finishRelease();
+  await release;
+  // The skipped daily run did not use up today's run: the next minute's check still sends.
+  h.clock.now = eat(THU, '09:01');
+  await h.sendTick();
+  assert.equal(h.sendCalls, 1);
+});
+
+test('release and daily: at no point are two cycles running at once', async () => {
+  let running = 0;
+  let maxRunning = 0;
+  const cycle = async (): Promise<EquityBatchCycleResult> => {
+    running += 1;
+    maxRunning = Math.max(maxRunning, running);
+    await new Promise((resolve) => setImmediate(resolve));
+    running -= 1;
+    return OK_SEND;
+  };
+  const h = start(SEND_ONLY, eat(THU, '09:00'), { runSend: cycle, runRelease: cycle });
+  await Promise.all([h.releaseTick(), h.sendTick(), h.releaseTick(), h.sendTick()]);
+  assert.equal(maxRunning, 1);
+});
+
+test('release: a cycle that throws is caught, logged without detail, and later ticks still run', async () => {
+  let calls = 0;
+  const h = start(RELEASE_ONLY, eat(THU, '09:00'), {
+    runRelease: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('connect failed for host 10.0.0.1 password hunter2');
+      return OK_SEND;
+    },
+  });
+  await h.releaseTick();
+  assert.equal(calls, 1);
+  assert.deepEqual(h.errors, ['[equity-scheduler] release status=error error=Error']);
+  assert.ok(!h.errors.join().includes('hunter2'));
+  await h.releaseTick();
+  assert.equal(calls, 2, 'the in-flight guard was released after the failure');
+  // A throwing release also does not block the daily job.
+  const both = start(SEND_ONLY, eat(THU, '09:00'), {
+    runRelease: async () => {
+      throw new Error('boom');
+    },
+  });
+  await both.releaseTick();
+  await both.sendTick();
+  assert.equal(both.sendCalls, 1);
+});
+
+test('release: a throwing logger does not crash the scheduler', async () => {
+  const h = start(RELEASE_ONLY, eat(THU, '09:00'), {
+    runRelease: async () => {
+      throw new Error('boom');
+    },
+    logError: () => {
+      throw new Error('logger down');
+    },
+  });
+  await h.releaseTick();
+});
+
+test("release: 'locked' and 'disabled' are only logged; log lines carry counts only", async () => {
+  for (const status of ['locked', 'disabled'] as const) {
+    const h = start(RELEASE_ONLY, eat(THU, '09:00'), { runRelease: async () => ({ status }) });
+    await h.releaseTick();
+    assert.deepEqual(h.logs.filter((l) => l.includes('release status')), [
+      `[equity-scheduler] release status=${status}`,
+    ]);
+    assert.deepEqual(h.errors, []);
+  }
+  const dirty = { ...OK_SEND, phone: '+256700000001', name: 'Jane Farmer' } as unknown as EquityBatchCycleResult;
+  const h = start(RELEASE_ONLY, eat(THU, '09:00'), { runRelease: async () => dirty });
+  await h.releaseTick();
+  const out = h.logs.join('\n');
+  assert.ok(!out.includes('256700000001'));
+  assert.ok(!out.includes('Jane'));
+});
+
+// ---------------------------------------------------------------------------
+// Daily job needs both switches
+// ---------------------------------------------------------------------------
+
+test('daily: does nothing unless EQUITY_AUTO_SEND_ENABLED and EQUITY_TASK_PAYMENTS_SEND_ENABLED are both exactly "true"', async () => {
+  const bad = [undefined, 'false', 'TRUE', '1', 'yes', ' true'];
+  const envs: NodeJS.ProcessEnv[] = [];
+  for (const task of bad) envs.push({ EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: task });
+  for (const auto of bad) envs.push({ EQUITY_AUTO_SEND_ENABLED: auto, EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' });
+  for (const env of envs) {
+    const h = start({ ...env, EQUITY_RESPONSE_POLL_ENABLED: 'true' }, eat(THU, '09:00'));
+    assert.ok(
+      !h.timers.some((t) => t.kind === 'interval' && t.ms === SEND_CHECK_INTERVAL_MS),
+      `no daily timer: ${JSON.stringify(env)}`
+    );
+    await h.sendTick(); // inside the send window
+    assert.equal(h.sendCalls, 0, JSON.stringify(env));
+  }
+  const on = start(SEND_ONLY, eat(THU, '09:00'));
+  await on.sendTick();
+  assert.equal(on.sendCalls, 1);
+});
+
+test('startup log line shows release, daily and poll flags as on or off only', () => {
+  const line = (env: NodeJS.ProcessEnv) =>
+    start(env, eat(THU, '09:00')).logs.find((l) => l.includes('started'));
+  assert.equal(line(RELEASE_ONLY), '[equity-scheduler] started release=on daily=off poll=off');
+  assert.equal(line(SEND_ONLY), '[equity-scheduler] started release=on daily=on poll=off');
+  assert.equal(
+    line({ EQUITY_RESPONSE_POLL_ENABLED: 'true' }),
+    '[equity-scheduler] started release=off daily=off poll=on'
+  );
+  assert.equal(line(BOTH_ON), '[equity-scheduler] started release=on daily=on poll=on');
+});
+
+// ---------------------------------------------------------------------------
 // Poll job
 // ---------------------------------------------------------------------------
 
@@ -389,6 +618,8 @@ test('both switches off (or not exactly "true"): nothing starts, no timers', asy
     { EQUITY_AUTO_SEND_ENABLED: 'false', EQUITY_RESPONSE_POLL_ENABLED: 'false' },
     { EQUITY_AUTO_SEND_ENABLED: 'TRUE', EQUITY_RESPONSE_POLL_ENABLED: '1' },
     { EQUITY_AUTO_SEND_ENABLED: ' true', EQUITY_RESPONSE_POLL_ENABLED: 'yes' },
+    // The old-route switch alone starts nothing.
+    { EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true' },
   ] as NodeJS.ProcessEnv[]) {
     const h = start(env, eat(THU, '09:00'));
     assert.equal(h.timers.length, 0);
@@ -397,13 +628,22 @@ test('both switches off (or not exactly "true"): nothing starts, no timers', asy
   }
 });
 
-test('only the enabled job gets timers', () => {
+test('only the enabled jobs get timers', () => {
+  // Release only (old route off): 60s first run + interval, no once-a-minute daily check.
+  const release = start(RELEASE_ONLY, eat(THU, '09:00'));
+  assert.deepEqual(release.timers.map((t) => [t.kind, t.ms]), [
+    ['timeout', INITIAL_RELEASE_DELAY_MS],
+    ['interval', 5 * 60_000],
+  ]);
+  // Release + daily.
   const send = start(SEND_ONLY, eat(THU, '09:00'));
-  assert.deepEqual(send.timers.map((t) => t.kind), ['interval']);
+  assert.deepEqual(send.timers.map((t) => t.kind), ['timeout', 'interval', 'interval']);
+  assert.ok(send.timers.some((t) => t.kind === 'interval' && t.ms === SEND_CHECK_INTERVAL_MS));
+  // Poll only.
   const poll = start({ EQUITY_RESPONSE_POLL_ENABLED: 'true' }, eat(THU, '09:00'));
   assert.deepEqual(poll.timers.map((t) => t.kind), ['timeout', 'interval']);
   const both = start(BOTH_ON, eat(THU, '09:00'));
-  assert.equal(both.timers.length, 3);
+  assert.equal(both.timers.length, 5);
 });
 
 test('stop clears every timer and later ticks do nothing', async () => {
@@ -419,7 +659,7 @@ test('stopEquityScheduler clears timers; start is idempotent while running', () 
   const h = start(BOTH_ON, eat(THU, '09:00'));
   const again = startEquityScheduler({ env: BOTH_ON });
   assert.ok(again);
-  assert.equal(h.timers.length, 3);
+  assert.equal(h.timers.length, 5);
   stopEquityScheduler();
   assert.ok(h.timers.every((t) => t.cleared));
 });
@@ -430,12 +670,16 @@ test('invalid env values fall back to defaults', () => {
   assert.deepEqual(defaults.sendDays, [1, 2, 3, 4, 5]);
   assert.equal(defaults.sendWindowMinutes, 4 * 60);
   assert.equal(defaults.pollIntervalMinutes, 15);
+  assert.equal(defaults.releaseIntervalMinutes, 5);
+  assert.equal(defaults.releaseEnabled, false);
+  assert.equal(defaults.sendEnabled, false);
 
   const bad = loadEquitySchedulerConfig({
     EQUITY_AUTO_SEND_TIME_EAT: '25:00',
     EQUITY_AUTO_SEND_DAYS: '1,8,x',
     EQUITY_AUTO_SEND_WINDOW_HOURS: '-3',
     EQUITY_RESPONSE_POLL_INTERVAL_MINUTES: 'soon',
+    EQUITY_RELEASE_POLL_INTERVAL_MINUTES: 'often',
   });
   assert.deepEqual(bad, { ...defaults });
 
@@ -452,6 +696,40 @@ test('invalid env values fall back to defaults', () => {
     const got = loadEquitySchedulerConfig({ EQUITY_RESPONSE_POLL_INTERVAL_MINUTES: mins }).pollIntervalMinutes;
     assert.equal(got, 15, mins);
   }
+  for (const mins of ['', '0.5', '-1', 'abc', '1e3', 'NaN', ' ', '99999999999999999999']) {
+    const got = loadEquitySchedulerConfig({ EQUITY_RELEASE_POLL_INTERVAL_MINUTES: mins }).releaseIntervalMinutes;
+    assert.equal(got, 5, mins);
+  }
+});
+
+test('release interval: valid values are used, minimum is 1', () => {
+  assert.equal(loadEquitySchedulerConfig({ EQUITY_RELEASE_POLL_INTERVAL_MINUTES: '10' }).releaseIntervalMinutes, 10);
+  assert.equal(loadEquitySchedulerConfig({ EQUITY_RELEASE_POLL_INTERVAL_MINUTES: '1' }).releaseIntervalMinutes, 1);
+  assert.equal(loadEquitySchedulerConfig({ EQUITY_RELEASE_POLL_INTERVAL_MINUTES: '0' }).releaseIntervalMinutes, 1);
+});
+
+test('release and daily switches: release needs AUTO_SEND, daily needs both exactly "true"', () => {
+  for (const auto of [undefined, 'false', 'TRUE', '1', 'yes', ' true']) {
+    for (const task of [undefined, 'false', 'TRUE', '1', 'yes', ' true', 'true']) {
+      const cfg = loadEquitySchedulerConfig({
+        EQUITY_AUTO_SEND_ENABLED: auto,
+        EQUITY_TASK_PAYMENTS_SEND_ENABLED: task,
+      });
+      assert.equal(cfg.releaseEnabled, false, `${auto}/${task}`);
+      assert.equal(cfg.sendEnabled, false, `${auto}/${task}`);
+    }
+  }
+  for (const task of [undefined, 'false', 'TRUE', '1', 'yes', ' true']) {
+    const cfg = loadEquitySchedulerConfig({ EQUITY_AUTO_SEND_ENABLED: 'true', EQUITY_TASK_PAYMENTS_SEND_ENABLED: task });
+    assert.equal(cfg.releaseEnabled, true, String(task));
+    assert.equal(cfg.sendEnabled, false, String(task));
+  }
+  const both = loadEquitySchedulerConfig({
+    EQUITY_AUTO_SEND_ENABLED: 'true',
+    EQUITY_TASK_PAYMENTS_SEND_ENABLED: 'true',
+  });
+  assert.equal(both.releaseEnabled, true);
+  assert.equal(both.sendEnabled, true);
 });
 
 test('valid env values are parsed; poll interval has a minimum of 5', () => {

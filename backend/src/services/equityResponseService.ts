@@ -346,9 +346,11 @@ async function applyAck(q: QueryFn, batch: BatchRef, ack: EquityAckParseResult):
 }
 
 /**
- * Tell the portal what the bank decided about a payment line. A null result (the line is not at
- * 'sent': already recorded, or never marked sent) is harmless and ignored. A thrown error
- * propagates so the whole file is rolled back and retried on the next poll.
+ * Tell the portal what the bank decided about a payment line. Resolves to true when the portal
+ * recorded the verdict, false when it returned NULL (the line is not at 'sent': already
+ * recorded, or never marked sent). A NULL is harmless for 'failed' (no money moved) but for
+ * 'paid' the caller must flag it. A thrown error propagates so the whole file is rolled back
+ * and retried on the next poll.
  */
 async function recordPortalResult(
   q: QueryFn,
@@ -356,8 +358,10 @@ async function recordPortalResult(
   status: 'paid' | 'failed',
   reason: string | null,
   bankTransactionId: string | null
-): Promise<void> {
-  await q(PL2_RECORD_RESULT_SQL, [lineId, status, reason, bankTransactionId]);
+): Promise<boolean> {
+  const rows = await q(PL2_RECORD_RESULT_SQL, [lineId, status, reason, bankTransactionId]);
+  const outcome = rows?.[0]?.outcome;
+  return outcome !== null && outcome !== undefined;
 }
 
 /** Bank-supplied reason for the portal, bounded; a fallback when the bank gave none. */
@@ -462,7 +466,7 @@ async function applyPsr(
       await q(COMPLETE_TX_SQL, [tx.id, record.equityTransactionId, record.fileReference, record.paymentType]);
       if (tx.payment_line_id) {
         // Portal line: the portal settles it. settleTransferredPayment is for the payments table only.
-        await recordPortalResult(
+        const recorded = await recordPortalResult(
           q,
           String(tx.payment_line_id),
           'paid',
@@ -470,6 +474,14 @@ async function applyPsr(
           record.equityTransactionId || null
         );
         effect.success++;
+        if (!recorded) {
+          // The bank paid but the portal line was not at 'sent': money has moved that the portal
+          // does not know about. The transaction stays completed; a human must reconcile.
+          effect.needsReview++;
+          console.error(
+            `[equityResponseService] needs review: the bank reported Success for payment line ${String(tx.payment_line_id)} (batch ${batch.id}) but the portal did not record it (line was not at 'sent'). Money has moved; reconcile manually.`
+          );
+        }
         continue;
       }
       // Idempotent. It runs on another connection, so if this file's transaction rolls back the
