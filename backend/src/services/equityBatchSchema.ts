@@ -59,6 +59,10 @@ export function splitSqlStatements(sql: string): string[] {
 }
 
 const RLS_MIGRATION_FILE = path.resolve(__dirname, '../../migrations/019_equity_batches_rls.sql');
+const PORTAL_MIGRATION_FILE = path.resolve(
+  __dirname,
+  '../../migrations/020_equity_portal_batches.sql'
+);
 
 export async function ensureEquityBatchTables(): Promise<void> {
   if (!fs.existsSync(MIGRATION_FILE)) {
@@ -70,6 +74,22 @@ export async function ensureEquityBatchTables(): Promise<void> {
     await query(statement);
   }
   await ensureEquityBatchRls();
+  await ensureEquityPortalBatchSupport();
+}
+
+/**
+ * 020: portal payment-line source (bank_transactions.payment_line_id, payment_id nullable,
+ * one-source CHECK, live-line unique index, equity_payment_batches.portal_batch_id). Idempotent.
+ * Must run after 018 (tables) and 019 (RLS).
+ */
+export async function ensureEquityPortalBatchSupport(): Promise<void> {
+  if (!fs.existsSync(PORTAL_MIGRATION_FILE)) {
+    throw new Error(`Missing migration file: ${PORTAL_MIGRATION_FILE}`);
+  }
+  const sql = fs.readFileSync(PORTAL_MIGRATION_FILE, 'utf8');
+  for (const statement of splitSqlStatements(sql)) {
+    await query(statement);
+  }
 }
 
 /** Enable RLS + banking/platform policies (idempotent). */

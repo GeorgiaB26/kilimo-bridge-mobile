@@ -8,10 +8,10 @@ import { ensureEquityBatchTables } from '../src/services/equityBatchSchema';
 import { closeDatabase } from '../src/db/database';
 
 async function main(): Promise<void> {
-  console.log('Applying Equity SFTP batch schema (018 + 019 RLS)…');
+  console.log('Applying Equity SFTP batch schema (018 + 019 RLS + 020 portal source)…');
   await ensureEquityBatchTables();
   console.log(
-    'Done — equity_payment_batches, equity_response_files, bank_transactions file-channel columns, and RLS policies are ready.'
+    'Done — equity_payment_batches, equity_response_files, bank_transactions file-channel columns, RLS policies, and the portal payment-line source (payment_line_id, portal_batch_id) are ready.'
   );
 }
 
