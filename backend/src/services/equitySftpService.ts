@@ -14,6 +14,11 @@
  *   'pending' (so the next run excludes them) and reported as "uncertain".
  * - The SFTP password is never logged, returned or put in an error message or audit entry.
  *   Error text is passed through `describeError`, which also redacts the password.
+ * - Files built from portal payment lines (bank_transactions.payment_line_id) are also recorded
+ *   in the portal: after a CERTAIN upload the lines are marked sent (pl2_system_mark_lines_sent)
+ *   and payment_batches.send_error is cleared; a certain failure or an uncertain outcome sets a
+ *   short, non-sensitive send_error for the Banking Agent. The upload is never retried because a
+ *   database call failed.
  * - Audit entries contain counts only (no phone numbers, names or file contents).
  */
 
@@ -377,6 +382,94 @@ export const MARK_BATCH_UNCERTAIN_SQL = `UPDATE equity_payment_batches
 type CountRow = { batch_rows?: number | string; tx_rows?: number | string };
 
 // ---------------------------------------------------------------------------
+// Portal payment lines (bank_transactions.payment_line_id)
+//
+// A file built from portal payment lines carries equity_payment_batches.portal_batch_id. The
+// statements below are used ONLY for such files; files built from the payments table keep using
+// the statements above, unchanged.
+// ---------------------------------------------------------------------------
+
+/**
+ * Shown to the Banking Agent (payment_batches.send_error). Short, no host, path, credentials,
+ * file name or numbers. The detailed (still password-free) reason stays in
+ * equity_payment_batches.error_message.
+ */
+export const PORTAL_SEND_ERROR_UPLOAD_FAILED =
+  'Upload to the bank failed. The lines will be sent again in the next cycle.';
+export const PORTAL_SEND_ERROR_UPLOAD_UNCERTAIN =
+  'Upload status unclear. Check the Equity folders before retrying.';
+
+/**
+ * Which source a file was built from. The columns are read through to_jsonb() so this also works
+ * (and reports "payments path") on a database where migration 020 has not been applied.
+ */
+export const PORTAL_BATCH_LINES_SQL = `SELECT bt.id,
+       to_jsonb(bt) ->> 'payment_line_id' AS payment_line_id,
+       to_jsonb(eb) ->> 'portal_batch_id' AS portal_batch_id
+  FROM bank_transactions bt
+  JOIN equity_payment_batches eb ON eb.id = bt.batch_id
+ WHERE bt.batch_id = $1`;
+
+/** Lovable function: lines payment_approved -> sent, batch approved -> sent. Safe to repeat. */
+export const PL2_MARK_LINES_SENT_SQL = `SELECT pl2_system_mark_lines_sent($1::uuid, $2::uuid[], $3::text) AS marked`;
+
+/** MARK_BATCH_UPLOADED_SQL plus: clear payment_batches.send_error ($2 = portal batch id). */
+export const MARK_PORTAL_BATCH_UPLOADED_SQL = `WITH ub AS (
+  UPDATE equity_payment_batches
+     SET status = 'uploaded', uploaded_at = NOW(), error_message = NULL, updated_at = NOW()
+   WHERE id = $1 AND status = 'generated'
+  RETURNING id
+), ut AS (
+  UPDATE bank_transactions
+     SET status = 'processing'
+   WHERE batch_id = $1 AND status::text = 'pending'
+     AND EXISTS (SELECT 1 FROM ub)
+  RETURNING id
+), se AS (
+  UPDATE payment_batches
+     SET send_error = NULL
+   WHERE id = $2::uuid
+     AND EXISTS (SELECT 1 FROM ub)
+  RETURNING id
+)
+SELECT (SELECT COUNT(*) FROM ub)::int AS batch_rows, (SELECT COUNT(*) FROM ut)::int AS tx_rows`;
+
+/** MARK_BATCH_FAILED_SQL plus: set payment_batches.send_error ($3, portal batch id $4). */
+export const MARK_PORTAL_BATCH_FAILED_SQL = `WITH fb AS (
+  UPDATE equity_payment_batches
+     SET status = 'failed', error_message = $2, updated_at = NOW()
+   WHERE id = $1 AND status = 'generated'
+  RETURNING id
+), ft AS (
+  UPDATE bank_transactions
+     SET status = 'failed', equity_error_code = '${UPLOAD_FAILED_CODE}'
+   WHERE batch_id = $1 AND status::text = 'pending'
+     AND EXISTS (SELECT 1 FROM fb)
+  RETURNING id
+), se AS (
+  UPDATE payment_batches
+     SET send_error = $3::text
+   WHERE id = $4::uuid
+     AND EXISTS (SELECT 1 FROM fb)
+  RETURNING id
+)
+SELECT (SELECT COUNT(*) FROM fb)::int AS batch_rows, (SELECT COUNT(*) FROM ft)::int AS tx_rows`;
+
+/** MARK_BATCH_UNCERTAIN_SQL plus: set payment_batches.send_error ($3, portal batch id $4). */
+export const MARK_PORTAL_BATCH_UNCERTAIN_SQL = `WITH ub AS (
+  UPDATE equity_payment_batches
+     SET error_message = $2, updated_at = NOW()
+   WHERE id = $1 AND status = 'generated'
+  RETURNING id
+)
+UPDATE payment_batches
+   SET send_error = $3::text
+ WHERE id = $4::uuid
+   AND EXISTS (SELECT 1 FROM ub)`;
+
+type PortalInfo = { portalBatchId: string; lineIds: string[] };
+
+// ---------------------------------------------------------------------------
 // Send
 // ---------------------------------------------------------------------------
 
@@ -410,6 +503,11 @@ export type SendBuiltBatchesResult = {
 type Entry = {
   batch: BuiltUgandaBatch;
   result: SentBatchResult | null;
+  /**
+   * Source of the file, read once: undefined = not looked up yet, null = payments table,
+   * 'unknown' = the lookup failed or was inconsistent, otherwise the portal lines.
+   */
+  portal?: PortalInfo | null | 'unknown';
 };
 
 function summarize(results: SentBatchResult[]): SendBuiltBatchesResult {
@@ -466,6 +564,33 @@ export async function sendBuiltBatches(
     totalAmount: e.batch.totalAmount,
   });
 
+  /**
+   * Decide (once per file) whether it was built from portal payment lines. A file is portal
+   * only when ALL its bank_transactions have payment_line_id and share one portal batch id.
+   */
+  async function portalOf(e: Entry): Promise<PortalInfo | null | 'unknown'> {
+    if (e.portal !== undefined) return e.portal;
+    if (!e.batch.batchId) return (e.portal = null);
+    try {
+      const rows = (await run(PORTAL_BATCH_LINES_SQL, [e.batch.batchId])) ?? [];
+      const lineRows = rows.filter((r) => r.payment_line_id);
+      if (lineRows.length === 0) return (e.portal = null);
+      const portalBatchIds = new Set(lineRows.map((r) => String(r.portal_batch_id ?? '')));
+      if (lineRows.length !== rows.length || portalBatchIds.size !== 1 || portalBatchIds.has('')) {
+        throw new Error('bank transactions of this file do not agree on their portal source');
+      }
+      return (e.portal = {
+        portalBatchId: [...portalBatchIds][0],
+        lineIds: [...new Set(lineRows.map((r) => String(r.payment_line_id)))],
+      });
+    } catch (err) {
+      console.error(
+        `[equitySftpService] could not read the payment lines of batch ${e.batch.batchId}: ${describeError(err, secret)}`
+      );
+      return (e.portal = 'unknown');
+    }
+  }
+
   /** Certain the file is not on the server: release the payments. */
   async function markFailed(e: Entry, reason: string): Promise<void> {
     const message = describeError(reason, secret);
@@ -473,7 +598,17 @@ export async function sendBuiltBatches(
     let dbError: string | undefined;
     if (e.batch.batchId) {
       try {
-        await run(MARK_BATCH_FAILED_SQL, [e.batch.batchId, message]);
+        const portal = await portalOf(e);
+        if (portal && portal !== 'unknown') {
+          await run(MARK_PORTAL_BATCH_FAILED_SQL, [
+            e.batch.batchId,
+            message,
+            PORTAL_SEND_ERROR_UPLOAD_FAILED,
+            portal.portalBatchId,
+          ]);
+        } else {
+          await run(MARK_BATCH_FAILED_SQL, [e.batch.batchId, message]);
+        }
         recorded = true;
       } catch (err) {
         dbError = describeError(err, secret);
@@ -495,7 +630,17 @@ export async function sendBuiltBatches(
     let dbError: string | undefined;
     if (e.batch.batchId) {
       try {
-        await run(MARK_BATCH_UNCERTAIN_SQL, [e.batch.batchId, EQUITY_UPLOAD_UNCERTAIN_MESSAGE]);
+        const portal = await portalOf(e);
+        if (portal && portal !== 'unknown') {
+          await run(MARK_PORTAL_BATCH_UNCERTAIN_SQL, [
+            e.batch.batchId,
+            EQUITY_UPLOAD_UNCERTAIN_MESSAGE,
+            PORTAL_SEND_ERROR_UPLOAD_UNCERTAIN,
+            portal.portalBatchId,
+          ]);
+        } else {
+          await run(MARK_BATCH_UNCERTAIN_SQL, [e.batch.batchId, EQUITY_UPLOAD_UNCERTAIN_MESSAGE]);
+        }
         recorded = true;
       } catch (err) {
         dbError = describeError(err, secret);
@@ -513,9 +658,32 @@ export async function sendBuiltBatches(
     };
   }
 
+  /**
+   * The file is on the server. NEVER retry the upload, whatever happens here. For a portal file
+   * the Lovable function marks the lines sent first (safe to repeat); then the batch and its
+   * bank transactions are updated and send_error is cleared in one statement.
+   */
   async function markUploaded(e: Entry): Promise<boolean> {
     try {
-      const rows = (await run(MARK_BATCH_UPLOADED_SQL, [e.batch.batchId])) as CountRow[];
+      const portal = await portalOf(e);
+      if (portal === 'unknown') {
+        throw new Error('the payment lines of this file could not be determined');
+      }
+      if (portal) {
+        try {
+          await run(PL2_MARK_LINES_SENT_SQL, [portal.portalBatchId, portal.lineIds, e.batch.filename]);
+        } catch (err) {
+          // The money is on its way but the portal does not know. Needs a human.
+          console.error(
+            `[equitySftpService] CRITICAL: batch ${e.batch.batchId} was UPLOADED to Equity but marking its ${portal.lineIds.length} payment line(s) as sent failed: ${describeError(err, secret)}. Do not re-upload. Reconcile manually.`
+          );
+          throw err;
+        }
+      }
+      const rows = (await run(
+        portal ? MARK_PORTAL_BATCH_UPLOADED_SQL : MARK_BATCH_UPLOADED_SQL,
+        portal ? [e.batch.batchId, portal.portalBatchId] : [e.batch.batchId]
+      )) as CountRow[];
       if (Number(rows[0]?.batch_rows ?? 0) !== 1) {
         e.result = {
           ...base(e),
@@ -561,6 +729,13 @@ export async function sendBuiltBatches(
         remotePath = remoteFilePath(config.outboundDir, batch.filename);
       } catch (err) {
         await markFailed(entry, `Not uploaded: ${describeError(err, secret)}`);
+        continue;
+      }
+
+      // Read-only. If we cannot tell where the file came from we must not upload it: we could
+      // not record the outcome correctly afterwards.
+      if ((await portalOf(entry)) === 'unknown') {
+        await markFailed(entry, 'Not uploaded: the source of this batch could not be determined');
         continue;
       }
 

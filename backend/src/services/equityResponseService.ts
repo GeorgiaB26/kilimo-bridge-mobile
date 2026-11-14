@@ -13,6 +13,11 @@
  *   it; anything else (including 'Verification Failure') is left 'processing' for a human.
  *   The Error Description alone is never treated as a failure (successful rows carry the
  *   literal text "Success" there).
+ * - Portal payment lines (bank_transactions.payment_line_id) are NOT settled here: the verdict is
+ *   handed to the portal with pl2_system_record_result inside the same database transaction as
+ *   the file ('paid' for PSR Success, 'failed' for NACK and PSR Failed). settleTransferredPayment
+ *   is never called for them. Unknown / 'Verification Failure' leaves the line at 'sent'
+ *   (counted as needsReview). A thrown pl2 call rolls the file back; it is retried next poll.
  * - Counts only in audit entries and return values. Response contents (names, account
  *   numbers) are stored in equity_response_files but never logged. The SFTP password and the
  *   PGP key/passphrase are never logged or returned.
@@ -66,6 +71,7 @@ export type EquityResponseDeps = {
 /** Responses are small CSVs; refuse anything unreasonable rather than load it into memory. */
 export const MAX_RESPONSE_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 1000;
+const MAX_PORTAL_REASON_LENGTH = 300;
 
 const KIND_ORDER: Record<ResponseKind, number> = { ack: 0, nack: 1, psr: 2 };
 
@@ -107,13 +113,15 @@ export const STORED_FILENAMES_SQL = `SELECT filename FROM equity_response_files 
  * after an underscore: Equity prefixes the stem with the customer ids
  * (`<id>_<id>_TMP224_...`) while our stored name starts at `TMP224_...`.
  */
-export const FIND_BATCH_BY_STEM_SQL = `SELECT id, status, (stem = $1) AS exact
-  FROM (SELECT id, status, regexp_replace(filename, '\\.csv$', '', 'i') AS stem
+export const FIND_BATCH_BY_STEM_SQL = `SELECT id, status, portal_batch_id, (stem = $1) AS exact
+  FROM (SELECT id, status, to_jsonb(equity_payment_batches) ->> 'portal_batch_id' AS portal_batch_id,
+               regexp_replace(filename, '\\.csv$', '', 'i') AS stem
           FROM equity_payment_batches) b
  WHERE stem = $1
     OR (char_length($1) > char_length(stem) AND right($1, char_length(stem) + 1) = '_' || stem)`;
 
-export const FIND_BATCH_BY_FILE_REFERENCE_SQL = `SELECT id, status, TRUE AS exact
+export const FIND_BATCH_BY_FILE_REFERENCE_SQL = `SELECT id, status,
+       to_jsonb(equity_payment_batches) ->> 'portal_batch_id' AS portal_batch_id, TRUE AS exact
   FROM equity_payment_batches WHERE file_reference = $1`;
 
 export const INSERT_RESPONSE_FILE_SQL = `INSERT INTO equity_response_files
@@ -138,10 +146,31 @@ export const NACK_BATCH_SQL = `UPDATE equity_payment_batches
        updated_at = NOW()
  WHERE id = $1`;
 
-export const SELECT_TX_SQL = `SELECT id, payment_id, status::text AS status
-  FROM bank_transactions
- WHERE batch_id = $1 AND customer_reference = $2
+/** payment_line_id is read via to_jsonb so this also works before migration 020 is applied. */
+export const SELECT_TX_SQL = `SELECT bt.id, bt.payment_id, bt.status::text AS status,
+       to_jsonb(bt) ->> 'payment_line_id' AS payment_line_id
+  FROM bank_transactions bt
+ WHERE bt.batch_id = $1 AND bt.customer_reference = $2
  FOR UPDATE`;
+
+/**
+ * Open transactions of a PORTAL batch that a NACK did not name. A NACK rejects the whole file,
+ * so none of them was paid. Only used for batches with a portal_batch_id.
+ */
+export const OPEN_PORTAL_TX_SQL = `SELECT id, payment_line_id, status::text AS status
+  FROM bank_transactions
+ WHERE batch_id = $1 AND payment_line_id IS NOT NULL AND status::text IN ('pending', 'processing')
+ FOR UPDATE`;
+
+/**
+ * Lovable function: records the bank's verdict on a payment line that is at stage 'sent'.
+ * Returns NULL (and does nothing) when the line is not at 'sent', so repeating it is harmless.
+ * It runs on the file's own transaction connection: if the file rolls back, so does this.
+ */
+export const PL2_RECORD_RESULT_SQL = `SELECT pl2_system_record_result($1::uuid, $2::text, $3::text, $4::text) AS outcome`;
+
+export const PORTAL_NACK_FALLBACK_REASON = 'File rejected by Equity';
+export const PORTAL_PSR_FALLBACK_REASON = 'Payment failed at the bank';
 
 export const FAIL_TX_SQL = `UPDATE bank_transactions
    SET status = 'failed',
@@ -262,7 +291,7 @@ async function defaultTransaction<T>(fn: (q: QueryFn) => Promise<T>): Promise<T>
 // Applying one file
 // ---------------------------------------------------------------------------
 
-type BatchRef = { id: string; status: string };
+type BatchRef = { id: string; status: string; portalBatchId?: string | null };
 
 async function findBatch(
   q: QueryFn,
@@ -272,7 +301,13 @@ async function findBatch(
   const pick = (rows: Row[]): BatchRef | null => {
     const exact = rows.filter((r) => r.exact === true);
     const chosen = exact.length === 1 ? exact[0] : exact.length === 0 && rows.length === 1 ? rows[0] : null;
-    return chosen ? { id: String(chosen.id), status: String(chosen.status) } : null;
+    return chosen
+      ? {
+          id: String(chosen.id),
+          status: String(chosen.status),
+          portalBatchId: chosen.portal_batch_id ? String(chosen.portal_batch_id) : null,
+        }
+      : null;
   };
 
   if (stem) {
@@ -310,6 +345,27 @@ async function applyAck(q: QueryFn, batch: BatchRef, ack: EquityAckParseResult):
   return effect;
 }
 
+/**
+ * Tell the portal what the bank decided about a payment line. A null result (the line is not at
+ * 'sent': already recorded, or never marked sent) is harmless and ignored. A thrown error
+ * propagates so the whole file is rolled back and retried on the next poll.
+ */
+async function recordPortalResult(
+  q: QueryFn,
+  lineId: string,
+  status: 'paid' | 'failed',
+  reason: string | null,
+  bankTransactionId: string | null
+): Promise<void> {
+  await q(PL2_RECORD_RESULT_SQL, [lineId, status, reason, bankTransactionId]);
+}
+
+/** Bank-supplied reason for the portal, bounded; a fallback when the bank gave none. */
+function portalReason(text: string | undefined, fallback: string): string {
+  const t = (text ?? '').replace(/\s+/g, ' ').trim();
+  return t ? t.slice(0, MAX_PORTAL_REASON_LENGTH) : fallback;
+}
+
 async function applyNack(
   q: QueryFn,
   batch: BatchRef,
@@ -331,6 +387,15 @@ async function applyNack(
       effect.needsReview++; // e.g. already completed: the bank contradicts itself
       continue;
     }
+    if (tx.payment_line_id) {
+      await recordPortalResult(
+        q,
+        String(tx.payment_line_id),
+        'failed',
+        portalReason(record.errorDescription, PORTAL_NACK_FALLBACK_REASON),
+        null
+      );
+    }
     await q(FAIL_TX_SQL, [
       tx.id,
       record.errorCode,
@@ -339,6 +404,27 @@ async function applyNack(
       record.fileReference,
     ]);
     effect.failed++;
+  }
+
+  // Portal file: the NACK rejects the whole file, so lines it did not name were not paid either.
+  if (batch.portalBatchId) {
+    for (const open of await q(OPEN_PORTAL_TX_SQL, [batch.id])) {
+      await recordPortalResult(
+        q,
+        String(open.payment_line_id),
+        'failed',
+        PORTAL_NACK_FALLBACK_REASON,
+        null
+      );
+      await q(FAIL_TX_SQL, [
+        open.id,
+        nack.summary.statusCode,
+        clip(nack.summary.summaryMessage),
+        '',
+        nack.summary.fileReference,
+      ]);
+      effect.failed++;
+    }
   }
 
   // Lines the NACK did not mention stay open: surface them.
@@ -374,6 +460,18 @@ async function applyPsr(
       }
       const reference = record.equityTransactionId || record.fileReference;
       await q(COMPLETE_TX_SQL, [tx.id, record.equityTransactionId, record.fileReference, record.paymentType]);
+      if (tx.payment_line_id) {
+        // Portal line: the portal settles it. settleTransferredPayment is for the payments table only.
+        await recordPortalResult(
+          q,
+          String(tx.payment_line_id),
+          'paid',
+          null,
+          record.equityTransactionId || null
+        );
+        effect.success++;
+        continue;
+      }
       // Idempotent. It runs on another connection, so if this file's transaction rolls back the
       // payment stays settled and the retry simply completes the transaction row. A thrown
       // error aborts (and rolls back) the whole file so it is retried on the next poll.
@@ -388,6 +486,15 @@ async function applyPsr(
       if (!OPEN_TX.has(status)) {
         effect.needsReview++; // was completed, now "Failed": a human decides
         continue;
+      }
+      if (tx.payment_line_id) {
+        await recordPortalResult(
+          q,
+          String(tx.payment_line_id),
+          'failed',
+          portalReason(record.errorDescription, PORTAL_PSR_FALLBACK_REASON),
+          null
+        );
       }
       await q(FAIL_TX_SQL, [
         tx.id,
