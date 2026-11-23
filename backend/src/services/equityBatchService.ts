@@ -97,6 +97,8 @@ export type UgandaPaymentCandidate = {
   /** Raw mobile as stored on the farmer record. Never logged. */
   mobile: string;
   amount: number;
+  /** Portal lines only: payment_lines.bank_reference (null/absent for older lines). */
+  bankReference?: string | null;
 };
 
 export type PlannedUgandaPayment = {
@@ -106,6 +108,8 @@ export type PlannedUgandaPayment = {
   /** Normalised 10-digit local form, e.g. 0751000000. */
   mobile: string;
   amount: number;
+  /** Portal lines only: payment_lines.bank_reference. Only present when the line has one. */
+  bankReference?: string;
 };
 
 export type SkipReason =
@@ -239,6 +243,7 @@ export function planUgandaBatches(
       farmerName: c.farmerName.trim(),
       mobile,
       amount: c.amount,
+      ...(c.bankReference?.trim() ? { bankReference: c.bankReference.trim() } : {}),
     });
   }
 
@@ -724,7 +729,8 @@ export async function buildUgandaBatches(params: {
  * payment_lines or payment_batches.
  */
 export const UGANDA_PORTAL_CANDIDATES_SQL = `SELECT pl.id AS line_id, pl.batch_id AS portal_batch_id, pl.farmer_id,
-            f.name AS farmer_name, f.phone_number, pl.amount, pl.currency AS line_currency
+            f.name AS farmer_name, f.phone_number, pl.amount, pl.currency AS line_currency,
+            pl.bank_reference
        FROM payment_lines pl
        JOIN payment_batches pb ON pb.id = pl.batch_id
        LEFT JOIN farmers f ON f.farmer_id = pl.farmer_id
@@ -757,6 +763,7 @@ type PortalCandidateRow = {
   phone_number: string | null;
   amount: number | string | null;
   line_currency: string | null;
+  bank_reference: string | null;
 };
 
 /**
@@ -836,6 +843,7 @@ async function selectPortalCandidates(client: PoolClient): Promise<{
       farmerName: r.farmer_name ?? '',
       mobile,
       amount: parsePortalAmount(r.amount),
+      bankReference: r.bank_reference,
     });
   }
   return { candidates, currencySkipped, portalBatchByLine };
@@ -915,6 +923,7 @@ export async function buildUgandaPortalBatches(params: {
           beneficiaryName: p.farmerName,
           beneficiaryMobileNo: p.mobile,
           amount: p.amount,
+          bankReference: p.bankReference,
         }))
       );
       const totalAmount = sumAmounts(chunk);
@@ -1124,6 +1133,8 @@ type BatchTxRow = {
   recipient_phone: string;
   customer_reference: string;
   farmer_name: string | null;
+  /** Portal lines only; null for payments-table rows and for older lines. */
+  bank_reference: string | null;
 };
 
 /**
@@ -1131,6 +1142,10 @@ type BatchTxRow = {
  * from the stored generated_at, filename and bank_transactions. Throws if the result does not
  * match the stored sha256, so a changed farmer name/number can never be uploaded unnoticed.
  * The PGP ciphertext differs on every call by design; the plaintext is identical.
+ *
+ * Row order is the order the builder used (portal lines: payment line creation order; payments
+ * rows: ascending generated reference). It cannot be "sorted by reference" any more because
+ * bank_reference values do not sort in build order.
  */
 export async function rebuildBatchFile(batchId: string): Promise<RebuiltBatchFile> {
   const pool = getPool();
@@ -1148,11 +1163,13 @@ export async function rebuildBatchFile(batchId: string): Promise<RebuiltBatchFil
   }
 
   const txRes = await pool.query<BatchTxRow>(
-    `SELECT bt.amount, bt.recipient_phone, bt.customer_reference, f.name AS farmer_name
+    `SELECT bt.amount, bt.recipient_phone, bt.customer_reference, f.name AS farmer_name,
+            pl.bank_reference
        FROM bank_transactions bt
        LEFT JOIN farmers f ON f.farmer_id = bt.farmer_id
+       LEFT JOIN payment_lines pl ON pl.id = bt.payment_line_id
       WHERE bt.batch_id = $1
-      ORDER BY bt.customer_reference ASC`,
+      ORDER BY pl.created_at ASC NULLS LAST, pl.id ASC, bt.customer_reference ASC`,
     [batchId]
   );
   const txs = txRes.rows;
@@ -1180,6 +1197,7 @@ export async function rebuildBatchFile(batchId: string): Promise<RebuiltBatchFil
       beneficiaryName: t.farmer_name as string,
       beneficiaryMobileNo: t.recipient_phone,
       amount: Number(t.amount),
+      bankReference: t.bank_reference,
     }))
   );
 

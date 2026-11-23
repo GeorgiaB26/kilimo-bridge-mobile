@@ -203,3 +203,77 @@ test('Kenya batch still produces KES, MPESA and sequence-number filename', () =>
     fixedServiceProvider: 'MPESA',
   });
 });
+
+// ---------------------------------------------------------------------------
+// Per-line bank_reference as the Customer Reference No (Uganda)
+// ---------------------------------------------------------------------------
+
+const BANK_REF_1 = 'PB-UG-UGX-20261123-003-001';
+const BANK_REF_2 = 'PB-UG-UGX-20261123-003-002';
+
+/** The same member (same name and number) twice in one batch. */
+const SAME_MEMBER_TWICE: EquityMwPaymentLine[] = [
+  {
+    bankTransactionId: '33333333-3333-3333-3333-333333333333',
+    beneficiaryName: 'Example Member',
+    beneficiaryMobileNo: '0751000000',
+    amount: 5000,
+    bankReference: BANK_REF_1,
+  },
+  {
+    bankTransactionId: '44444444-4444-4444-4444-444444444444',
+    beneficiaryName: 'Example Member',
+    beneficiaryMobileNo: '0751000000',
+    amount: 7000,
+    bankReference: BANK_REF_2,
+  },
+];
+
+test('Uganda: two lines for the same member in one batch get two different references in the file', () => {
+  const out = generateEquityMwBatchFile(UG_CONFIG, SAME_MEMBER_TWICE);
+
+  assert.deepEqual(out.customerReferences, [BANK_REF_1, BANK_REF_2]);
+  assert.notEqual(out.rows[0]['Customer Reference No'], out.rows[1]['Customer Reference No']);
+
+  const [, row1, row2] = out.content.split('\r\n');
+  // Identical to the old layout, only the Customer Reference No column changed.
+  assert.equal(
+    row1,
+    'MW,1003200930075,,Example Member,,,,UGX,5000,,0751000000,AIRTELMONEY-UG,OUR,06-11-2026,PB-UG-UGX-20261123-003-001,'
+  );
+  assert.equal(
+    row2,
+    'MW,1003200930075,,Example Member,,,,UGX,7000,,0751000000,AIRTELMONEY-UG,OUR,06-11-2026,PB-UG-UGX-20261123-003-002,'
+  );
+  assert.equal(row1.split(',').length, 16);
+});
+
+test('Uganda: a line without bank_reference falls back to the old generated reference', () => {
+  const [withRef, withoutRef] = SAME_MEMBER_TWICE;
+  const out = generateEquityMwBatchFile(UG_CONFIG, [
+    withRef,
+    { ...withoutRef, bankReference: null },
+    { ...withoutRef, bankReference: '   ' },
+    { ...withoutRef, bankReference: undefined },
+  ]);
+  assert.deepEqual(out.customerReferences, [
+    BANK_REF_1,
+    'DU2026110615471902',
+    'DU2026110615471903',
+    'DU2026110615471904',
+  ]);
+
+  // No bank_reference anywhere: byte-for-byte the file produced before this change.
+  assert.deepEqual(
+    generateEquityMwBatchFile(UG_CONFIG, UG_LINES).customerReferences,
+    ['DU2026110615471901', 'DU2026110615471902']
+  );
+});
+
+test('Uganda: the same bank_reference twice in one file is rejected', () => {
+  const [a, b] = SAME_MEMBER_TWICE;
+  assert.throws(
+    () => generateEquityMwBatchFile(UG_CONFIG, [a, { ...b, bankReference: BANK_REF_1 }]),
+    /Duplicate Customer Reference No within batch/
+  );
+});

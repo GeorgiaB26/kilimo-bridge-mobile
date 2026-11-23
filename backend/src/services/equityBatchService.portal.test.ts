@@ -18,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { splitSqlStatements } from './equityBatchSchema';
 import {
   buildUgandaPortalBatches,
+  rebuildBatchFile,
   parsePortalAmount,
   splitPlanByPortalBatch,
   UGANDA_PORTAL_CANDIDATES_SQL,
@@ -67,6 +68,7 @@ CREATE TABLE payment_lines (
   country TEXT,
   stage TEXT,
   hold_kind TEXT,
+  bank_reference TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 CREATE TABLE audit_logs (
@@ -198,24 +200,29 @@ type LineOpts = {
   holdKind?: string | null;
   name?: string;
   phone?: string;
+  bankReference?: string | null;
+  /** Reuse this farmer (one member with several lines). */
+  farmerId?: string;
 };
 
-type SeededLine = { id: string; name: string; phone: string };
+type SeededLine = { id: string; name: string; phone: string; farmerId: string };
 
 async function seedLine(batchId: string, opts: LineOpts = {}): Promise<SeededLine> {
   const n = ++seq;
   const name = opts.name ?? `Zuberi${n} Mwesigwa${n}`;
   const phone = opts.phone ?? `0751${String(n).padStart(6, '0')}`;
-  const farmerId = uuidv4();
-  await db.query(`INSERT INTO farmers (farmer_id, name, phone_number, country) VALUES ($1, $2, $3, 'Uganda')`, [
-    farmerId,
-    name,
-    phone,
-  ]);
+  const farmerId = opts.farmerId ?? uuidv4();
+  if (!opts.farmerId) {
+    await db.query(`INSERT INTO farmers (farmer_id, name, phone_number, country) VALUES ($1, $2, $3, 'Uganda')`, [
+      farmerId,
+      name,
+      phone,
+    ]);
+  }
   const id = uuidv4();
   await db.query(
-    `INSERT INTO payment_lines (id, batch_id, farmer_id, farmer_name, amount, currency, country, stage, hold_kind)
-     VALUES ($1, $2, $3, $4, $5, $6, 'Uganda', $7, $8)`,
+    `INSERT INTO payment_lines (id, batch_id, farmer_id, farmer_name, amount, currency, country, stage, hold_kind, bank_reference)
+     VALUES ($1, $2, $3, $4, $5, $6, 'Uganda', $7, $8, $9)`,
     [
       id,
       batchId,
@@ -225,9 +232,10 @@ async function seedLine(batchId: string, opts: LineOpts = {}): Promise<SeededLin
       opts.currency ?? 'UGX',
       opts.stage ?? 'payment_approved',
       opts.holdKind ?? null,
+      opts.bankReference ?? null,
     ]
   );
-  return { id, name, phone };
+  return { id, name, phone, farmerId };
 }
 
 async function seedBankTx(
@@ -654,4 +662,58 @@ test('migration 020: one source per row, one live transaction per line, idempote
   );
   assert.equal(cols.rows.length, 3);
   assert.ok(cols.rows.every((c) => c.is_nullable === 'YES'));
+});
+
+// ---------------------------------------------------------------------------
+// Per-line bank_reference
+// ---------------------------------------------------------------------------
+
+test('portal: bank_reference is the Customer Reference No; the same member twice gets two references', async () => {
+  const batch = await seedBatch();
+  const first = await seedLine(batch, { bankReference: 'PB-UG-UGX-20261123-003-001' });
+  await seedLine(batch, { bankReference: 'PB-UG-UGX-20261123-003-002', farmerId: first.farmerId });
+
+  const result = ok(await buildUgandaPortalBatches({ dryRun: false, now: new Date('2026-11-23T09:00:00Z') }));
+  assert.equal(result.batches.length, 1);
+  assert.equal(result.batches[0].rowCount, 2);
+
+  const refs = await db.query<{ customer_reference: string; payment_line_id: string }>(
+    `SELECT customer_reference, payment_line_id FROM bank_transactions ORDER BY customer_reference`
+  );
+  assert.deepEqual(refs.rows.map((r) => r.customer_reference), [
+    'PB-UG-UGX-20261123-003-001',
+    'PB-UG-UGX-20261123-003-002',
+  ]);
+
+  // The stored file can be rebuilt byte-for-byte (rebuild verifies the stored sha256).
+  const rebuilt = await rebuildBatchFile(result.batches[0].batchId!);
+  const rows = rebuilt.plaintext.split('\r\n').slice(1, 3);
+  assert.ok(rows.some((r) => r.endsWith(',PB-UG-UGX-20261123-003-001,')), rows.join('\n'));
+  assert.ok(rows.some((r) => r.endsWith(',PB-UG-UGX-20261123-003-002,')), rows.join('\n'));
+});
+
+test('portal: lines without a bank_reference keep the old reference, also next to ones that have it', async () => {
+  const batch = await seedBatch();
+  await seedLine(batch); // older line, no bank_reference
+  await seedLine(batch, { bankReference: 'PB-UG-UGX-20261123-003-002' });
+  await seedLine(batch); // older line, no bank_reference
+
+  const result = ok(await buildUgandaPortalBatches({ dryRun: false, now: new Date('2026-11-23T09:00:00Z') }));
+  const refs = (
+    await db.query<{ customer_reference: string; bank_reference: string | null }>(
+      `SELECT bt.customer_reference, pl.bank_reference
+         FROM bank_transactions bt JOIN payment_lines pl ON pl.id = bt.payment_line_id`
+    )
+  ).rows;
+  // The line with a bank_reference uses it; the older lines keep DU + timestamp + file position.
+  const withRef = refs.filter((r) => r.bank_reference);
+  const withoutRef = refs.filter((r) => !r.bank_reference);
+  assert.deepEqual(withRef.map((r) => r.customer_reference), ['PB-UG-UGX-20261123-003-002']);
+  assert.equal(withoutRef.length, 2);
+  for (const r of withoutRef) assert.match(r.customer_reference, /^DU202611231200000[123]$/);
+  assert.notEqual(withoutRef[0].customer_reference, withoutRef[1].customer_reference);
+
+  // Mixed file rebuilds identically too (this also checks the order the builder used).
+  const rebuilt = await rebuildBatchFile(result.batches[0].batchId!);
+  assert.equal(rebuilt.rowCount, 3);
 });

@@ -5,6 +5,7 @@
  *
  *   pl2_system_mark_lines_sent(_batch uuid, _lines uuid[], _file_ref text) returns integer
  *   pl2_system_record_result(_line uuid, _status text, _reason text, _txn text) returns text
+ *   pl2_system_record_result_by_reference(_reference text, _status text, _reason text, _txn text) returns text
  *
  * The stand-ins also write every call to `pl2_calls`, and raise when the batch / line id is in
  * `pl2_poison`, so tests can check the arguments and simulate a failing function.
@@ -64,6 +65,7 @@ CREATE TABLE payment_lines (
   file_ref TEXT,
   fail_reason TEXT,
   bank_txn TEXT,
+  bank_reference TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 CREATE TABLE audit_logs (
@@ -130,6 +132,25 @@ BEGIN
     VALUES ('record_result', jsonb_build_object('line', _line, 'status', _status, 'reason', _reason, 'txn', _txn), out);
   RETURN out;
 END $fn$;
+
+-- Mirrors the production function: only 'sent' lines; case-insensitive bank_reference match;
+-- NULL when nothing matches; raises when the reference matches more than one sent line.
+CREATE FUNCTION pl2_system_record_result_by_reference(_reference text, _status text, _reason text, _txn text)
+RETURNS text LANGUAGE plpgsql AS $fn$
+DECLARE matches integer := 0; line_id uuid; out text;
+BEGIN
+  IF nullif(trim(coalesce(_reference, '')), '') IS NULL THEN RETURN NULL; END IF;
+  SELECT count(*), min(l.id::text)::uuid INTO matches, line_id
+    FROM payment_lines l
+   WHERE l.stage = 'sent' AND l.bank_reference IS NOT NULL
+     AND upper(l.bank_reference) = upper(trim(_reference));
+  IF matches > 1 THEN RAISE EXCEPTION 'Bank reference matches more than one sent payment line.'; END IF;
+  INSERT INTO pl2_calls (fn, args, result)
+    VALUES ('record_result_by_reference', jsonb_build_object('reference', _reference, 'status', _status, 'reason', _reason, 'txn', _txn), NULL);
+  IF matches = 0 OR line_id IS NULL THEN RETURN NULL; END IF;
+  out := pl2_system_record_result(line_id, _status, _reason, _txn);
+  RETURN out;
+END $fn$;
 `;
 
 export async function createPortalTestDb(): Promise<PGlite> {
@@ -172,7 +193,17 @@ let seq = 0;
 export async function seedPortalFile(
   db: PGlite,
   lines: number,
-  opts: { filename?: string; txStatus?: string } = {}
+  opts: {
+    filename?: string;
+    txStatus?: string;
+    /**
+     * Per-line bank_reference (null = older line without one). A line with a bank_reference is sent
+     * with it as the Customer Reference No, like the generator does; others keep the DU... one.
+     */
+    bankReferences?: Array<string | null>;
+    /** Give every line the same farmer (one member with several lines in the batch). */
+    sameMember?: boolean;
+  } = {}
 ): Promise<SeededPortalFile> {
   const n = ++seq;
   const portalBatchId = uuidv4();
@@ -196,15 +227,17 @@ export async function seedPortalFile(
   const lineIds: string[] = [];
   const txIds: string[] = [];
   const customerReferences: string[] = [];
+  const memberId = uuidv4();
   for (let i = 0; i < lines; i++) {
     const lineId = uuidv4();
+    const bankReference = opts.bankReferences?.[i] ?? null;
     await db.query(
-      `INSERT INTO payment_lines (id, batch_id, amount, currency, country, stage)
-       VALUES ($1, $2, 10000, 'UGX', 'Uganda', 'payment_approved')`,
-      [lineId, portalBatchId]
+      `INSERT INTO payment_lines (id, batch_id, farmer_id, amount, currency, country, stage, bank_reference)
+       VALUES ($1, $2, $3, 10000, 'UGX', 'Uganda', 'payment_approved', $4)`,
+      [lineId, portalBatchId, opts.sameMember ? memberId : uuidv4(), bankReference]
     );
     const txId = uuidv4();
-    const ref = `DU20260917120000${String(n * 100 + i).padStart(4, '0')}`;
+    const ref = bankReference ?? `DU20260917120000${String(n * 100 + i).padStart(4, '0')}`;
     await db.query(
       `INSERT INTO bank_transactions
          (id, payment_line_id, amount, currency, recipient_phone, status, batch_id, customer_reference, channel)
