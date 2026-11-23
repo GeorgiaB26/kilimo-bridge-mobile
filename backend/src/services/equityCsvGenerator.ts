@@ -101,6 +101,12 @@ export type EquityMwPaymentLine = {
    * pending Equity confirmation: max length / charset of Customer Reference No.
    */
   customerReference?: string;
+  /**
+   * Uganda: the portal's per-line `payment_lines.bank_reference` (unique per line, e.g.
+   * PB-UG-UGX-20261123-003-001). When present it is used as the Customer Reference No. Lines
+   * without one (older lines) get the legacy generated reference.
+   */
+  bankReference?: string | null;
 };
 
 export type EquityCsvRow = Record<EquityCsvHeader, string>;
@@ -373,8 +379,16 @@ function generateUgandaMwBatchFile(
   const { referencePrefix } = getEquityCountryConfig('UG');
   const timestamp = formatEquityUgandaTimestamp(time);
 
-  // Uganda references are always generated; a per-line customerReference is ignored.
-  const customerReferences = lines.map((_, i) => `${referencePrefix}${timestamp}${pad2(i + 1)}`);
+  // Uganda: the line's bank_reference when it has one, otherwise the legacy generated reference
+  // (prefix + timestamp + line number). A per-line customerReference is ignored.
+  const customerReferences = lines.map(
+    (line, i) => line.bankReference?.trim() || `${referencePrefix}${timestamp}${pad2(i + 1)}`
+  );
+  const seen = new Set<string>();
+  for (const ref of customerReferences) {
+    if (seen.has(ref)) throw new Error(`Duplicate Customer Reference No within batch: ${ref}`);
+    seen.add(ref);
+  }
   const rows = lines.map((line, i) => buildMwCsvRow(fixed, line, customerReferences[i]));
 
   const filename = buildEquityBatchFilename(fixed);

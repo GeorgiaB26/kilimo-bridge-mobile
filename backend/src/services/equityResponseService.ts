@@ -13,8 +13,11 @@
  *   it; anything else (including 'Verification Failure') is left 'processing' for a human.
  *   The Error Description alone is never treated as a failure (successful rows carry the
  *   literal text "Success" there).
+ * - Results are matched to a transaction by the payment line's bank_reference first (portal
+ *   batches), then by the generated Customer Reference No as before.
  * - Portal payment lines (bank_transactions.payment_line_id) are NOT settled here: the verdict is
- *   handed to the portal with pl2_system_record_result inside the same database transaction as
+ *   handed to the portal with pl2_system_record_result_by_reference (matched on bank_reference) or
+ *   pl2_system_record_result (older lines, by line id) inside the same database transaction as
  *   the file ('paid' for PSR Success, 'failed' for NACK and PSR Failed). settleTransferredPayment
  *   is never called for them. Unknown / 'Verification Failure' leaves the line at 'sent'
  *   (counted as needsReview). A thrown pl2 call rolls the file back; it is retried next poll.
@@ -154,13 +157,28 @@ export const SELECT_TX_SQL = `SELECT bt.id, bt.payment_id, bt.status::text AS st
  FOR UPDATE`;
 
 /**
+ * Portal batches: the transaction of the payment line whose bank_reference is the reference the
+ * bank echoed back (we send bank_reference as the Customer Reference No). Tried first; compared
+ * case-insensitively like pl2_system_record_result_by_reference. More than one row is treated as
+ * ambiguous by the caller, never guessed.
+ */
+export const SELECT_TX_BY_BANK_REFERENCE_SQL = `SELECT bt.id, bt.payment_id, bt.status::text AS status,
+       bt.payment_line_id::text AS payment_line_id, pl.bank_reference
+  FROM bank_transactions bt
+  JOIN payment_lines pl ON pl.id = bt.payment_line_id
+ WHERE bt.batch_id = $1 AND pl.bank_reference IS NOT NULL
+   AND upper(pl.bank_reference) = upper(btrim($2))
+ FOR UPDATE OF bt`;
+
+/**
  * Open transactions of a PORTAL batch that a NACK did not name. A NACK rejects the whole file,
  * so none of them was paid. Only used for batches with a portal_batch_id.
  */
-export const OPEN_PORTAL_TX_SQL = `SELECT id, payment_line_id, status::text AS status
-  FROM bank_transactions
- WHERE batch_id = $1 AND payment_line_id IS NOT NULL AND status::text IN ('pending', 'processing')
- FOR UPDATE`;
+export const OPEN_PORTAL_TX_SQL = `SELECT bt.id, bt.payment_line_id, bt.status::text AS status, pl.bank_reference
+  FROM bank_transactions bt
+  LEFT JOIN payment_lines pl ON pl.id = bt.payment_line_id
+ WHERE bt.batch_id = $1 AND bt.payment_line_id IS NOT NULL AND bt.status::text IN ('pending', 'processing')
+ FOR UPDATE OF bt`;
 
 /**
  * Lovable function: records the bank's verdict on a payment line that is at stage 'sent'.
@@ -168,6 +186,13 @@ export const OPEN_PORTAL_TX_SQL = `SELECT id, payment_line_id, status::text AS s
  * It runs on the file's own transaction connection: if the file rolls back, so does this.
  */
 export const PL2_RECORD_RESULT_SQL = `SELECT pl2_system_record_result($1::uuid, $2::text, $3::text, $4::text) AS outcome`;
+
+/**
+ * Lovable function: same as above but finds the 'sent' line by its bank_reference. Used when a
+ * result was matched on bank_reference. Returns NULL when no sent line carries that reference
+ * (already recorded, or never marked sent) and raises if the reference is ambiguous.
+ */
+export const PL2_RECORD_RESULT_BY_REFERENCE_SQL = `SELECT pl2_system_record_result_by_reference($1::text, $2::text, $3::text, $4::text) AS outcome`;
 
 export const PORTAL_NACK_FALLBACK_REASON = 'File rejected by Equity';
 export const PORTAL_PSR_FALLBACK_REASON = 'Payment failed at the bank';
@@ -345,6 +370,28 @@ async function applyAck(q: QueryFn, batch: BatchRef, ack: EquityAckParseResult):
   return effect;
 }
 
+type TxRow = Row;
+
+/**
+ * Find the bank transaction a response row refers to.
+ *  1. Portal batches: by the payment line's bank_reference.
+ *  2. Otherwise (older lines, payments-table batches): by batch + the Customer Reference No we
+ *     generated for the line, as before.
+ * Returns 'ambiguous' when a bank_reference matches more than one transaction of the batch.
+ */
+async function findTransaction(
+  q: QueryFn,
+  batch: BatchRef,
+  reference: string
+): Promise<TxRow | 'ambiguous' | undefined> {
+  if (batch.portalBatchId) {
+    const byBankReference = await q(SELECT_TX_BY_BANK_REFERENCE_SQL, [batch.id, reference]);
+    if (byBankReference.length > 1) return 'ambiguous';
+    if (byBankReference.length === 1) return byBankReference[0];
+  }
+  return (await q(SELECT_TX_SQL, [batch.id, reference]))[0];
+}
+
 /**
  * Tell the portal what the bank decided about a payment line. Resolves to true when the portal
  * recorded the verdict, false when it returned NULL (the line is not at 'sent': already
@@ -357,9 +404,14 @@ async function recordPortalResult(
   lineId: string,
   status: 'paid' | 'failed',
   reason: string | null,
-  bankTransactionId: string | null
+  bankTransactionId: string | null,
+  bankReference?: string | null
 ): Promise<boolean> {
-  const rows = await q(PL2_RECORD_RESULT_SQL, [lineId, status, reason, bankTransactionId]);
+  // Matched on bank_reference: let the portal find the line by it. Otherwise (older line, matched
+  // on the generated reference) the portal cannot resolve our reference, so use the line id.
+  const rows = bankReference
+    ? await q(PL2_RECORD_RESULT_BY_REFERENCE_SQL, [bankReference, status, reason, bankTransactionId])
+    : await q(PL2_RECORD_RESULT_SQL, [lineId, status, reason, bankTransactionId]);
   const outcome = rows?.[0]?.outcome;
   return outcome !== null && outcome !== undefined;
 }
@@ -379,8 +431,11 @@ async function applyNack(
   await q(NACK_BATCH_SQL, [batch.id, clip(nack.summary.summaryMessage), nack.summary.fileReference]);
 
   for (const record of nack.records) {
-    const rows = await q(SELECT_TX_SQL, [batch.id, record.customerReference]);
-    const tx = rows[0];
+    const tx = await findTransaction(q, batch, record.customerReference);
+    if (tx === 'ambiguous') {
+      effect.needsReview++;
+      continue;
+    }
     if (!tx) {
       effect.unmatched++;
       continue;
@@ -397,7 +452,8 @@ async function applyNack(
         String(tx.payment_line_id),
         'failed',
         portalReason(record.errorDescription, PORTAL_NACK_FALLBACK_REASON),
-        null
+        null,
+        tx.bank_reference ? String(tx.bank_reference) : null
       );
     }
     await q(FAIL_TX_SQL, [
@@ -418,7 +474,8 @@ async function applyNack(
         String(open.payment_line_id),
         'failed',
         PORTAL_NACK_FALLBACK_REASON,
-        null
+        null,
+        open.bank_reference ? String(open.bank_reference) : null
       );
       await q(FAIL_TX_SQL, [
         open.id,
@@ -448,8 +505,11 @@ async function applyPsr(
 
   for (const record of psr.records) {
     fileReference = fileReference || record.fileReference;
-    const rows = await q(SELECT_TX_SQL, [batch.id, record.customerReference]);
-    const tx = rows[0];
+    const tx = await findTransaction(q, batch, record.customerReference);
+    if (tx === 'ambiguous') {
+      effect.needsReview++;
+      continue;
+    }
     if (!tx) {
       effect.unmatched++;
       continue;
@@ -471,7 +531,8 @@ async function applyPsr(
           String(tx.payment_line_id),
           'paid',
           null,
-          record.equityTransactionId || null
+          record.equityTransactionId || null,
+          tx.bank_reference ? String(tx.bank_reference) : null
         );
         effect.success++;
         if (!recorded) {
@@ -505,7 +566,8 @@ async function applyPsr(
           String(tx.payment_line_id),
           'failed',
           portalReason(record.errorDescription, PORTAL_PSR_FALLBACK_REASON),
-          null
+          null,
+          tx.bank_reference ? String(tx.bank_reference) : null
         );
       }
       await q(FAIL_TX_SQL, [

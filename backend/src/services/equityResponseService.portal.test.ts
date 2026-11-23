@@ -549,3 +549,136 @@ test('payments-table NACK: only the named rows fail and the rest are flagged, as
   assert.equal((await tx(pay.txIds[1])).status, 'processing');
   assert.equal((await db.query('SELECT 1 FROM pl2_calls')).rows.length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// bank_reference matching (per-line reference)
+// ---------------------------------------------------------------------------
+
+const REF_1 = 'PB-UG-UGX-20261123-003-001';
+const REF_2 = 'PB-UG-UGX-20261123-003-002';
+
+async function byReferenceCalls() {
+  return (
+    await db.query<{ args: { reference: string; status: string; reason: string | null; txn: string | null } }>(
+      `SELECT args FROM pl2_calls WHERE fn = 'record_result_by_reference' ORDER BY n`
+    )
+  ).rows.map((r) => r.args);
+}
+
+test('bank_reference PSR: one member, two lines in one batch, one Success and one Failed each match their own line', async () => {
+  const file = await sent(await seedPortalFile(db, 2, { bankReferences: [REF_1, REF_2], sameMember: true }));
+  assert.deepEqual(file.customerReferences, [REF_1, REF_2], 'two different references for the same member');
+
+  // Rows deliberately in the opposite order to the lines: matching is by reference, not position.
+  const text = psrText([
+    { txId: 'BT-2', ref: REF_2, status: 'Failed', desc: 'Insufficient funds in wallet' },
+    { txId: 'BT-1', ref: REF_1, status: 'Success', desc: 'Success' },
+  ]);
+  const { counts, settled } = await poll(new FakeSftp().add(psrName(file), text));
+
+  assert.equal(counts.errors, 0);
+  assert.equal(counts.success, 1);
+  assert.equal(counts.failed, 1);
+  assert.equal(counts.needsReview, 0);
+  assert.equal(counts.unmatched, 0);
+  assert.deepEqual(settled, []);
+
+  // The portal is called by reference, once per line, with that line's own verdict.
+  const calls = await byReferenceCalls();
+  assert.equal(calls.length, 2);
+  const byRef = new Map(calls.map((c) => [c.reference, c]));
+  assert.deepEqual(
+    [byRef.get(REF_1)!.status, byRef.get(REF_1)!.reason, byRef.get(REF_1)!.txn],
+    ['paid', null, 'BT-1']
+  );
+  assert.deepEqual(
+    [byRef.get(REF_2)!.status, byRef.get(REF_2)!.reason, byRef.get(REF_2)!.txn],
+    ['failed', 'Insufficient funds in wallet', null]
+  );
+
+  const l1 = await line(file.lineIds[0]);
+  const l2 = await line(file.lineIds[1]);
+  assert.deepEqual([l1.stage, l1.bank_txn, l1.fail_reason], ['paid', 'BT-1', null]);
+  assert.deepEqual([l2.stage, l2.bank_txn, l2.fail_reason], ['failed', null, 'Insufficient funds in wallet']);
+  assert.equal((await tx(file.txIds[0])).status, 'completed');
+  assert.equal((await tx(file.txIds[1])).status, 'failed');
+  assert.equal(await batchStatus(file.equityBatchId), 'partially_settled');
+});
+
+test('bank_reference PSR: the reference is matched case-insensitively', async () => {
+  const file = await sent(await seedPortalFile(db, 1, { bankReferences: [REF_1] }));
+  const { counts } = await poll(
+    new FakeSftp().add(psrName(file), psrText([{ txId: 'BT-1', ref: REF_1.toLowerCase(), status: 'Success', desc: 'Success' }]))
+  );
+  assert.equal(counts.success, 1);
+  assert.equal(counts.unmatched, 0);
+  assert.equal((await line(file.lineIds[0])).stage, 'paid');
+});
+
+test('old-format PSR: a line without bank_reference still matches its generated reference', async () => {
+  const file = await sentFile(2); // no bank_reference; references look like DU2026091712000001
+  assert.match(file.customerReferences[0], /^DU\d{14,}/);
+  const text = psrText([
+    { txId: 'BT-OLD-1', ref: file.customerReferences[0], status: 'Success', desc: 'Success' },
+    { txId: 'BT-OLD-2', ref: file.customerReferences[1], status: 'Failed', desc: 'Declined' },
+  ]);
+  const { counts } = await poll(new FakeSftp().add(psrName(file), text));
+
+  assert.equal(counts.success, 1);
+  assert.equal(counts.failed, 1);
+  assert.equal(counts.unmatched, 0);
+  assert.equal(counts.needsReview, 0);
+  assert.equal((await line(file.lineIds[0])).stage, 'paid');
+  assert.equal((await line(file.lineIds[0])).bank_txn, 'BT-OLD-1');
+  assert.equal((await line(file.lineIds[1])).stage, 'failed');
+  // Our generated reference means nothing to the portal, so these are recorded by line id.
+  assert.deepEqual(await byReferenceCalls(), []);
+  assert.equal((await recordCalls()).length, 2);
+});
+
+test('mixed file: bank_reference lines go by reference, older lines by line id, in one PSR', async () => {
+  const file = await sent(await seedPortalFile(db, 2, { bankReferences: [REF_1, null] }));
+  const text = psrText([
+    { txId: 'BT-NEW', ref: file.customerReferences[0], status: 'Success', desc: 'Success' },
+    { txId: 'BT-OLD', ref: file.customerReferences[1], status: 'Success', desc: 'Success' },
+  ]);
+  const { counts } = await poll(new FakeSftp().add(psrName(file), text));
+
+  assert.equal(counts.success, 2);
+  assert.equal(counts.needsReview, 0);
+  assert.deepEqual(
+    (await byReferenceCalls()).map((c) => c.reference),
+    [REF_1]
+  );
+  assert.equal((await line(file.lineIds[0])).bank_txn, 'BT-NEW');
+  assert.equal((await line(file.lineIds[1])).bank_txn, 'BT-OLD');
+  assert.equal(await batchStatus(file.equityBatchId), 'settled');
+});
+
+test('bank_reference NACK: named and unnamed lines are all recorded failed by reference', async () => {
+  const file = await sent(await seedPortalFile(db, 2, { bankReferences: [REF_1, REF_2], sameMember: true }));
+  const { counts } = await poll(
+    new FakeSftp().add(nackName(file), nackText(file, [{ ref: REF_1, desc: 'Back value dated transactions not accepted.' }]))
+  );
+
+  assert.equal(counts.failed, 2);
+  assert.equal(counts.errors, 0);
+  const byRef = new Map((await byReferenceCalls()).map((c) => [c.reference, c]));
+  assert.deepEqual([byRef.get(REF_1)!.status, byRef.get(REF_1)!.reason], ['failed', 'Back value dated transactions not accepted.']);
+  assert.deepEqual([byRef.get(REF_2)!.status, byRef.get(REF_2)!.reason], ['failed', PORTAL_NACK_FALLBACK_REASON]);
+  assert.equal((await line(file.lineIds[0])).stage, 'failed');
+  assert.equal((await line(file.lineIds[1])).stage, 'failed');
+});
+
+test('bank_reference PSR: a reference that matches two lines (differing only in case) is never guessed', async () => {
+  const file = await sent(await seedPortalFile(db, 2, { bankReferences: [REF_1, REF_1.toLowerCase()], sameMember: true }));
+  const { counts } = await poll(
+    new FakeSftp().add(psrName(file), psrText([{ txId: 'BT-1', ref: REF_1, status: 'Success', desc: 'Success' }]))
+  );
+  assert.equal(counts.success, 0);
+  assert.ok(counts.needsReview >= 1);
+  assert.deepEqual(await byReferenceCalls(), []);
+  assert.equal((await line(file.lineIds[0])).stage, 'sent');
+  assert.equal((await line(file.lineIds[1])).stage, 'sent');
+  assert.equal((await tx(file.txIds[0])).status, 'processing');
+});
