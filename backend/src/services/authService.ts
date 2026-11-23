@@ -5,8 +5,9 @@ import { normalizePhoneAnyCountry } from '../../../shared/src/farmerId';
 import { normalizeRole, type UserRole } from '../../../shared/src/roles';
 import { verifyPassword } from './encryptionService';
 import { logAudit } from './auditService';
+import { DEV_JWT_SECRET_FALLBACK } from '../validateEnv';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'kilimo-bridge-dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
 const OTP_EXPIRY_MINUTES = 10;
 const DEV_OTP = '123456';
 
