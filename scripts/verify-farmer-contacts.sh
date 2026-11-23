@@ -7,6 +7,11 @@ echo "=== Farmer contacts check ==="
 echo "API: $API"
 echo ""
 
+case "$API" in
+  http://localhost:*|http://127.0.0.1:*) ;;
+  *) echo "✗ Local development only: this script uses /auth/dev-login. Point API_BASE at a local backend."; exit 1 ;;
+esac
+
 HEALTH=$(curl -sf "$API/../health" 2>/dev/null || curl -sf "http://localhost:3001/health" 2>/dev/null || true)
 if [ -z "$HEALTH" ]; then
   echo "✗ Backend not running. Start: cd backend && npm run dev"
@@ -16,7 +21,7 @@ echo "✓ Backend health OK"
 
 LOGIN=$(curl -sf -X POST "$API/auth/dev-login" -H 'Content-Type: application/json' -d '{"phone":"+254712345678"}' 2>/dev/null || true)
 if [ -z "$LOGIN" ]; then
-  echo "✗ Dev login failed — set PILOT_OTP=true in backend/.env"
+  echo "✗ Dev login failed — local backend only: run it with NODE_ENV=development (or PILOT_OTP=true in your own backend/.env)"
   exit 1
 fi
 

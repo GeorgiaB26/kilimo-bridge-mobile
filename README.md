@@ -91,6 +91,8 @@ The app now has **two platforms in one**:
 | **Farmer** | `+254712345678` | OTP `123456` | Own dashboard, projects, payments, profile only |
 | **Super Admin** | `+254700000001` | OTP `123456` | Full access including user management |
 
+> The demo accounts and the fixed OTP `123456` are for **local development only**. They are never enabled in production (`PILOT_OTP=false`).
+
 > **First time setup?** Copy `backend/.env.example` to `backend/.env` and set `DATABASE_URL` to your Supabase connection string.
 
 ### Backend API (Terminal 1)

@@ -219,7 +219,10 @@ export function LoginScreen({ navigation }: Props) {
           <Text className="font-semibold text-[#1A4D3E]">Create an account</Text>
         </Button>
         <Text className="mt-2 text-center text-xs text-[#757575]">
-          Step 1: choose Farmer, Field Agent, Admin, or Project Manager
+          Step 1: choose Farmer, Field Agent, or Project Manager
+        </Text>
+        <Text className="mt-1 text-center text-xs text-[#757575]">
+          New Field Agent and Project Manager accounts need approval before first login.
         </Text>
       </View>
 

@@ -123,7 +123,7 @@ router.post(
       sector,
     } = req.body;
 
-    if (!userType) {
+    if (!userType || typeof userType !== 'string') {
       res.status(400).json({ error: 'userType is required' });
       return;
     }
@@ -140,6 +140,19 @@ router.post(
       governmentId,
       sector,
     });
+
+    if (result.forbidden) {
+      // Record the refused attempt (type and IP only, no personal data); nothing was created.
+      void logAudit({
+        action: 'permission.denied',
+        category: 'system',
+        details: { path: '/auth/self-register', requested_type: userType.slice(0, 40) },
+        ipAddress: req.ip,
+        success: false,
+      });
+      res.status(403).json({ error: result.message });
+      return;
+    }
 
     if (!result.success) {
       res.status(400).json({ error: result.message });

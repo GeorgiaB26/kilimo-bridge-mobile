@@ -54,24 +54,37 @@ export async function createUser(data: {
   region?: string;
   aggregationCenter?: string;
   passwordHash?: string;
+  /** Omit to use the column default ('active'); pass 'pending_approval' to block login until approved. */
+  status?: string;
 }): Promise<string> {
   const id = uuidv4();
-  await query(
-    `INSERT INTO users (
-      user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, password_hash
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [
-      id,
-      data.phoneNumber,
-      data.name,
-      data.role,
-      data.farmerId ?? null,
-      data.district ?? null,
-      data.region ?? null,
-      data.aggregationCenter ?? null,
-      data.passwordHash ?? null,
-    ]
-  );
+  const values: unknown[] = [
+    id,
+    data.phoneNumber,
+    data.name,
+    data.role,
+    data.farmerId ?? null,
+    data.district ?? null,
+    data.region ?? null,
+    data.aggregationCenter ?? null,
+    data.passwordHash ?? null,
+  ];
+  if (data.status) {
+    values.push(data.status);
+    await query(
+      `INSERT INTO users (
+        user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, password_hash, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      values
+    );
+  } else {
+    await query(
+      `INSERT INTO users (
+        user_id, phone_number, name, role, farmer_id, district, region, aggregation_center, password_hash
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      values
+    );
+  }
   return id;
 }
 

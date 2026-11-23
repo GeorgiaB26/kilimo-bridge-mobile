@@ -5,10 +5,30 @@ import { createUser } from './userService';
 import { registerAgent } from './agentService';
 import { logAudit } from './auditService';
 
-export type SelfRegisterUserType = 'farmer' | 'field_agent' | 'admin' | 'project_manager';
+/** Types an unauthenticated caller may self-register as. Everything else is refused. */
+export type SelfRegisterUserType = 'farmer' | 'field_agent' | 'project_manager';
+
+/** Self-registered staff accounts cannot log in until someone sets users.status to 'active'. */
+export const SELF_REGISTER_PENDING_STATUS = 'pending_approval';
+
+/** Role names that must never be created by an unauthenticated caller (matched case-insensitively). */
+const PRIVILEGED_USER_TYPES = new Set([
+  'admin',
+  'super_admin',
+  'platform_admin',
+  'banking_agent',
+  'banking_admin',
+  'agent',
+  'field_officer',
+]);
+
+export function isPrivilegedSelfRegisterType(userType: unknown): boolean {
+  return typeof userType === 'string' && PRIVILEGED_USER_TYPES.has(userType.trim().toLowerCase());
+}
 
 export interface SelfRegisterInput {
-  userType: SelfRegisterUserType;
+  /** Raw client value. Only SelfRegisterUserType values are accepted; privileged ones are refused. */
+  userType: SelfRegisterUserType | (string & {});
   name: string;
   phone: string;
   email?: string;
@@ -25,7 +45,18 @@ export async function selfRegisterUser(data: SelfRegisterInput): Promise<{
   message: string;
   userId?: string;
   pendingApproval?: boolean;
+  /** True when the requested type is privileged: the route answers 403 and nothing was created. */
+  forbidden?: boolean;
 }> {
+  // Checked before any database access: no account, no lookup, no audit entry saying "created".
+  if (isPrivilegedSelfRegisterType(data.userType)) {
+    return {
+      success: false,
+      forbidden: true,
+      message: 'This account type cannot be created by self-registration',
+    };
+  }
+
   const name = data.name?.trim();
   const phone = data.phone?.trim();
   if (!name || !phone) {
@@ -62,6 +93,7 @@ export async function selfRegisterUser(data: SelfRegisterInput): Promise<{
         aggregationCenter: data.aggregationCenter.trim(),
         region: data.region.trim(),
         district: data.district.trim(),
+        userStatus: SELF_REGISTER_PENDING_STATUS,
       });
       await logAudit({
         userId: result.userId,
@@ -73,13 +105,15 @@ export async function selfRegisterUser(data: SelfRegisterInput): Promise<{
           user_type: 'field_agent',
           email: data.email ?? null,
           self_registration: true,
+          status: SELF_REGISTER_PENDING_STATUS,
         },
         success: true,
       });
       return {
         success: true,
-        message: 'Field agent account created. Awaiting verification before you can log in.',
+        message: 'Field agent account created. It needs approval before you can log in.',
         userId: result.userId,
+        pendingApproval: true,
       };
     } catch (err) {
       return {
@@ -89,11 +123,10 @@ export async function selfRegisterUser(data: SelfRegisterInput): Promise<{
     }
   }
 
-  if (data.userType === 'admin' || data.userType === 'project_manager') {
+  if (data.userType === 'project_manager') {
     if (!data.password || data.password.length < 6) {
       return { success: false, message: 'Password is required (minimum 6 characters)' };
     }
-    const pending = data.userType === 'project_manager';
     const passwordHash = bcrypt.hashSync(data.password, 12);
     const userId = uuidv4();
     try {
@@ -108,7 +141,7 @@ export async function selfRegisterUser(data: SelfRegisterInput): Promise<{
           'admin',
           data.district?.trim() ?? data.region?.trim() ?? null,
           data.region?.trim() ?? null,
-          pending ? 'pending_approval' : 'active',
+          SELF_REGISTER_PENDING_STATUS,
           passwordHash,
         ]
       );
@@ -122,17 +155,16 @@ export async function selfRegisterUser(data: SelfRegisterInput): Promise<{
           user_type: data.userType,
           email: data.email ?? null,
           self_registration: true,
-          status: pending ? 'pending_approval' : 'active',
+          status: SELF_REGISTER_PENDING_STATUS,
         },
         success: true,
       });
       return {
         success: true,
         userId,
-        pendingApproval: pending,
-        message: pending
-          ? 'Your account will be reviewed by the tech team. You will receive approval notification via email.'
-          : 'Admin account created. You can sign in with your phone and password.',
+        pendingApproval: true,
+        message:
+          'Your account will be reviewed by the tech team. You will receive approval notification via email.',
       };
     } catch (err) {
       return {

@@ -11,6 +11,8 @@ export interface AgentRegistration {
   aggregationCenter: string;
   region: string;
   district: string;
+  /** Login status for the new user row. Omit for the default ('active'). */
+  userStatus?: string;
 }
 
 export async function registerAgent(
@@ -31,6 +33,7 @@ export async function registerAgent(
     district: data.district,
     region: data.region,
     aggregationCenter: data.aggregationCenter,
+    status: data.userStatus,
   });
 
   const agentId = uuidv4();
