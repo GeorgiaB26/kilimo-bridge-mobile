@@ -91,9 +91,7 @@ function RegistrationStack() {
       <Stack.Screen
         name="StaffRegistration"
         component={withSimpleLayout(StaffRegistrationScreen)}
-        options={({ route }) => ({
-          title: route.params.variant === 'project_manager' ? 'Project manager' : 'Admin',
-        })}
+        options={{ title: 'Project manager' }}
       />
       <Stack.Screen name="Country" component={withFarmerLayout(CountrySelectionScreen, 'Country')} options={{ title: 'Register member' }} />
       <Stack.Screen name="BasicInfo" component={withFarmerLayout(BasicInfoScreen, 'BasicInfo')} />

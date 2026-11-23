@@ -29,9 +29,6 @@ export function UserTypeSelectionScreen({ navigation }: Props) {
       case 'field_agent':
         navigation.navigate('FieldAgentRegistration');
         break;
-      case 'admin':
-        navigation.navigate('StaffRegistration', { variant: 'admin' });
-        break;
       case 'project_manager':
         navigation.navigate('StaffRegistration', { variant: 'project_manager' });
         break;

@@ -86,7 +86,7 @@ Copy the **output values** into Render (not the command text):
 | Key | Value |
 |-----|--------|
 | `NODE_ENV` | `production` |
-| `PILOT_OTP` | `true` |
+| `PILOT_OTP` | `false` (never `true` in production: it enables the fixed OTP `123456` and `/auth/dev-login`) |
 | `DATABASE_URL` | Supabase transaction pooler connection string |
 | `JWT_SECRET` | paste 64-char hex from script |
 | `ENCRYPTION_KEY` | paste 64-char hex from script |
@@ -120,7 +120,7 @@ curl https://YOUR-SERVICE.onrender.com/health
 - Build log `Exited with status 2` → open Render **Logs** tab; usually TypeScript build errors or missing `shared/` (Root Directory must be `backend`, full repo cloned).
 - Service starts then crashes → check **Events** for bootstrap errors (schema FK mismatches are fixed in recent commits).
 
-**Required Render env vars:** `DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`, `NODE_ENV=production`, `PILOT_OTP=true`, `CORS_ORIGINS` (your Netlify URL).
+**Required Render env vars:** `DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`, `NODE_ENV=production`, `PILOT_OTP=false`, `CORS_ORIGINS` (your Netlify URL).
 
 ### Your farmer data (important)
 
@@ -144,7 +144,11 @@ This pings Render every 5 min so it stays awake for clients. Your laptop can be 
 
 ### Preview login — all account types
 
-With `PILOT_OTP=true`, the login screen **Quick access** buttons work on Netlify:
+> **Local development only.** The quick-access buttons and the fixed OTP `123456` need `PILOT_OTP=true`
+> (or a non-production `NODE_ENV`). Production runs with `PILOT_OTP=false`, so they do not work on Netlify/Render.
+> There is no SMS provider yet: production OTP login stays unavailable until one is added.
+
+In a local backend (`NODE_ENV=development`), the login screen **Quick access** buttons work:
 
 | Button | Account |
 |--------|---------|
@@ -153,7 +157,7 @@ With `PILOT_OTP=true`, the login screen **Quick access** buttons work on Netlify
 | Open Agent Platform | +254700000003 |
 | Open Banking Platform | +254700000004 (password `Banking@2026`) |
 
-Or use phone OTP: any seeded account + code `123456`.
+Or, locally, use phone OTP: any seeded account + code `123456`.
 
 ---
 
@@ -190,7 +194,7 @@ Replace with your real Render URL from Part 1.
 Send them:
 
 - **Link:** `https://your-site.netlify.app`
-- **Login:** admin phone `+254700000002`, OTP `123456` (while `PILOT_OTP=true`)
+- **Login:** the fixed demo OTP is disabled in production (`PILOT_OTP=false`); issue real accounts to clients instead
 - **Note:** “Web preview of Kilimo Bridge admin platform. Farmer mobile app coming after banking integration.”
 
 Optional: Netlify → **Site settings → Access control** → password-protect the site for draft reviews.
@@ -216,7 +220,7 @@ Open the URL `serve` prints.
 | Blank page on Netlify | Check Netlify deploy logs; build must finish without errors |
 | Login fails | `EXPO_PUBLIC_API_URL` must end with `/api` |
 | CORS error in browser | Add Netlify URL to Render `CORS_ORIGINS` |
-| **Too many login attempts** | Redeploy latest `main`. Ensure `PILOT_OTP=true`. Use Quick access buttons. |
+| **Too many login attempts** | Redeploy latest `main` and wait a few minutes (rate limit). Do not enable `PILOT_OTP` in production. |
 | **Deploy fails / env misconfigured** | `JWT_SECRET`, `ENCRYPTION_KEY`, and `DATABASE_URL` must be set. Remove `PORT` from env — let Render set it. |
 | Empty farmers list | Check `DATABASE_URL` on Render points to Supabase with data. Import CSV via Admin if empty. |
 | API fails on startup: `DATABASE_URL is not set` | Add Supabase connection string to Render environment and redeploy. |

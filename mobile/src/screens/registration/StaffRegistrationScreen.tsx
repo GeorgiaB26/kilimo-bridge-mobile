@@ -10,8 +10,7 @@ import type { RegistrationStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RegistrationStackParamList, 'StaffRegistration'>;
 
-export function StaffRegistrationScreen({ route, navigation }: Props) {
-  const isPm = route.params.variant === 'project_manager';
+export function StaffRegistrationScreen({ navigation }: Props) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -28,7 +27,7 @@ export function StaffRegistrationScreen({ route, navigation }: Props) {
     setLoading(true);
     try {
       const result = await selfRegister({
-        userType: route.params.variant,
+        userType: 'project_manager',
         name: name.trim(),
         phone: phone.trim(),
         email: email.trim() || undefined,
@@ -37,7 +36,7 @@ export function StaffRegistrationScreen({ route, navigation }: Props) {
         district: district.trim() || undefined,
       });
       Alert.alert(
-        isPm ? 'Awaiting approval' : 'Account created',
+        'Awaiting approval',
         result.message ?? 'Registration complete.',
         [{ text: 'OK', onPress: () => navigation.getParent()?.goBack() }]
       );
@@ -50,18 +49,10 @@ export function StaffRegistrationScreen({ route, navigation }: Props) {
 
   return (
     <View>
-      <Text className="mb-2 text-lg font-bold text-[#1A4D3E]">
-        {isPm ? 'Project manager registration' : 'Admin registration'}
+      <Text className="mb-2 text-lg font-bold text-[#1A4D3E]">Project manager registration</Text>
+      <Text className="mb-4 text-sm text-[#757575]">
+        Your account will be reviewed by the tech team. You will receive an approval notification via email.
       </Text>
-      {isPm ? (
-        <Text className="mb-4 text-sm text-[#757575]">
-          Your account will be reviewed by the tech team. You will receive an approval notification via email.
-        </Text>
-      ) : (
-        <Text className="mb-4 text-sm text-[#757575]">
-          Sign up with phone and password. Email is optional for contact purposes.
-        </Text>
-      )}
       <TextInput label="Full name *" value={name} onChangeText={setName} mode="outlined" style={{ marginBottom: 12 }} />
       <TextInput label="Phone *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" mode="outlined" style={{ marginBottom: 12 }} />
       <TextInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" mode="outlined" style={{ marginBottom: 12 }} />

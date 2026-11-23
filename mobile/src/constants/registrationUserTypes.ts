@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
-import { Briefcase, ClipboardList, Sprout, UserRound } from 'lucide-react-native';
+import { ClipboardList, Sprout, UserRound } from 'lucide-react-native';
 
-export type RegistrationUserType = 'farmer' | 'field_agent' | 'admin' | 'project_manager';
+export type RegistrationUserType = 'farmer' | 'field_agent' | 'project_manager';
 
 export type RegistrationTypeIcon = ComponentType<{ size?: number | string; color?: string }>;
 
@@ -23,12 +23,7 @@ export const REGISTRATION_USER_TYPES: Array<{
     label: 'Field Agent',
     description: 'Register as field agent',
     Icon: UserRound,
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    description: 'Admin user access',
-    Icon: Briefcase,
+    requiresApproval: true,
   },
   {
     id: 'project_manager',

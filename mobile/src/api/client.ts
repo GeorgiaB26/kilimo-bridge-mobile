@@ -99,7 +99,7 @@ export async function loginWithPassword(phone: string, password: string) {
 }
 
 export async function selfRegister(body: {
-  userType: 'farmer' | 'field_agent' | 'admin' | 'project_manager';
+  userType: 'farmer' | 'field_agent' | 'project_manager';
   name: string;
   phone: string;
   email?: string;

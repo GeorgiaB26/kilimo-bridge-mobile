@@ -14,8 +14,10 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false
+      # Must stay "false" in production: "true" enables the fixed OTP 123456 and /auth/dev-login.
+      # Pilot login is for local development only (NODE_ENV != production enables it already).
       - key: PILOT_OTP
-        value: "true"
+        value: "false"
       - key: JWT_SECRET
         generateValue: true
       - key: ENCRYPTION_KEY

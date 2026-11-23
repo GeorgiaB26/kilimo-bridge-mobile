@@ -271,7 +271,7 @@ A separate, isolated Render web service was created specifically to test this mi
 - **Build Command**: `npm run build:render` (this specific script — not a plain `npm run build` — matters because Render sets `NODE_ENV=production` by default, which causes a plain `npm install` to skip devDependencies; since this backend's TypeScript build requires `tsc` and various `@types/*` packages that live in devDependencies, `build:render` explicitly runs `npm install --include=dev` before compiling, and also verifies that the `shared/` folder — which the backend imports validation and role logic from — is present, since the whole monorepo needs to be cloned, not just a backend-only export)
 - **Start Command**: `npm start` (equivalent to running `node dist/backend/src/index.js` — the compiled output)
 - **Branch deployed**: `feature/postgres-supabase-migration_james_work` — not `main`
-- **Environment variables required**: `DATABASE_URL` (the Supabase pooler connection string), `JWT_SECRET`, `ENCRYPTION_KEY`, `ID_NUMBER_HMAC_KEY` (all matching exactly the values already in use locally — see Part 6 for why these must match exactly, not be freshly generated), `NODE_ENV=production`, `USE_EQUITY_H2H=false` (kept in the safe, dev-simulated banking mode), `PILOT_OTP=true` (allows testing OTP login without needing a real SMS provider configured)
+- **Environment variables required**: `DATABASE_URL` (the Supabase pooler connection string), `JWT_SECRET`, `ENCRYPTION_KEY`, `ID_NUMBER_HMAC_KEY` (all matching exactly the values already in use locally — see Part 6 for why these must match exactly, not be freshly generated), `NODE_ENV=production`, `USE_EQUITY_H2H=false` (kept in the safe, dev-simulated banking mode), `PILOT_OTP=false` (must not be `true` in production: it enables the fixed OTP `123456` and `/auth/dev-login`; use `true` only in a local backend)
 
 This deployment was confirmed genuinely working — not just "builds successfully" but actually functioning — by hitting its real public `/health` endpoint over the internet and confirming it returned correct live counts matching the real Supabase data (`farmers: 3`, and after a further fix, `hierarchy_projects` and `demo_farmer_tasks` counts as well, which had initially been hardcoded placeholder `null` values in the health-check code rather than genuinely wired up to real queries — this was identified and fixed during testing).
 
@@ -366,7 +366,7 @@ Since more than one person may now be working against the same live Supabase dat
 Both `backend/.env` and `mobile/.env` are private, local-only files (not committed to GitHub, per standard practice and the project's `.gitignore` configuration). Anyone setting up this project on a new machine needs to:
 1. Copy `backend/.env.example` to `backend/.env`, and `mobile/.env.example` to `mobile/.env`
 2. Fill in the real, current values for `DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`, and `ID_NUMBER_HMAC_KEY` — copied exactly from an existing, already-working setup (ask James or Georgia directly for these) — **not freshly generated**, per the detailed reasoning in Part 6
-3. Other values in `.env.example` (e.g. `PILOT_OTP=true`, `USE_EQUITY_H2H=false`, `NODE_ENV=development`) can generally be left as their example defaults for local development
+3. Other values in `.env.example` (e.g. `PILOT_OTP=false`, `USE_EQUITY_H2H=false`, `NODE_ENV=development`) can generally be left as their example defaults for local development
 
 ---
 

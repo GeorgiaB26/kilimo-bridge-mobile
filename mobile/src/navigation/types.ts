@@ -157,7 +157,7 @@ export type NotificationsStackParamList = {
 export type RegistrationStackParamList = {
   UserTypeSelection: undefined;
   FieldAgentRegistration: undefined;
-  StaffRegistration: { variant: 'admin' | 'project_manager' };
+  StaffRegistration: { variant: 'project_manager' };
   Country: undefined;
   BasicInfo: undefined;
   Location: undefined;
