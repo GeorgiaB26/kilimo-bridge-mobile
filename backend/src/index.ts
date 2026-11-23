@@ -83,6 +83,9 @@ app.get('/health', (_req, res) => {
   res.status(200).json(healthPayload());
 });
 
+// Exits the process in production if JWT_SECRET is missing or the dev fallback.
+validateProductionEnv();
+
 app.listen(PORT, HOST, () => {
   console.log(`Kilimo Bridge API listening on ${HOST}:${PORT}`);
   try {
@@ -207,7 +210,6 @@ function mountApiRoutes(): void {
 }
 
 async function bootstrap(): Promise<void> {
-  validateProductionEnv();
   initDatabase();
 
   try {

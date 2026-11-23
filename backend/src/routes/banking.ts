@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requirePermission } from '../middleware/auth';
+import { authenticate, requirePermission, requireRole } from '../middleware/auth';
 import { bankingRateLimiter } from '../middleware/security';
 import {
   getBankTransactions,
@@ -14,6 +14,15 @@ import type { UserRole } from '../../../shared/src/roles';
 
 const router = Router();
 
+/** Roles allowed anywhere under /api/banking. Per-route permissions still apply on top. */
+export const BANKING_ROUTE_ROLES: UserRole[] = [
+  'banking_agent',
+  'banking_admin',
+  'admin',
+  'super_admin',
+  'platform_admin',
+];
+
 function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
 ) {
@@ -23,6 +32,9 @@ function asyncHandler(
 }
 
 router.use(authenticate);
+// The shared `payments.read` permission also lists `farmer`, so permission checks alone would let
+// any farmer token read bank data. Gate the whole router by role first.
+router.use(requireRole(...BANKING_ROUTE_ROLES));
 router.use(bankingRateLimiter);
 
 /** View payment transactions — banking roles & platform_admin */
