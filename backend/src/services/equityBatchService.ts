@@ -35,6 +35,13 @@ import {
   type EquityMwPaymentLine,
 } from './equityCsvGenerator';
 import { encryptPayloadForEquity, loadEquityPublicKeyFromEnv } from './equityPgpService';
+import {
+  assertValidZeroAmountOverride,
+  assertZeroAmountUatCandidate,
+  assertZeroAmountUatEnv,
+  ZeroAmountUatRefusal,
+  type ZeroAmountOverride,
+} from './equityZeroAmountUat';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -142,6 +149,13 @@ export type PlanUgandaBatchesOptions = {
   maxPayments: number;
   /** Maximum total amount (UGX, whole units) accepted in this run. */
   maxTotalAmount: number;
+  /**
+   * UAT-only seam, parameter-only (never read from the environment). The candidate whose
+   * paymentId equals `onlyLineId` is planned with amount `forceAmount` (0) instead of its own
+   * amount; every other candidate is validated exactly as before, so a 0 amount is still
+   * INVALID_AMOUNT for them. Only scripts/send-equity-zero-amount-uat.ts passes it.
+   */
+  zeroAmountOverride?: ZeroAmountOverride;
 };
 
 export type UgandaBatchPlan = {
@@ -170,6 +184,8 @@ export function planUgandaBatches(
   if (!isPositiveSafeInteger(options.maxTotalAmount)) {
     throw new Error('maxTotalAmount must be a positive integer');
   }
+  const override = options.zeroAmountOverride;
+  if (override !== undefined) assertValidZeroAmountOverride(override);
 
   const skipped: SkippedPayment[] = [];
   const deferred: DeferredPayment[] = [];
@@ -200,7 +216,11 @@ export function planUgandaBatches(
       skip('UNKNOWN_NETWORK');
       continue;
     }
-    if (!isPositiveSafeInteger(c.amount)) {
+    // Only the one named line may be planned at the forced amount (0); all others keep their own.
+    const forcedAmount =
+      override !== undefined && c.paymentId === override.onlyLineId ? override.forceAmount : undefined;
+    const amount = forcedAmount ?? c.amount;
+    if (forcedAmount === undefined && !isPositiveSafeInteger(amount)) {
       skip('INVALID_AMOUNT');
       continue;
     }
@@ -213,7 +233,7 @@ export function planUgandaBatches(
       deferred.push({
         paymentId: c.paymentId,
         farmerId: c.farmerId,
-        amount: c.amount,
+        amount,
         reason,
       });
 
@@ -221,7 +241,7 @@ export function planUgandaBatches(
       defer(capReason);
       continue;
     }
-    if (c.amount > options.maxTotalAmount) {
+    if (amount > options.maxTotalAmount) {
       defer('EXCEEDS_MAX_TOTAL_AMOUNT');
       continue;
     }
@@ -230,19 +250,19 @@ export function planUgandaBatches(
       defer(capReason);
       continue;
     }
-    if (total + c.amount > options.maxTotalAmount) {
+    if (total + amount > options.maxTotalAmount) {
       capReason = 'MAX_TOTAL_AMOUNT';
       defer(capReason);
       continue;
     }
 
-    total += c.amount;
+    total += amount;
     accepted.push({
       paymentId: c.paymentId,
       farmerId: c.farmerId,
       farmerName: c.farmerName.trim(),
       mobile,
-      amount: c.amount,
+      amount,
       ...(c.bankReference?.trim() ? { bankReference: c.bankReference.trim() } : {}),
     });
   }
@@ -858,12 +878,27 @@ async function selectPortalCandidates(client: PoolClient): Promise<{
  * NEVER writes to payment_lines or payment_batches: marking lines sent / recording results is a
  * later step. A dry run rolls back and writes nothing at all. Does not upload anything.
  * Logs and audit entries contain ids and counts only — no names or phone numbers.
+ *
+ * `zeroAmountOverride` is the UAT-only seam for the single amount-0 negative test (see
+ * equityZeroAmountUat.ts). It is a parameter, never read from the environment, and only
+ * scripts/send-equity-zero-amount-uat.ts passes it; the scheduler and runEquityPortalBatchCycle
+ * never do. With it, the build REFUSES (throws, nothing written) unless ZERO_AMOUNT_UAT_LINE_ID
+ * equals the line id, EQUITY_SFTP_HOST is the Equity UAT host, the line is an eligible
+ * (released, payment_approved) candidate for the UAT wallet, and exactly one row is planned.
+ * Only that line is built; its bank_transactions.amount is 0 and payment_lines is untouched.
  */
 export async function buildUgandaPortalBatches(params: {
   dryRun: boolean;
   now?: Date;
   initiatedBy?: string | null;
+  zeroAmountOverride?: ZeroAmountOverride;
 }): Promise<BuildUgandaBatchesResult> {
+  const zeroAmountOverride = params.zeroAmountOverride;
+  if (zeroAmountOverride !== undefined) {
+    // Before anything else: no config read, no key load, no database connection.
+    assertValidZeroAmountOverride(zeroAmountOverride);
+    assertZeroAmountUatEnv(zeroAmountOverride.onlyLineId, process.env);
+  }
   const config = equityUgandaBatchConfigFromEnv();
   const now = params.now ?? new Date();
   const initiatedBy = params.initiatedBy ?? null;
@@ -899,15 +934,36 @@ export async function buildUgandaPortalBatches(params: {
       return { status: 'locked' };
     }
 
-    const { candidates, currencySkipped, portalBatchByLine } = await selectPortalCandidates(client);
+    const selected = await selectPortalCandidates(client);
+    const { portalBatchByLine } = selected;
+    let { candidates, currencySkipped } = selected;
+
+    if (zeroAmountOverride) {
+      // Only the one named line may be built. Any other released line is left alone.
+      const lineId = zeroAmountOverride.onlyLineId;
+      candidates = candidates.filter((c) => c.paymentId === lineId);
+      currencySkipped = currencySkipped.filter((s) => s.paymentId === lineId);
+      if (candidates.length !== 1) {
+        throw new ZeroAmountUatRefusal(
+          'Refused: the line is not an eligible candidate (it must be released, at payment_approved, not on hold, with no live bank transaction)'
+        );
+      }
+      assertZeroAmountUatCandidate(candidates[0]);
+    }
     candidateCount = candidates.length + currencySkipped.length;
 
     const plan = planUgandaBatches(candidates, {
       maxPayments: config.maxPayments,
       maxTotalAmount: config.maxTotalAmount,
+      ...(zeroAmountOverride ? { zeroAmountOverride } : {}),
     });
     skipped = [...currencySkipped, ...plan.skipped];
     deferredCount = plan.deferred.length;
+
+    if (zeroAmountOverride && plan.chunks.reduce((n, c) => n + c.length, 0) !== 1) {
+      // Still before any insert: the surrounding catch rolls back.
+      throw new ZeroAmountUatRefusal('Refused: exactly one row must be built for the zero-amount test');
+    }
 
     const files = splitPlanByPortalBatch(plan.chunks, portalBatchByLine);
 
@@ -1071,6 +1127,7 @@ export async function buildUgandaPortalBatches(params: {
       details: {
         country: 'UG',
         source: 'portal',
+        ...(zeroAmountOverride ? { zeroAmountUat: true } : {}),
         candidateCount,
         batchCount: batches.length,
         batchIds: batches.map((b) => b.batchId),
